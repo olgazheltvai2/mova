@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Спортивне Табло - Гра</title>
+    <style>
+        /* Скидання базових стилів */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none; /* Заборона виділення тексту */
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            /* Спортивний, динамічний шрифт */
+            font-family: 'Trebuchet MS', 'Arial Black', sans-serif;
+            background-color: #0a192f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #game-world {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1;
+        }
+
+        /* --- СКЛАДНИЙ SVG ФОН (Нічний Стадіон) --- */
+        #background-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+        }
+
+        /* Анімація прожекторів */
+        @keyframes sweepLights {
+            0%, 100% { transform: rotate(-5deg); opacity: 0.6; }
+            50% { transform: rotate(5deg); opacity: 0.8; }
+        }
+        .floodlight-beam {
+            transform-origin: top center;
+            animation: sweepLights 8s infinite ease-in-out;
+        }
+        .floodlight-beam:nth-child(2) {
+            animation-delay: -4s;
+            transform-origin: top left;
+        }
+
+        /* Анімація спалахів камер на трибунах */
+        @keyframes cameraFlash {
+            0%, 95%, 100% { opacity: 0; }
+            97% { opacity: 1; }
+        }
+        .flash {
+            animation: cameraFlash 5s infinite;
+        }
+
+        /* --- ІГРОВЕ ТАБЛО З ТЕКСТОМ --- */
+        #text-board-container {
+            position: relative; /* Flexbox батьківського контейнера центруватиме його */
+            width: 96%; /* Розтягнуто максимально вшир */
+            max-width: 1850px;
+            
+            /* Стилізація під електронне табло стадіону */
+            background: linear-gradient(135deg, #111 0%, #222 100%);
+            border-radius: 15px;
+            padding: 50px 70px;
+            border: 8px solid #455a64;
+            box-shadow: 
+                0 20px 50px rgba(0,0,0,0.8),
+                inset 0 0 30px rgba(0,0,0,0.9),
+                0 0 0 12px #263238,
+                0 0 15px 15px rgba(33, 150, 243, 0.2); /* Легке світіння навколо */
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Декоративна сітка поверх табло (імітація LED пікселів) */
+        #text-board-container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: radial-gradient(rgba(0,0,0,0.3) 1px, transparent 1px);
+            background-size: 4px 4px;
+            pointer-events: none;
+            border-radius: 5px;
+            z-index: 1;
+        }
+
+        /* Текст завдання на табло - ЗБІЛЬШЕНО ШРИФТ */
+        #text-content {
+            font-size: 4rem; /* Збільшений шрифт */
+            line-height: 2.1;
+            color: #ffffff;
+            text-align: justify;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3);
+            position: relative;
+            z-index: 2; /* Вище за сітку */
+        }
+
+        /* --- ВІДЖЕТ ВИБОРУ (Спортивні кнопки) --- */
+        .choice-widget {
+            display: inline-flex;
+            gap: 15px;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 15px;
+            border-radius: 12px;
+            margin: 0 10px;
+            vertical-align: middle;
+            border: 2px solid #546e7a;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        /* Кнопка вибору у вигляді спортивного елемента - ЗБІЛЬШЕНО */
+        .choice-btn {
+            width: 75px;
+            height: 75px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #ff9800, #e65100);
+            border: 3px solid #ffcc80;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 4rem;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.4);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            transition: all 0.15s ease-in-out;
+            font-family: 'Impact', sans-serif;
+        }
+
+        .choice-btn:hover {
+            transform: scale(1.1) translateY(-3px);
+            background: linear-gradient(135deg, #ffb74d, #f57c00);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.6), inset 0 2px 4px rgba(255,255,255,0.6);
+            border-color: #ffffff;
+        }
+
+        .choice-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Правильна вирішена літера (стилізація під золоту медаль / яскравий LED) */
+        .solved-char {
+            color: #ffeb3b;
+            text-shadow: 0 0 15px #ffc107, 0 0 25px #ff9800;
+            font-size: 4.2rem;
+            display: inline-block;
+            animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-family: 'Impact', sans-serif;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.4) rotate(5deg); }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+
+        /* Анімація помилки (Сирена/Вібрування) */
+        .error-anim { animation: shake 0.4s ease; }
+        .error-btn {
+            background: linear-gradient(135deg, #f44336, #b71c1c) !important;
+            border-color: #ffcdd2 !important;
+            box-shadow: 0 0 15px #f44336 !important;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-8px); }
+            40% { transform: translateX(8px); }
+            60% { transform: translateX(-8px); }
+            80% { transform: translateX(8px); }
+        }
+
+        /* Оверлей для ефектів (конфетті) */
+        #overlay-fx {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-world">
+        <svg id="background-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#020b1a"/>
+                    <stop offset="60%" stop-color="#0f2042"/>
+                    <stop offset="100%" stop-color="#1e3a6d"/>
+                </linearGradient>
+                <radialGradient id="lightGlow" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#ffffff"/>
+                    <stop offset="30%" stop-color="#e0f7fa"/>
+                    <stop offset="100%" stop-color="#e0f7fa" stop-opacity="0"/>
+                </radialGradient>
+            </defs>
+
+            <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+
+            <path d="M0 400 L 1920 400 L 1920 600 L 0 600 Z" fill="#1c2a40"/>
+            <path d="M0 450 L 1920 450 L 1920 600 L 0 600 Z" fill="#24344d"/>
+            <path d="M0 500 L 1920 500 L 1920 600 L 0 600 Z" fill="#2c3e5a"/>
+            
+            <g opacity="0.4">
+                <circle cx="100" cy="420" r="2" fill="#fff"/>
+                <circle cx="150" cy="430" r="2" fill="#f44336"/>
+                <circle cx="200" cy="415" r="2" fill="#2196f3"/>
+                <circle cx="300" cy="440" r="2" fill="#ffeb3b"/>
+                <circle cx="450" cy="425" r="2" fill="#fff"/>
+                <circle cx="600" cy="435" r="2" fill="#4caf50"/>
+                <circle cx="750" cy="410" r="2" fill="#fff"/>
+                <circle cx="900" cy="445" r="2" fill="#ff9800"/>
+                <circle cx="1100" cy="420" r="2" fill="#fff"/>
+                <circle cx="1300" cy="435" r="2" fill="#2196f3"/>
+                <circle cx="1500" cy="415" r="2" fill="#fff"/>
+                <circle cx="1700" cy="440" r="2" fill="#f44336"/>
+                <circle cx="1850" cy="425" r="2" fill="#fff"/>
+            </g>
+
+            <circle class="flash" cx="250" cy="460" r="4" fill="#fff" style="animation-delay: 0.5s"/>
+            <circle class="flash" cx="850" cy="480" r="5" fill="#fff" style="animation-delay: 2.1s"/>
+            <circle class="flash" cx="1400" cy="470" r="3" fill="#fff" style="animation-delay: 1.3s"/>
+            <circle class="flash" cx="1750" cy="490" r="4" fill="#fff" style="animation-delay: 3.7s"/>
+
+            <g transform="translate(200, 100)">
+                <polygon class="floodlight-beam" points="0,50 -200,900 600,900" fill="url(#lightGlow)" opacity="0.3"/>
+                <rect x="-40" y="-20" width="80" height="40" fill="#333"/>
+                <circle cx="-20" cy="0" r="10" fill="#fff"/>
+                <circle cx="20" cy="0" r="10" fill="#fff"/>
+                <path d="M-5,20 L -10,100 L 10,100 L 5,20 Z" fill="#222"/>
+            </g>
+
+            <g transform="translate(1720, 100)">
+                <polygon class="floodlight-beam" points="0,50 -600,900 200,900" fill="url(#lightGlow)" opacity="0.3"/>
+                <rect x="-40" y="-20" width="80" height="40" fill="#333"/>
+                <circle cx="-20" cy="0" r="10" fill="#fff"/>
+                <circle cx="20" cy="0" r="10" fill="#fff"/>
+                <path d="M-5,20 L -10,100 L 10,100 L 5,20 Z" fill="#222"/>
+            </g>
+
+            <ellipse cx="960" cy="850" rx="1100" ry="350" fill="#263238"/>
+            
+            <ellipse cx="960" cy="850" rx="1000" ry="300" fill="#c62828"/>
+            
+            <ellipse cx="960" cy="850" rx="960" ry="280" fill="none" stroke="#e53935" stroke-width="40"/>
+            <ellipse cx="960" cy="850" rx="980" ry="290" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="20, 10"/>
+            <ellipse cx="960" cy="850" rx="940" ry="270" fill="none" stroke="#fff" stroke-width="2"/>
+            <ellipse cx="960" cy="850" rx="900" ry="250" fill="none" stroke="#fff" stroke-width="2"/>
+
+            <ellipse cx="960" cy="850" rx="860" ry="230" fill="#2e7d32"/>
+            <ellipse cx="960" cy="850" rx="840" ry="215" fill="none" stroke="#fff" stroke-width="3" opacity="0.6"/>
+            <line x1="960" y1="635" x2="960" y2="1065" stroke="#fff" stroke-width="3" opacity="0.6"/>
+            <circle cx="960" cy="850" r="60" fill="none" stroke="#fff" stroke-width="3" opacity="0.6"/>
+        </svg>
+
+        <div id="text-board-container">
+            <div id="text-content"></div>
+        </div>
+        
+        <svg id="overlay-fx"></svg>
+    </div>
+
+    <script>
+        // Текст завдання
+        const rawText = "Слава завжди мріяв про великі досягнення у спорті. Гучна слава не запаморочила йому голову навіть після серії перемог. Слава продовжував тренуватися щодня. Справжня слава приходить лише до тих, хто вміє працювати над собою. Слава часто допомагав молодим атлетам порадами. Він розумів, що слава — це лише приємний додаток до чесної праці.";
+
+        const textContainer = document.getElementById('text-content');
+        
+        let totalTargets = 0;
+        let foundTargets = 0;
+
+        // --- Звуковий рушій (Web Audio API) - Спортивний стиль ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        const SoundEngine = {
+            playTone: function(freq, type, duration, vol) {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            },
+            
+            // Звук правильної відповіді (Електронний "Пінь!", як зарахування очка на табло)
+            successSound: function() {
+                this.playTone(880, 'sine', 0.2, 0.4); // A5
+                setTimeout(() => this.playTone(1108.73, 'sine', 0.4, 0.4), 100); // C#6
+            },
+            
+            // Звук помилки (Баскетбольна сирена / низький зумер)
+            errorSound: function() {
+                this.playTone(150, 'sawtooth', 0.4, 0.5); 
+                this.playTone(145, 'square', 0.4, 0.3);
+            },
+            
+            // Звук перемоги (Спортивна фанфара)
+            victorySound: function() {
+                const notes = [392.00, 392.00, 392.00, 523.25, 392.00, 523.25, 659.25];
+                const timings = [0, 150, 300, 450, 750, 900, 1200];
+                notes.forEach((freq, i) => {
+                    setTimeout(() => {
+                        this.playTone(freq, 'square', 0.4, 0.2);
+                        this.playTone(freq, 'sine', 0.5, 0.3);
+                    }, timings[i]);
+                });
+            }
+        };
+
+        // --- Генерація тексту з віджетами ---
+        function buildGameText(text) {
+            // Розбиваємо текст на слова та інші символи
+            const regex = /([а-яА-ЯіїєґІЇЄҐ']+)|([^а-яА-ЯіїєґІЇЄҐ']+)/g;
+            const tokens = text.match(regex);
+            
+            tokens.forEach(token => {
+                if (/^[а-яА-ЯіїєґІЇЄҐ']+$/.test(token)) {
+                    // Шукаємо слова, що починаються на С/с + лава
+                    if (/^[Сс]лава/i.test(token)) {
+                        totalTargets++;
+                        const expectedChar = token[0]; // 'С' або 'с'
+                        const restOfWord = token.substring(1); // 'лава'
+                        
+                        // Створюємо контейнер віджета
+                        const widgetContainer = document.createElement('span');
+                        widgetContainer.className = 'choice-widget';
+                        
+                        // Кнопка 'С' (Велика)
+                        const charUpper = document.createElement('div');
+                        charUpper.className = 'choice-btn';
+                        charUpper.textContent = 'С';
+                        charUpper.onclick = (e) => handleChoice(e, 'С', expectedChar, widgetContainer);
+
+                        // Кнопка 'с' (Мала)
+                        const charLower = document.createElement('div');
+                        charLower.className = 'choice-btn';
+                        charLower.textContent = 'с';
+                        charLower.onclick = (e) => handleChoice(e, 'с', expectedChar, widgetContainer);
+
+                        widgetContainer.appendChild(charUpper);
+                        widgetContainer.appendChild(charLower);
+                        textContainer.appendChild(widgetContainer);
+
+                        // Додаємо решту слова
+                        const restSpan = document.createElement('span');
+                        restSpan.textContent = restOfWord;
+                        textContainer.appendChild(restSpan);
+                    } else {
+                        textContainer.appendChild(document.createTextNode(token));
+                    }
+                } else {
+                    textContainer.appendChild(document.createTextNode(token));
+                }
+            });
+        }
+
+        // --- Логіка взаємодії ---
+        function handleChoice(event, chosenChar, expectedChar, widgetContainer) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const clickedBtn = event.target;
+
+            if (chosenChar === expectedChar) {
+                // ПРАВИЛЬНО
+                SoundEngine.successSound();
+                
+                const rect = widgetContainer.getBoundingClientRect();
+                createSparks(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
+                // Замінюємо віджет на вирішену літеру
+                const solvedSpan = document.createElement('span');
+                solvedSpan.className = 'solved-char';
+                solvedSpan.textContent = expectedChar;
+                widgetContainer.replaceWith(solvedSpan);
+
+                foundTargets++;
+                checkWin();
+            } else {
+                // ПОМИЛКА
+                SoundEngine.errorSound();
+                
+                // Анімація трясіння і червоний колір
+                widgetContainer.classList.remove('error-anim');
+                clickedBtn.classList.remove('error-btn');
+                void widgetContainer.offsetWidth; // Reflow
+                
+                widgetContainer.classList.add('error-anim');
+                clickedBtn.classList.add('error-btn');
+                
+                setTimeout(() => {
+                    clickedBtn.classList.remove('error-btn');
+                }, 400);
+            }
+        }
+
+        function checkWin() {
+            if (foundTargets === totalTargets) {
+                setTimeout(() => {
+                    SoundEngine.victorySound();
+                    createStadiumConfetti();
+                    flashStadiumLights();
+                }, 300);
+            }
+        }
+
+        // --- Візуальні ефекти (SVG) ---
+        
+        // Іскри при правильній відповіді
+        function createSparks(x, y) {
+            const svgNS = "http://www.w3.org/2000/svg";
+            const overlay = document.getElementById('overlay-fx');
+            for (let i = 0; i < 12; i++) {
+                const spark = document.createElementNS(svgNS, "line");
+                const angle = (i / 12) * Math.PI * 2;
+                const dist = 50 + Math.random() * 40;
+                
+                spark.setAttribute("x1", x); spark.setAttribute("y1", y);
+                spark.setAttribute("x2", x + Math.cos(angle)*15); 
+                spark.setAttribute("y2", y + Math.sin(angle)*15);
+                spark.setAttribute("stroke", "#ffeb3b");
+                spark.setAttribute("stroke-width", "5");
+                spark.setAttribute("stroke-linecap", "round");
+                
+                overlay.appendChild(spark);
+                
+                spark.animate([
+                    { transform: 'translate(0,0)', opacity: 1 },
+                    { transform: `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`, opacity: 0 }
+                ], { duration: 450, easing: 'ease-out' }).onfinish = () => spark.remove();
+            }
+        }
+
+        // Спортивне конфетті (стрічки) при перемозі
+        function createStadiumConfetti() {
+            const svgNS = "http://www.w3.org/2000/svg";
+            const overlay = document.getElementById('overlay-fx');
+            const colors = ['#ffd700', '#c0c0c0', '#ff5722', '#2196f3', '#4caf50']; // Золото, срібло та яскраві кольори
+            
+            for (let i = 0; i < 120; i++) {
+                const rect = document.createElementNS(svgNS, "rect");
+                rect.setAttribute("x", Math.random() * window.innerWidth);
+                rect.setAttribute("y", -50 - Math.random() * 100);
+                rect.setAttribute("width", 8 + Math.random() * 8); 
+                rect.setAttribute("height", 18 + Math.random() * 20);
+                rect.setAttribute("fill", colors[Math.floor(Math.random()*colors.length)]);
+                overlay.appendChild(rect);
+                
+                const duration = 2500 + Math.random() * 2500;
+                rect.animate([
+                    { transform: `translate(0,0) rotate(0deg)`, opacity: 1 },
+                    { transform: `translate(${(Math.random()-0.5)*400}px, ${window.innerHeight+100}px) rotate(${Math.random()*1080}deg)`, opacity: 0.8 }
+                ], { duration: duration, easing: 'linear' }).onfinish = () => rect.remove();
+            }
+        }
+
+        // Блимання фону при перемозі
+        function flashStadiumLights() {
+            const bg = document.getElementById('background-svg');
+            let flashes = 0;
+            const interval = setInterval(() => {
+                bg.style.opacity = (flashes % 2 === 0) ? '0.5' : '1';
+                flashes++;
+                if (flashes > 6) {
+                    clearInterval(interval);
+                    bg.style.opacity = '1';
+                }
+            }, 150);
+        }
+
+        // Запуск
+        window.onload = () => {
+            buildGameText(rawText);
+        };
+    </script>
+</body>
+</html>
