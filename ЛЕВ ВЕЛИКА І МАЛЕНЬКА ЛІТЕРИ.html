@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ветклініка Лева - Гра</title>
+    <style>
+        /* Основні стилі та скидання */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none; /* Заборона виділення тексту для ігрового процесу */
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+            background-color: #ffd54f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #game-world {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1;
+        }
+
+        /* --- СКЛАДНИЙ SVG ФОН (Савана) --- */
+        #background-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+        }
+
+        /* Анімації фону */
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .sun-rays { transform-origin: 85% 15%; animation: spin 100s linear infinite; }
+        @keyframes drift { 100% { transform: translateX(100vw); } }
+        .cloud { animation: drift 120s linear infinite; }
+
+        /* --- ДОШКА З ТЕКСТОМ --- */
+        #text-board-container {
+            position: relative;
+            /* Змінні для позиціонування, змінні CSS для зручного редагування після drag-and-drop */
+            /* !!! ОНОВЛЕНО ПО КООРДИНАТАМ КОРИСТУВАЧА !!! */
+            --dev-left: 10.2%; /* Відступ зліва (image_1.png) */
+            --dev-top: -0.6%; /* Відступ зверху (image_1.png) */
+            
+            left: var(--dev-left);
+            top: var(--dev-top);
+            position: absolute; /* Потрібно для вільного переміщення */
+
+            width: 95%;
+            max-width: 1700px;
+            /* Стилізація під старий папір/дерево */
+            background: radial-gradient(circle at center, #fff8e1 0%, #ffecb3 70%, #ffe082 100%);
+            border-radius: 30px;
+            padding: 50px 80px;
+            box-shadow: 
+                inset 0 0 30px rgba(139, 69, 19, 0.4),
+                0 20px 50px rgba(0,0,0,0.5),
+                0 0 0 15px #795548,
+                0 0 0 25px #4e342e;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Крупний шрифт тексту завдання */
+        #text-content {
+            font-size: 3.8rem; /* ЗБІЛЬШЕНО ШРИФТ */
+            line-height: 2.1;
+            color: #3e2723;
+            text-align: justify;
+            font-weight: bold;
+        }
+
+        /* --- Віджет вибору (Кружечки) --- */
+        .choice-widget {
+            display: inline-flex;
+            gap: 15px;
+            align-items: center;
+            background: rgba(121, 85, 72, 0.15);
+            padding: 8px 15px;
+            border-radius: 40px;
+            margin: 0 10px;
+            vertical-align: middle;
+            border: 2px dashed #8d6e63;
+        }
+
+        .choice-circle {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #ffb74d, #f57c00);
+            border: 4px solid #e65100;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3.5rem;
+            cursor: pointer;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3), inset 0 3px 5px rgba(255,255,255,0.4);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .choice-circle:hover {
+            transform: scale(1.15) translateY(-5px);
+            background: radial-gradient(circle at 30% 30%, #ffcc80, #ff9800);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4), inset 0 3px 5px rgba(255,255,255,0.6);
+        }
+
+        /* Правильна вирішена літера */
+        .solved-char {
+            color: #2e7d32;
+            text-shadow: 0 0 20px #69f0ae, 0 0 30px #b9f6ca;
+            font-size: 4rem;
+            display: inline-block;
+            animation: pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.5) rotate(10deg); }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+
+        /* Анімація помилки */
+        .error-anim { animation: shake 0.5s ease; }
+        .error-circle {
+            background: radial-gradient(circle at 30% 30%, #ef5350, #c62828) !important;
+            border-color: #b71c1c !important;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-10px) rotate(-10deg); }
+            40% { transform: translateX(10px) rotate(10deg); }
+            60% { transform: translateX(-10px) rotate(-10deg); }
+            80% { transform: translateX(10px) rotate(10deg); }
+        }
+
+        /* --- КОНТЕЙНЕР ЛЕВА-ВЕТЕРИНАРА --- */
+        #lion-container {
+            position: absolute;
+            /* Змінні для позиціонування, змінні CSS для зручного редагування після drag-and-drop */
+            /* !!! ОНОВЛЕНО ПО КООРДИНАТАМ КОРИСТУВАЧА !!! */
+            --dev-right: 4.8%; /* Відступ справа (image_0.png) */
+            --dev-bottom: 9.3%; /* Відступ знизу (image_0.png) */
+            
+            right: var(--dev-right);
+            bottom: var(--dev-bottom);
+            left: auto; top: auto; /* Скасовуємо дефолтне центрування */
+
+            width: 450px;
+            height: 550px;
+            z-index: 15;
+            pointer-events: none; /* Щоб не заважав клікати по тексту, якщо перекриває */
+        }
+
+        /* Анімації Лева (Дихання, Хвіст) */
+        @keyframes breathe {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(1.03) translateY(-3px); }
+        }
+        @keyframes wag {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(25deg); }
+        }
+        
+        /* Анімація погляду (Переведення очей) - ЗАМІСТЬ КЛІПАННЯ */
+        @keyframes lookAround {
+            0%, 15% { transform: translate(0, 0); } /* Центр */
+            20%, 35% { transform: translate(-4px, 1px); } /* Вліво трохи вниз */
+            40%, 55% { transform: translate(0, 0); } /* Центр */
+            60%, 75% { transform: translate(4px, -1px); } /* Вправо трохи вгору */
+            80%, 100% { transform: translate(0, 0); } /* Центр */
+        }
+
+        /* Фідбек анімації (Стрибок, Трясіння головою) */
+        @keyframes happyJump {
+            0% { transform: translateY(0) scale(1); }
+            30% { transform: translateY(-40px) scale(1.05); }
+            50% { transform: translateY(-50px) scale(1.1); }
+            70% { transform: translateY(-40px) scale(1.05); }
+            100% { transform: translateY(0) scale(1); }
+        }
+        @keyframes confusedHead {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-15deg); }
+            75% { transform: rotate(15deg); }
+        }
+
+        /* Прив'язка анімацій до класів */
+        .lion-body-anim { animation: breathe 3.5s infinite ease-in-out; transform-origin: bottom center; }
+        .lion-tail-anim { animation: wag 3s infinite ease-in-out; transform-origin: 30% 90%; } /* Коректована точка обертання піднятого хвоста */
+        .lion-look-anim { animation: lookAround 8s infinite ease-in-out; } /* Погляд */
+        
+        /* Класи фідбеку, що додаються JS */
+        .react-happy { animation: happyJump 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+        .react-confused { animation: confusedHead 0.5s ease-in-out; transform-origin: center; }
+
+        /* Оверлей для ефектів */
+        #overlay-fx {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* =========================================
+           СТИЛІ ДЛЯ ВЕРСІЇ РОЗРОБНИКА (DEV MODE)
+           ========================================= */
+        
+        /* Кнопка перемикання режиму */
+        #dev-toggle-btn {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            padding: 10px 20px;
+            background: #333;
+            color: white;
+            border: 2px solid #555;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        #dev-toggle-btn.active {
+            background: #d32f2f;
+            border-color: #b71c1c;
+        }
+
+        /* Клас, що додається до ігрового світу в режимі dev */
+        .dev-mode-active {
+            background-image: 
+                linear-gradient(45deg, #e0e0e0 25%, transparent 25%), 
+                linear-gradient(-45deg, #e0e0e0 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #e0e0e0 75%),
+                linear-gradient(-45deg, transparent 75%, #e0e0e0 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        /* Стилі для елементів, які можна перетягувати */
+        .draggable-element {
+            cursor: move !important;
+            outline: 3px solid #1976d2 !important;
+            box-shadow: 0 0 15px rgba(25, 118, 210, 0.7) !important;
+            pointer-events: auto !important; /* Вмикаємо кліки для Лева, щоб схопити */
+        }
+        .draggable-element:hover {
+            outline-color: #2196f3 !important;
+        }
+        .draggable-element:active {
+            outline-color: #ff9800 !important;
+            outline-style: dashed !important;
+        }
+
+        /* Панель з координатами */
+        .dev-coord-panel {
+            position: absolute;
+            bottom: -35px;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.8);
+            color: #0f0;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+    </style>
+</head>
+<body>
+
+    <button id="dev-toggle-btn">DEV MODE: OFF</button>
+
+    <div id="game-world">
+        <svg id="background-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#29b6f6"/>
+                    <stop offset="50%" stop-color="#81d4fa"/>
+                    <stop offset="100%" stop-color="#ffe082"/>
+                </linearGradient>
+                <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#ffffff"/>
+                    <stop offset="30%" stop-color="#fff59d"/>
+                    <stop offset="100%" stop-color="#fbc02d" stop-opacity="0"/>
+                </radialGradient>
+                <pattern id="grassPattern" width="120" height="120" patternUnits="userSpaceOnUse">
+                    <path d="M15 120 Q 25 70 35 120 M55 120 Q 65 50 75 120 M95 120 Q 105 80 115 120" stroke="#558b2f" stroke-width="5" fill="none" opacity="0.5"/>
+                </pattern>
+            </defs>
+
+            <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+
+            <g class="sun-rays" transform="translate(1600, 200)">
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4"/>
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4" transform="rotate(45)"/>
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4" transform="rotate(90)"/>
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4" transform="rotate(135)"/>
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4" transform="rotate(180)"/>
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4" transform="rotate(225)"/>
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4" transform="rotate(270)"/>
+                <path d="M0 -350 L25 0 L-25 0 Z" fill="#fff59d" opacity="0.4" transform="rotate(315)"/>
+            </g>
+            <circle cx="1600" cy="200" r="180" fill="url(#sunGrad)"/>
+
+            <g class="cloud" opacity="0.9">
+                <path d="M-200 150 Q-120 80 -40 150 Q40 100 100 160 Q150 220 80 230 L-250 230 Z" fill="#ffffff"/>
+            </g>
+
+            <path d="M0 550 Q 500 350 1000 600 T 1920 500 L 1920 1080 L 0 1080 Z" fill="#c5e1a5"/>
+            <path d="M0 650 Q 400 500 800 700 T 1920 600 L 1920 1080 L 0 1080 Z" fill="#9ccc65"/>
+
+            <g transform="translate(200, 450)">
+                <path d="M-60 400 Q-50 200 0 0 L 80 0 Q 130 200 140 400 Z" fill="#795548"/>
+                <ellipse cx="40" cy="-50" rx="280" ry="120" fill="#33691e" opacity="0.8"/>
+            </g>
+
+            <rect x="0" y="800" width="1920" height="280" fill="url(#grassPattern)"/>
+            <path d="M0 850 Q 300 800 600 880 T 1300 820 T 1920 880 L 1920 1080 L 0 1080 Z" fill="#7cb342"/>
+        </svg>
+
+        <div id="text-board-container" class="dev-target">
+            <div id="text-content"></div>
+        </div>
+
+        <div id="lion-container" class="dev-target">
+            <svg id="lion-svg" viewBox="0 0 400 500" width="100%" height="100%">
+                <g class="lion-body-anim">
+                    <g class="lion-tail-anim">
+                        <path d="M250,320 Q360,280 370,180" fill="none" stroke="#f57c00" stroke-width="18" stroke-linecap="round"/>
+                        <circle cx="370" cy="180" r="20" fill="#5d4037"/>
+                        <polygon points="370,205 350,170 390,170" fill="#5d4037"/>
+                    </g>
+
+                    <rect x="110" y="410" width="50" height="60" rx="25" fill="#ef6c00"/>
+                    <rect x="240" y="410" width="50" height="60" rx="25" fill="#ef6c00"/>
+
+                    <ellipse cx="200" cy="320" rx="100" ry="120" fill="#ffa726"/>
+                    <ellipse cx="200" cy="340" rx="70" ry="90" fill="#ffe0b2"/> 
+
+                    <path d="M100,240 L300,240 L310,400 L200,380 L90,400 Z" fill="#f5f5f5" opacity="0.95"/>
+                    <line x1="200" y1="240" x2="200" y2="380" stroke="#e0e0e0" stroke-width="4"/>
+                    
+                    <rect x="240" y="290" width="35" height="40" rx="5" fill="#ffffff" stroke="#bdbdbd" stroke-width="2"/>
+                    <line x1="250" y1="270" x2="250" y2="300" stroke="#1976d2" stroke-width="5" stroke-linecap="round"/>
+
+                    <path d="M100,240 Q70,350 90,400" fill="none" stroke="#fb8c00" stroke-width="40" stroke-linecap="round"/>
+                    <path d="M300,240 Q330,350 310,400" fill="none" stroke="#fb8c00" stroke-width="40" stroke-linecap="round"/>
+
+                    <path d="M140,230 Q200,360 260,230" fill="none" stroke="#424242" stroke-width="10"/>
+                    <circle cx="200" cy="310" r="18" fill="#424242"/>
+
+                    <g id="lion-head">
+                        <circle cx="200" cy="170" r="120" fill="#795548"/>
+                        <path d="M110,130 Q160,50 200,80 Q240,50 290,130 Q330,190 270,240 Q200,290 130,240 Q70,190 110,130 Z" fill="#4e342e"/>
+
+                        <ellipse cx="200" cy="170" rx="75" ry="70" fill="#ffa726"/>
+                        <ellipse cx="200" cy="200" rx="45" ry="30" fill="#ffe0b2"/>
+
+                        <g id="lion-eyes-group">
+                            <circle cx="170" cy="150" r="15" fill="#ffffff" stroke="#3e2723" stroke-width="2"/>
+                            <circle cx="230" cy="150" r="15" fill="#ffffff" stroke="#3e2723" stroke-width="2"/>
+                            
+                            <g class="lion-look-anim">
+                                <circle cx="170" cy="150" r="8" fill="#3e2723"/>
+                                <circle cx="170" cy="147" r="3" fill="#ffffff" opacity="0.8"/> <circle cx="230" cy="150" r="8" fill="#3e2723"/>
+                                <circle cx="230" cy="147" r="3" fill="#ffffff" opacity="0.8"/> </g>
+                        </g>
+
+                        <rect x="142" y="132" width="56" height="38" rx="12" fill="none" stroke="#283593" stroke-width="5" opacity="0.8"/>
+                        <rect x="202" y="132" width="56" height="38" rx="12" fill="none" stroke="#283593" stroke-width="5" opacity="0.8"/>
+                        <line x1="198" y1="151" x2="202" y2="151" stroke="#283593" stroke-width="5"/>
+
+                        <polygon points="185,185 215,185 200,200" fill="#3e2723"/>
+                    </g>
+                </g>
+            </svg>
+        </div>
+        
+        <svg id="overlay-fx"></svg>
+    </div>
+
+    <script>
+        // Текст завдання
+        const rawText = "Лев працює ветеринаром у зоопарку. Сьогодні великий лев поводився неспокійно через спекотну погоду. Лев уважно оглянув тварину і призначив необхідні процедури. Дикі леви зазвичай живуть прайдами, але цей лев виріс серед людей. Лев завжди відчував особливий зв'язок із цими хижаками. Кожен лев у вольєрі знав його голос і ставився до нього з довірою.";
+
+        const textContainer = document.getElementById('text-content');
+        const lionContainer = document.getElementById('lion-container'); // Весь контейнер для реакцій
+        
+        let totalTargets = 0;
+        let foundTargets = 0;
+
+        // --- Звуковий рушій (Web Audio API) - Без слів, активний фідбек ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        const SoundEngine = {
+            playTone: function(freq, type, duration, vol) {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            },
+            // Веселий мажорний перелив
+            successSound: function() {
+                this.playTone(523.25, 'sine', 0.4, 0.3); // C5
+                setTimeout(() => this.playTone(659.25, 'sine', 0.4, 0.3), 100); // E5
+                setTimeout(() => this.playTone(783.99, 'sine', 0.5, 0.3), 200); // G5
+            },
+            // Низький дисонанс
+            errorSound: function() {
+                this.playTone(220, 'sawtooth', 0.3, 0.2); // A3
+                this.playTone(210, 'sine', 0.3, 0.3);
+            },
+            // Тріумфальний арпеджіо
+            victorySound: function() {
+                const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, i) => {
+                    setTimeout(() => this.playTone(freq, 'triangle', 0.6, 0.2), i * 100);
+                });
+            }
+        };
+
+        // --- Генерація тексту з віджетами ---
+        function buildGameText(text) {
+            const regex = /([а-яА-ЯіїєґІЇЄҐ']+)|([^а-яА-ЯіїєґІЇЄҐ']+)/g;
+            const tokens = text.match(regex);
+            
+            tokens.forEach(token => {
+                if (/^[а-яА-ЯіїєґІЇЄҐ']+$/.test(token)) {
+                    // Шукаємо слова, що починаються на Л/л + ев
+                    if (/^[Лл]ев/i.test(token)) {
+                        totalTargets++;
+                        const expectedChar = token[0]; 
+                        const restOfWord = token.substring(1); 
+                        
+                        // Створюємо віджет вибору
+                        const widgetContainer = document.createElement('span');
+                        widgetContainer.className = 'choice-widget';
+                        
+                        // Велика Л
+                        const charUpper = document.createElement('div');
+                        charUpper.className = 'choice-circle';
+                        charUpper.textContent = 'Л';
+                        charUpper.onclick = (e) => handleChoice(e, 'Л', expectedChar, widgetContainer);
+
+                        // Мала л
+                        const charLower = document.createElement('div');
+                        charLower.className = 'choice-circle';
+                        charLower.textContent = 'л';
+                        charLower.onclick = (e) => handleChoice(e, 'л', expectedChar, widgetContainer);
+
+                        widgetContainer.appendChild(charUpper);
+                        widgetContainer.appendChild(charLower);
+                        textContainer.appendChild(widgetContainer);
+
+                        // Додаємо решту слова без "л"
+                        const restSpan = document.createElement('span');
+                        restSpan.textContent = restOfWord;
+                        textContainer.appendChild(restSpan);
+                    } else {
+                        textContainer.appendChild(document.createTextNode(token));
+                    }
+                } else {
+                    textContainer.appendChild(document.createTextNode(token));
+                }
+            });
+        }
+
+        // --- Логіка взаємодії ---
+        function handleChoice(event, chosenChar, expectedChar, widgetContainer) {
+            if (isDevMode) return; // Не граємо в режимі розробника
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const clickedCircle = event.target;
+            
+            // Скидання анімацій фідбеку лева
+            lionContainer.classList.remove('react-happy', 'react-confused');
+            void lionContainer.offsetWidth; // Trigger reflow
+
+            if (chosenChar === expectedChar) {
+                // ПРАВИЛЬНО
+                SoundEngine.successSound();
+                lionContainer.classList.add('react-happy');
+                
+                const rect = widgetContainer.getBoundingClientRect();
+                createSparkles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
+                // Заміна віджета на правильну літеру в тексті
+                const solvedSpan = document.createElement('span');
+                solvedSpan.className = 'solved-char';
+                solvedSpan.textContent = expectedChar;
+                widgetContainer.replaceWith(solvedSpan);
+
+                foundTargets++;
+                checkWin();
+            } else {
+                // ПОМИЛКА
+                SoundEngine.errorSound();
+                lionContainer.classList.add('react-confused');
+                
+                // Візуальна індикація помилки на кружечку
+                widgetContainer.classList.remove('error-anim');
+                clickedCircle.classList.remove('error-circle');
+                void widgetContainer.offsetWidth; // Reflow
+                widgetContainer.classList.add('error-anim');
+                clickedCircle.classList.add('error-circle');
+                
+                setTimeout(() => clickedCircle.classList.remove('error-circle'), 500);
+            }
+        }
+
+        // Перевірка перемоги
+        function checkWin() {
+            if (foundTargets === totalTargets) {
+                setTimeout(() => {
+                    SoundEngine.victorySound();
+                    // Лев постійно стрибає від радості
+                    lionContainer.style.animation = "happyJump 0.8s infinite ease-in-out";
+                    createConfetti();
+                }, 400);
+            }
+        }
+
+        // --- Візуальні ефекти (SVG) ---
+        function createSparkles(x, y) {
+            const svgNS = "http://www.w3.org/2000/svg";
+            const overlay = document.getElementById('overlay-fx');
+            for (let i = 0; i < 8; i++) {
+                const circle = document.createElementNS(svgNS, "circle");
+                const angle = (i / 8) * Math.PI * 2;
+                const dist = 30 + Math.random() * 20;
+                circle.setAttribute("cx", x); circle.setAttribute("cy", y);
+                circle.setAttribute("r", 4 + Math.random() * 3);
+                circle.setAttribute("fill", "#ffeb3b");
+                overlay.appendChild(circle);
+                circle.animate([
+                    { transform: 'translate(0,0)', opacity: 1 },
+                    { transform: `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`, opacity: 0 }
+                ], { duration: 500, easing: 'ease-out' }).onfinish = () => circle.remove();
+            }
+        }
+
+        function createConfetti() {
+            const svgNS = "http://www.w3.org/2000/svg";
+            const overlay = document.getElementById('overlay-fx');
+            const colors = ['#f44336', '#4caf50', '#2196f3', '#ffeb3b'];
+            for (let i = 0; i < 50; i++) {
+                const rect = document.createElementNS(svgNS, "rect");
+                rect.setAttribute("x", Math.random() * window.innerWidth);
+                rect.setAttribute("y", -20);
+                rect.setAttribute("width", 10); rect.setAttribute("height", 10);
+                rect.setAttribute("fill", colors[Math.floor(Math.random()*colors.length)]);
+                overlay.appendChild(rect);
+                rect.animate([
+                    { transform: `translate(0,0) rotate(0deg)`, opacity: 1 },
+                    { transform: `translate(${(Math.random()-0.5)*200}px, ${window.innerHeight+20}px) rotate(${Math.random()*720}deg)`, opacity: 0.7 }
+                ], { duration: 2000 + Math.random() * 1000, easing: 'linear' }).onfinish = () => rect.remove();
+            }
+        }
+
+        // =========================================
+        // ЛОГІКА ВЕРСІЇ РОЗРОБНИКА (DRAG & DROP)
+        // =========================================
+        
+        let isDevMode = false;
+        const devToggleBtn = document.getElementById('dev-toggle-btn');
+        const gameWorld = document.getElementById('game-world');
+        const devTargets = document.querySelectorAll('.dev-target');
+
+        // Перемикач режиму
+        devToggleBtn.addEventListener('click', () => {
+            isDevMode = !isDevMode;
+            if (isDevMode) {
+                devToggleBtn.textContent = "DEV MODE: ON";
+                devToggleBtn.classList.add('active');
+                gameWorld.classList.add('dev-mode-active');
+                enableDragAndDrop();
+            } else {
+                devToggleBtn.textContent = "DEV MODE: OFF";
+                devToggleBtn.classList.remove('active');
+                gameWorld.classList.remove('dev-mode-active');
+                disableDragAndDrop();
+            }
+        });
+
+        let activeElement = null;
+        let currentX, currentY, initialX, initialY;
+        let coordPanel = null;
+
+        function enableDragAndDrop() {
+            devTargets.forEach(target => {
+                target.classList.add('draggable-element');
+                target.addEventListener('mousedown', dragStart, false);
+            });
+            window.addEventListener('mousemove', drag, false);
+            window.addEventListener('mouseup', dragEnd, false);
+        }
+
+        function disableDragAndDrop() {
+            devTargets.forEach(target => {
+                target.classList.remove('draggable-element');
+                target.removeEventListener('mousedown', dragStart, false);
+                // Прибираємо панелі координат, якщо лишилися
+                const panel = target.querySelector('.dev-coord-panel');
+                if (panel) panel.remove();
+            });
+            window.removeEventListener('mousemove', drag, false);
+            window.removeEventListener('mouseup', dragEnd, false);
+            activeElement = null;
+        }
+
+        function dragStart(e) {
+            if (!isDevMode) return;
+            activeElement = e.currentTarget;
+            
+            // Ініціалізація відступів, якщо елемент ще не рухали
+            if (!activeElement.xOffset) activeElement.xOffset = 0;
+            if (!activeElement.yOffset) activeElement.yOffset = 0;
+
+            initialX = e.clientX - activeElement.xOffset;
+            initialY = e.clientY - activeElement.yOffset;
+
+            // Створюємо або оновлюємо панель координат
+            coordPanel = activeElement.querySelector('.dev-coord-panel');
+            if (!coordPanel) {
+                coordPanel = document.createElement('div');
+                coordPanel.className = 'dev-coord-panel';
+                activeElement.appendChild(coordPanel);
+            }
+            updateCoordDisplay();
+        }
+
+        function drag(e) {
+            if (isDevMode && activeElement) {
+                e.preventDefault();
+                currentX = e.clientX - initialX;
+                currentY = e.clientY - initialY;
+
+                activeElement.xOffset = currentX;
+                activeElement.yOffset = currentY;
+
+                // Застосовуємо трансформацію для плавного руху
+                setTranslate(currentX, currentY, activeElement);
+                updateCoordDisplay();
+            }
+        }
+
+        function setTranslate(xPos, yPos, el) {
+            el.style.transform = `translate3d(${xPos}px, ${yPos}px, 0)`;
+        }
+
+        function dragEnd(e) {
+            if (!isDevMode) return;
+            initialX = currentX;
+            initialY = currentY;
+            activeElement = null;
+        }
+
+        // Розрахунок та відображення координат відносно країв екрану для CSS
+        function updateCoordDisplay() {
+            if (!activeElement || !coordPanel) return;
+            
+            const rect = activeElement.getBoundingClientRect();
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+
+            let coordsText = "";
+
+            // Визначаємо, які координати важливіші для цього елемента (ліво/право, верх/низ)
+            const styles = window.getComputedStyle(activeElement);
+            
+            // !!! ЛОГІКУ ДЛЯ '#btn-next' ВИДАЛЕНО !!!
+            // Якщо елемент притиснутий до правого краю (як Лев)
+            if (styles.right !== 'auto' && styles.left === 'auto' || activeElement.id === 'lion-container') {
+                const rP = ((winW - rect.right) / winW * 100).toFixed(1);
+                const bP = ((winH - rect.bottom) / winH * 100).toFixed(1);
+                coordsText = `right: ${rP}%; bottom: ${bP}%;`;
+            } else {
+                // Дефолт: top/left (для дошки)
+                const lP = (rect.left / winW * 100).toFixed(1);
+                const tP = (rect.top / winH * 100).toFixed(1);
+                coordsText = `left: ${lP}%; top: ${tP}%;`;
+            }
+
+            coordPanel.textContent = coordsText;
+        }
+
+        // Ініціалізація
+        window.onload = () => {
+            buildGameText(rawText);
+        };
+    </script>
+</body>
+</html>
