@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Game</title>
+    <style>
+        /* Ініціалізація та скидання стилів */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000;
+        }
+
+        /* Складний живий фон (Джунглі) без білих кольорів */
+        #game-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background: linear-gradient(135deg, #1b5e20 0%, #004d40 100%);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Анімовані візерунки на фоні */
+        .jungle-pattern {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: radial-gradient(#33691e 2px, transparent 2px), radial-gradient(#33691e 2px, transparent 2px);
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 30px;
+            opacity: 0.3;
+            z-index: 1;
+        }
+
+        .animated-leaf {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            fill: #2e7d32;
+            opacity: 0.6;
+            animation: sway 6s ease-in-out infinite alternate;
+            z-index: 2;
+        }
+
+        @keyframes sway {
+            0% { transform: rotate(-5deg) translate(0, 0); }
+            100% { transform: rotate(15deg) translate(20px, 10px); }
+        }
+
+        /* Фази гри */
+        .phase {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            transform: scale(0.95);
+        }
+
+        .phase.active {
+            opacity: 1;
+            pointer-events: all;
+            transform: scale(1);
+        }
+
+        /* --- КРОК 1: Контейнери монстрів --- */
+        #phase1-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            padding: 50px 20px 140px 20px;
+            gap: 30px;
+        }
+
+        #monsters-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .monster-card {
+            background: linear-gradient(135deg, #4e342e, #3e2723);
+            border-radius: 20px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 4px solid #8d6e63;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 15px rgba(0,0,0,0.5);
+            position: relative;
+            width: 200px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* Підсвітка активного монстра для вводу імені */
+        .monster-card.active-target {
+            border-color: #00e676;
+            box-shadow: 0 0 25px rgba(0,230,118,0.6), inset 0 0 20px rgba(0,0,0,0.8);
+            transform: scale(1.08) translateY(-10px);
+        }
+
+        .monster-card:not(.active-target):hover {
+            transform: translateY(-5px);
+            border-color: #ffca28;
+        }
+
+        .monster-svg-wrap {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 15px;
+            filter: drop-shadow(0 8px 6px rgba(0,0,0,0.6));
+            transition: transform 0.3s;
+        }
+
+        .active-target .monster-svg-wrap {
+            transform: scale(1.1);
+        }
+
+        .name-dropzone {
+            width: 100%;
+            min-height: 70px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px dashed #ffca28;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: nowrap; /* Без переносу на новий рядок */
+            overflow: hidden; /* Запобігаємо виходу за межі */
+            padding: 5px;
+            gap: 3px;
+            transition: background 0.3s;
+        }
+
+        .active-target .name-dropzone {
+            background: rgba(0, 230, 118, 0.2);
+            border-color: #00e676;
+        }
+
+        /* Док літер */
+        #letters-dock {
+            position: absolute;
+            bottom: 30px;
+            display: flex;
+            gap: 20px;
+            background: rgba(62, 39, 35, 0.8);
+            padding: 20px 40px;
+            border-radius: 40px;
+            border: 3px solid #ffca28;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+            backdrop-filter: blur(5px);
+            z-index: 20;
+        }
+
+        /* Збільшені літери для кліку */
+        .letter-block {
+            width: 70px;
+            height: 80px;
+            background: linear-gradient(to bottom, #ffa000, #ff6f00);
+            border-radius: 12px;
+            border: 3px solid #fff8e1;
+            box-shadow: 0 6px 0 #b30000, 0 10px 12px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 48px;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 3px 3px 0 #b30000;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .letter-block:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #b30000, 0 4px 6px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.5);
+        }
+
+        .letter-block.dropped {
+            width: 45px;
+            height: 55px;
+            font-size: 32px;
+            border-width: 2px;
+            box-shadow: 0 4px 0 #b30000, 0 5px 8px rgba(0,0,0,0.5);
+            cursor: pointer;
+            flex-shrink: 0; /* Щоб літери не стискалися при великій кількості */
+        }
+
+        /* Кнопка "Грати" з'являється коли є імена */
+        #play-btn {
+            position: absolute;
+            bottom: 120px;
+            right: 50px;
+            width: 90px;
+            height: 90px;
+            background: radial-gradient(circle, #00e676, #00c853);
+            border-radius: 50%;
+            border: 4px solid #fff;
+            box-shadow: 0 8px 0 #1b5e20, 0 10px 15px rgba(0,0,0,0.5);
+            display: none; /* Прихована спочатку */
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 20;
+            animation: pulse 1.5s infinite;
+        }
+
+        #play-btn svg {
+            width: 45px;
+            height: 45px;
+            fill: #fff;
+            margin-left: 5px;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); box-shadow: 0 8px 0 #1b5e20, 0 15px 25px rgba(0,230,118,0.6); }
+            100% { transform: scale(1); }
+        }
+
+        /* --- КРОК 2: Гра --- */
+        #phase2-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            gap: 60px;
+        }
+
+        #target-name-plate {
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120"><rect x="10" y="10" width="380" height="100" rx="15" fill="%235d4037" stroke="%233e2723" stroke-width="6"/><rect x="15" y="15" width="370" height="90" rx="10" fill="%238d6e63" stroke="%23ffca28" stroke-width="2"/><line x1="20" y1="20" x2="380" y2="20" stroke="%23795548" stroke-width="4"/><line x1="20" y1="40" x2="380" y2="40" stroke="%23795548" stroke-width="4"/><line x1="20" y1="60" x2="380" y2="60" stroke="%23795548" stroke-width="4"/><line x1="20" y1="80" x2="380" y2="80" stroke="%23795548" stroke-width="4"/><line x1="20" y1="100" x2="380" y2="100" stroke="%23795548" stroke-width="4"/></svg>') no-repeat center center;
+            background-size: contain;
+            width: 500px;
+            height: 150px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 70px;
+            font-weight: 900;
+            color: #fff8e1;
+            text-shadow: 3px 3px 0px #3e2723, 0 0 20px #ffca28;
+            letter-spacing: 5px;
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.6));
+            white-space: nowrap;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #guess-monsters {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            flex-wrap: wrap;
+        }
+
+        .guess-monster-wrap {
+            width: 180px;
+            height: 180px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            position: relative;
+        }
+
+        .guess-monster-wrap:hover {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        /* Анімації реакцій */
+        .shake {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-15px) rotate(-10deg); }
+            75% { transform: translateX(15px) rotate(10deg); }
+        }
+
+        .celebrate {
+            animation: bounce 1s cubic-bezier(0.28, 0.84, 0.42, 1) forwards;
+        }
+
+        @keyframes bounce {
+            0% { transform: scale(1) translateY(0); }
+            30% { transform: scale(1.2) translateY(-40px); }
+            50% { transform: scale(1.1) translateY(0); }
+            70% { transform: scale(1.15) translateY(-20px); }
+            100% { transform: scale(1) translateY(0); }
+        }
+
+        .particle {
+            position: absolute;
+            width: 12px; height: 12px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="jungle-pattern"></div>
+    <svg class="animated-leaf" style="top: -20px; left: 10%;" viewBox="0 0 100 100"><path d="M50,0 C80,20 100,50 80,90 C50,100 20,80 0,50 C10,20 30,0 50,0 Z" fill="url(#leafGrad)"/><defs><linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4caf50"/><stop offset="100%" stop-color="#1b5e20"/></linearGradient></defs></svg>
+    <svg class="animated-leaf" style="bottom: -20px; right: 5%; transform: rotate(120deg);" viewBox="0 0 100 100"><path d="M50,0 C80,20 100,50 80,90 C50,100 20,80 0,50 C10,20 30,0 50,0 Z" fill="url(#leafGrad2)"/><defs><linearGradient id="leafGrad2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8bc34a"/><stop offset="100%" stop-color="#33691e"/></linearGradient></defs></svg>
+
+    <div id="phase1" class="phase active">
+        <div id="phase1-content">
+            <div id="monsters-container">
+                </div>
+            <div id="letters-dock">
+                </div>
+            <div id="play-btn">
+                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </div>
+        </div>
+    </div>
+
+    <div id="phase2" class="phase">
+        <div id="phase2-content">
+            <div id="target-name-plate">???</div>
+            <div id="guess-monsters">
+                </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    /**
+     * Складні, деталізовані SVG монстри без стандартних форм
+     */
+    const monsterSVGs = [
+        `<svg viewBox="0 0 100 100" width="100%" height="100%">
+            <defs>
+                <radialGradient id="m1" cx="30%" cy="30%" r="70%">
+                    <stop offset="0%" stop-color="#ce93d8"/>
+                    <stop offset="100%" stop-color="#6a1b9a"/>
+                </radialGradient>
+                <filter id="glow1" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+                </filter>
+            </defs>
+            <path d="M50,15 C65,15 75,25 80,35 C90,40 95,55 90,70 C85,85 70,90 50,90 C30,90 15,85 10,70 C5,55 10,40 20,35 C25,25 35,15 50,15 Z" fill="url(#m1)" filter="url(#glow1)"/>
+            <path d="M50,20 C60,20 70,28 75,38 C82,42 88,52 85,65 C80,78 65,82 50,82 C35,82 20,78 15,65 C12,52 18,42 25,38 C30,28 40,20 50,20 Z" fill="#ab47bc" opacity="0.5"/>
+            <g fill="#fff"><circle cx="40" cy="45" r="8"/><circle cx="60" cy="45" r="8"/><circle cx="50" cy="30" r="5"/><circle cx="30" cy="60" r="6"/><circle cx="70" cy="60" r="6"/></g>
+            <g fill="#000"><circle cx="40" cy="45" r="3"/><circle cx="60" cy="45" r="3"/><circle cx="50" cy="30" r="2"/><circle cx="30" cy="60" r="2.5"/><circle cx="70" cy="60" r="2.5"/></g>
+            <g fill="#fff"><circle cx="42" cy="43" r="1.5"/><circle cx="62" cy="43" r="1.5"/></g>
+            <path d="M40,75 Q50,85 60,75" stroke="#4a148c" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </svg>`,
+        `<svg viewBox="0 0 100 100" width="100%" height="100%">
+            <defs>
+                <linearGradient id="m2" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#cddc39"/>
+                    <stop offset="100%" stop-color="#33691e"/>
+                </linearGradient>
+            </defs>
+            <path d="M45,20 L50,5 L55,20 Z M30,35 L15,25 L35,45 Z M70,35 L85,25 L65,45 Z" fill="#ff5722"/>
+            <path d="M50,15 C75,25 85,60 70,85 C60,95 40,95 30,85 C15,60 25,25 50,15 Z" fill="url(#m2)"/>
+            <path d="M40,40 Q50,50 60,40 M35,55 Q50,65 65,55 M45,70 Q50,75 55,70" stroke="#827717" stroke-width="2" fill="none"/>
+            <circle cx="50" cy="40" r="14" fill="#fff"/>
+            <circle cx="50" cy="40" r="6" fill="#bf360c"/>
+            <circle cx="50" cy="40" r="3" fill="#000"/>
+            <circle cx="53" cy="37" r="2" fill="#fff"/>
+            <path d="M35,65 Q50,80 65,65 Z" fill="#000"/>
+            <path d="M35,65 L40,75 L45,65 L50,75 L55,65 L60,75 L65,65" fill="#fff"/>
+        </svg>`,
+        `<svg viewBox="0 0 100 100" width="100%" height="100%">
+            <defs>
+                <radialGradient id="m3" cx="50%" cy="80%" r="80%">
+                    <stop offset="0%" stop-color="#00bcd4"/>
+                    <stop offset="100%" stop-color="#01579b"/>
+                </radialGradient>
+            </defs>
+            <path d="M40,30 Q30,10 20,20" stroke="#0288d1" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path d="M60,30 Q70,10 80,20" stroke="#0288d1" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <circle cx="20" cy="20" r="5" fill="#ffeb3b"/>
+            <circle cx="80" cy="20" r="5" fill="#ffeb3b"/>
+            <path d="M25,40 C40,25 60,25 75,40 C85,55 90,75 80,85 C75,90 65,85 55,90 C45,95 35,85 25,90 C15,85 10,55 25,40 Z" fill="url(#m3)"/>
+            <circle cx="35" cy="55" r="6" fill="#81d4fa" opacity="0.6"/>
+            <circle cx="65" cy="65" r="8" fill="#81d4fa" opacity="0.6"/>
+            <circle cx="45" cy="75" r="4" fill="#81d4fa" opacity="0.6"/>
+            <g fill="#fff"><circle cx="40" cy="45" r="7"/><circle cx="60" cy="45" r="7"/></g>
+            <g fill="#000"><circle cx="40" cy="45" r="3"/><circle cx="60" cy="45" r="3"/></g>
+            <ellipse cx="50" cy="60" rx="4" ry="6" fill="#000"/>
+        </svg>`,
+        `<svg viewBox="0 0 100 100" width="100%" height="100%">
+            <defs>
+                <linearGradient id="m4" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#e0f7fa"/>
+                    <stop offset="100%" stop-color="#006064"/>
+                </linearGradient>
+            </defs>
+            <path d="M30,30 C20,15 10,20 15,35 Z" fill="#5d4037"/>
+            <path d="M70,30 C80,15 90,20 85,35 Z" fill="#5d4037"/>
+            <path d="M25,30 L75,30 L85,45 L80,80 L60,85 L50,80 L40,85 L20,80 L15,45 Z" fill="url(#m4)"/>
+            <path d="M25,30 L40,50 M75,30 L60,50 M20,60 L40,70 M80,60 L60,70" stroke="#00acc1" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <rect x="30" y="40" width="15" height="4" fill="#000" transform="rotate(15 37 42)"/>
+            <rect x="55" y="40" width="15" height="4" fill="#000" transform="rotate(-15 62 42)"/>
+            <circle cx="37" cy="48" r="4" fill="#000"/>
+            <circle cx="62" cy="48" r="4" fill="#000"/>
+            <circle cx="36" cy="47" r="1.5" fill="#fff"/>
+            <circle cx="61" cy="47" r="1.5" fill="#fff"/>
+            <path d="M40,65 L60,65 L50,75 Z" fill="#000"/>
+            <polygon points="42,65 46,65 44,70" fill="#fff"/>
+            <polygon points="54,65 58,65 56,70" fill="#fff"/>
+        </svg>`,
+        `<svg viewBox="0 0 100 100" width="100%" height="100%">
+            <defs>
+                <radialGradient id="m5" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#ef5350"/>
+                    <stop offset="100%" stop-color="#b71c1c"/>
+                </radialGradient>
+            </defs>
+            <path d="M40,40 C20,10 0,20 5,50 C10,40 20,45 25,60 C30,50 35,55 40,65 Z" fill="#212121"/>
+            <path d="M60,40 C80,10 100,20 95,50 C90,40 80,45 75,60 C70,50 65,55 60,65 Z" fill="#212121"/>
+            <path d="M40,30 L25,10 L35,35 Z" fill="#d32f2f"/>
+            <path d="M60,30 L75,10 L65,35 Z" fill="#d32f2f"/>
+            <circle cx="50" cy="55" r="25" fill="url(#m5)"/>
+            <circle cx="42" cy="50" r="7" fill="#fff"/>
+            <circle cx="58" cy="50" r="7" fill="#fff"/>
+            <circle cx="42" cy="50" r="3" fill="#000"/>
+            <circle cx="58" cy="50" r="3" fill="#000"/>
+            <circle cx="44" cy="48" r="1.5" fill="#fff"/>
+            <circle cx="60" cy="48" r="1.5" fill="#fff"/>
+            <path d="M35,60 C45,75 55,75 65,60 C55,70 45,70 35,60 Z" fill="#000"/>
+            <path d="M45,60 L55,60 L50,65 Z" fill="#fff"/>
+        </svg>`
+    ];
+
+    const letters = ['а', 'о', 'у', 'м', 'л', 'н'];
+    let monsterData = []; 
+    let currentTargetId = null;
+    let activeMonsterIndex = 0; // Індекс монстра, якому зараз вводимо ім'я
+
+    // --- АУДІО СИСТЕМА (Тихіші звуки) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playTone(freq, type, duration, vol=0.03, slideFreq=null) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        if (slideFreq) {
+            osc.frequency.exponentialRampToValueAtTime(slideFreq, audioCtx.currentTime + duration);
+        }
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function soundPop() { playTone(400, 'sine', 0.1, 0.05, 800); }
+    function soundDrop() { playTone(300, 'sine', 0.15, 0.05, 150); }
+    function soundClick() { playTone(600, 'triangle', 0.05, 0.03); }
+    
+    function soundSuccess() {
+        playTone(440, 'sine', 0.1, 0.04);
+        setTimeout(() => playTone(554, 'sine', 0.1, 0.04), 100);
+        setTimeout(() => playTone(659, 'sine', 0.2, 0.04), 200);
+        setTimeout(() => playTone(880, 'sine', 0.4, 0.05), 300);
+    }
+    
+    function soundFail() {
+        playTone(300, 'sawtooth', 0.2, 0.03, 150);
+        setTimeout(() => playTone(150, 'sawtooth', 0.3, 0.03, 50), 200);
+    }
+    
+    function soundWhoosh() {
+        playTone(100, 'sine', 0.4, 0.05, 800);
+    }
+
+    // --- ІНІЦІАЛІЗЦІЯ ФАЗИ 1 ---
+    const monstersContainer = document.getElementById('monsters-container');
+    const lettersDock = document.getElementById('letters-dock');
+    const playBtn = document.getElementById('play-btn');
+
+    function initPhase1() {
+        monstersContainer.innerHTML = '';
+        lettersDock.innerHTML = '';
+        monsterData = [];
+
+        // Створюємо картки монстрів
+        monsterSVGs.forEach((svg, index) => {
+            const card = document.createElement('div');
+            card.className = 'monster-card';
+            if (index === 0) card.classList.add('active-target'); // Перший активний за замовчуванням
+            
+            const svgWrap = document.createElement('div');
+            svgWrap.className = 'monster-svg-wrap';
+            svgWrap.innerHTML = svg;
+            
+            const dropzone = document.createElement('div');
+            dropzone.className = 'name-dropzone';
+            dropzone.dataset.index = index;
+
+            card.appendChild(svgWrap);
+            card.appendChild(dropzone);
+            
+            // Вибір монстра кліком
+            card.addEventListener('click', () => {
+                soundClick();
+                setActiveMonster(index);
+            });
+
+            monstersContainer.appendChild(card);
+            monsterData.push({ id: index, name: '', svg: svg });
+        });
+
+        // Створюємо літери в доку (клік додає до активного монстра)
+        letters.forEach(l => {
+            const letterBlock = document.createElement('div');
+            letterBlock.className = 'letter-block';
+            letterBlock.textContent = l;
+            
+            letterBlock.addEventListener('click', () => {
+                handleLetterClick(l);
+            });
+            
+            lettersDock.appendChild(letterBlock);
+        });
+
+        checkReadyToPlay();
+    }
+
+    function setActiveMonster(index) {
+        activeMonsterIndex = index;
+        document.querySelectorAll('.monster-card').forEach((c, i) => {
+            if (i === index) {
+                c.classList.add('active-target');
+            } else {
+                c.classList.remove('active-target');
+            }
+        });
+    }
+
+    function handleLetterClick(letterChar) {
+        const dropzone = document.querySelector(`.name-dropzone[data-index="${activeMonsterIndex}"]`);
+        if (dropzone) {
+            soundDrop();
+            const droppedLetter = document.createElement('div');
+            droppedLetter.className = 'letter-block dropped';
+            droppedLetter.textContent = letterChar;
+            
+            // Видалення кліком
+            droppedLetter.addEventListener('click', function(e) {
+                e.stopPropagation(); // Щоб не спрацьовував клік на картку монстра
+                soundPop();
+                this.remove();
+                updateMonsterNames();
+            });
+
+            dropzone.appendChild(droppedLetter);
+            
+            // Прокрутка в кінець, якщо ім'я довге
+            dropzone.scrollLeft = dropzone.scrollWidth;
+            
+            updateMonsterNames();
+        }
+    }
+
+    function updateMonsterNames() {
+        let allNamed = true;
+        document.querySelectorAll('.name-dropzone').forEach((dz, index) => {
+            let name = '';
+            dz.querySelectorAll('.dropped').forEach(l => name += l.textContent);
+            monsterData[index].name = name;
+            if (name.length === 0) allNamed = false;
+        });
+
+        if (allNamed) {
+            playBtn.style.display = 'flex';
+        } else {
+            playBtn.style.display = 'none';
+        }
+    }
+
+    function checkReadyToPlay() {
+        updateMonsterNames();
+    }
+
+    // --- ПЕРЕХІД ДО ФАЗИ 2 ---
+    playBtn.addEventListener('click', startPhase2);
+
+    function startPhase2() {
+        soundWhoosh();
+        document.getElementById('phase1').classList.remove('active');
+        document.getElementById('phase2').classList.add('active');
+
+        const guessContainer = document.getElementById('guess-monsters');
+        guessContainer.innerHTML = '';
+
+        // Перемішуємо монстрів для відображення
+        let shuffledMonsters = [...monsterData].sort(() => Math.random() - 0.5);
+        
+        shuffledMonsters.forEach(m => {
+            const wrap = document.createElement('div');
+            wrap.className = 'guess-monster-wrap';
+            wrap.innerHTML = m.svg;
+            wrap.dataset.id = m.id;
+            
+            wrap.addEventListener('click', () => handleGuess(wrap, m.id));
+            guessContainer.appendChild(wrap);
+        });
+
+        showNextTarget();
+    }
+
+    function showNextTarget() {
+        // Вибираємо випадкового монстра (але не того ж самого двічі поспіль)
+        let nextTarget;
+        do {
+            nextTarget = monsterData[Math.floor(Math.random() * monsterData.length)];
+        } while (monsterData.length > 1 && nextTarget.id === currentTargetId);
+        
+        currentTargetId = nextTarget.id;
+        
+        const plate = document.getElementById('target-name-plate');
+        plate.style.transform = 'scale(0)';
+        
+        setTimeout(() => {
+            plate.textContent = nextTarget.name.toUpperCase();
+            soundClick();
+            plate.style.transform = 'scale(1)';
+
+            // Скидаємо стани всіх монстрів (щоб можна було клікати знову)
+            document.querySelectorAll('.guess-monster-wrap').forEach(el => {
+                el.classList.remove('celebrate');
+                el.style.pointerEvents = 'all';
+            });
+        }, 300);
+    }
+
+    function handleGuess(element, id) {
+        if (id === currentTargetId) {
+            soundSuccess();
+            element.classList.add('celebrate');
+            
+            // Блокуємо всі кліки, поки йде анімація переходу
+            document.querySelectorAll('.guess-monster-wrap').forEach(el => {
+                el.style.pointerEvents = 'none';
+            });
+            
+            createParticles(element);
+
+            // Через 1.5 секунди показуємо наступне ім'я (безкінечний цикл)
+            setTimeout(showNextTarget, 1500);
+        } else {
+            soundFail();
+            element.classList.remove('shake');
+            void element.offsetWidth; // trigger reflow
+            element.classList.add('shake');
+        }
+    }
+
+    // --- ВІЗУАЛЬНІ ЕФЕКТИ ---
+    function createParticles(element) {
+        const rect = element.getBoundingClientRect();
+        const colors = ['#ffeb3b', '#ffca28', '#00e676', '#00bcd4'];
+        for(let i=0; i<15; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            p.style.left = (rect.left + rect.width/2) + 'px';
+            p.style.top = (rect.top + rect.height/2) + 'px';
+            document.body.appendChild(p);
+            
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = 50 + Math.random() * 100;
+            const tx = Math.cos(angle) * velocity;
+            const ty = Math.sin(angle) * velocity;
+            
+            p.animate([
+                { transform: 'translate(0,0) scale(1)', opacity: 1 },
+                { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+            ], { duration: 600 + Math.random()*400, easing: 'cubic-bezier(0, .9, .57, 1)' }).onfinish = () => p.remove();
+        }
+    }
+
+    // Запуск
+    initPhase1();
+
+    document.body.addEventListener('pointerdown', () => {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+    }, {once: true});
+
+</script>
+</body>
+</html>
