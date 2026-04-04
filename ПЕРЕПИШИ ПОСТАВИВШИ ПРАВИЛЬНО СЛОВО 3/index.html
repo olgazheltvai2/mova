@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гра з реченнями</title>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Базові стилі */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #dbe9f4;
+        }
+
+        /* Контейнер для фонового зображення */
+        #bg-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            transition: background-image 0.8s ease-in-out;
+            z-index: 1;
+        }
+
+        /* Перемикач шрифтів */
+        #font-toggle-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(5px);
+            border: 2px solid #2c3e50;
+            border-radius: 30px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+            cursor: pointer;
+        }
+
+        .toggle-btn {
+            padding: 10px 20px;
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-btn.active {
+            background: #2c3e50;
+            color: white;
+        }
+
+        /* Контейнер для UI, що накладається поверх фону */
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 40px 20px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
+            pointer-events: none; /* Пропускаємо кліки, коли приховано */
+        }
+
+        /* Клас для відображення UI */
+        #ui-container.visible {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        /* Верхній прямокутник з текстом */
+        #task-text-box {
+            background: rgba(245, 248, 255, 0.95);
+            border: 3px solid #2c3e50;
+            border-radius: 25px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            color: #111;
+            text-align: center;
+            width: 90%;
+            max-width: 1200px;
+            padding: 30px 50px;
+            font-size: 56px; /* Базовий розмір друкованого */
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-top: 20px;
+            transform: translateY(-20px);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), font-size 0.3s;
+            cursor: pointer; /* Підказка, що можна клікати */
+        }
+
+        #ui-container.visible #task-text-box {
+            transform: translateY(0);
+        }
+
+        /* Стиль виділеного слова */
+        .highlight {
+            color: #4a90e2;
+        }
+
+        /* Нижній великий однотонний прямокутник для вводу */
+        #input-wrapper {
+            background: rgba(240, 245, 250, 0.95); /* Однотонний, злегка прозорий */
+            border: 3px solid #2c3e50;
+            border-radius: 30px;
+            width: 90%;
+            max-width: 1400px;
+            height: 55vh; 
+            min-height: 400px; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            transform: translateY(20px);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: text;
+        }
+
+        #ui-container.visible #input-wrapper {
+            transform: translateY(0);
+        }
+
+        /* Саме поле вводу розтягнуте на весь прямокутник */
+        #answer-input {
+            width: 95%;
+            height: 90%;
+            background: transparent;
+            border: none;
+            font-size: 52px; /* Базовий розмір друкованого */
+            font-weight: 600;
+            color: #2c3e50;
+            text-align: center;
+            outline: none;
+            transition: font-size 0.3s;
+        }
+
+        /* Класи для рукописного шрифту. Важливо: * змушує всі вкладені елементи (в т.ч. span) теж стати прописом */
+        .cursive-mode, 
+        .cursive-mode * {
+            font-family: 'Caveat', cursive !important;
+            font-weight: 700 !important;
+        }
+
+        /* Робимо розмір рукописного шрифту значно більшим */
+        #task-text-box.cursive-mode {
+            font-size: 85px !important; 
+        }
+
+        #answer-input.cursive-mode {
+            font-size: 80px !important;
+        }
+
+        /* Кнопки навігації */
+        .nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(5px);
+            border: 2px solid #2c3e50;
+            color: #2c3e50;
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.95);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .nav-btn:active {
+            transform: translateY(-50%) scale(0.95);
+        }
+
+        #btn-prev { left: 30px; }
+        #btn-next { right: 30px; }
+
+        /* Анімації фідбеку */
+        @keyframes error-shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-15px); }
+            40%, 80% { transform: translateX(15px); }
+        }
+
+        .error-anim {
+            animation: error-shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+            border-color: #e74c3c !important;
+            background: rgba(231, 76, 60, 0.15) !important;
+        }
+
+        .success-anim {
+            border-color: #2ecc71 !important;
+            background: rgba(46, 204, 113, 0.2) !important;
+            box-shadow: 0 0 40px rgba(46, 204, 113, 0.4) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="bg-container"></div>
+
+    <div id="font-toggle-container">
+        <div class="toggle-btn active" id="btn-print">Аа</div>
+        <div class="toggle-btn" id="btn-cursive" style="font-family: 'Caveat', cursive; font-size: 24px; padding-top: 5px;">Аа</div>
+    </div>
+
+    <button class="nav-btn" id="btn-prev">&#10094;</button>
+    <button class="nav-btn" id="btn-next">&#10095;</button>
+
+    <div id="ui-container">
+        <div id="task-text-box"></div>
+        
+        <div id="input-wrapper">
+            <input type="text" id="answer-input" autocomplete="off" spellcheck="false">
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Масив даних для ігрових слайдів
+         */
+        const levelData = [
+            {
+                image: '1.webp',
+                text: 'Я п\'ю <span class="highlight">гаряча</span> чай.',
+                validAnswers: ['гарячий', 'я п\'ю гарячий чай', 'я п\'ю гарячий чай.']
+            },
+            {
+                image: '2.webp',
+                text: 'Я бачу <span class="highlight">красивий</span> квіти.',
+                validAnswers: ['красиві', 'я бачу красиві квіти', 'я бачу красиві квіти.']
+            },
+            {
+                image: '3.webp',
+                text: 'Він <span class="highlight">читати</span> цікаву книгу.',
+                validAnswers: ['читає', 'він читає цікаву книгу', 'він читає цікаву книгу.']
+            },
+            {
+                image: '4.webp',
+                text: 'На вікні <span class="highlight">стоять</span> ваза.',
+                validAnswers: ['стоїть', 'на вікні стоїть ваза', 'на вікні стоїть ваза.']
+            }
+        ];
+
+        let currentIndex = 0;
+        let isUIVisible = false;
+        let isCursiveMode = false;
+
+        const bgContainer = document.getElementById('bg-container');
+        const uiContainer = document.getElementById('ui-container');
+        const textBox = document.getElementById('task-text-box');
+        const inputWrapper = document.getElementById('input-wrapper');
+        const answerInput = document.getElementById('answer-input');
+        
+        // Елементи перемикача
+        const fontToggleContainer = document.getElementById('font-toggle-container');
+        const btnPrint = document.getElementById('btn-print');
+        const btnCursive = document.getElementById('btn-cursive');
+
+        /**
+         * Web Audio API для звукового фідбеку
+         */
+        let audioCtx;
+
+        function playSound(isCorrect) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (isCorrect) {
+                // Звук успіху
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.1);
+                osc.frequency.setValueAtTime(783.99, now + 0.2);
+                osc.frequency.setValueAtTime(1046.50, now + 0.3);
+                
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.3, now + 0.05);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else {
+                // Звук помилки
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        /**
+         * Функція рендеру поточного рівня
+         */
+        function loadLevel(index) {
+            if (index < 0) index = levelData.length - 1;
+            if (index >= levelData.length) index = 0;
+            
+            currentIndex = index;
+            
+            // Встановлення фону
+            bgContainer.style.backgroundImage = `url('${levelData[currentIndex].image}')`;
+            bgContainer.style.backgroundColor = '#89b4c4'; // Колір-заглушка
+            
+            // Оновлення тексту
+            textBox.innerHTML = levelData[currentIndex].text;
+            
+            // Скидання поля вводу
+            answerInput.value = '';
+            answerInput.disabled = false;
+            inputWrapper.classList.remove('success-anim', 'error-anim');
+
+            // Якщо UI відкритий, закриваємо для ефекту переходу
+            if (isUIVisible) {
+                isUIVisible = false;
+                uiContainer.classList.remove('visible');
+                answerInput.blur();
+            }
+        }
+
+        /**
+         * Обробник перемикання шрифту
+         */
+        fontToggleContainer.addEventListener('click', (e) => {
+            e.stopPropagation(); // Зупиняємо подію, щоб не закрився UI
+            
+            isCursiveMode = !isCursiveMode;
+            
+            if(isCursiveMode) {
+                btnCursive.classList.add('active');
+                btnPrint.classList.remove('active');
+                textBox.classList.add('cursive-mode');
+                answerInput.classList.add('cursive-mode');
+            } else {
+                btnPrint.classList.add('active');
+                btnCursive.classList.remove('active');
+                textBox.classList.remove('cursive-mode');
+                answerInput.classList.remove('cursive-mode');
+            }
+            
+            if(isUIVisible) answerInput.focus();
+        });
+
+        /**
+         * Глобальний обробник кліків для перемикання видимості UI
+         */
+        document.addEventListener('click', (e) => {
+            // Ігноруємо кліки по кнопках навігації та перемикачу шрифтів
+            if (e.target.closest('.nav-btn') || e.target.closest('#font-toggle-container')) return;
+            
+            // Ігноруємо кліки по самому полю вводу, щоб не закривати UI під час друку
+            if (e.target === answerInput) {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                return;
+            }
+
+            // Перемикаємо стан
+            isUIVisible = !isUIVisible;
+            
+            if (isUIVisible) {
+                uiContainer.classList.add('visible');
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Фокус на поле вводу після анімації появи
+                setTimeout(() => answerInput.focus(), 300);
+            } else {
+                uiContainer.classList.remove('visible');
+                answerInput.blur();
+            }
+        });
+
+        /**
+         * Перевірка введеної відповіді
+         */
+        function checkAnswer() {
+            const userText = answerInput.value.trim().toLowerCase().replace(/\s+/g, ' ');
+            if (!userText) return;
+
+            const correctAnswers = levelData[currentIndex].validAnswers.map(ans => ans.toLowerCase());
+            const isCorrect = correctAnswers.includes(userText) || correctAnswers.some(ans => userText.includes(ans));
+
+            inputWrapper.classList.remove('error-anim', 'success-anim');
+            void inputWrapper.offsetWidth; // Trigger reflow
+
+            if (isCorrect) {
+                playSound(true);
+                inputWrapper.classList.add('success-anim');
+                answerInput.disabled = true;
+                
+                setTimeout(() => {
+                    loadLevel(currentIndex + 1);
+                }, 1800);
+            } else {
+                playSound(false);
+                inputWrapper.classList.add('error-anim');
+                answerInput.value = ''; // Очищаємо при помилці для зручності
+                setTimeout(() => answerInput.focus(), 500);
+            }
+        }
+
+        // Слухач Enter
+        answerInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                checkAnswer();
+            }
+        });
+
+        // Фокус при кліку на обгортку поля вводу
+        inputWrapper.addEventListener('click', () => {
+            if(isUIVisible) answerInput.focus();
+        });
+
+        // Навігація
+        document.getElementById('btn-prev').addEventListener('click', () => loadLevel(currentIndex - 1));
+        document.getElementById('btn-next').addEventListener('click', () => loadLevel(currentIndex + 1));
+
+        // Запуск
+        loadLevel(0);
+
+    </script>
+</body>
+</html>
