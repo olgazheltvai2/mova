@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Онікссовий Патруль 2.0 [й]</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: #02010a; overflow: hidden;
+            font-family: 'Arial Black', Gadget, sans-serif;
+            user-select: none;
+        }
+
+        /* Глибокий космічний фон: Радіальний градієнт та зірки */
+        #nebula-bg {
+            position: absolute; width: 100%; height: 100%; z-index: 1;
+        }
+
+        /* Контейнер для ігрових елементів */
+        #game-stage {
+            position: relative; width: 100vw; height: 100vh; z-index: 2;
+        }
+
+        /* Космічні об'єкти */
+        .space-object {
+            position: absolute; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            transition: transform 0.2s, opacity 0.5s;
+            z-index: 10;
+        }
+        .space-object svg { position: absolute; width: 100%; height: 100%; z-index: -1; }
+        
+        /* ВЕЛИЧЕЗНИЙ шрифт літери */
+        .letter {
+            font-size: 140px; font-weight: bold; color: #ffffff;
+            text-shadow: 0 0 25px rgba(255,255,255,0.9), 5px 5px 0px #000;
+            z-index: 11;
+        }
+
+        /* Корабель НЛО (позиція контролюється JS фізикою) */
+        #spaceship-wrapper {
+            position: absolute;
+            width: 380px; height: 300px;
+            pointer-events: none; z-index: 50;
+            will-change: left, top, transform; /* Оптимізація */
+        }
+        /* Анімація левітації всередині контейнера */
+        @keyframes shipHover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        #spaceship { animation: shipHover 4s ease-in-out infinite; }
+
+        /* Лазер */
+        #laser {
+            position: absolute; height: 12px;
+            background: #7dd3fc; box-shadow: 0 0 25px #7dd3fc, 0 0 50px #7dd3fc;
+            transform-origin: left center; display: none; z-index: 40; border-radius: 6px;
+        }
+
+        /* Фінальний екран */
+        #final-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(1, 1, 8, 0.96); z-index: 80;
+        }
+        .sound-row {
+            display: flex; align-items: center; margin: 18px 0;
+            opacity: 0; transform: translateY(35px); transition: all 0.6s; font-size: 90px;
+        }
+        .sound-row.visible { opacity: 1; transform: translateY(0); }
+        .letter-big { color: #7dd3fc; margin-right: 45px; text-shadow: 0 0 25px #7dd3fc; }
+        .sound-bracket { color: #f43f5e; margin: 0 12px; background: rgba(244, 63, 94, 0.1); padding: 8px 25px; border-radius: 18px; border: 3px solid #f43f5e;}
+        
+        @keyframes blinkSound { 0%, 100% { color: #fbbf24; text-shadow: 0 0 35px #fbbf24; } 50% { color: #fff; text-shadow: 0 0 55px #fff; } }
+        .sound-y { animation: blinkSound 1.1s infinite; font-weight: bold; }
+
+    </style>
+</head>
+<body>
+
+<svg id="nebula-bg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <radialGradient id="sky-grad" cx="50%" cy="50%" r="70%">
+            <stop offset="0%" stop-color="#000000"/> <stop offset="100%" stop-color="#3f3f46"/> </radialGradient>
+        
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="12" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        
+        <pattern id="spore-pattern" width="50" height="50" patternUnits="userSpaceOnUse">
+            <circle cx="10" cy="10" r="2" fill="#7dd3fc" opacity="0.3"/>
+            <circle cx="30" cy="30" r="3" fill="#f43f5e" opacity="0.2"/>
+        </pattern>
+    </defs>
+    
+    <rect width="100%" height="100%" fill="url(#sky-grad)"/>
+    
+    <g id="star-field"></g>
+</svg>
+
+<div id="game-stage">
+    <div id="spaceship-wrapper">
+        <svg viewBox="0 0 380 300" id="spaceship">
+            <path d="M190 240 L120 360 L260 360 Z" fill="#7dd3fc" opacity="0.4" filter="url(#glow)">
+                <animate attributeName="opacity" values="0.3;0.7;0.3" dur="1.2s" repeatCount="indefinite" />
+            </path>
+            <path d="M110 160 Q190 50 270 160 Z" fill="rgba(224, 242, 254, 0.2)" stroke="#7dd3fc" stroke-width="5" filter="url(#glow)"/>
+            <g id="alien" transform="translate(190, 140)">
+                <ellipse cx="0" cy="0" rx="55" ry="42" fill="#a3e635"/>
+                <circle cx="-22" cy="-10" r="16" fill="white"/><circle cx="22" cy="-10" r="16" fill="white"/>
+                <circle id="pupil-l" cx="-22" cy="-10" r="6" fill="#111827"/><circle id="pupil-r" cx="22" cy="-10" r="6" fill="#111827"/>
+                <path d="M-15 -38 Q-30 -75 -45 -55" fill="none" stroke="#a3e635" stroke-width="6" stroke-linecap="round"/><circle cx="-45" cy="-55" r="9" fill="#f43f5e" filter="url(#glow)"/>
+                <path d="M15 -38 Q30 -75 50 -55" fill="none" stroke="#a3e635" stroke-width="6" stroke-linecap="round"/><circle cx="50" cy="-55" r="9" fill="#f43f5e" filter="url(#glow)"/>
+                <path id="alien-mouth" d="M-15 18 Q0 32 15 18" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round"/>
+            </g>
+            <ellipse cx="190" cy="200" rx="160" ry="55" fill="#64748b" stroke="#94a3b8" stroke-width="5"/>
+            <ellipse cx="190" cy="190" rx="140" ry="35" fill="#94a3b8"/>
+            <path d="M40 200 Q190 270 340 200" fill="none" stroke="#111827" stroke-width="7"/>
+            <circle cx="70" cy="200" r="9" fill="#f43f5e"><animate attributeName="fill-opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/></circle>
+            <circle cx="190" cy="232" r="9" fill="#3b82f6"><animate attributeName="fill-opacity" values="1;0.4;1" dur="1.2s" repeatCount="indefinite"/></circle>
+            <circle cx="310" cy="200" r="9" fill="#f43f5e"><animate attributeName="fill-opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite"/></circle>
+        </svg>
+    </div>
+
+    <div id="laser"></div>
+    <div id="objects-container"></div>
+</div>
+
+<div id="final-screen"></div>
+
+<script>
+/**
+ * ЛОГІКА ОНІКССОВОГО ПАТРУЛЯ 2.0
+ */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const tasks = [
+    { target: 'Й', distractors: ['М', 'Н'] },
+    { target: 'Ї', distractors: ['І', 'И'] },
+    { target: 'Я', distractors: ['А', 'О'] },
+    { target: 'Ю', distractors: ['У', 'Е'] },
+    { target: 'Є', distractors: ['Е', 'С'] }
+];
+const phoneticData = { 'Й': ['й'], 'Ї': ['й', 'і'], 'Я': ['й', 'а'], 'Ю': ['й', 'у'], 'Є': ['й', 'е'] };
+
+let currentTaskIndex = 0;
+let isLevelTransitioning = false;
+const container = document.getElementById('objects-container');
+const shipWrapper = document.getElementById('spaceship-wrapper');
+const alienMouth = document.getElementById('alien-mouth');
+const laser = document.getElementById('laser');
+const finalScreen = document.getElementById('final-screen');
+
+// Поточні об'єкти на рівні (для фізики уникнення)
+let currentLevelObjects = [];
+
+// ГЕНЕРАЦІЯ ЗВУКІВ
+function playTones(type) {
+    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    if (type === 'laser') {
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    } else if (type === 'success') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime); osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.1); osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.45);
+    } else if (type === 'error') {
+        osc.type = 'square'; osc.frequency.setValueAtTime(160, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+    }
+    osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+}
+
+// ЗАПИТ: ГЕНЕРАЦІЯ МИГОТЛИВИХ ЗІРОК НА НЕБІ
+function generateFarStars() {
+    const field = document.getElementById('star-field');
+    const starCount = 200;
+    let starsHtml = '';
+    
+    for (let i = 0; i < starCount; i++) {
+        const cx = Math.random() * 1920; // SVG координати
+        const cy = Math.random() * 1080;
+        const r = Math.random() * 1.5 + 0.2; // ЗАПИТ: Маленькі точки
+        const dur = Math.random() * 3 + 1; // ЗАПИТ: Миготіння (випадкова тривалість)
+        
+        // Використовуємо SVG анімацію прозорості
+        starsHtml += `
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="#fbbf24" opacity="0">
+                <animate 
+                    attributeName="opacity" 
+                    values="0;${Math.random()*0.8 + 0.2};0" 
+                    dur="${dur}s" 
+                    repeatCount="indefinite" 
+                    begin="${Math.random()*5}s"
+                />
+            </circle>`;
+    }
+    field.innerHTML = starsHtml;
+}
+generateFarStars(); // Одразу створюємо небо
+
+/**
+ * ЗАПИТ: ФІЗИКА АВТОНОМНОГО ПОЛЬОТУ ТА УНИКНЕННЯ
+ * Використовуємо Steering Behaviors (Seek + Obstacle Avoidance)
+ */
+const shipPhysics = {
+    pos: { x: 300, y: 700 },
+    vel: { x: 0, y: 0 },
+    target: { x: 300, y: 700 },
+    maxSpeed: 2.5, // Повільний постійний рух
+    maxForce: 0.05, // Гнучкість маневру
+    lookAheadDist: 180, // Дистанція сканування завад
+    avoidRadius: 280, // ЗАПИТ: Радіус облітання (корабель + планета + буфер)
+    angle: 0
+};
+
+function updateShipAvoidancePhysics() {
+    // 1. SEEK (Прагнення до цілі)
+    const seekDesiredX = shipPhysics.target.x - shipPhysics.pos.x;
+    const seekDesiredY = shipPhysics.target.y - shipPhysics.pos.y;
+    const distToTarget = Math.sqrt(seekDesiredX*seekDesiredX + seekDesiredY*seekDesiredY);
+    
+    // Вибір нової випадкової цілі
+    if (distToTarget < 30 && !isLevelTransitioning) {
+        shipPhysics.target.x = Math.random() * (window.innerWidth - 450) + 50;
+        shipPhysics.target.y = Math.random() * (window.innerHeight - 400) + 50;
+    }
+
+    // Нормалізація бажаної швидкості до цілі
+    let desiredVel = { x: 0, y: 0 };
+    if (distToTarget > 0) {
+        desiredVel.x = (seekDesiredX / distToTarget) * shipPhysics.maxSpeed;
+        desiredVel.y = (seekDesiredY / distToTarget) * shipPhysics.maxSpeed;
+    }
+
+    // Сила кермування до цілі
+    let steeringForce = {
+        x: desiredVel.x - shipPhysics.vel.x,
+        y: desiredVel.y - shipPhysics.vel.y
+    };
+
+    // 2. OBSTACLE AVOIDANCE (ЗАПИТ: Уникнення зіткнень)
+    let avoidanceForce = { x: 0, y: 0 };
+    let hasThreat = false;
+
+    // Вектор швидкості для сканування (скануємо тільки якщо рухаємось)
+    const speed = Math.sqrt(shipPhysics.vel.x**2 + shipPhysics.vel.y**2);
+    if (speed > 0.1) {
+        // Скануємо всі об'єкти на рівні
+        for (let obj of currentLevelObjects) {
+            // Вектор від об'єкта до корабля
+            const dxObj = shipPhysics.pos.x - obj.x;
+            const dyObj = shipPhysics.pos.y - obj.y;
+            const distSq = dxObj*dxObj + dyObj*dyObj;
+            
+            // Якщо об'єкт знаходиться в зоні загрози (ЗАПИТ: Облітати)
+            if (distSq < shipPhysics.avoidRadius * shipPhysics.avoidRadius && distSq > 0) {
+                const dist = Math.sqrt(distSq);
+                hasThreat = true;
+                
+                // ЗАПИТ: Не торкатись. Генеруємо силу відштовхування
+                // Вона сильніша, чим ближче об'єкт
+                const forceFactor = (shipPhysics.avoidRadius - dist) / shipPhysics.avoidRadius;
+                const repulseX = (dxObj / dist) * forceFactor * 1.5; // Сила від об'єкта
+                const repulseY = (dyObj / dist) * forceFactor * 1.5;
+
+                // Додаємо до загальної сили уникнення
+                avoidanceForce.x += repulseX;
+                avoidanceForce.y += repulseY;
+            }
+        }
+    }
+
+    // 3. КОМБІНУВАННЯ СИЛ
+    // Пріоритет уникненню, якщо є загроза
+    let finalSteer = { x: steeringForce.x, y: steeringForce.y };
+    if (hasThreat) {
+        // Уникнення додається до кермування, коригуючи курс
+        finalSteer.x += avoidanceForce.x * 0.8; 
+        finalSteer.y += avoidanceForce.y * 0.8;
+    }
+
+    // Обмеження сили
+    const forceMag = Math.sqrt(finalSteer.x*finalSteer.x + finalSteer.y*finalSteer.y);
+    if (forceMag > shipPhysics.maxForce) {
+        finalSteer.x = (finalSteer.x / forceMag) * shipPhysics.maxForce;
+        finalSteer.y = (finalSteer.y / forceMag) * shipPhysics.maxForce;
+    }
+
+    // 4. ІНТЕГРАЦІЯ (Оновлення руху)
+    shipPhysics.vel.x += finalSteer.x;
+    shipPhysics.vel.y += finalSteer.y;
+
+    // Обмеження швидкості (ЗАПИТ: Повільно і постійно)
+    const velMag = Math.sqrt(shipPhysics.vel.x**2 + shipPhysics.vel.y**2);
+    if (velMag > shipPhysics.maxSpeed) {
+        shipPhysics.vel.x = (shipPhysics.vel.x / velMag) * shipPhysics.maxSpeed;
+        shipPhysics.vel.y = (shipPhysics.vel.y / velMag) * shipPhysics.maxSpeed;
+    }
+
+    shipPhysics.pos.x += shipPhysics.vel.x;
+    shipPhysics.pos.y += shipPhysics.vel.y;
+
+    // 5. РЕНДЕР (Візуалізація)
+    shipWrapper.style.left = `${shipPhysics.pos.x}px`;
+    shipWrapper.style.top = `${shipPhysics.pos.y}px`;
+
+    // ЗАПИТ: Нахил при польоті (облітання)
+    // Використовуємо вектор швидкості для визначення кута
+    if (velMag > 0.5) {
+        const targetAngle = (shipPhysics.vel.x / shipPhysics.maxSpeed) * 12; // Макс нахил 12 град
+        shipPhysics.angle += (targetAngle - shipPhysics.angle) * 0.1; // Плавність нахилу
+        shipWrapper.style.transform = `rotate(${shipPhysics.angle}deg)`;
+    }
+
+    requestAnimationFrame(updateShipAvoidancePhysics);
+}
+updateShipAvoidancePhysics(); // Запуск циклу фізики
+
+// Створення ДЕТАЛІЗОВАНИХ космічних об'єктів
+function getSvgBackground(type, size) {
+    if (type === 'gas') {
+        return `<radialGradient id="gas-grad" cx="30%" cy="30%" r="70%"><stop offset="0%" stop-color="#fffbeb"/><stop offset="50%" stop-color="#f97316"/><stop offset="100%" stop-color="#7c2d12"/></radialGradient>
+                <circle cx="${size/2}" cy="${size/2}" r="${size/2-5}" fill="url(#gas-grad)" filter="url(#glow)" stroke="#f97316" stroke-width="3"/>
+                <circle cx="${size/2}" cy="${size/2}" r="${size/2-5}" fill="url(#spore-pattern)" opacity="0.3"/>
+                <path d="M${size*0.1} ${size*0.4} Q${size/2} ${size*0.2} ${size*0.9} ${size*0.4}" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="6"/>`;
+    } else if (type === 'ice') {
+        return `<radialGradient id="ice-grad" cx="40%" cy="20%" r="80%"><stop offset="0%" stop-color="#e0f2fe"/><stop offset="60%" stop-color="#0ea5e9"/><stop offset="100%" stop-color="#0c4a6e"/></radialGradient>
+                <ellipse cx="${size/2}" cy="${size/2}" rx="${size/1.1}" ry="${size/5}" fill="none" stroke="rgba(224,242,254,0.5)" stroke-width="8" transform="rotate(-20 ${size/2} ${size/2})" filter="url(#glow)"/>
+                <circle cx="${size/2}" cy="${size/2}" r="${size/2.5}" fill="url(#ice-grad)" stroke="#0ea5e9" stroke-width="2"/>
+                <ellipse cx="${size/2}" cy="${size/2}" rx="${size/1.1}" ry="${size/5}" fill="none" stroke="#fff" stroke-width="2" transform="rotate(-20 ${size/2} ${size/2})" stroke-dasharray="100 150"/>`;
+    } else {
+        return `<radialGradient id="star-grad" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#fff"/><stop offset="40%" stop-color="#a3e635"/><stop offset="100%" stop-color="#166534"/></radialGradient>
+                <circle cx="${size/2}" cy="${size/2}" r="${size/2.5}" fill="url(#star-grad)" filter="url(#glow)">
+                    <animate attributeName="r" values="${size/2.5};${size/2-10};${size/2.5}" dur="2.5s" repeatCount="indefinite"/>
+                </circle>`;
+    }
+}
+
+// РОЗТАШУВАННЯ БЕЗ НАКЛАДАНЬ
+function buildLevel(index) {
+    container.innerHTML = ''; finalScreen.style.display = 'none'; shipWrapper.style.display = 'block';
+    isLevelTransitioning = false;
+    currentLevelObjects = []; // Очищаємо список перешкод
+    
+    if (index >= tasks.length) { showFinalScreen(); return; }
+    const task = tasks[index];
+    const letters = [task.target, ...task.distractors].sort(() => Math.random() - 0.5);
+    const types = ['gas', 'ice', 'star', 'gas'];
+    
+    const placedData = [];
+    const minDistanceObjects = 250; // Між планетами
+
+    letters.forEach((letter, i) => {
+        const size = 200;
+        let x, y, colliding;
+        let tries = 0;
+
+        do {
+            colliding = false;
+            x = Math.random() * (window.innerWidth - size*2.2) + size/1.1;
+            y = Math.random() * (window.innerHeight - size*2.2) + size/1.1;
+
+            for (let obj of placedData) {
+                const dx = x - obj.x; const dy = y - obj.y;
+                if (Math.sqrt(dx*dx + dy*dy) < minDistanceObjects) { colliding = true; break; }
+            }
+            tries++;
+        } while (colliding && tries < 100);
+
+        placedData.push({ x, y });
+        // Додаємо координати в глобальний список для фізики уникнення
+        currentLevelObjects.push({ x, y, size }); 
+
+        const obj = document.createElement('div');
+        obj.className = 'space-object';
+        obj.style.width = obj.style.height = `${size}px`;
+        obj.style.left = `${x - size/2}px`; obj.style.top = `${y - size/2}px`;
+        obj.style.opacity = '0';
+        
+        obj.innerHTML = `<svg viewBox="0 0 ${size} ${size}">${getSvgBackground(types[i%types.length], size)}</svg>
+                         <div class="letter">${letter}</div>`;
+
+        obj.onclick = (e) => handleObjectClick(e, letter === task.target, x, y, obj);
+        container.appendChild(obj);
+        setTimeout(() => obj.style.opacity = '1', 100 * i);
+    });
+    alienMouth.setAttribute('d', 'M-15 18 Q0 32 15 18');
+}
+
+function fireLaser(tx, ty, isCorrect, targetElement) {
+    playTones('laser');
+    const startX = shipPhysics.pos.x + 190; const startY = shipPhysics.pos.y + 190;
+    const dx = tx - startX; const dy = ty - startY;
+    const distance = Math.sqrt(dx*dx + dy*dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    laser.style.width = `${distance}px`; laser.style.left = `${startX}px`; laser.style.top = `${startY}px`;
+    laser.style.transform = `rotate(${angle}deg)`; laser.style.display = 'block';
+    laser.style.background = isCorrect ? '#10b981' : '#ef4444';
+    laser.style.boxShadow = `0 0 30px ${laser.style.background}`;
+
+    setTimeout(() => {
+        laser.style.display = 'none';
+        if (isCorrect) {
+            targetElement.style.transform = 'scale(2.5) rotate(20deg)'; targetElement.style.opacity = '0';
+            setTimeout(() => targetElement.remove(), 400);
+        } else {
+            targetElement.animate([ { transform: 'translateX(-18px)' }, { transform: 'translateX(18px)' } ], { duration: 110, iterations: 3 });
+        }
+    }, 250);
+}
+
+function handleObjectClick(e, isCorrect, x, y, el) {
+    if (isLevelTransitioning) return;
+    fireLaser(x, y, isCorrect, el);
+    if (isCorrect) {
+        isLevelTransitioning = true;
+        setTimeout(() => playTones('success'), 200);
+        alienMouth.setAttribute('d', 'M-15 12 Q0 40 15 12');
+        
+        // Автоматичний перехід
+        setTimeout(() => {
+            currentTaskIndex++; buildLevel(currentTaskIndex);
+        }, 1200);
+    } else {
+        setTimeout(() => playTones('error'), 200);
+        alienMouth.setAttribute('d', 'M-15 28 Q0 12 15 28');
+        shipWrapper.animate([ { transform: 'translateX(-12px)' }, { transform: 'translateX(12px)' } ], { duration: 110, iterations: 3 });
+    }
+}
+
+// Фінальний екран
+function showFinalScreen() {
+    container.innerHTML = ''; shipWrapper.style.display = 'none';
+    finalScreen.style.display = 'flex'; finalScreen.innerHTML = '';
+    tasks.forEach((task, index) => {
+        const row = document.createElement('div'); row.className = 'sound-row';
+        const letter = task.target; const sounds = phoneticData[letter];
+        let soundsHtml = sounds.map(s => s === 'й' ? `<div class="sound-bracket">[ <span class="sound-y">й</span> ]</div>` : `<div class="sound-bracket">[ ${s} ]</div>`).join('');
+        row.innerHTML = `<div class="letter-big">${letter}</div><div class="letter-big">=</div>${soundsHtml}`;
+        finalScreen.appendChild(row);
+        setTimeout(() => { row.classList.add('visible'); playTones('laser'); }, 700 * index);
+    });
+}
+
+// Слідкування очима (Локально)
+document.addEventListener('mousemove', (e) => {
+    const cx = shipPhysics.pos.x + 190; const cy = shipPhysics.pos.y + 140;
+    const dx = (e.clientX - cx) / 70; const dy = (e.clientY - cy) / 70;
+    document.getElementById('pupil-l').setAttribute('cx', -22 + Math.max(-9, Math.min(9, dx)));
+    document.getElementById('pupil-l').setAttribute('cy', -10 + Math.max(-9, Math.min(9, dy)));
+    document.getElementById('pupil-r').setAttribute('cx', 22 + Math.max(-9, Math.min(9, dx)));
+    document.getElementById('pupil-r').setAttribute('cy', -10 + Math.max(-9, Math.min(9, dy)));
+});
+
+// Старт
+buildLevel(0);
+</script>
+</body>
+</html>
