@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ланцюжок Діалогів</title>
+    <style>
+        /* Основні налаштування сторінки, щоб уникнути білих фонів */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', sans-serif;
+            user-select: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 1200px;
+            max-height: 800px;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 100%, #8bc34a, #33691e);
+        }
+
+        /* SVG Фон з анімацією */
+        #bg-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        @keyframes cloudsMove {
+            from { transform: translateX(-10%); }
+            to { transform: translateX(110%); }
+        }
+        .cloud { animation: cloudsMove 40s linear infinite; }
+        .cloud.slow { animation: cloudsMove 60s linear infinite; }
+
+        @keyframes sunPulse {
+            0%, 100% { transform: scale(1); fill: #ffeb3b; }
+            50% { transform: scale(1.05); fill: #ffc107; }
+        }
+        .sun { animation: sunPulse 4s infinite alternate; transform-origin: center; }
+
+        @keyframes treeSway {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(2deg); }
+        }
+        .tree-top { animation: treeSway 6s ease-in-out infinite alternate; transform-origin: bottom center; }
+
+        /* Основна ігрова сцена */
+        #scene {
+            position: absolute;
+            bottom: 50px;
+            left: 0;
+            width: 100%;
+            height: 70%;
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            z-index: 5;
+            padding: 0 50px;
+            box-sizing: border-box;
+        }
+
+        .animal-wrapper {
+            position: relative;
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .animal-wrapper:hover .animal-svg {
+            transform: scale(1.05) translateY(-10px);
+        }
+
+        .animal-svg {
+            width: 200px;
+            height: 200px;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(0px 10px 5px rgba(0,0,0,0.4));
+        }
+
+        /* Стилізація хмарки тексту (значно більший шрифт) */
+        .bubble {
+            background: linear-gradient(135deg, #fff9c4, #ffe082);
+            border: 5px solid #ff9800;
+            border-radius: 25px;
+            padding: 20px;
+            font-size: 28px; /* Збільшений шрифт */
+            font-weight: bold;
+            color: #4e342e;
+            text-align: center;
+            margin-bottom: 25px;
+            position: relative;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            opacity: 0;
+            transform: translateY(20px) scale(0.8);
+            transition: all 0.4s ease;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.3;
+        }
+
+        .bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 18px 18px 0;
+            border-style: solid;
+            border-color: #ff9800 transparent transparent transparent;
+            display: block;
+            width: 0;
+        }
+
+        .bubble::before {
+            content: '';
+            position: absolute;
+            bottom: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 13px 13px 0;
+            border-style: solid;
+            border-color: #ffe082 transparent transparent transparent;
+            display: block;
+            width: 0;
+            z-index: 1;
+        }
+
+        .show-bubble {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+
+        /* Номерки порядку (1, 2, 3) - збільшені */
+        .badge {
+            position: absolute;
+            top: 100px;
+            right: 15px;
+            width: 60px;
+            height: 60px;
+            background: radial-gradient(circle, #ffeb3b, #f57f17);
+            border: 4px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px;
+            font-weight: bold;
+            color: #d84315;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            z-index: 10;
+        }
+
+        .badge.visible {
+            opacity: 1;
+            transform: scale(1) rotate(10deg);
+        }
+
+        /* Анімації тварин при правильній/неправильній відповіді */
+        @keyframes correctBounce {
+            0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(76, 175, 80, 0)); }
+            50% { transform: scale(1.1) translateY(-20px); filter: drop-shadow(0 0 25px rgba(76, 175, 80, 0.9)); }
+            100% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(76, 175, 80, 0.6)); }
+        }
+        .anim-correct { animation: correctBounce 0.5s ease forwards; }
+
+        @keyframes wrongShake {
+            0%, 100% { transform: translateX(0); filter: drop-shadow(0 0 0 rgba(244, 67, 54, 0)); }
+            20%, 60% { transform: translateX(-15px) rotate(-5deg); filter: drop-shadow(0 0 20px rgba(244, 67, 54, 0.9)); }
+            40%, 80% { transform: translateX(15px) rotate(5deg); filter: drop-shadow(0 0 20px rgba(244, 67, 54, 0.9)); }
+        }
+        .anim-wrong { animation: wrongShake 0.4s ease; }
+
+        /* Мінімалістичні кнопки навігації у лівому верхньому куті */
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 15px;
+            z-index: 20;
+        }
+
+        .btn-nav {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #ff4081, #c51162);
+            color: #fff;
+            font-size: 36px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            transition: all 0.2s;
+        }
+
+        .btn-nav:hover {
+            transform: scale(1.1);
+            background: linear-gradient(135deg, #ff80ab, #f50057);
+        }
+        .btn-nav:active {
+            transform: scale(0.95);
+        }
+
+        /* Декоративні елементи переднього плану */
+        .foreground {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 150" preserveAspectRatio="none"><path d="M0,150 L0,50 Q100,20 250,60 T500,40 T750,70 T1000,30 L1000,150 Z" fill="%232e7d32" opacity="0.8"/><path d="M0,150 L0,80 Q150,50 300,90 T600,60 T850,100 T1000,50 L1000,150 Z" fill="%231b5e20" opacity="0.9"/></svg>') repeat-x;
+            background-size: 1000px 150px;
+            z-index: 4;
+            pointer-events: none;
+        }
+        
+        .particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 15;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="controls">
+        <button class="btn-nav" id="btn-prev">❮</button>
+        <button class="btn-nav" id="btn-next">❯</button>
+    </div>
+
+    <svg id="bg-svg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4fc3f7" />
+                <stop offset="60%" stop-color="#81d4fa" />
+                <stop offset="100%" stop-color="#e1f5fe" />
+            </linearGradient>
+            <linearGradient id="hillGrad1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#7cb342" />
+                <stop offset="100%" stop-color="#33691e" />
+            </linearGradient>
+            <linearGradient id="hillGrad2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#8bc34a" />
+                <stop offset="100%" stop-color="#1b5e20" />
+            </linearGradient>
+        </defs>
+        
+        <rect width="1200" height="800" fill="url(#skyGrad)" />
+        
+        <g transform="translate(1000, 150)">
+            <circle class="sun" r="80" fill="#fff59d" opacity="0.8" />
+            <circle class="sun" r="60" fill="#ffeb3b" />
+        </g>
+
+        <g class="cloud" transform="translate(-200, 50) scale(1.5)">
+            <path d="M50,40 a20,20 0 0,1 40,0 a20,20 0 0,1 30,15 a20,20 0 0,1 -20,20 h-50 a20,20 0 0,1 -15,-20 a20,20 0 0,1 15,-15 z" fill="#ffffff" opacity="0.7"/>
+        </g>
+        <g class="cloud slow" transform="translate(-400, 150) scale(2)">
+            <path d="M50,40 a20,20 0 0,1 40,0 a20,20 0 0,1 30,15 a20,20 0 0,1 -20,20 h-50 a20,20 0 0,1 -15,-20 a20,20 0 0,1 15,-15 z" fill="#e0f7fa" opacity="0.6"/>
+        </g>
+
+        <path d="M0,500 Q200,400 500,550 T1200,450 L1200,800 L0,800 Z" fill="url(#hillGrad1)" />
+        <path d="M0,600 Q300,450 600,650 T1200,550 L1200,800 L0,800 Z" fill="url(#hillGrad2)" />
+
+        <g transform="translate(150, 480)" class="tree-top">
+            <rect x="-10" y="0" width="20" height="150" fill="#5d4037" />
+            <circle cx="0" cy="0" r="70" fill="#2e7d32" />
+            <circle cx="-30" cy="-40" r="50" fill="#1b5e20" />
+            <circle cx="40" cy="-20" r="60" fill="#388e3c" />
+        </g>
+        <g transform="translate(950, 520)" class="tree-top">
+            <rect x="-15" y="0" width="30" height="120" fill="#4e342e" />
+            <circle cx="0" cy="-20" r="80" fill="#43a047" />
+            <circle cx="-40" cy="-50" r="60" fill="#1b5e20" />
+            <circle cx="50" cy="-30" r="70" fill="#2e7d32" />
+        </g>
+    </svg>
+
+    <div class="foreground"></div>
+    <div class="particles" id="particles"></div>
+
+    <div id="scene">
+        <div class="animal-wrapper" id="anim1" data-id="bear">
+            <div class="bubble" id="bubble-bear"></div>
+            <div class="badge" id="badge-bear"></div>
+            <svg class="animal-svg" viewBox="0 0 200 200">
+                <g transform="translate(10, 20)">
+                    <circle cx="45" cy="40" r="25" fill="#5d4037"/>
+                    <circle cx="45" cy="40" r="15" fill="#8d6e63"/>
+                    <circle cx="135" cy="40" r="25" fill="#5d4037"/>
+                    <circle cx="135" cy="40" r="15" fill="#8d6e63"/>
+                    <circle cx="90" cy="110" r="70" fill="#6d4c41"/>
+                    <circle cx="90" cy="140" r="50" fill="#8d6e63"/>
+                    <circle cx="90" cy="90" r="55" fill="#6d4c41"/>
+                    <ellipse cx="90" cy="105" rx="30" ry="20" fill="#d7ccc8"/>
+                    <circle cx="90" cy="95" r="8" fill="#3e2723"/>
+                    <path d="M85,105 Q90,115 95,105" stroke="#3e2723" stroke-width="3" fill="none"/>
+                    <circle cx="70" cy="75" r="6" fill="#000"/>
+                    <circle cx="72" cy="73" r="2" fill="#fff"/>
+                    <circle cx="110" cy="75" r="6" fill="#000"/>
+                    <circle cx="112" cy="73" r="2" fill="#fff"/>
+                </g>
+            </svg>
+        </div>
+
+        <div class="animal-wrapper" id="anim2" data-id="bunny">
+            <div class="bubble" id="bubble-bunny"></div>
+            <div class="badge" id="badge-bunny"></div>
+            <svg class="animal-svg" viewBox="0 0 200 200">
+                <g transform="translate(10, 0)">
+                    <ellipse cx="65" cy="60" rx="20" ry="60" fill="#f5f5f5" transform="rotate(-15 65 60)"/>
+                    <ellipse cx="65" cy="60" rx="10" ry="45" fill="#ffcdd2" transform="rotate(-15 65 60)"/>
+                    <ellipse cx="115" cy="60" rx="20" ry="60" fill="#f5f5f5" transform="rotate(15 115 60)"/>
+                    <ellipse cx="115" cy="60" rx="10" ry="45" fill="#ffcdd2" transform="rotate(15 115 60)"/>
+                    <ellipse cx="90" cy="150" rx="55" ry="45" fill="#eeeeee"/>
+                    <circle cx="90" cy="110" r="45" fill="#ffffff"/>
+                    <circle cx="75" cy="100" r="5" fill="#000"/>
+                    <circle cx="105" cy="100" r="5" fill="#000"/>
+                    <polygon points="85,115 95,115 90,122" fill="#ff8a80"/>
+                    <path d="M85,122 Q90,130 80,125 M95,122 Q90,130 100,125" stroke="#9e9e9e" stroke-width="2" fill="none"/>
+                    <line x1="40" y1="110" x2="65" y2="115" stroke="#bdbdbd" stroke-width="2"/>
+                    <line x1="35" y1="120" x2="65" y2="120" stroke="#bdbdbd" stroke-width="2"/>
+                    <line x1="140" y1="110" x2="115" y2="115" stroke="#bdbdbd" stroke-width="2"/>
+                    <line x1="145" y1="120" x2="115" y2="120" stroke="#bdbdbd" stroke-width="2"/>
+                </g>
+            </svg>
+        </div>
+
+        <div class="animal-wrapper" id="anim3" data-id="fox">
+            <div class="bubble" id="bubble-fox"></div>
+            <div class="badge" id="badge-fox"></div>
+            <svg class="animal-svg" viewBox="0 0 200 200">
+                <g transform="translate(10, 20)">
+                    <path d="M120,120 Q180,90 170,150 Q160,180 120,150 Z" fill="#e65100"/>
+                    <path d="M170,150 Q160,180 145,160 Z" fill="#ffffff"/>
+                    <ellipse cx="90" cy="130" rx="45" ry="50" fill="#ef6c00"/>
+                    <ellipse cx="90" cy="140" rx="30" ry="35" fill="#fff3e0"/>
+                    <polygon points="50,90 30,30 80,70" fill="#e65100"/>
+                    <polygon points="48,80 38,40 70,70" fill="#212121"/>
+                    <polygon points="130,90 150,30 100,70" fill="#e65100"/>
+                    <polygon points="132,80 142,40 110,70" fill="#212121"/>
+                    <path d="M40,90 Q90,140 140,90 Q120,50 90,60 Q60,50 40,90 Z" fill="#ff9800"/>
+                    <path d="M40,90 Q90,140 140,90 Q90,100 40,90 Z" fill="#ffffff"/>
+                    <circle cx="90" cy="115" r="8" fill="#000"/>
+                    <path d="M60,85 Q70,75 80,85" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
+                    <path d="M100,85 Q110,75 120,85" stroke="#000" stroke-width="4" fill="none" stroke-linecap="round"/>
+                </g>
+            </svg>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* Дані для 10 діалогів */
+    const dialogues = [
+        {
+            bear: { text: "Я приніс багато солодкого меду.", order: 2 },
+            bunny: { text: "Давайте спечемо смачний торт!", order: 1 },
+            fox: { text: "А я прикрашу його лісовими ягодами.", order: 3 }
+        },
+        {
+            fox: { text: "Я буду шукати першою! Закриваю очі.", order: 1 },
+            bunny: { text: "Тільки не підглядай! Я ховаюся за кущем.", order: 2 },
+            bear: { text: "А я знайшов велике дерево для схованки.", order: 3 }
+        },
+        {
+            bear: { text: "Спочатку потрібно зібрати міцні гілки.", order: 1 },
+            fox: { text: "Тепер складемо їх разом у формі куреня.", order: 2 },
+            bunny: { text: "Ура, наш новий будиночок готовий!", order: 3 }
+        },
+        {
+            bunny: { text: "Дивіться, я знайшов стару карту скарбів!", order: 1 },
+            bear: { text: "Давай подивимось, куди ведуть ці стрілочки.", order: 2 },
+            fox: { text: "Вони ведуть прямо до великого дуба, рушаймо!", order: 3 }
+        },
+        {
+            fox: { text: "Я викопаю маленьку ямку в землі.", order: 1 },
+            bear: { text: "А я обережно покладу туди насіннячко.", order: 2 },
+            bunny: { text: "Тепер треба полити його чистою водою з лійки.", order: 3 }
+        },
+        {
+            bear: { text: "Я приніс великий аркуш білого паперу.", order: 1 },
+            bunny: { text: "Я намалюю на ньому яскраве сонечко.", order: 2 },
+            fox: { text: "А я додам зеленої травички та квітів.", order: 3 }
+        },
+        {
+            fox: { text: "Вже стає холодно, скоро прийде зима.", order: 1 },
+            bunny: { text: "Треба змінити мою шубку на білу.", order: 2 },
+            bear: { text: "А я піду шукати затишний барліг для сну.", order: 3 }
+        },
+        {
+            bunny: { text: "Хто хоче зіграти веселу пісню?", order: 1 },
+            bear: { text: "Я буду голосно стукати в барабан!", order: 2 },
+            fox: { text: "А я буду підспівувати вам найтоншим голоском.", order: 3 }
+        },
+        {
+            bear: { text: "Попереду глибока річка, як нам перебратися?", order: 1 },
+            fox: { text: "Давайте знайдемо довгу колоду.", order: 2 },
+            bunny: { text: "Ось вона, тепер ми можемо перейти на інший берег.", order: 3 }
+        },
+        {
+            fox: { text: "Сонечко вже сідає за гори.", order: 1 },
+            bunny: { text: "На небі з'являються перші зірочки.", order: 2 },
+            bear: { text: "Час усім лягати спати, на добраніч!", order: 3 }
+        }
+    ];
+
+    let currentLevel = 0;
+    let expectedOrder = 1;
+    let isAnimating = false;
+    
+    // Аудіо контекст для генерації звуків без файлів
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Функція генерації звуків
+    function playSound(type) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        
+        if (type === 'correct') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        } else if (type === 'wrong') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        } else if (type === 'win') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.setValueAtTime(500, now + 0.1);
+            osc.frequency.setValueAtTime(600, now + 0.2);
+            osc.frequency.setValueAtTime(800, now + 0.3);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.6);
+            osc.start(now);
+            osc.stop(now + 0.6);
+        }
+    }
+
+    // Ініціалізація рівня
+    function loadLevel(levelIndex) {
+        expectedOrder = 1;
+        isAnimating = false;
+        const data = dialogues[levelIndex];
+        const animals = Array.from(document.querySelectorAll('.animal-wrapper'));
+        
+        // Рандомний порядок тварин на екрані (Flex order)
+        let orders = [1, 2, 3].sort(() => Math.random() - 0.5);
+        
+        animals.forEach((animal, index) => {
+            const id = animal.getAttribute('data-id');
+            const info = data[id];
+            
+            animal.style.order = orders[index];
+            
+            // Налаштування тексту
+            const bubble = document.getElementById(`bubble-${id}`);
+            bubble.textContent = info.text;
+            bubble.classList.remove('show-bubble');
+            
+            // Скидання бейджів та анімацій
+            const badge = document.getElementById(`badge-${id}`);
+            badge.textContent = '';
+            badge.classList.remove('visible');
+            
+            animal.classList.remove('anim-correct', 'anim-wrong');
+            
+            // Зберігаємо правильний порядок в data-атрибут
+            animal.dataset.correctOrder = info.order;
+            
+            // Плавно показуємо хмарки
+            setTimeout(() => {
+                bubble.classList.add('show-bubble');
+            }, 300 + index * 150);
+        });
+    }
+
+    // Створення конфеті при перемозі
+    function createConfetti() {
+        const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722'];
+        const particlesContainer = document.getElementById('particles');
+        particlesContainer.innerHTML = '';
+        
+        for (let i = 0; i < 50; i++) {
+            const particle = document.createElement('div');
+            particle.style.position = 'absolute';
+            particle.style.width = '15px';
+            particle.style.height = '15px';
+            particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.top = '-20px';
+            particle.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+            particle.style.transition = 'transform 2s cubic-bezier(0,1,.8,1), top 2s cubic-bezier(.3,0,.8,1)';
+            particle.style.transform = `rotate(${Math.random() * 360}deg)`;
+            
+            particlesContainer.appendChild(particle);
+            
+            setTimeout(() => {
+                particle.style.top = '120%';
+                particle.style.transform = `rotate(${Math.random() * 720}deg) translateX(${Math.random() * 100 - 50}px)`;
+            }, 10);
+        }
+    }
+
+    // Обробка кліку по тваринці
+    document.querySelectorAll('.animal-wrapper').forEach(animal => {
+        animal.addEventListener('click', function() {
+            if (isAnimating) return;
+            const correctOrder = parseInt(this.dataset.correctOrder);
+            const badge = this.querySelector('.badge');
+            
+            // Якщо вже вибрано правильно, ігноруємо
+            if (badge.classList.contains('visible')) return;
+
+            if (correctOrder === expectedOrder) {
+                // Правильний вибір
+                playSound('correct');
+                badge.textContent = expectedOrder;
+                badge.classList.add('visible');
+                
+                this.classList.remove('anim-correct');
+                void this.offsetWidth;
+                this.classList.add('anim-correct');
+                
+                expectedOrder++;
+
+                if (expectedOrder > 3) {
+                    // Рівень пройдено
+                    isAnimating = true;
+                    setTimeout(() => {
+                        playSound('win');
+                        createConfetti();
+                        setTimeout(() => {
+                            nextLevel();
+                        }, 2500);
+                    }, 500);
+                }
+            } else {
+                // Неправильний вибір
+                playSound('wrong');
+                this.classList.remove('anim-wrong');
+                void this.offsetWidth;
+                this.classList.add('anim-wrong');
+                
+                // Скидаємо прогрес
+                expectedOrder = 1;
+                document.querySelectorAll('.badge').forEach(b => {
+                    b.classList.remove('visible');
+                    setTimeout(() => b.textContent = '', 300);
+                });
+            }
+        });
+    });
+
+    // Навігація
+    function nextLevel() {
+        currentLevel++;
+        if (currentLevel >= dialogues.length) currentLevel = 0;
+        loadLevel(currentLevel);
+    }
+
+    function prevLevel() {
+        currentLevel--;
+        if (currentLevel < 0) currentLevel = dialogues.length - 1;
+        loadLevel(currentLevel);
+    }
+
+    document.getElementById('btn-next').addEventListener('click', () => {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        nextLevel();
+    });
+    
+    document.getElementById('btn-prev').addEventListener('click', () => {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        prevLevel();
+    });
+
+    // Запуск першого рівня
+    window.onload = () => {
+        loadLevel(0);
+    };
+</script>
+
+</body>
+</html>
