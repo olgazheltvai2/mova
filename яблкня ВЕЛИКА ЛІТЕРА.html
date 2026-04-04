@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Скидання відступів та базові налаштування */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+            background-color: #87CEEB;
+        }
+
+        /* Головний контейнер */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* SVG Фон (Яблуневий сад) */
+        #background-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Анімація хмар */
+        @keyframes drift {
+            from { transform: translateX(-10%); }
+            to { transform: translateX(110%); }
+        }
+        .cloud-group {
+            animation: drift 70s linear infinite;
+        }
+        .cloud-group-slow {
+            animation: drift 100s linear infinite;
+            animation-delay: -40s;
+        }
+
+        /* Дошка із завданням (стилізована) */
+        #task-board {
+            position: relative;
+            z-index: 10;
+            width: 95%;
+            max-width: 1500px; /* Збільшено для великого шрифту */
+            background: linear-gradient(135deg, #A0522D, #8B4513);
+            border: 12px solid #5C3A21;
+            border-radius: 50px;
+            padding: 60px;
+            box-shadow: 
+                inset 0 0 40px rgba(0,0,0,0.6),
+                15px 25px 40px rgba(0,0,0,0.7);
+            color: #FFF8DC;
+            font-size: 55px; /* Значно збільшений шрифт */
+            line-height: 1.8;
+            text-align: justify;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        /* Декоративні елементи дошки (капелюшки цвяхів) */
+        .nail {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            background: radial-gradient(circle, #b0b0b0, #404040);
+            border-radius: 50%;
+            box-shadow: inset -2px -2px 5px rgba(0,0,0,0.5), 3px 3px 6px rgba(0,0,0,0.8);
+        }
+        .nail.tl { top: 25px; left: 25px; }
+        .nail.tr { top: 25px; right: 25px; }
+        .nail.bl { bottom: 25px; left: 25px; }
+        .nail.br { bottom: 25px; right: 25px; }
+
+        /* Контейнер для пропуску з яблучками */
+        .gap {
+            display: inline-flex;
+            align-items: center;
+            gap: 15px;
+            margin: 0 10px;
+            vertical-align: middle;
+            background: rgba(0,0,0,0.2);
+            padding: 8px 20px;
+            border-radius: 40px;
+            border: 3px dashed rgba(255, 255, 255, 0.3);
+            transition: all 0.5s ease;
+        }
+
+        /* Успішний стан пропуску */
+        .gap.solved {
+            background: rgba(50, 205, 50, 0.2);
+            border-color: #32CD32;
+            gap: 0;
+            padding: 0 10px;
+        }
+
+        /* Інтерактивні кнопки-яблука */
+        .apple-btn {
+            position: relative;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 75px; /* Збільшені яблучка */
+            height: 75px;
+            background: radial-gradient(circle at 35% 35%, #ff4d4d, #b30000);
+            border: 3px solid #800000;
+            border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+            color: #FFF;
+            font-weight: bold;
+            font-size: 45px; /* Більший шрифт всередині яблук */
+            cursor: pointer;
+            box-shadow: inset -4px -4px 8px rgba(0,0,0,0.4), 3px 6px 10px rgba(0,0,0,0.5);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            user-select: none;
+            text-shadow: none;
+        }
+
+        /* Хвостик яблука */
+        .apple-btn::before {
+            content: '';
+            position: absolute;
+            top: -16px;
+            left: 50%;
+            width: 6px;
+            height: 20px;
+            background-color: #4A2E1B;
+            border-radius: 3px;
+            transform: translateX(-50%) rotate(15deg);
+            z-index: -1;
+        }
+
+        /* Листочок яблука */
+        .apple-btn::after {
+            content: '';
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            width: 25px;
+            height: 15px;
+            background: radial-gradient(ellipse at center, #32CD32, #006400);
+            border-radius: 20px 0 20px 0;
+            transform: rotate(-15deg);
+            z-index: -1;
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .apple-btn:hover {
+            transform: scale(1.15) translateY(-5px);
+            box-shadow: inset -4px -4px 8px rgba(0,0,0,0.4), 5px 10px 15px rgba(0,0,0,0.6);
+        }
+
+        .apple-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Анімації та стани яблук */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0) rotate(0); }
+            20% { transform: translateX(-8px) rotate(-10deg); }
+            40% { transform: translateX(8px) rotate(10deg); }
+            60% { transform: translateX(-8px) rotate(-10deg); }
+            80% { transform: translateX(8px) rotate(10deg); }
+        }
+
+        .apple-btn.error {
+            animation: shake 0.4s ease-in-out;
+            background: radial-gradient(circle at 35% 35%, #999, #444);
+            border-color: #333;
+            color: #ccc;
+        }
+
+        .apple-btn.hidden {
+            width: 0;
+            height: 0;
+            opacity: 0;
+            margin: 0;
+            border: none;
+            overflow: hidden;
+            pointer-events: none;
+            transform: scale(0);
+        }
+
+        .apple-btn.correct-pick {
+            cursor: default;
+            transform: scale(1.1);
+            background: radial-gradient(circle at 35% 35%, #ffd700, #ff8c00);
+            border-color: #b8860b;
+            color: #8b4513;
+            box-shadow: 0 0 25px #FFD700;
+        }
+        .apple-btn.correct-pick:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 25px #FFD700;
+        }
+
+        /* Канвас для спецефектів */
+        #fx-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 30;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    
+    <svg id="background-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#87CEEB"/>
+                <stop offset="100%" stop-color="#E0F6FF"/>
+            </linearGradient>
+            <linearGradient id="grassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#7CFC00"/>
+                <stop offset="100%" stop-color="#228B22"/>
+            </linearGradient>
+            <linearGradient id="hillGrad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#9ACD32"/>
+                <stop offset="100%" stop-color="#556B2F"/>
+            </linearGradient>
+            <linearGradient id="hillGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#6B8E23"/>
+                <stop offset="100%" stop-color="#2E8B57"/>
+            </linearGradient>
+            <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#FFFFFF"/>
+                <stop offset="40%" stop-color="#FFFACD"/>
+                <stop offset="100%" stop-color="#FFD700"/>
+            </radialGradient>
+            
+            <g id="apple-tree">
+                <path d="M -20 200 C -15 100 -30 50 0 0 C 30 50 15 100 20 200 Z" fill="#5C3A21"/>
+                <path d="M 0 50 Q -50 0 -80 -30" stroke="#5C3A21" stroke-width="15" stroke-linecap="round"/>
+                <path d="M 0 30 Q 50 -10 70 -50" stroke="#5C3A21" stroke-width="18" stroke-linecap="round"/>
+                <circle cx="0" cy="-50" r="100" fill="#228B22"/>
+                <circle cx="-60" cy="-10" r="90" fill="#32CD32"/>
+                <circle cx="60" cy="-20" r="85" fill="#008000"/>
+                <circle cx="0" cy="30" r="80" fill="#006400"/>
+                <circle cx="-30" cy="-90" r="70" fill="#2E8B57"/>
+                <circle cx="-40" cy="-30" r="12" fill="#DC143C"/><path d="M -40 -42 Q -35 -50 -30 -42" stroke="#4A2E1B" stroke-width="2" fill="none"/>
+                <circle cx="50" cy="10" r="12" fill="#DC143C"/><path d="M 50 -2 Q 55 -10 60 -2" stroke="#4A2E1B" stroke-width="2" fill="none"/>
+                <circle cx="10" cy="-70" r="12" fill="#DC143C"/><path d="M 10 -82 Q 15 -90 20 -82" stroke="#4A2E1B" stroke-width="2" fill="none"/>
+                <circle cx="-80" cy="20" r="12" fill="#DC143C"/><path d="M -80 8 Q -75 0 -70 8" stroke="#4A2E1B" stroke-width="2" fill="none"/>
+                <circle cx="30" cy="-20" r="12" fill="#DC143C"/><path d="M 30 -32 Q 35 -40 40 -32" stroke="#4A2E1B" stroke-width="2" fill="none"/>
+            </g>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#skyGrad)"/>
+        <circle cx="150" cy="120" r="90" fill="url(#sunGrad)" filter="drop-shadow(0 0 30px #FFD700)"/>
+
+        <g class="cloud-group">
+            <path d="M -200 150 Q -160 90 -110 120 Q -60 70 0 110 Q 60 80 80 140 Q 120 130 130 180 L -200 180 Z" fill="#FFFFFF" opacity="0.9"/>
+        </g>
+        <g class="cloud-group-slow" transform="scale(1.2) translate(300, 50)">
+            <path d="M -150 180 Q -120 130 -80 150 Q -40 110 10 140 Q 50 120 70 160 Q 100 150 110 190 L -150 190 Z" fill="#FFFFFF" opacity="0.7"/>
+        </g>
+
+        <path d="M 0 650 Q 480 400 960 550 T 1920 450 L 1920 1080 L 0 1080 Z" fill="url(#hillGrad1)"/>
+        <path d="M 0 750 Q 600 500 1300 700 T 1920 600 L 1920 1080 L 0 1080 Z" fill="url(#hillGrad2)"/>
+        
+        <g transform="translate(300, 600) scale(0.6)"><use href="#apple-tree"/></g>
+        <g transform="translate(700, 580) scale(0.5)"><use href="#apple-tree"/></g>
+        <g transform="translate(1200, 620) scale(0.7)"><use href="#apple-tree"/></g>
+        <g transform="translate(1600, 550) scale(0.5)"><use href="#apple-tree"/></g>
+
+        <path d="M 0 850 Q 960 700 1920 900 L 1920 1080 L 0 1080 Z" fill="url(#grassGrad)"/>
+
+        <g transform="translate(150, 850) scale(1.3)"><use href="#apple-tree"/></g>
+        <g transform="translate(1750, 900) scale(1.5)"><use href="#apple-tree"/></g>
+        <g transform="translate(1450, 800) scale(1.1)"><use href="#apple-tree"/></g>
+    </svg>
+
+    <div id="task-board">
+        <div class="nail tl"></div>
+        <div class="nail tr"></div>
+        <div class="nail bl"></div>
+        <div class="nail br"></div>
+        
+        Моє рідне село називається 
+        <span class="gap" id="gap1">
+            <div class="apple-btn" data-val="Я" data-correct="true">Я</div>
+            <div class="apple-btn" data-val="я" data-correct="false">я</div>
+        </span>блуня. 
+        Напевно тому, що біля кожної хати в нас росте хоча б одна 
+        <span class="gap" id="gap2">
+            <div class="apple-btn" data-val="Я" data-correct="false">Я</div>
+            <div class="apple-btn" data-val="я" data-correct="true">я</div>
+        </span>блуня. 
+        Але найбільше їх у нашому саду.
+        <br><br>
+        Можливо через те прізвище в моєї родини — 
+        <span class="gap" id="gap3">
+            <div class="apple-btn" data-val="Я" data-correct="true">Я</div>
+            <div class="apple-btn" data-val="я" data-correct="false">я</div>
+        </span>блуня.
+    </div>
+
+    <svg id="fx-canvas"></svg>
+
+</div>
+
+<script>
+    // Аудіо система для синтезу звуків (тихіше)
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function playSound(type) {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        // Зменшено гучність у всіх звуках (gain.setValueAtTime)
+        if (type === 'click') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, now);
+            osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+            gain.gain.setValueAtTime(0.05, now); // Було 0.5
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (type === 'success') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(523.25, now); // C5
+            osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+            osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+            osc.frequency.setValueAtTime(1046.50, now + 0.3); // C6
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.05, now + 0.1); // Було 0.3
+            gain.gain.setValueAtTime(0.05, now + 0.3);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+            osc.start(now);
+            osc.stop(now + 0.5);
+        } else if (type === 'error') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, now);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.3);
+            gain.gain.setValueAtTime(0.05, now); // Було 0.3
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        } else if (type === 'win') {
+            osc.type = 'square';
+            [440, 554, 659, 880].forEach((freq, i) => {
+                osc.frequency.setValueAtTime(freq, now + i * 0.15);
+            });
+            gain.gain.setValueAtTime(0.05, now); // Було 0.2
+            gain.gain.linearRampToValueAtTime(0, now + 0.8);
+            osc.start(now);
+            osc.stop(now + 0.8);
+        }
+    }
+
+    // Логіка гри
+    const gaps = document.querySelectorAll('.gap');
+    const fxCanvas = document.getElementById('fx-canvas');
+    let solvedCount = 0;
+
+    gaps.forEach(gap => {
+        const apples = gap.querySelectorAll('.apple-btn');
+        
+        apples.forEach(apple => {
+            apple.addEventListener('click', function() {
+                // Якщо цей пропуск вже вирішено, ігноруємо клік
+                if (gap.classList.contains('solved')) return;
+
+                const isCorrect = this.getAttribute('data-correct') === 'true';
+
+                if (isCorrect) {
+                    playSound('success');
+                    gap.classList.add('solved');
+                    
+                    // Змінюємо стиль правильного яблука
+                    this.classList.add('correct-pick');
+                    
+                    // Ховаємо неправильне яблуко
+                    apples.forEach(a => {
+                        if (a !== this) {
+                            a.classList.add('hidden');
+                        }
+                    });
+
+                    solvedCount++;
+                    checkOverallWin();
+
+                } else {
+                    playSound('error');
+                    // Анімація помилки
+                    this.classList.remove('error');
+                    void this.offsetWidth; // Тригер reflow для перезапуску анімації
+                    this.classList.add('error');
+                    
+                    // Прибираємо клас помилки після завершення анімації
+                    setTimeout(() => {
+                        this.classList.remove('error');
+                    }, 400);
+                }
+            });
+        });
+    });
+
+    function checkOverallWin() {
+        if (solvedCount === gaps.length) {
+            setTimeout(() => {
+                playSound('win');
+                createConfetti();
+            }, 500);
+        }
+    }
+
+    // Генерація конфетті з SVG
+    function createConfetti() {
+        const colors = ['#FFD700', '#FF6347', '#32CD32', '#1E90FF', '#FF69B4', '#FFA500'];
+        for(let i = 0; i < 100; i++) {
+            let conf = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            let x = Math.random() * window.innerWidth;
+            let y = -50;
+            let size = Math.random() * 20 + 15;
+            let color = colors[Math.floor(Math.random() * colors.length)];
+            
+            // Малюємо зірочку або кружечок
+            if(Math.random() > 0.5) {
+                conf.setAttribute('d', `M ${x} ${y} l ${size/2} ${size} l -${size} -${size*0.6} l ${size} 0 l -${size} ${size*0.6} z`);
+            } else {
+                conf = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                conf.setAttribute('cx', x);
+                conf.setAttribute('cy', y);
+                conf.setAttribute('r', size/2);
+            }
+            
+            conf.setAttribute('fill', color);
+            fxCanvas.appendChild(conf);
+
+            let duration = Math.random() * 2500 + 2500;
+            let endY = window.innerHeight + 100;
+            let rotation = Math.random() * 720;
+            let sway = (Math.random() - 0.5) * 400;
+
+            conf.animate([
+                { transform: `translate(0, 0) rotate(0deg)` },
+                { transform: `translate(${sway}px, ${endY}px) rotate(${rotation}deg)` }
+            ], {
+                duration: duration,
+                easing: 'cubic-bezier(.37,0,.63,1)',
+                fill: 'forwards'
+            });
+
+            setTimeout(() => {
+                if(conf.parentNode) conf.parentNode.removeChild(conf);
+            }, duration);
+        }
+    }
+</script>
+
+</body>
+</html>
