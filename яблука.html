@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мовленнєва гра - Яблука</title>
+    <style>
+        /* Скидання базових стилів та налаштування шрифтів */
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Складний фон зі стилізованими візерунками */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 200, 0, 0.15) 0%, transparent 50%),
+                linear-gradient(to bottom, #74ebd5, #9face6);
+            overflow: hidden;
+        }
+
+        /* SVG Фон (Дерево, пагорби, сонце) */
+        #background-svg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1; pointer-events: none;
+        }
+
+        /* Ігрова панель — збільшено розміри для більшого тексту */
+        #ui-layer {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 95%; max-width: 1400px;
+            height: 85%; max-height: 900px;
+            background: linear-gradient(135deg, rgba(255, 223, 101, 0.85), rgba(255, 167, 81, 0.95));
+            border-radius: 40px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.4), inset 0 0 30px rgba(255,255,255,0.6);
+            border: 6px solid #ff7b00;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            padding: 40px;
+            background-image: radial-gradient(rgba(255,255,255,0.3) 3px, transparent 3px);
+            background-size: 30px 30px;
+            transition: all 0.3s ease;
+        }
+
+        /* Навігація */
+        #nav-controls {
+            position: absolute;
+            bottom: 30px; right: 30px; left: 30px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 20;
+            pointer-events: none; /* Щоб не блокувати кліки між кнопками */
+        }
+
+        .nav-btn {
+            pointer-events: auto;
+            background: linear-gradient(to bottom, #ff9a44, #fc6076);
+            border: 4px solid #fff;
+            border-radius: 50%;
+            width: 80px; height: 80px;
+            color: white; font-size: 36px; font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            display: flex; justify-content: center; align-items: center;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .nav-btn:hover { transform: scale(1.15); background: linear-gradient(to bottom, #fc6076, #ff9a44); }
+        .nav-btn:active { transform: scale(0.95); }
+
+        /* Контейнер для завдань */
+        #task-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            padding-bottom: 60px; /* Місце для кнопок */
+        }
+
+        /* Значно збільшений шрифт інструкції */
+        .instruction {
+            font-size: 48px;
+            color: #6a11cb;
+            text-shadow: 3px 3px 0px #fff;
+            font-weight: 900;
+            text-align: center;
+            background: linear-gradient(90deg, #fdfbfb 0%, #ebedee 100%);
+            padding: 20px 50px;
+            border-radius: 30px;
+            border: 5px dashed #fc6076;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+        }
+
+        /* Значно збільшені ігрові елементи */
+        .game-item {
+            background: linear-gradient(135deg, #a8ff78 0%, #78ffd6 100%);
+            border: 4px solid #38ef7d;
+            border-radius: 20px;
+            padding: 20px 40px;
+            font-size: 36px;
+            font-weight: 900;
+            color: #0b5345;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #38ef7d;
+            transition: transform 0.1s, box-shadow 0.1s, filter 0.2s;
+            margin: 10px;
+            display: inline-block;
+            text-align: center;
+        }
+        .game-item:active {
+            transform: translateY(8px);
+            box-shadow: 0 0 0 #38ef7d;
+        }
+        .game-item.selected {
+            background: linear-gradient(135deg, #ffd194 0%, #70e1f5 100%);
+            border-color: #00c6ff;
+            box-shadow: 0 8px 0 #00c6ff;
+        }
+        .game-item.wrong {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            border-color: #ff0844;
+            box-shadow: 0 8px 0 #ff0844;
+            animation: shake 0.4s;
+        }
+        .game-item.correct {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            border-color: #f6d365;
+            box-shadow: none;
+            transform: scale(1.05);
+            pointer-events: none;
+            opacity: 0.9;
+            filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.8));
+        }
+
+        /* Контейнери для завдань на впорядкування / з'єднання */
+        .drop-zone {
+            min-height: 120px; width: 100%;
+            background: rgba(0, 0, 0, 0.1);
+            border: 4px dashed #fc6076;
+            border-radius: 30px;
+            display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+            padding: 20px; gap: 15px;
+        }
+
+        .pairs-container {
+            display: flex; width: 100%; justify-content: space-around; gap: 30px;
+        }
+        .pairs-col {
+            display: flex; flex-direction: column; gap: 15px; width: 45%;
+        }
+
+        /* Анімації */
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-15px); }
+            50% { transform: translateX(15px); }
+            75% { transform: translateX(-15px); }
+            100% { transform: translateX(0); }
+        }
+        @keyframes error-flash {
+            0% { box-shadow: 0 20px 50px rgba(0,0,0,0.4), inset 0 0 30px rgba(255,255,255,0.6); border-color: #ff7b00; }
+            50% { box-shadow: 0 20px 50px rgba(255,0,0,0.6), inset 0 0 50px rgba(255,0,0,0.5); border-color: #ff0000; }
+            100% { box-shadow: 0 20px 50px rgba(0,0,0,0.4), inset 0 0 30px rgba(255,255,255,0.6); border-color: #ff7b00; }
+        }
+        .ui-error { animation: error-flash 0.5s ease; }
+
+        /* Стилі для яблучного конфеті */
+        .apple-particle {
+            position: absolute;
+            pointer-events: none;
+            z-index: 100;
+            width: 50px;
+            height: 50px;
+            will-change: transform, opacity;
+        }
+    </style>
+</head>
+<body>
+
+    <svg id="background-svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4facfe" />
+                <stop offset="100%" stop-color="#00f2fe" />
+            </linearGradient>
+            <linearGradient id="hill1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#a8e063" />
+                <stop offset="100%" stop-color="#56ab2f" />
+            </linearGradient>
+            <linearGradient id="hill2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#f2d50f" />
+                <stop offset="100%" stop-color="#da22ff" />
+            </linearGradient>
+            <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#fff" />
+                <stop offset="40%" stop-color="#ffeb3b" />
+                <stop offset="100%" stop-color="#ff9800" />
+            </radialGradient>
+        </defs>
+        
+        <rect width="1000" height="600" fill="url(#sky)" />
+        
+        <g transform="translate(850, 150)">
+            <g>
+                <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="25s" repeatCount="indefinite"/>
+                <path d="M-90,0 L90,0 M0,-90 L0,90 M-65,-65 L65,65 M-65,65 L65,-65" stroke="#ffeb3b" stroke-width="10" stroke-linecap="round" opacity="0.6"/>
+            </g>
+            <circle r="60" fill="url(#sunGrad)" />
+        </g>
+
+        <path d="M 100 150 Q 120 120 150 150 Q 180 130 200 160 Q 220 180 180 190 L 120 190 Q 80 180 100 150" fill="#ffffff" opacity="0.8">
+            <animateTransform attributeName="transform" type="translate" from="-200" to="1200" dur="40s" repeatCount="indefinite"/>
+        </path>
+        <path d="M 400 100 Q 420 70 450 100 Q 480 80 500 110 Q 520 130 480 140 L 420 140 Q 380 130 400 100" fill="#ffffff" opacity="0.6">
+            <animateTransform attributeName="transform" type="translate" from="-500" to="1000" dur="30s" repeatCount="indefinite"/>
+        </path>
+
+        <path d="M 0 450 Q 250 350 500 450 T 1000 400 L 1000 600 L 0 600 Z" fill="url(#hill2)" opacity="0.5" />
+        <path d="M -50 500 Q 300 380 600 520 T 1050 480 L 1050 600 L -50 600 Z" fill="url(#hill1)" />
+
+        <g transform="translate(200, 520)">
+            <path d="M -25,0 C -25,-60 -50,-120 -15,-180 C -40,-240 -60,-300 -50,-360 C 0,-330 25,-240 15,-180 C 40,-120 25,-60 25,0 Z" fill="#5D4037" />
+            <circle cx="-35" cy="-300" r="85" fill="#2E7D32" />
+            <circle cx="50" cy="-330" r="95" fill="#388E3C" />
+            <circle cx="-15" cy="-390" r="110" fill="#4CAF50" />
+            <circle cx="95" cy="-260" r="75" fill="#2E7D32" />
+            <circle cx="-95" cy="-230" r="80" fill="#4CAF50" />
+            
+            <g transform="translate(-50, -330)"><circle cx="0" cy="0" r="15" fill="#E53935"/><path d="M 0,-15 Q 5,-22 10,-18" stroke="#3E2723" stroke-width="3" fill="none"/></g>
+            <g transform="translate(25, -410)"><circle cx="0" cy="0" r="18" fill="#E53935"/><path d="M 0,-18 Q 5,-25 10,-21" stroke="#3E2723" stroke-width="3" fill="none"/></g>
+            <g transform="translate(75, -290)"><circle cx="0" cy="0" r="14" fill="#E53935"/><path d="M 0,-14 Q 5,-21 10,-17" stroke="#3E2723" stroke-width="3" fill="none"/></g>
+            <g transform="translate(-85, -230)"><circle cx="0" cy="0" r="16" fill="#E53935"/><path d="M 0,-16 Q 5,-23 10,-19" stroke="#3E2723" stroke-width="3" fill="none"/></g>
+        </g>
+    </svg>
+
+    <div id="game-container">
+        <div id="ui-layer">
+            <div id="task-container">
+                </div>
+            
+            <div id="nav-controls">
+                <button class="nav-btn" id="btn-prev" onclick="changeLevel(-1)">❮</button>
+                <button class="nav-btn" id="btn-next" onclick="changeLevel(1)">❯</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Аудіосистема (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSuccessSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc1 = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
+            const osc3 = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc1.type = 'triangle'; osc2.type = 'sine'; osc3.type = 'square';
+            osc1.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+            osc1.frequency.exponentialRampToValueAtTime(1046.50, audioCtx.currentTime + 0.4); 
+            osc2.frequency.setValueAtTime(659.25, audioCtx.currentTime); // E5
+            osc2.frequency.exponentialRampToValueAtTime(1318.51, audioCtx.currentTime + 0.4); 
+            osc3.frequency.setValueAtTime(783.99, audioCtx.currentTime); // G5
+            osc3.frequency.exponentialRampToValueAtTime(1567.98, audioCtx.currentTime + 0.4); 
+            
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+            
+            osc1.connect(gain); osc2.connect(gain); osc3.connect(gain); gain.connect(audioCtx.destination);
+            osc1.start(); osc2.start(); osc3.start();
+            osc1.stop(audioCtx.currentTime + 0.8); osc2.stop(audioCtx.currentTime + 0.8); osc3.stop(audioCtx.currentTime + 0.8);
+        }
+
+        function playErrorSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.4);
+            
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+        }
+
+        function playPopSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(900, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // --- Система "Яблучного Конфеті" ---
+        function createAppleConfetti() {
+            const colors = ['#E53935', '#F44336', '#8BC34A', '#CDDC39', '#FFEB3B']; // Різні кольори яблук
+            const particleCount = 40;
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+
+            for (let i = 0; i < particleCount; i++) {
+                const apple = document.createElement('div');
+                apple.className = 'apple-particle';
+                
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                // Деталізоване SVG яблуко
+                apple.innerHTML = `
+                    <svg viewBox="0 0 100 100" width="100%" height="100%">
+                        <path d="M50 20 C20 0 0 30 15 60 C30 90 50 100 50 80 C50 100 70 90 85 60 C100 30 80 0 50 20 Z" fill="${color}" />
+                        <path d="M50 20 Q55 5 65 5" stroke="#3E2723" stroke-width="4" fill="none"/>
+                        <path d="M65 5 Q75 5 70 15 Q60 15 65 5 Z" fill="#4CAF50" />
+                        <path d="M25 40 Q35 25 45 40" stroke="#FFF" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.4"/>
+                    </svg>
+                `;
+                document.body.appendChild(apple);
+
+                // Фізика розльоту
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = 200 + Math.random() * 400;
+                const tx = Math.cos(angle) * velocity;
+                const ty = Math.sin(angle) * velocity - 200; // Трохи вгору
+                const rotation = (Math.random() - 0.5) * 720;
+                const duration = 1000 + Math.random() * 1000;
+
+                apple.style.left = `${cx - 25}px`;
+                apple.style.top = `${cy - 25}px`;
+
+                const animation = apple.animate([
+                    { transform: `translate(0, 0) scale(0.5) rotate(0deg)`, opacity: 1 },
+                    { transform: `translate(${tx}px, ${ty}px) scale(1.2) rotate(${rotation}deg)`, opacity: 1, offset: 0.6 },
+                    { transform: `translate(${tx}px, ${ty + 500}px) scale(1) rotate(${rotation + 180}deg)`, opacity: 0 }
+                ], {
+                    duration: duration,
+                    easing: 'cubic-bezier(.17,.89,.32,1)'
+                });
+
+                animation.onfinish = () => apple.remove();
+            }
+        }
+
+        // --- Управління фідбеком ---
+        const uiLayer = document.getElementById('ui-layer');
+
+        function triggerHappy() {
+            playSuccessSound();
+            createAppleConfetti();
+        }
+
+        function triggerSad() {
+            playErrorSound();
+            uiLayer.classList.add('ui-error');
+            setTimeout(() => uiLayer.classList.remove('ui-error'), 500);
+        }
+
+        // --- Дані для 10 рівнів ---
+        const levels = [
+            { type: 'select', instruction: 'Обери слова, що описують яблуко', items: [
+                { text: 'Солодке', correct: true }, { text: 'Квадратне', correct: false },
+                { text: 'Червоне', correct: true }, { text: 'Пухнасте', correct: false },
+                { text: 'Рум\'яне', correct: true }, { text: 'Смачне', correct: true }
+            ]},
+            { type: 'select', instruction: 'Знайди родичів слова "яблуко"', items: [
+                { text: 'Яблуня', correct: true }, { text: 'Яблучний', correct: true },
+                { text: 'Ящірка', correct: false }, { text: 'Яблучко', correct: true }
+            ]},
+            { type: 'order', instruction: 'Склади речення', 
+              correctOrder: ['На', 'яблуні', 'дозріли', 'червоні', 'яблука.'],
+              shuffled: ['червоні', 'На', 'яблука.', 'дозріли', 'яблуні']
+            },
+            { type: 'single_exclude', instruction: 'Знайди зайве', items: [
+                { text: 'Яблуко', exclude: false }, { text: 'Груша', exclude: false },
+                { text: 'Слива', exclude: false }, { text: 'Огірок', exclude: true }
+            ]},
+            { type: 'pairs', instruction: 'З\'єднай протилежності', pairs: [
+                { a: 'Велике', b: 'Мале' }, { a: 'Солодке', b: 'Кисле' }, { a: 'Тверде', b: 'М\'яке' }
+            ]},
+            { type: 'order', instruction: 'Що за чим?', 
+              correctOrder: ['Насінина', 'Паросток', 'Дерево', 'Квітка', 'Яблуко'],
+              shuffled: ['Дерево', 'Яблуко', 'Насінина', 'Квітка', 'Паросток']
+            },
+            { type: 'pairs', instruction: 'З\'єднай частини', pairs: [
+                { a: 'Яблуку ніде...', b: '...впасти' }, 
+                { a: 'Яблуко розбрату...', b: '...причина сварки' },
+                { a: 'Яблуко від яблуні...', b: '...недалеко падає' }
+            ]},
+            { type: 'select', instruction: 'Обери слова у множині', items: [
+                { text: 'Яблука', correct: true }, { text: 'Яблуко', correct: false },
+                { text: 'Гілки', correct: true }, { text: 'Насіння', correct: false }
+            ]},
+            { type: 'pairs', instruction: 'З чого яке?', pairs: [
+                { a: 'Сік з яблук', b: 'Яблучний' },
+                { a: 'Варення з яблук', b: 'Яблучне' },
+                { a: 'Пиріг з яблук', b: 'Яблучний пиріг' }
+            ]},
+            { type: 'order', instruction: 'Збери прислів\'я', 
+              correctOrder: ['Яке', 'дерево', 'такі', 'й', 'яблука'],
+              shuffled: ['й', 'дерево', 'яблука', 'Яке', 'такі']
+            }
+        ];
+
+        let currentLevel = 0;
+        const taskContainer = document.getElementById('task-container');
+
+        // --- Движок рендерингу рівнів ---
+        function renderLevel() {
+            taskContainer.innerHTML = '';
+            const levelData = levels[currentLevel];
+            
+            const instr = document.createElement('div');
+            instr.className = 'instruction';
+            instr.innerText = levelData.instruction;
+            taskContainer.appendChild(instr);
+
+            if (levelData.type === 'select') renderSelectTask(levelData);
+            if (levelData.type === 'single_exclude') renderSingleExcludeTask(levelData);
+            if (levelData.type === 'order') renderOrderTask(levelData);
+            if (levelData.type === 'pairs') renderPairsTask(levelData);
+
+            document.getElementById('btn-prev').style.opacity = currentLevel === 0 ? '0.3' : '1';
+            document.getElementById('btn-prev').style.pointerEvents = currentLevel === 0 ? 'none' : 'auto';
+            document.getElementById('btn-next').style.opacity = currentLevel === levels.length - 1 ? '0.3' : '1';
+            document.getElementById('btn-next').style.pointerEvents = currentLevel === levels.length - 1 ? 'none' : 'auto';
+        }
+
+        function changeLevel(dir) {
+            playPopSound();
+            currentLevel += dir;
+            if (currentLevel < 0) currentLevel = 0;
+            if (currentLevel >= levels.length) currentLevel = levels.length - 1;
+            renderLevel();
+        }
+
+        // --- Логіка завдань ---
+        function renderSelectTask(data) {
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'flex'; wrapper.style.flexWrap = 'wrap'; wrapper.style.justifyContent = 'center';
+            
+            let correctSelected = 0;
+            const totalCorrect = data.items.filter(i => i.correct).length;
+
+            data.items.sort(() => Math.random() - 0.5).forEach(item => {
+                const btn = document.createElement('div');
+                btn.className = 'game-item';
+                btn.innerText = item.text;
+                btn.onclick = () => {
+                    playPopSound();
+                    if (item.correct) {
+                        if (!btn.classList.contains('correct')) {
+                            btn.classList.add('correct');
+                            correctSelected++;
+                            if (correctSelected === totalCorrect) setTimeout(triggerHappy, 300);
+                        }
+                    } else {
+                        btn.classList.add('wrong');
+                        triggerSad();
+                        setTimeout(() => btn.classList.remove('wrong'), 400);
+                    }
+                };
+                wrapper.appendChild(btn);
+            });
+            taskContainer.appendChild(wrapper);
+        }
+
+        function renderSingleExcludeTask(data) {
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'flex'; wrapper.style.flexWrap = 'wrap'; wrapper.style.justifyContent = 'center';
+            
+            data.items.sort(() => Math.random() - 0.5).forEach(item => {
+                const btn = document.createElement('div');
+                btn.className = 'game-item';
+                btn.innerText = item.text;
+                btn.onclick = () => {
+                    playPopSound();
+                    if (item.exclude) {
+                        btn.classList.add('correct');
+                        triggerHappy();
+                        Array.from(wrapper.children).forEach(c => c.style.pointerEvents = 'none');
+                    } else {
+                        btn.classList.add('wrong');
+                        triggerSad();
+                        setTimeout(() => btn.classList.remove('wrong'), 400);
+                    }
+                };
+                wrapper.appendChild(btn);
+            });
+            taskContainer.appendChild(wrapper);
+        }
+
+        function renderOrderTask(data) {
+            const dropZone = document.createElement('div');
+            dropZone.className = 'drop-zone';
+            
+            const sourceZone = document.createElement('div');
+            sourceZone.style.display = 'flex'; sourceZone.style.flexWrap = 'wrap'; sourceZone.style.justifyContent = 'center';
+            
+            let currentSequence = [];
+
+            data.shuffled.forEach(text => {
+                const btn = document.createElement('div');
+                btn.className = 'game-item';
+                btn.innerText = text;
+                btn.onclick = () => {
+                    playPopSound();
+                    if (btn.parentElement === sourceZone) {
+                        dropZone.appendChild(btn);
+                        currentSequence.push(text);
+                    } else {
+                        sourceZone.appendChild(btn);
+                        currentSequence = currentSequence.filter(t => t !== text);
+                    }
+                    
+                    if (currentSequence.length === data.correctOrder.length) {
+                        let isCorrect = currentSequence.every((val, index) => val === data.correctOrder[index]);
+                        if (isCorrect) {
+                            Array.from(dropZone.children).forEach(c => c.classList.add('correct'));
+                            triggerHappy();
+                        } else {
+                            triggerSad();
+                            setTimeout(() => {
+                                Array.from(dropZone.children).forEach(c => {
+                                    c.classList.add('wrong');
+                                    setTimeout(() => { c.classList.remove('wrong'); sourceZone.appendChild(c); }, 400);
+                                });
+                                currentSequence = [];
+                            }, 500);
+                        }
+                    }
+                };
+                sourceZone.appendChild(btn);
+            });
+            taskContainer.appendChild(dropZone);
+            taskContainer.appendChild(sourceZone);
+        }
+
+        function renderPairsTask(data) {
+            const container = document.createElement('div');
+            container.className = 'pairs-container';
+            
+            const colA = document.createElement('div'); colA.className = 'pairs-col';
+            const colB = document.createElement('div'); colB.className = 'pairs-col';
+            
+            let selectedA = null;
+            let selectedB = null;
+            let pairsFound = 0;
+
+            const arrA = data.pairs.map(p => ({text: p.a, id: p.a}));
+            const arrB = data.pairs.map(p => ({text: p.b, id: p.a}));
+            
+            arrA.sort(() => Math.random() - 0.5);
+            arrB.sort(() => Math.random() - 0.5);
+
+            function checkMatch() {
+                if (selectedA && selectedB) {
+                    if (selectedA.dataset.id === selectedB.dataset.id) {
+                        selectedA.classList.remove('selected'); selectedB.classList.remove('selected');
+                        selectedA.classList.add('correct'); selectedB.classList.add('correct');
+                        selectedA = null; selectedB = null;
+                        pairsFound++;
+                        if (pairsFound === data.pairs.length) {
+                            triggerHappy();
+                        } else {
+                            playSuccessSound(); // Проміжний звук успіху
+                        }
+                    } else {
+                        selectedA.classList.remove('selected'); selectedB.classList.remove('selected');
+                        selectedA.classList.add('wrong'); selectedB.classList.add('wrong');
+                        triggerSad();
+                        const tempA = selectedA, tempB = selectedB;
+                        setTimeout(() => { tempA.classList.remove('wrong'); tempB.classList.remove('wrong'); }, 400);
+                        selectedA = null; selectedB = null;
+                    }
+                }
+            }
+
+            arrA.forEach(item => {
+                const btn = document.createElement('div'); btn.className = 'game-item'; btn.innerText = item.text; btn.dataset.id = item.id;
+                btn.onclick = () => { if (btn.classList.contains('correct')) return; playPopSound(); if(selectedA) selectedA.classList.remove('selected'); selectedA = btn; btn.classList.add('selected'); checkMatch(); };
+                colA.appendChild(btn);
+            });
+            arrB.forEach(item => {
+                const btn = document.createElement('div'); btn.className = 'game-item'; btn.innerText = item.text; btn.dataset.id = item.id;
+                btn.onclick = () => { if (btn.classList.contains('correct')) return; playPopSound(); if(selectedB) selectedB.classList.remove('selected'); selectedB = btn; btn.classList.add('selected'); checkMatch(); };
+                colB.appendChild(btn);
+            });
+
+            container.appendChild(colA);
+            container.appendChild(colB);
+            taskContainer.appendChild(container);
+        }
+
+        renderLevel();
+
+        document.body.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }, { once: true });
+
+    </script>
+</body>
+</html>
