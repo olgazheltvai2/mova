@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Інтерактивний Слайдер</title>
+    <style>
+        /* Налаштування простору: темний фон, щоб акцентувати увагу на картинках */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0a0a0a;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            perspective: 2000px; /* Перспектива для 3D-перегортання */
+        }
+
+        #game-view {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            transform-style: preserve-3d;
+        }
+
+        /* 3D-Стилізація слайдів для ефекту перегортання */
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0;
+            backface-visibility: hidden;
+            transform-origin: center center;
+            transition: transform 1s cubic-bezier(0.645, 0.045, 0.355, 1), 
+                        opacity 1s cubic-bezier(0.645, 0.045, 0.355, 1);
+            pointer-events: none;
+        }
+
+        /* Активний слайд перед очима */
+        .slide.active {
+            opacity: 1;
+            transform: rotateX(0deg) rotateY(0deg) scale(1) translateZ(0);
+            z-index: 2;
+        }
+
+        /* Стани для анімації 3D-перегортання */
+        .slide.prev-out {
+            transform: rotateY(-90deg) scale(0.8) translateZ(-200px);
+            opacity: 0;
+            z-index: 1;
+        }
+
+        .slide.next-out {
+            transform: rotateY(90deg) scale(0.8) translateZ(-200px);
+            opacity: 0;
+            z-index: 1;
+        }
+
+        .slide.prev-in {
+            transform: rotateY(90deg) scale(0.8) translateZ(-200px);
+            opacity: 0;
+        }
+
+        .slide.next-in {
+            transform: rotateY(-90deg) scale(0.8) translateZ(-200px);
+            opacity: 0;
+        }
+
+        /* Панель керування: тепер кнопка перемоги завжди по центру */
+        #ui-layer {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            z-index: 1000;
+        }
+
+        /* Мінімалістичні скляні кнопки */
+        .control-btn {
+            background: rgba(30, 30, 30, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            backdrop-filter: blur(10px);
+            outline: none;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .control-btn svg {
+            width: 28px;
+            height: 28px;
+            fill: #ffffff;
+            transition: fill 0.3s;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: scale(1.15) translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.7);
+            box-shadow: 0 15px 25px rgba(0,0,0,0.5);
+        }
+
+        /* Кнопка ПЕРЕМОГА - завжди яскрава та активна */
+        #win-trigger {
+            background: radial-gradient(circle, rgba(255,215,0,0.3) 0%, rgba(255,140,0,0.1) 100%);
+            border: 2px solid rgba(255, 215, 0, 0.6);
+            width: 75px;
+            height: 75px;
+        }
+
+        #win-trigger svg {
+            width: 38px;
+            height: 38px;
+            fill: #FFD700;
+            filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.8));
+        }
+
+        #win-trigger:hover {
+            background: radial-gradient(circle, rgba(255,215,0,0.5) 0%, rgba(255,140,0,0.2) 100%);
+            transform: scale(1.2) rotate(15deg);
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+        }
+
+        /* Шаховий порядок для кнопок, щоб зберігати розміщення */
+        #nav-back-container { width: 60px; }
+        #nav-next-container { width: 60px; }
+
+        /* Контейнер для вибухового конфетті */
+        #fx-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 500;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-view">
+        </div>
+
+    <div id="fx-canvas"></div>
+
+    <div id="ui-layer">
+        <div id="nav-back-container">
+            <button id="nav-back" class="control-btn" style="visibility: hidden;">
+                <svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg>
+            </button>
+        </div>
+
+        <button id="win-trigger" class="control-btn">
+            <svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27z"/></svg>
+        </button>
+
+        <div id="nav-next-container">
+            <button id="nav-next" class="control-btn">
+                <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Ініціалізація та керування слайдами (3D перегортання)
+         */
+        const slidesCount = 10;
+        let currentIdx = 0;
+        const view = document.getElementById('game-view');
+        const fxLayer = document.getElementById('fx-canvas');
+        const btnBack = document.getElementById('nav-back');
+        const btnNext = document.getElementById('nav-next');
+        const btnWin = document.getElementById('win-trigger');
+        
+        const slides = [];
+
+        // Створюємо зображення та додаємо у DOM
+        for (let i = 1; i <= slidesCount; i++) {
+            const img = document.createElement('img');
+            img.src = `${i}.webp`;
+            img.className = 'slide';
+            
+            if (i === 1) {
+                img.classList.add('active');
+            } else {
+                img.classList.add('next-out'); // Всі наступні чекають праворуч у 3D просторі
+            }
+            
+            view.appendChild(img);
+            slides.push(img);
+        }
+
+        // Функція зміни слайда (повертаємо 3D-перегортання)
+        function goToSlide(oldIdx, newIdx, direction) {
+            const oldSlide = slides[oldIdx];
+            const newSlide = slides[newIdx];
+
+            // Скидаємо класи для чистого застосування анімації
+            oldSlide.className = 'slide';
+            newSlide.className = 'slide';
+
+            // Примусовий рефлоу браузера
+            void oldSlide.offsetWidth;
+            void newSlide.offsetWidth;
+
+            if (direction === 'next') {
+                oldSlide.classList.add('prev-out'); // Старий йде вліво-назад
+                newSlide.classList.add('next-in');  // Новий з'являється справа-спереду
+                
+                requestAnimationFrame(() => {
+                    newSlide.classList.remove('next-in');
+                    newSlide.classList.add('active');
+                });
+            } else {
+                oldSlide.classList.add('next-out'); // Старий йде вправо-назад
+                newSlide.classList.add('prev-in');  // Новий з'являється зліва-спереду
+                
+                requestAnimationFrame(() => {
+                    newSlide.classList.remove('prev-in');
+                    newSlide.classList.add('active');
+                });
+            }
+
+            currentIdx = newIdx;
+            updateUI();
+        }
+
+        // Оновлюємо видимість кнопок "Далі" / "Назад"
+        function updateUI() {
+            btnBack.style.visibility = (currentIdx === 0) ? 'hidden' : 'visible';
+            btnNext.style.visibility = (currentIdx === slidesCount - 1) ? 'hidden' : 'visible';
+        }
+
+        // Навігація
+        btnNext.onclick = () => {
+            if (currentIdx < slidesCount - 1) goToSlide(currentIdx, currentIdx + 1, 'next');
+        };
+
+        btnBack.onclick = () => {
+            if (currentIdx > 0) goToSlide(currentIdx, currentIdx - 1, 'prev');
+        };
+
+        /**
+         * АКТИВНЕ ВИБУХОВЕ КОНФЕТТІ (Складні SVG)
+         */
+        function launchActiveConfetti() {
+            const colors = ['#FFD700', '#FF3366', '#00E5FF', '#7FFF00', '#FF00FF', '#FFA500'];
+            const count = 120; // Більше частинок
+            
+            // Центр для вибуху (від кнопки "Перемога")
+            const originX = 50; 
+            const originY = 90; 
+
+            for (let i = 0; i < count; i++) {
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                const size = 15 + Math.random() * 35;
+                
+                svg.setAttribute("width", size);
+                svg.setAttribute("height", size);
+                svg.style.position = "absolute";
+                svg.style.left = `${originX}vw`;
+                svg.style.top = `${originY}vh`;
+                svg.style.overflow = "visible";
+
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const shapeType = Math.floor(Math.random() * 3);
+                
+                let shape;
+                if (shapeType === 0) {
+                    // Багатокутна зірка
+                    shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    shape.setAttribute("d", "M25 0 L32 15 L48 15 L35 25 L40 40 L25 30 L10 40 L15 25 L2 15 L18 15 Z");
+                    shape.setAttribute("transform", `scale(${size/50})`);
+                    shape.setAttribute("fill", color);
+                } else if (shapeType === 1) {
+                    // Закручена стрічка
+                    shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    shape.setAttribute("d", "M0 10 Q 20 0, 25 25 T 50 40");
+                    shape.setAttribute("fill", "none");
+                    shape.setAttribute("stroke", color);
+                    shape.setAttribute("stroke-width", "6");
+                    shape.setAttribute("stroke-linecap", "round");
+                    shape.setAttribute("transform", `scale(${size/50})`);
+                } else {
+                    // Шестикутник з отвором
+                    shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    shape.setAttribute("d", "M25 0 L46 12 L46 37 L25 50 L3 37 L3 12 Z M25 15 L35 21 L35 32 L25 38 L15 32 L15 21 Z");
+                    shape.setAttribute("fill", color);
+                    shape.setAttribute("transform", `scale(${size/50})`);
+                }
+
+                svg.appendChild(shape);
+                fxLayer.appendChild(svg);
+
+                // Фізика вибуху (Web Animations API)
+                const angle = (Math.random() * Math.PI) + Math.PI; // Напрямок вгору
+                const velocity = 40 + Math.random() * 80; // Швидкість вильоту
+                
+                // Розрахунок кінцевої точки після вибуху (парабула)
+                const endX = originX + Math.cos(angle) * velocity;
+                const peakY = originY - (Math.random() * 60 + 40); // Точка зависання
+                
+                const rotX = Math.random() * 720;
+                const rotY = Math.random() * 720;
+                const rotZ = Math.random() * 720;
+
+                const anim = svg.animate([
+                    // Старт з центру екрану внизу
+                    { transform: `translate(-50%, -50%) translate3d(0, 0, 0) rotateX(0) rotateY(0) rotateZ(0)`, opacity: 1, offset: 0 },
+                    // Точка злету (вибух вгору та в сторони)
+                    { transform: `translate(-50%, -50%) translate3d(${(endX - originX)}vw, ${(peakY - originY)}vh, 0) rotateX(${rotX/2}deg) rotateY(${rotY/2}deg) rotateZ(${rotZ/2}deg)`, opacity: 1, offset: 0.4 },
+                    // Падіння вниз
+                    { transform: `translate(-50%, -50%) translate3d(${(endX - originX) + (Math.random()*20-10)}vw, 120vh, 0) rotateX(${rotX}deg) rotateY(${rotY}deg) rotateZ(${rotZ}deg)`, opacity: 0, offset: 1 }
+                ], {
+                    duration: 3000 + Math.random() * 2000,
+                    easing: 'cubic-bezier(0.25, 1, 0.5, 1)' // Швидкий старт, плавне уповільнення
+                });
+
+                anim.onfinish = () => svg.remove();
+            }
+        }
+
+        /**
+         * МЕЛОДІЙНИЙ ТА ТИХИЙ ЗВУК ПЕРЕМОГИ (Комбінація звуків / Арпеджіо)
+         */
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playMelodicVictory() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            // Красивий акорд: C Maj 9 (C5, E5, G5, B5, D6)
+            const notes = [523.25, 659.25, 783.99, 987.77, 1174.66];
+            const now = audioCtx.currentTime;
+            
+            notes.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                // Комбінуємо різні тембри для "чарівного" звучання
+                osc.type = index % 2 === 0 ? 'sine' : 'triangle';
+                osc.frequency.value = freq;
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                // Зміщення у часі для створення арпеджіо (переливання)
+                const startTime = now + (index * 0.08); 
+                
+                // Дуже тихе звучання (максимум 0.03 на кожну ноту)
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.03, startTime + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 2.0); // Довге плавне загасання
+                
+                osc.start(startTime);
+                osc.stop(startTime + 2.0);
+            });
+        }
+
+        // Обробник кнопки "Перемога"
+        btnWin.onclick = () => {
+            playMelodicVictory();
+            launchActiveConfetti();
+        };
+
+    </script>
+</body>
+</html>
