@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game</title>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Nunito:wght@800&display=swap" rel="stylesheet">
+    <style>
+        /* Скидання стилів та налаштування повноекранного режиму */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #0a192f;
+            user-select: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Nunito', sans-serif;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Складний анімований SVG фон (Таємничий ліс) */
+        #bg-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Анімації для фону */
+        @keyframes sway {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(2deg); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); opacity: 0.5; }
+            50% { transform: translateY(-20px); opacity: 1; }
+        }
+        .leaf { transform-origin: bottom center; animation: sway 4s infinite ease-in-out; }
+        .firefly { animation: float 3s infinite ease-in-out; }
+
+        /* Ігрова дошка. Жодних білих кольорів, стилізована під магічний сувій/камінь */
+        #board {
+            position: relative;
+            z-index: 10;
+            width: 90%;
+            max-width: 1400px;
+            background: linear-gradient(135deg, #6a1b9a, #4a148c);
+            border-radius: 40px;
+            padding: 50px 40px;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.7), inset 0 0 0 12px rgba(255,255,255,0.15);
+            border: 6px solid #ab47bc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.4s;
+        }
+
+        /* Декоративний візерунок на дошці */
+        #board::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.05) 75%, rgba(255,255,255,0.05)), 
+                              linear-gradient(45deg, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.05) 75%, rgba(255,255,255,0.05));
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 30px;
+            border-radius: 35px;
+            pointer-events: none;
+        }
+
+        /* Контейнер для тексту. Дозволяє перенос слів */
+        #text-container {
+            color: #fff3e0;
+            text-align: center;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 2;
+            min-height: 300px;
+            padding: 20px;
+        }
+
+        /* Кожне слово (як правильне, так і з помилкою) виділяється окремо */
+        .word {
+            cursor: pointer;
+            padding: 8px 18px;
+            margin: 8px 6px;
+            border-radius: 20px;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            display: inline-block;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+
+        .word:hover {
+            background-color: rgba(255, 213, 79, 0.3);
+            transform: scale(1.1) translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.3);
+            color: #ffe082;
+        }
+
+        /* Знайдена помилка */
+        .word.found {
+            color: #1b5e20;
+            background-color: #69f0ae;
+            pointer-events: none;
+            animation: pop 0.6s ease-out;
+            text-shadow: none;
+            transform: scale(1.15);
+            box-shadow: 0 0 20px rgba(105, 240, 174, 0.8);
+        }
+
+        /* Клік по правильному слову */
+        .word.wrong-click {
+            animation: shake 0.4s;
+            background-color: #ff5252;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255, 82, 82, 0.8);
+        }
+
+        /* Розділові знаки */
+        .punctuation {
+            display: inline-block;
+            margin: 0 2px;
+            opacity: 0.8;
+        }
+
+        /* ====== РЕЖИМИ ШРИФТІВ ====== */
+        /* Друкований: великий та розбірливий */
+        .mode-print #text-container { 
+            font-family: 'Nunito', sans-serif; 
+            font-size: 55px; 
+            line-height: 1.6;
+        }
+        /* Прописний: ДУЖЕ великий, щоб імітувати дошку */
+        .mode-cursive #text-container { 
+            font-family: 'Caveat', cursive; 
+            font-size: 110px; /* Значно збільшено! */
+            line-height: 1.2;
+            padding-top: 10px;
+        }
+        /* Відступи для слів у курсиві, щоб вони не налізали одне на одне */
+        .mode-cursive .word {
+            padding: 0px 20px;
+            margin: 15px 10px;
+            border-radius: 30px;
+        }
+
+        /* Верхня панель (перемикач шрифтів і лічильник) */
+        #top-bar {
+            position: absolute;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            display: flex;
+            gap: 60px;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 50px;
+            border-radius: 60px;
+            backdrop-filter: blur(15px);
+            border: 2px solid rgba(255,255,255,0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        /* Перемикач шрифту */
+        #font-toggle {
+            cursor: pointer;
+            width: 110px;
+            height: 54px;
+            background: #26a69a;
+            border-radius: 27px;
+            position: relative;
+            box-shadow: inset 0 5px 10px rgba(0,0,0,0.6);
+            transition: background 0.4s;
+        }
+
+        #toggle-thumb {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: 44px;
+            height: 44px;
+            background: #fff;
+            border-radius: 50%;
+            transition: 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            color: #26a69a;
+            font-size: 24px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+        }
+
+        .cursive-active #font-toggle { background: #ec407a; }
+        .cursive-active #toggle-thumb { 
+            left: 61px; 
+            color: #ec407a; 
+            font-family: 'Caveat', cursive; 
+            font-size: 34px; 
+            padding-bottom: 5px;
+        }
+
+        /* Лічильник помилок (магічні сфери) */
+        #counter {
+            display: flex;
+            gap: 15px;
+        }
+
+        .mistake-gem {
+            width: 35px;
+            height: 35px;
+            background: #37474f;
+            border-radius: 50%;
+            border: 3px solid #546e7a;
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.9);
+        }
+
+        .mistake-gem.active {
+            background: radial-gradient(circle, #ffeb3b, #f57f17);
+            border-color: #fff;
+            box-shadow: 0 0 25px #ffeb3b, inset 0 0 10px #fff;
+            transform: scale(1.4);
+        }
+
+        /* Мінімалістичні навігаційні кнопки */
+        .nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 80px;
+            height: 80px;
+            background: rgba(255,255,255,0.1);
+            border: 3px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 20;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover { 
+            background: rgba(255,255,255,0.3); 
+            border-color: #fff;
+            transform: translateY(-50%) scale(1.15); 
+            box-shadow: 0 0 30px rgba(255,255,255,0.4);
+        }
+        .nav-btn:active { transform: translateY(-50%) scale(0.9); }
+        
+        #btn-prev { left: 40px; }
+        #btn-next { right: 40px; }
+
+        .nav-arrow {
+            fill: #fff;
+            width: 45px;
+            height: 45px;
+        }
+
+        /* Анімації */
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.4) rotate(-3deg); }
+            100% { transform: scale(1.15) rotate(0deg); }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-15px) rotate(-3deg); }
+            40%, 80% { transform: translateX(15px) rotate(3deg); }
+        }
+
+        @keyframes pulseBoard {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.02); filter: brightness(1.3); box-shadow: 0 30px 100px rgba(255,215,0,0.8), inset 0 0 0 15px rgba(255,255,255,0.4); border-color: #ffd54f; }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+
+        .level-complete {
+            animation: pulseBoard 1.5s ease-out;
+        }
+
+        /* Частинки */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            z-index: 100;
+            border-radius: 50%;
+        }
+
+        /* Прогрес бар рівнів (внизу) */
+        #level-indicator {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 20;
+        }
+
+        .dot {
+            width: 16px;
+            height: 16px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            transition: 0.4s;
+            border: 2px solid transparent;
+        }
+        
+        .dot.active {
+            background: #00e676;
+            transform: scale(1.5);
+            border-color: #fff;
+            box-shadow: 0 0 15px #00e676;
+        }
+    </style>
+</head>
+<body class="mode-print">
+
+    <svg id="bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#020024" />
+                <stop offset="50%" stop-color="#090979" />
+                <stop offset="100%" stop-color="#00d4ff" />
+            </linearGradient>
+            <linearGradient id="treeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#1a237e" />
+                <stop offset="100%" stop-color="#311b92" />
+            </linearGradient>
+            <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ccff90" stop-opacity="1" />
+                <stop offset="40%" stop-color="#64dd17" stop-opacity="0.8" />
+                <stop offset="100%" stop-color="#64dd17" stop-opacity="0" />
+            </radialGradient>
+        </defs>
+
+        <rect width="1920" height="1080" fill="url(#skyGrad)" />
+        
+        <path d="M-100,1080 Q100,500 300,1080 Z" fill="#0d47a1" opacity="0.6" class="leaf" />
+        <path d="M1600,1080 Q1750,400 2000,1080 Z" fill="#0d47a1" opacity="0.6" class="leaf" style="animation-delay: 1s;" />
+        <path d="M800,1080 Q960,600 1100,1080 Z" fill="#1565c0" opacity="0.4" class="leaf" style="animation-delay: 2s;" />
+
+        <path d="M0,0 Q150,200 100,1080 L0,1080 Z" fill="url(#treeGrad)" />
+        <path d="M1920,0 Q1750,300 1800,1080 L1920,1080 Z" fill="url(#treeGrad)" />
+        
+        <path d="M0,0 Q400,250 800,0 Z" fill="#00838f" opacity="0.8" class="leaf" />
+        <path d="M1100,0 Q1500,300 1920,0 Z" fill="#00838f" opacity="0.8" class="leaf" style="animation-delay: 1.5s;" />
+
+        <circle cx="400" cy="800" r="15" fill="url(#glow)" class="firefly" style="animation-delay: 0s;" />
+        <circle cx="1500" cy="700" r="12" fill="url(#glow)" class="firefly" style="animation-delay: 0.5s;" />
+        <circle cx="200" cy="300" r="18" fill="url(#glow)" class="firefly" style="animation-delay: 1.2s;" />
+        <circle cx="1700" cy="200" r="10" fill="url(#glow)" class="firefly" style="animation-delay: 2.1s;" />
+        <circle cx="960" cy="150" r="20" fill="url(#glow)" class="firefly" style="animation-delay: 0.8s;" />
+    </svg>
+
+    <div id="game-container">
+        <div id="top-bar">
+            <div id="font-toggle">
+                <div id="toggle-thumb">А</div>
+            </div>
+            <div id="counter">
+                <div class="mistake-gem"></div>
+                <div class="mistake-gem"></div>
+                <div class="mistake-gem"></div>
+                <div class="mistake-gem"></div>
+            </div>
+        </div>
+
+        <div id="board">
+            <div id="text-container"></div>
+        </div>
+
+        <div id="btn-prev" class="nav-btn">
+            <svg class="nav-arrow" viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+        </div>
+        <div id="btn-next" class="nav-btn">
+            <svg class="nav-arrow" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </div>
+
+        <div id="level-indicator"></div>
+    </div>
+
+    <script>
+        // --- ДАНІ РІВНІВ ---
+        // Використовуємо спеціальний синтаксис: [[слово_з_помилкою|правильне_слово]]
+        // Всі інші слова автоматично стають окремими правильними (клікабельними) елементами.
+        // У кожному тексті РІВНО 4 помилки, охоплено правила 1-3 класів.
+        const levelStrings = [
+            // 1. Велика буква, префікс з/с, дзвінкі/глухі, апостроф.
+            "[[надія|Надія]] [[зпекла|спекла]] смачний [[пиріх|пиріг]]. Вона [[зїла|з'їла]] шматочок.",
+            
+            // 2. Ненаголошені Е/И, прийменники, префікси, частка "не".
+            "[[Білчіня|Білченя]] сидить [[нагілці|на гілці]]. Воно [[зховало|сховало]] горішок, щоб [[низнайшли|не знайшли]].",
+            
+            // 3. Велика буква, апостроф, префікс роз-, буквосполучення дж/дз.
+            "[[на|На]] [[подвірі|подвір'ї]] дуже весело. Діти [[росповіли|розповіли]] казку про [[бжолу|бджолу]].",
+            
+            // 4. М'який знак, власні назви, частка "не", прийменники.
+            "Мій [[дідус|дідусь]] живе у [[києві|Києві]]. Він [[нилюбить|не любить]] сидіти [[безділа|без діла]].",
+            
+            // 5. Власні назви, префікс роз-, подовження приголосних.
+            "[[хлопчик|Хлопчик]] Тарас [[росмалював|розмалював]] свій зошит. Він забув правило про [[подовжиння|подовження]] [[волося|волосся]].",
+            
+            // 6. Велика буква, префікс с-, написання разом/окремо, орфограми.
+            "[[маленька|Маленька]] кішка [[зпригнула|спригнула]] з ліжка. Вона [[по бігла|побігла]] шукати [[мишю|мишу]].",
+            
+            // 7. Прийменники, подовження, ЧК/ЧН.
+            "[[улісі|У лісі]] росте красиве [[гіля|гілля]]. Там можна [[побачіти|побачити]] маленького [[їжачька|їжачка]].",
+            
+            // 8. Велика буква, дієслова на -ться, префікс роз-, подовження.
+            "[[дівчинка|Дівчинка]] Оксана [[вмиваєтся|вмивається]] водою. Вона [[рошчісує|розчісує]] своє довге [[волося|волосся]].",
+            
+            // 9. Префікс без-, апостроф, частка не, дз/дж.
+            "Сьогодні [[бесхмарна|безхмарна]] погода. [[соловї|Солов'ї]] [[ниспівають|не співають]] [[звінких|дзвінких]] пісень.",
+            
+            // 10. М'який знак/велика літера, Е/И, апостроф, дзвінкі/глухі.
+            "[[джміл|Джміль]] сів на [[чирвону|червону]] квітку. Він [[пьє|п'є]] солодкий [[сіх|сік]].",
+            
+            // 11. Власні назви, префікс с-, Е/И, прийменники/префікси.
+            "Моя бабуся живе у [[миколаєві|Миколаєві]]. Вона [[зпекла|спекла]] смачний [[піріг|пиріг]] та [[на лила|налила]] чай.",
+            
+            // 12. Прийменники, Е/И, префікси/написання, подовження.
+            "[[Настолі|На столі]] лежить [[цикава|цікава]] книга. Її [[на писав|написав]] відомий [[письменик|письменник]].",
+            
+            // 13. Префікс з/с, Е/И, дієслова на -ться.
+            "Ми [[сшили|зшили]] новий одяг для ляльки. [[типер|Тепер]] вона щиро [[всміхаєтся|всміхається]], як [[соничко|сонечко]].",
+            
+            // 14. Велика буква (початок), дзвінкі/глухі, Е/И.
+            "[[взимку|Взимку]] падає пухнастий [[сніх|сніг]]. [[діти|Діти]] ліплять великого [[сніговіка|сніговика]].",
+            
+            // 15. Велика буква, є/ї, м'який знак, написання окремо.
+            "[[восени|Восени]] жовте листя [[опадае|опадає]]. [[ведмід|Ведмідь]] заліз у [[свійбарліг|свій барліг]]."
+        ];
+
+        let currentLevel = 0;
+        let mistakesFound = 0;
+        let isCursive = false;
+
+        // --- АУДІО СИСТЕМА (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'correct') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(1400, now + 0.15);
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.7, now + 0.05);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'wrong') {
+                osc.type = 'square'; // Більш різкий звук для помилки
+                osc.frequency.setValueAtTime(250, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.25);
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.3, now + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            } else if (type === 'win') {
+                // Святковий акорд
+                const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5
+                notes.forEach((freq, i) => {
+                    const oscWin = audioCtx.createOscillator();
+                    const gainWin = audioCtx.createGain();
+                    oscWin.type = 'triangle';
+                    oscWin.connect(gainWin);
+                    gainWin.connect(audioCtx.destination);
+                    const time = now + i * 0.1;
+                    oscWin.frequency.setValueAtTime(freq, time);
+                    gainWin.gain.setValueAtTime(0, time);
+                    gainWin.gain.linearRampToValueAtTime(0.5, time + 0.05);
+                    gainWin.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+                    oscWin.start(time);
+                    oscWin.stop(time + 0.5);
+                });
+            }
+        }
+
+        // --- ВІЗУАЛЬНІ ЕФЕКТИ (Частинки) ---
+        function createParticles(x, y, isWin = false) {
+            const count = isWin ? 50 : 20;
+            for (let i = 0; i < count; i++) {
+                const particle = document.createElement('div');
+                particle.classList.add('particle');
+                document.body.appendChild(particle);
+
+                const size = Math.random() * (isWin ? 25 : 15) + 8;
+                const colors = ['#ffeb3b', '#69f0ae', '#40c4ff', '#ff5252', '#e040fb', '#ff9800'];
+                
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+                particle.style.left = `${x}px`;
+                particle.style.top = `${y}px`;
+                particle.style.boxShadow = `0 0 ${size/2}px ${particle.style.background}`;
+
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = Math.random() * (isWin ? 200 : 120) + 50;
+                const dx = Math.cos(angle) * velocity;
+                const dy = Math.sin(angle) * velocity;
+
+                particle.animate([
+                    { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
+                    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0)`, opacity: 0 }
+                ], {
+                    duration: (isWin ? 1200 : 800) + Math.random() * 500,
+                    easing: 'cubic-bezier(0.1, 0.8, 0.3, 1)'
+                }).onfinish = () => particle.remove();
+            }
+        }
+
+        // --- ЛОГІКА ГРИ ТА ПАРСЕР ---
+        const container = document.getElementById('text-container');
+        const gems = document.querySelectorAll('.mistake-gem');
+        const indicatorDiv = document.getElementById('level-indicator');
+        const body = document.body;
+
+        // Генерація прогрес-бару
+        for (let i = 0; i < levelStrings.length; i++) {
+            const dot = document.createElement('div');
+            dot.classList.add('dot');
+            indicatorDiv.appendChild(dot);
+        }
+        const dots = document.querySelectorAll('.dot');
+
+        function loadLevel() {
+            container.innerHTML = '';
+            mistakesFound = 0;
+            gems.forEach(gem => gem.classList.remove('active'));
+            document.getElementById('board').classList.remove('level-complete');
+            
+            // Оновлення індикатора
+            dots.forEach((dot, index) => {
+                if (index === currentLevel) dot.classList.add('active');
+                else dot.classList.remove('active');
+            });
+            
+            const rawText = levelStrings[currentLevel];
+            
+            // Парсер: Розділяє текст на помилки, правильні слова та розділові знаки.
+            // Регулярний вираз шукає: 1) [[помилка|правильно]], 2) слова (літери, апостроф), 3) все інше (пробіли, коми)
+            const pattern = /\[\[(.*?)\|(.*?)\]\]|([А-Яа-яІіЇїЄєҐґ']+)|([^А-Яа-яІіЇїЄєҐґ'\[\]]+)/g;
+            let match;
+
+            while ((match = pattern.exec(rawText)) !== null) {
+                if (match[1]) {
+                    // Це слово з помилкою
+                    const wrongWord = match[1];
+                    const correctWord = match[2];
+                    
+                    const span = document.createElement('span');
+                    span.classList.add('word');
+                    span.textContent = wrongWord;
+                    span.dataset.correct = correctWord;
+                    
+                    span.addEventListener('click', function(e) {
+                        if (!this.classList.contains('found')) {
+                            this.classList.add('found');
+                            this.textContent = this.dataset.correct;
+                            playSound('correct');
+                            createParticles(e.clientX, e.clientY);
+                            mistakesFound++;
+                            gems[mistakesFound - 1].classList.add('active');
+                            if (mistakesFound === 4) setTimeout(winLevel, 700);
+                        }
+                    });
+                    container.appendChild(span);
+                } else if (match[3]) {
+                    // Це звичайне правильне слово
+                    const wordText = match[3];
+                    const span = document.createElement('span');
+                    span.classList.add('word');
+                    span.textContent = wordText;
+                    
+                    span.addEventListener('click', function() {
+                        if (!this.classList.contains('wrong-click') && !this.classList.contains('found')) {
+                            this.classList.add('wrong-click');
+                            playSound('wrong');
+                            setTimeout(() => this.classList.remove('wrong-click'), 400);
+                        }
+                    });
+                    container.appendChild(span);
+                } else if (match[4]) {
+                    // Це пробіли або розділові знаки
+                    const punctText = match[4];
+                    // Якщо це просто пробіл, залишаємо його як текстовий вузол
+                    if (punctText === ' ') {
+                        container.appendChild(document.createTextNode(' '));
+                    } else {
+                        const span = document.createElement('span');
+                        span.classList.add('punctuation');
+                        span.textContent = punctText;
+                        container.appendChild(span);
+                    }
+                }
+            }
+        }
+
+        function winLevel() {
+            playSound('win');
+            document.getElementById('board').classList.add('level-complete');
+            
+            // Грандіозний салют
+            const rect = document.getElementById('board').getBoundingClientRect();
+            createParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, true);
+            setTimeout(() => createParticles(rect.left + rect.width * 0.2, rect.top + rect.height * 0.3, true), 200);
+            setTimeout(() => createParticles(rect.left + rect.width * 0.8, rect.top + rect.height * 0.7, true), 400);
+
+            // Перехід на наступний рівень
+            setTimeout(() => {
+                if (currentLevel < levelStrings.length - 1) {
+                    currentLevel++;
+                } else {
+                    currentLevel = 0; // Зациклення після 15 рівня
+                }
+                loadLevel();
+            }, 2500);
+        }
+
+        // --- ВЗАЄМОДІЯ З ІНТЕРФЕЙСОМ ---
+        
+        // Перемикач шрифту
+        document.getElementById('font-toggle').addEventListener('click', () => {
+            isCursive = !isCursive;
+            const toggleThumb = document.getElementById('toggle-thumb');
+            if (isCursive) {
+                body.classList.remove('mode-print');
+                body.classList.add('mode-cursive');
+                body.classList.add('cursive-active');
+                toggleThumb.textContent = 'Аа'; 
+            } else {
+                body.classList.remove('mode-cursive');
+                body.classList.remove('cursive-active');
+                body.classList.add('mode-print');
+                toggleThumb.textContent = 'А';
+            }
+        });
+
+        // Навігація "Назад"
+        document.getElementById('btn-prev').addEventListener('click', () => {
+            if (currentLevel > 0) {
+                currentLevel--;
+                loadLevel();
+            }
+        });
+
+        // Навігація "Далі"
+        document.getElementById('btn-next').addEventListener('click', () => {
+            if (currentLevel < levelStrings.length - 1) {
+                currentLevel++;
+                loadLevel();
+            }
+        });
+
+        // Ініціалізація
+        loadLevel();
+    </script>
+</body>
+</html>
