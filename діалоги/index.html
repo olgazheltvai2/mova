@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            font-family: 'Arial Rounded MT Bold', sans-serif;
+        }
+
+        /* ОСНОВНИЙ ФОН */
+        #game-screen {
+            width: 100vw; height: 100vh;
+            background: url('1.webp') no-repeat center center;
+            background-size: cover;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        /* SVG ПІДКЛАДКА ДЛЯ ДІАЛОГУ */
+        #dialogue-container {
+            position: relative;
+            width: 90%;
+            max-width: 1200px;
+            height: 600px;
+            display: none;
+            z-index: 10;
+            filter: drop-shadow(0 20px 40px rgba(0,0,0,0.5));
+        }
+
+        /* ЗОНА ТЕКСТУ */
+        #text-plate {
+            position: absolute;
+            top: 70px;
+            left: 50px; right: 50px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 15;
+        }
+
+        .line-row {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            min-height: 90px;
+        }
+
+        /* СЛОТ ДЛЯ ПЕРСОНАЖА */
+        .char-slot {
+            width: 100px; height: 100px;
+            border: 4px dashed #e67e22;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            flex-shrink: 0;
+            box-shadow: inset 0 0 10px rgba(230, 126, 34, 0.2);
+        }
+
+        .char-slot.filled { 
+            border-style: solid; 
+            background: #fff; 
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        /* Анімація радісного підтвердження вибору дитини */
+        .char-slot.success {
+            border-color: #2ecc71;
+            box-shadow: 0 0 25px #2ecc71;
+            animation: pulseSuccess 1s infinite alternate;
+        }
+
+        @keyframes pulseSuccess {
+            from { transform: scale(1.05); }
+            to { transform: scale(1.15); }
+        }
+
+        .words-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .word {
+            font-size: 52px;
+            color: #3e2723;
+            padding: 2px 10px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .word:hover { background: rgba(230, 126, 34, 0.25); transform: scale(1.05); }
+
+        /* ПАНЕЛЬ ВИБОРУ ПЕРСОНАЖІВ */
+        #char-palette {
+            position: absolute;
+            bottom: 30px;
+            display: none;
+            gap: 25px;
+            z-index: 20;
+            padding: 15px 30px;
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(15px);
+            border-radius: 60px;
+            border: 3px solid rgba(255,255,255,0.6);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+        }
+
+        .char-option {
+            width: 110px; height: 110px;
+            cursor: pointer;
+            transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(0 8px 12px rgba(0,0,0,0.3));
+        }
+        .char-option:hover { transform: translateY(-15px) scale(1.15); }
+        .char-option.selected { 
+            transform: scale(1.2) translateY(-10px);
+            filter: drop-shadow(0 0 15px #2ecc71);
+        }
+        .char-option.selected::after {
+            content: '';
+            position: absolute;
+            top: -5px; left: -5px; right: -5px; bottom: -5px;
+            border: 5px solid #2ecc71;
+            border-radius: 50%;
+        }
+
+        /* МІНІМАЛІСТИЧНІ КНОПКИ */
+        .nav-btn {
+            position: absolute;
+            bottom: 50px;
+            width: 60px; height: 60px;
+            cursor: pointer;
+            z-index: 100;
+            transition: 0.3s;
+            display: none; 
+            opacity: 0.5; 
+        }
+        .nav-btn:hover { transform: scale(1.2); opacity: 1; }
+        #btn-back { left: 40px; }
+        #btn-next { right: 40px; }
+
+        canvas#confetti {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+            z-index: 200;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-screen">
+    <div id="dialogue-container">
+        <svg viewBox="0 0 1000 600" preserveAspectRatio="none" style="width:100%; height:100%;">
+            <defs>
+                <pattern id="wavy" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
+                    <path d="M0 30 Q15 15 30 30 T60 30" fill="none" stroke="#d35400" stroke-width="2" opacity="0.15"/>
+                    <path d="M0 60 Q15 45 30 60 T60 60" fill="none" stroke="#d35400" stroke-width="2" opacity="0.15"/>
+                </pattern>
+                <filter id="shadowBox">
+                    <feDropShadow dx="0" dy="10" stdDeviation="15" flood-opacity="0.3"/>
+                </filter>
+            </defs>
+            <path d="M40,20 L960,30 Q990,35 980,80 L960,520 Q950,570 910,575 L60,585 Q20,590 25,540 L15,70 Q10,20 40,20 Z" fill="#fffaf0" stroke="#e67e22" stroke-width="8" filter="url(#shadowBox)"/>
+            <rect x="30" y="30" width="940" height="540" fill="url(#wavy)" rx="30" />
+        </svg>
+        <div id="text-plate"></div>
+    </div>
+
+    <div id="char-palette"></div>
+
+    <div id="btn-back" class="nav-btn">
+        <svg viewBox="0 0 100 100">
+            <path d="M65 20 L35 50 L65 80" stroke="#fff" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.6))"/>
+        </svg>
+    </div>
+    <div id="btn-next" class="nav-btn">
+        <svg viewBox="0 0 100 100">
+            <path d="M35 20 L65 50 L35 80" stroke="#fff" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.6))"/>
+        </svg>
+    </div>
+</div>
+
+<canvas id="confetti"></canvas>
+
+<script>
+/** * КОД: Свобода творчості!
+ * Максимально виразні персонажі. Без перевірки на помилки.
+ */
+
+// ОНОВЛЕНІ, ЧІТКІ ПЕРСОНАЖІ (Екстремальна стилізація для пізнаваності)
+const charsDB = {
+    // Хлопчик: Синя бейсболка
+    boy: `<svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="40" fill="#FFCCBC"/><path d="M10 45 Q50 -10 90 45 L100 45" stroke="#2196F3" stroke-width="6" fill="#4FC3F7"/><circle cx="35" cy="60" r="5" fill="#333"/><circle cx="65" cy="60" r="5" fill="#333"/><path d="M40 75 Q50 85 60 75" stroke="#333" stroke-width="3" fill="none"/></svg>`,
+    // Дівчинка: Великі рожеві бантики
+    girl: `<svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="40" fill="#FFCCBC"/><path d="M50 15 C20 15 10 35 10 55 L90 55 C90 35 80 15 50 15" fill="#FFB74D"/><circle cx="15" cy="45" r="14" fill="#E91E63"/><circle cx="85" cy="45" r="14" fill="#E91E63"/><circle cx="35" cy="65" r="5" fill="#333"/><circle cx="65" cy="65" r="5" fill="#333"/><path d="M45 80 Q50 85 55 80" stroke="#333" stroke-width="3" fill="none"/></svg>`,
+    // Мама: Намисто та червоні губи
+    mom: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#FFE0B2"/><path d="M10 50 C10 10 90 10 90 50 C90 60 80 80 50 80 C20 80 10 60 10 50" fill="#795548"/><circle cx="50" cy="50" r="35" fill="#FFE0B2"/><circle cx="50" cy="90" r="5" fill="#4CAF50"/><circle cx="35" cy="86" r="5" fill="#4CAF50"/><circle cx="65" cy="86" r="5" fill="#4CAF50"/><circle cx="35" cy="55" r="4" fill="#333"/><circle cx="65" cy="55" r="4" fill="#333"/><path d="M42 75 Q50 80 58 75" stroke="#D32F2F" stroke-width="5" stroke-linecap="round" fill="none"/></svg>`,
+    // Тато: Великі вуса та краватка
+    dad: `<svg viewBox="0 0 100 100"><circle cx="50" cy="45" r="40" fill="#FFE0B2"/><path d="M20 25 Q50 5 80 25" stroke="#3E2723" stroke-width="8" stroke-linecap="round" fill="none"/><circle cx="35" cy="40" r="4" fill="#333"/><circle cx="65" cy="40" r="4" fill="#333"/><path d="M25 60 Q50 50 75 60 Q50 75 25 60" fill="#3E2723"/><path d="M45 85 L55 85 L50 100 Z" fill="#1976D2"/></svg>`,
+    // Бабуся: Фіолетові окуляри та сіра гулька
+    grandma: `<svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="40" fill="#F5F5F5"/><path d="M10 55 Q50 15 90 55 Z" fill="#BDBDBD"/><circle cx="50" cy="20" r="15" fill="#BDBDBD"/><circle cx="35" cy="60" r="12" stroke="#9C27B0" stroke-width="5" fill="none"/><circle cx="65" cy="60" r="12" stroke="#9C27B0" stroke-width="5" fill="none"/><path d="M47 60 L53 60" stroke="#9C27B0" stroke-width="5"/><path d="M45 85 L55 85" stroke="#333" stroke-width="3"/></svg>`,
+    // Дідусь: Лисина, білі вуса та прямокутні окуляри
+    grandpa: `<svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="40" fill="#FFE0B2"/><path d="M10 55 C10 10 90 10 90 55" fill="#FFCCBC"/><path d="M25 50 L45 50 M55 50 L75 50" stroke="#2196F3" stroke-width="5"/><circle cx="35" cy="50" r="3" fill="#333"/><circle cx="65" cy="50" r="3" fill="#333"/><path d="M20 75 Q50 55 80 75 Q50 95 20 75" fill="#FFF"/></svg>`,
+    // Песик: Висячі вуха
+    dog: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#8D6E63"/><ellipse cx="15" cy="60" rx="12" ry="30" fill="#5D4037"/><ellipse cx="85" cy="60" rx="12" ry="30" fill="#5D4037"/><circle cx="35" cy="45" r="5" fill="#111"/><circle cx="65" cy="45" r="5" fill="#111"/><ellipse cx="50" cy="65" rx="22" ry="15" fill="#D7CCC8"/><circle cx="50" cy="60" r="6" fill="#111"/><path d="M50 66 L50 72 M40 75 Q50 80 60 75" stroke="#111" stroke-width="3" fill="none"/></svg>`,
+    // Котик: Гострі вушка
+    cat: `<svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="40" fill="#FFB300"/><path d="M15 45 L25 10 L50 35 Z" fill="#FF8F00"/><path d="M85 45 L75 10 L50 35 Z" fill="#FF8F00"/><circle cx="35" cy="50" r="5" fill="#111"/><circle cx="65" cy="50" r="5" fill="#111"/><ellipse cx="50" cy="65" rx="18" ry="12" fill="#FFE082"/><circle cx="50" cy="62" r="5" fill="#E91E63"/><path d="M20 60 L35 63 M20 70 L35 68 M80 60 L65 63 M80 70 L65 68" stroke="#FF8F00" stroke-width="3" stroke-linecap="round"/></svg>`,
+    // Пташка: Великий дзьоб
+    bird: `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#03A9F4"/><path d="M40 55 L60 55 L50 75 Z" fill="#FFC107"/><circle cx="35" cy="45" r="6" fill="#111"/><circle cx="65" cy="45" r="6" fill="#111"/><path d="M10 50 Q0 30 20 40 Z" fill="#0288D1"/><path d="M90 50 Q100 30 80 40 Z" fill="#0288D1"/></svg>`,
+    // Ведмідь: Круглі вуха
+    bear: `<svg viewBox="0 0 100 100"><circle cx="20" cy="30" r="18" fill="#5D4037"/><circle cx="80" cy="30" r="18" fill="#5D4037"/><circle cx="50" cy="55" r="45" fill="#795548"/><ellipse cx="50" cy="65" rx="22" ry="18" fill="#D7CCC8"/><circle cx="50" cy="58" r="7" fill="#111"/><circle cx="35" cy="45" r="5" fill="#111"/><circle cx="65" cy="45" r="5" fill="#111"/></svg>`,
+    // Лисиця: Біла мордочка
+    fox: `<svg viewBox="0 0 100 100"><path d="M15 15 L35 45 L15 55 Z" fill="#E64A19"/><path d="M85 15 L65 45 L85 55 Z" fill="#E64A19"/><circle cx="50" cy="55" r="40" fill="#FF7043"/><path d="M10 55 Q50 100 90 55 Q50 65 10 55" fill="#FFF"/><circle cx="50" cy="70" r="7" fill="#111"/><circle cx="35" cy="45" r="5" fill="#111"/><circle cx="65" cy="45" r="5" fill="#111"/></svg>`,
+    // Зайчик: Довгі вуха
+    bunny: `<svg viewBox="0 0 100 100"><ellipse cx="30" cy="25" rx="10" ry="25" fill="#FFF"/><ellipse cx="70" cy="25" rx="10" ry="25" fill="#FFF"/><ellipse cx="30" cy="25" rx="5" ry="15" fill="#F48FB1"/><ellipse cx="70" cy="25" rx="5" ry="15" fill="#F48FB1"/><circle cx="50" cy="60" r="35" fill="#FFF"/><circle cx="35" cy="50" r="5" fill="#111"/><circle cx="65" cy="50" r="5" fill="#111"/><circle cx="50" cy="60" r="5" fill="#F48FB1"/><path d="M45 65 L45 75 L55 75 L55 65 Z" fill="#FFF" stroke="#999" stroke-width="2"/></svg>`
+};
+
+const dialogues = [
+    { text: "Привіт, як справи? Добре, граю тут. Ого, весело!", palette: ["boy", "girl", "cat", "dog"] },
+    { text: "Гав! Хто тут? Це я, котик. Не гавкай на мене!", palette: ["dog", "cat", "bird", "bunny"] },
+    { text: "Мамо, я хочу яблуко. Візьми на столі. Дякую, матусю!", palette: ["boy", "mom", "dad", "grandma"] },
+    { text: "Тату, навчи мене плавати. Добре, синку, ходімо. Ура, швидше на річку!", palette: ["boy", "dad", "mom", "grandpa"] },
+    { text: "Бабусю, що ти в'яжеш? Теплі шкарпетки для тебе. Ой, які вони м'якенькі!", palette: ["girl", "grandma", "grandpa", "mom"] },
+    { text: "Привіт, зайчику! Привіт, лисичко, що шукаєш? Шукаю солодку моркву.", palette: ["bunny", "fox", "bear", "bird"] },
+    { text: "Дідусю, розкажи казку. Сідай зручніше, слухай. Буду слухати дуже уважно!", palette: ["girl", "grandpa", "dad", "grandma"] },
+    { text: "Цвірінь, чи є зернятка? Так, пташко, тримай. Дякую, дуже смачно!", palette: ["bird", "girl", "cat", "dog"] },
+    { text: "Ведмедику, чому ти сумний? Я загубив бочечку меду. Не плач, ми знайдемо!", palette: ["boy", "bear", "fox", "bunny"] },
+    { text: "Доню, час іти спати. Ще п'ять хвилиночок! Ні, вже пізно, лягай.", palette: ["mom", "girl", "dad", "grandma"] }
+];
+
+let level = 0;
+let isStarted = false;
+let breaks = [0];
+let selectedCharId = null;
+let assignedChars = [];
+
+const screen = document.getElementById('game-screen');
+const container = document.getElementById('dialogue-container');
+const plate = document.getElementById('text-plate');
+const paletteContainer = document.getElementById('char-palette');
+const nextBtn = document.getElementById('btn-next');
+const backBtn = document.getElementById('btn-back');
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function play(f, d, t='sine') {
+    const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    o.type = t; o.frequency.value = f; o.connect(g); g.connect(audioCtx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + d);
+    o.stop(audioCtx.currentTime + d);
+}
+
+screen.onclick = (e) => {
+    if (!isStarted && e.target === screen) {
+        isStarted = true;
+        container.style.display = 'block';
+        paletteContainer.style.display = 'flex';
+        // Кнопки завжди видимі після старту
+        backBtn.style.display = 'block';
+        nextBtn.style.display = 'block';
+        loadLevel(0);
+        play(440, 0.5);
+    }
+};
+
+function loadLevel(idx) {
+    level = idx;
+    breaks = [0];
+    assignedChars = [];
+    selectedCharId = null;
+    
+    paletteContainer.innerHTML = '';
+    dialogues[level].palette.forEach(char => {
+        const div = document.createElement('div');
+        div.className = 'char-option';
+        div.dataset.id = char;
+        div.innerHTML = charsDB[char];
+        div.onclick = () => selectChar(char);
+        paletteContainer.appendChild(div);
+    });
+
+    render();
+}
+
+function render() {
+    plate.innerHTML = '';
+    const words = dialogues[level].text.split(' ');
+    let currentLineIdx = -1;
+
+    words.forEach((w, i) => {
+        if (breaks.includes(i)) {
+            currentLineIdx++;
+            const row = document.createElement('div');
+            row.className = 'line-row';
+            
+            const slot = document.createElement('div');
+            slot.className = 'char-slot' + (assignedChars[currentLineIdx] ? ' filled' : '');
+            slot.id = 'slot-' + currentLineIdx;
+            slot.innerHTML = assignedChars[currentLineIdx] ? charsDB[assignedChars[currentLineIdx]] : '';
+            const thisIdx = currentLineIdx;
+            slot.onclick = () => assignToSlot(thisIdx);
+            
+            row.appendChild(slot);
+
+            const wordsWrap = document.createElement('div');
+            wordsWrap.className = 'words-wrap';
+            wordsWrap.innerHTML = `<span style="font-size:60px; color:#d35400; font-weight:bold; margin-right:15px">—</span>`;
+            row.appendChild(wordsWrap);
+            plate.appendChild(row);
+        }
+
+        const span = document.createElement('span');
+        span.className = 'word';
+        span.innerText = w;
+        span.onclick = (e) => { e.stopPropagation(); toggleBreak(i); };
+        plate.lastChild.lastChild.appendChild(span);
+    });
+    
+    // Перевіряємо чи всі слоти заповнені після рендеру (для візуального ефекту)
+    checkFilled();
+}
+
+function toggleBreak(index) {
+    if (index === 0) return;
+    if (breaks.includes(index)) {
+        breaks = breaks.filter(b => b !== index);
+    } else if (breaks.length < 3) {
+        breaks.push(index);
+        breaks.sort((a,b) => a-b);
+    }
+    // Очищаємо слоти при зміні рядків, щоб дитина призначила знову
+    assignedChars = []; 
+    play(500, 0.15, 'triangle');
+    render();
+}
+
+function selectChar(id) {
+    selectedCharId = id;
+    document.querySelectorAll('.char-option').forEach(el => el.classList.remove('selected'));
+    document.querySelector(`.char-option[data-id="${id}"]`).classList.add('selected');
+    play(800, 0.1);
+}
+
+function assignToSlot(lineIdx) {
+    if (!selectedCharId) return;
+    assignedChars[lineIdx] = selectedCharId;
+    play(1000, 0.15, 'square');
+    render();
+}
+
+// Функція радісного фідбеку (без оцінювання правильності!)
+function checkFilled() {
+    if (assignedChars.length === 3 && !assignedChars.includes(undefined)) {
+        // Дитина заповнила всі слоти - це вже успіх!
+        document.querySelectorAll('.char-slot').forEach(slot => slot.classList.add('success'));
+        // Радісний звук лише якщо слоти щойно заповнились (щоб не грав постійно)
+        if (!window.playedSuccessSoundForLevel) {
+             play(1200, 0.6);
+             window.playedSuccessSoundForLevel = true;
+             if (level === 9) startConfetti();
+        }
+    } else {
+        window.playedSuccessSoundForLevel = false;
+    }
+}
+
+nextBtn.onclick = (e) => { 
+    e.stopPropagation(); 
+    play(600, 0.1);
+    if(level < 9) loadLevel(level+1); 
+    else startConfetti();
+};
+
+backBtn.onclick = (e) => { 
+    e.stopPropagation(); 
+    if(level > 0) {
+        loadLevel(level-1);
+        play(300, 0.2);
+    }
+};
+
+function startConfetti() {
+    const cvs = document.getElementById('confetti'); const ctx = cvs.getContext('2d');
+    cvs.width = window.innerWidth; cvs.height = window.innerHeight;
+    let p = Array.from({length: 150}, () => ({x: Math.random()*cvs.width, y: -10, s: Math.random()*15+5, c: `hsl(${Math.random()*360}, 90%, 60%)`, v: Math.random()*6+3}));
+    function draw() {
+        ctx.clearRect(0,0,cvs.width, cvs.height);
+        p.forEach(i => { ctx.fillStyle = i.c; ctx.fillRect(i.x, i.y, i.s, i.s); i.y += i.v; if(i.y > cvs.height) i.y = -20; });
+        requestAnimationFrame(draw);
+    }
+    draw();
+}
+</script>
+</body>
+</html>
