@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Поштове Сортування Іменників</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            touch-action: none;
+        }
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+            /* Контрастний глибокий фон поштового відділення */
+            background: radial-gradient(circle at 50% 30%, #2a2a4a 0%, #0f0f1a 100%);
+        }
+
+        /* Складний фоновий візерунок (полиці, механізми) */
+        .background-scene {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background-image: 
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3Cpattern id='grid' width='60' height='60' patternUnits='userSpaceOnUse'%3E%3Cpath d='M 60 0 L 0 0 0 60' fill='none' stroke='rgba(255,255,255,0.03)' stroke-width='2'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23grid)'/%3E%3C!-- Світлові промені --%3E%3Cpolygon points='10%,0 90%,0 100%,100% 0%,100%' fill='rgba(255, 255, 255, 0.02)'/%3E%3C/svg%3E");
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        /* Навігація */
+        .controls {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            z-index: 10;
+        }
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 28px;
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn:active {
+            transform: scale(0.85);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Лист-папір (максимально реалістичний та контрастний) */
+        .word-card {
+            position: absolute;
+            top: 35%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 320px;
+            height: 200px;
+            background-color: #fdfbf7;
+            /* Текстура зім'ятого паперу та лінійки */
+            background-image: 
+                linear-gradient(90deg, transparent 40px, #ffb6b9 40px, #ffb6b9 42px, transparent 42px),
+                linear-gradient(#e1e1e1 1px, transparent 1px);
+            background-size: 100% 100%, 100% 30px;
+            background-position: 0 0, 0 10px;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 42px;
+            font-weight: 900;
+            color: #1a1a2e; /* Дуже темний синій для високого контрасту */
+            letter-spacing: 2px;
+            box-shadow: 
+                -3px 5px 15px rgba(0,0,0,0.5),
+                inset 0 0 30px rgba(139, 115, 85, 0.1);
+            cursor: grab;
+            z-index: 100;
+            transition: top 0.3s, left 0.3s, transform 0.3s, box-shadow 0.2s;
+        }
+        
+        /* Марка та штемпель через псевдоелементи */
+        .word-card::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 35px;
+            height: 45px;
+            background: #ff5e62;
+            border: 2px dashed #fff;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+        }
+        .word-card::after {
+            content: '';
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+            background: transparent;
+        }
+
+        .word-card:active {
+            cursor: grabbing;
+            box-shadow: -10px 15px 25px rgba(0,0,0,0.6);
+        }
+
+        /* Зони для сортування - Контрастні яскраві конверти */
+        .drop-zones {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            width: 100%;
+            padding-bottom: 20px;
+            z-index: 5;
+            gap: 15px;
+        }
+        .zone {
+            flex: 1;
+            max-width: 300px;
+            height: 160px;
+            position: relative;
+            border-radius: 10px 10px 20px 20px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 20px;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.3s;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.5);
+            /* Ефект "дихання" для зон */
+            animation: breathe 3s infinite alternate;
+        }
+
+        @keyframes breathe {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-5px); }
+        }
+
+        .zone.active {
+            transform: scale(1.1) translateY(-10px);
+            filter: brightness(1.3);
+            animation: none; /* Зупиняємо дихання при наведенні */
+        }
+
+        /* Контрастний текст на конвертах */
+        .zone-text {
+            font-size: 28px;
+            font-weight: 900;
+            color: #ffffff;
+            text-transform: uppercase;
+            text-align: center;
+            line-height: 1.2;
+            text-shadow: 0px 4px 6px rgba(0, 0, 0, 0.8), 0 0 10px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        /* Малювання конвертів за допомогою SVG */
+        .envelope-bg {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            border-radius: 10px 10px 20px 20px;
+            overflow: hidden;
+        }
+
+        /* Кольори конвертів */
+        #zone-singular .envelope-bg { background: linear-gradient(135deg, #00c6ff, #0072ff); }
+        #zone-plural .envelope-bg { background: linear-gradient(135deg, #f12711, #f5af19); }
+        #zone-both .envelope-bg { background: linear-gradient(135deg, #b92b27, #1565C0); }
+
+        /* Внутрішня тінь-отвір конверта */
+        .envelope-opening {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 10px 10px 50% 50%;
+            box-shadow: inset 0 10px 15px rgba(0,0,0,0.6);
+        }
+
+        /* Частинки для ефекту успіху */
+        .particle {
+            position: absolute;
+            border-radius: 5px; /* Квадратні частинки як конфетті */
+            pointer-events: none;
+            z-index: 200;
+            animation: pop 0.8s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+        }
+        @keyframes pop {
+            0% { transform: scale(1) rotate(0deg); opacity: 1; }
+            100% { transform: scale(0) translate(var(--tx), var(--ty)) rotate(360deg); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="background-scene"></div>
+
+<div class="game-container">
+    <div class="controls">
+        <button class="btn" id="btn-back">◀</button>
+        <button class="btn" id="btn-next">▶</button>
+    </div>
+
+    <div class="word-card" id="draggable-word">Слово</div>
+
+    <div class="drop-zones">
+        <div class="zone" id="zone-singular" data-type="singular">
+            <div class="envelope-bg">
+                <div class="envelope-opening"></div>
+                <svg width="100%" height="100%" style="position:absolute; bottom:0; opacity: 0.2;">
+                    <polygon points="0,160 150,80 300,160" fill="#fff"/>
+                </svg>
+            </div>
+            <span class="zone-text">ТІЛЬКИ<br>ОДНИНА</span>
+        </div>
+        
+        <div class="zone" id="zone-plural" data-type="plural">
+            <div class="envelope-bg">
+                <div class="envelope-opening"></div>
+                <svg width="100%" height="100%" style="position:absolute; bottom:0; opacity: 0.2;">
+                    <polygon points="0,160 150,80 300,160" fill="#fff"/>
+                </svg>
+            </div>
+            <span class="zone-text">ТІЛЬКИ<br>МНОЖИНА</span>
+        </div>
+        
+        <div class="zone" id="zone-both" data-type="both">
+            <div class="envelope-bg">
+                <div class="envelope-opening"></div>
+                <svg width="100%" height="100%" style="position:absolute; bottom:0; opacity: 0.2;">
+                    <polygon points="0,160 150,80 300,160" fill="#fff"/>
+                </svg>
+            </div>
+            <span class="zone-text">І ТАК<br>І ТАК</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    const wordsData = [
+       { word: "Борошно", type: "singular" },
+
+{ word: "Золото", type: "singular" },
+
+{ word: "Щастя", type: "singular" },
+
+{ word: "Залізо", type: "singular" },
+
+{ word: "Доброта", type: "singular" },
+
+{ word: "Нафта", type: "singular" },
+
+{ word: "Рис", type: "singular" },
+
+{ word: "Мед", type: "singular" },
+
+{ word: "Молодь", type: "singular" },
+
+{ word: "Гнів", type: "singular" },
+
+{ word: "Срібло", type: "singular" },
+
+{ word: "Бензин", type: "singular" },
+
+{ word: "Натхнення", type: "singular" },
+
+{ word: "Вугілля", type: "singular" },
+
+{ word: "Цукор", type: "singular" },
+
+{ word: "Вовна", type: "singular" },
+
+{ word: "Спрага", type: "singular" },
+
+{ word: "Терпіння", type: "singular" },
+
+{ word: "Гідність", type: "singular" },
+
+{ word: "Любов", type: "singular" },
+
+{ word: "Честь", type: "singular" },
+
+{ word: "Граблі", type: "plural" },
+
+{ word: "Кліщі", type: "plural" },
+
+{ word: "Терези", type: "plural" },
+
+{ word: "Канікули", type: "plural" },
+
+{ word: "Іменини", type: "plural" },
+
+{ word: "Сутінки", type: "plural" },
+
+{ word: "Дріжджі", type: "plural" },
+
+{ word: "Вершки", type: "plural" },
+
+{ word: "Шахи", type: "plural" },
+
+{ word: "Шашки", type: "plural" },
+
+{ word: "Посиденьки", type: "plural" },
+
+{ word: "Жмурки", type: "plural" },
+
+{ word: "Гімалаї", type: "plural" },
+
+{ word: "Карпати", type: "plural" },
+
+{ word: "Чернівці", type: "plural" },
+
+{ word: "Суми", type: "plural" },
+
+{ word: "Дрова", type: "plural" },
+
+{ word: "Нутрощі", type: "plural" },
+
+{ word: "Сани", type: "plural" },
+
+{ word: "Труси", type: "plural" },
+
+{ word: "Будинок", type: "both" },
+
+{ word: "Вікно", type: "both" },
+
+{ word: "Квітка", type: "both" },
+
+{ word: "Олівець", type: "both" },
+
+{ word: "Річка", type: "both" },
+
+{ word: "Гора", type: "both" },
+
+{ word: "Людина", type: "both" },
+
+{ word: "Телефон", type: "both" },
+
+{ word: "Ручка", type: "both" },
+
+{ word: "Зошит", type: "both" },
+
+{ word: "Автомобіль", type: "both" },
+
+{ word: "Море", type: "both" },
+
+{ word: "Поле", type: "both" },
+
+{ word: "Стілець", type: "both" },
+
+{ word: "Лампа", type: "both" },
+
+{ word: "Яблуко", type: "both" },
+
+{ word: "Птах", type: "both" },
+
+{ word: "Собака", type: "both" },
+
+{ word: "Зірка", type: "both" },
+
+{ word: "Картина", type: "both" },
+
+{ word: "Ключ", type: "both" },
+
+{ word: "Стіна", type: "both" },
+
+{ word: "Учень", type: "both" },
+
+{ word: "Озеро", type: "both" },
+
+{ word: "Хмара", type: "both" },
+
+{ word: "Листок", type: "both" },
+
+{ word: "Овоч", type: "both" },
+
+{ word: "Фрукт", type: "both" }
+    ];
+
+    let gameQueue = [...wordsData].sort(() => Math.random() - 0.5);
+    let currentIndex = 0;
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    function playSound(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        
+        if (type === 'success') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.setValueAtTime(660, now + 0.1);
+            osc.frequency.setValueAtTime(880, now + 0.2);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            osc.start(now);
+            osc.stop(now + 0.4);
+        } else if (type === 'error') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, now);
+            osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        } else if (type === 'pop') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1200, now);
+            osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+            gainNode.gain.setValueAtTime(0.3, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        }
+    }
+
+    const wordCard = document.getElementById('draggable-word');
+    const zones = document.querySelectorAll('.zone');
+
+    function loadWord(index) {
+        if (index < 0) index = gameQueue.length - 1;
+        if (index >= gameQueue.length) index = 0;
+        currentIndex = index;
+        
+        const currentData = gameQueue[currentIndex];
+        wordCard.textContent = currentData.word;
+        wordCard.dataset.type = currentData.type;
+        
+        wordCard.style.transition = 'top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), left 0.4s, transform 0.4s';
+        wordCard.style.top = '-200px'; // Вилітає зверху
+        wordCard.style.left = '50%';
+        wordCard.style.transform = 'translate(-50%, -50%) rotate(-10deg)';
+        
+        setTimeout(() => {
+            wordCard.style.top = '35%';
+            wordCard.style.transform = 'translate(-50%, -50%) rotate(0deg)';
+            playSound('pop');
+        }, 50);
+    }
+
+    document.getElementById('btn-next').addEventListener('click', () => loadWord(currentIndex + 1));
+    document.getElementById('btn-back').addEventListener('click', () => loadWord(currentIndex - 1));
+
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    wordCard.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        wordCard.style.transition = 'none';
+        wordCard.setPointerCapture(e.pointerId);
+        
+        const rect = wordCard.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        initialLeft = rect.left + rect.width / 2;
+        initialTop = rect.top + rect.height / 2;
+        
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    });
+
+    wordCard.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        
+        const newX = initialLeft + dx;
+        const newY = initialTop + dy;
+        
+        wordCard.style.left = `${newX}px`;
+        wordCard.style.top = `${newY}px`;
+        // Легкий нахил листа при перетягуванні
+        wordCard.style.transform = `translate(-50%, -50%) rotate(${dx * 0.03}deg)`;
+        
+        zones.forEach(zone => {
+            const zRect = zone.getBoundingClientRect();
+            // Розширена зона чутливості
+            if (e.clientX > zRect.left - 20 && e.clientX < zRect.right + 20 &&
+                e.clientY > zRect.top - 50 && e.clientY < zRect.bottom) {
+                zone.classList.add('active');
+            } else {
+                zone.classList.remove('active');
+            }
+        });
+    });
+
+    wordCard.addEventListener('pointerup', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        wordCard.releasePointerCapture(e.pointerId);
+        
+        let droppedOnZone = null;
+        
+        zones.forEach(zone => {
+            zone.classList.remove('active');
+            const zRect = zone.getBoundingClientRect();
+            if (e.clientX > zRect.left - 20 && e.clientX < zRect.right + 20 &&
+                e.clientY > zRect.top - 50 && e.clientY < zRect.bottom) {
+                droppedOnZone = zone;
+            }
+        });
+
+        if (droppedOnZone) {
+            checkAnswer(droppedOnZone.dataset.type, droppedOnZone, e.clientX, e.clientY);
+        } else {
+            resetCardPosition();
+        }
+    });
+
+    function resetCardPosition() {
+        wordCard.style.transition = 'top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), left 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), transform 0.4s';
+        wordCard.style.top = '35%';
+        wordCard.style.left = '50%';
+        wordCard.style.transform = 'translate(-50%, -50%) rotate(0deg)';
+    }
+
+    function checkAnswer(selectedType, zoneElement, x, y) {
+        if (selectedType === wordCard.dataset.type) {
+            playSound('success');
+            
+            // Анімація "засмоктування" листа в конверт
+            const zRect = zoneElement.getBoundingClientRect();
+            wordCard.style.transition = 'all 0.4s ease-in';
+            wordCard.style.top = `${zRect.top + 50}px`;
+            wordCard.style.left = `${zRect.left + zRect.width / 2}px`;
+            wordCard.style.transform = 'translate(-50%, -50%) scale(0.1)';
+            wordCard.style.opacity = '0';
+            
+            createParticles(zRect.left + zRect.width / 2, zRect.top + 20);
+            
+            setTimeout(() => {
+                wordCard.style.opacity = '1';
+                loadWord(currentIndex + 1);
+            }, 500);
+        } else {
+            playSound('error');
+            resetCardPosition();
+            
+            // Тряска конверта при помилці
+            zoneElement.style.animation = 'none';
+            setTimeout(() => {
+                zoneElement.style.transform = 'translateX(-10px)';
+                setTimeout(() => zoneElement.style.transform = 'translateX(10px)', 50);
+                setTimeout(() => zoneElement.style.transform = 'translateX(-10px)', 100);
+                setTimeout(() => zoneElement.style.transform = 'translateX(0)', 150);
+                setTimeout(() => zoneElement.style.animation = 'breathe 3s infinite alternate', 200);
+            }, 10);
+        }
+    }
+
+    function createParticles(x, y) {
+        const colors = ['#fff', '#ff5e62', '#00c6ff', '#f5af19'];
+        for (let i = 0; i < 20; i++) {
+            const p = document.createElement('div');
+            p.classList.add('particle');
+            p.style.left = x + 'px';
+            p.style.top = y + 'px';
+            p.style.width = Math.random() * 10 + 5 + 'px';
+            p.style.height = Math.random() * 15 + 5 + 'px';
+            p.style.background = colors[Math.floor(Math.random() * colors.length)];
+            
+            const tx = (Math.random() - 0.5) * 300 + 'px';
+            const ty = (Math.random() - 1) * 300 + 'px'; // Розліт вгору і в боки
+            p.style.setProperty('--tx', tx);
+            p.style.setProperty('--ty', ty);
+            
+            document.body.appendChild(p);
+            setTimeout(() => p.remove(), 800);
+        }
+    }
+
+    loadWord(0);
+</script>
+</body>
+</html>
