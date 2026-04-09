@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Гра: Однина чи Множина 2.2</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background-color: #74B9FF;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        /* Панель керування швидкістю під час гри */
+        #game-ui {
+            position: absolute;
+            top: 20px; right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 15px;
+            border: 4px solid #2d3436;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 10;
+        }
+        #game-ui span { font-weight: 900; font-size: 20px; color: #2d3436; }
+        #game-ui button {
+            background: #ff7675; border: 3px solid #2d3436;
+            border-radius: 50%; width: 40px; height: 40px;
+            font-size: 24px; font-weight: 900; color: #fff;
+            cursor: pointer; box-shadow: 0 4px 0 #d63031;
+            transition: transform 0.1s;
+        }
+        #game-ui button:active { transform: translateY(4px); box-shadow: none; }
+        #game-ui button.btn-plus { background: #00b894; box-shadow: 0 4px 0 #008f73; }
+
+        /* Оверлей кінця гри */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex;
+            justify-content: center; align-items: center;
+            opacity: 0; transition: opacity 0.5s; z-index: 20;
+        }
+        .modal {
+            background: #fff; padding: 40px; border-radius: 25px;
+            text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            border: 8px solid #FFC312; pointer-events: auto;
+        }
+        .modal h1 { margin: 0 0 20px 0; color: #2d3436; font-size: 3.5rem; }
+        .modal button {
+            padding: 20px 40px; font-size: 1.8rem;
+            background: #00b894; color: white;
+            border: none; border-radius: 15px;
+            cursor: pointer; font-weight: 900;
+            box-shadow: 0 8px 0 #008f73; transition: all 0.1s;
+        }
+        .modal button:active { transform: translateY(8px); box-shadow: none; }
+    </style>
+</head>
+<body>
+
+<div id="game-ui">
+    <span>Швидкість:</span>
+    <button class="btn-minus" onclick="changeSpeed(-0.2)">-</button>
+    <span id="speed-display">1.0x</span>
+    <button class="btn-plus" onclick="changeSpeed(0.2)">+</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui-layer">
+    <div class="modal">
+        <h1>🎉 Перемога! 20 зірок! 🎉</h1>
+        <button onclick="startGame()">Грати знову</button>
+    </div>
+</div>
+
+<script>
+/** * БАЗА ДАНИХ СЛІВ */
+const singularWords = ["кіт", "пес", "стіл", "дім", "дуб", "ліс", "син", "мак", "ніж", "зуб", "птах", "друг", "слон", "м'яч", "екран", "зошит", "хліб", "сад", "кущ", "дах", "світ", "міст", "авто", "літак", "поїзд", "човен", "море", "річка", "гора", "поле", "небо", "сонце", "місяць", "зірка", "хмара", "дощ", "сніг", "вітер", "вогонь", "вода", "земля", "квітка", "трава", "дерево", "лист", "папір", "ручка", "книга", "лампа", "вікно"];
+const pluralWords = ["двері", "шафи", "полиці", "ліжка", "килими", "картини", "ложки", "виделки", "чашки", "тарілки", "ключі", "сумки", "окуляри", "годинники", "телефони", "планшети", "комп'ютери", "миші", "клавіатури", "колонки", "навушники", "олівці", "фломастери", "фарби", "пензлі", "рюкзаки", "куртки", "шапки", "чоботи", "туфлі", "шкарпетки", "штани", "сукні", "сорочки", "светри", "шарфи", "рукавиці", "парасольки", "гаманці", "конверти", "марки", "монети", "квитки", "карти", "прапори", "герби", "країни", "міста", "вулиці", "острови"];
+
+const lerp = (start, end, amt) => (1 - amt) * start + amt * end;
+function pullRandom(array) {
+    if (array.length === 0) return null;
+    return array.splice(Math.floor(Math.random() * array.length), 1)[0];
+}
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let dpr = window.devicePixelRatio || 1;
+let width, height;
+const pointer = { x: 0, y: 0 };
+
+function resize() {
+    width = window.innerWidth; height = window.innerHeight;
+    canvas.width = width * dpr; canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+    if(monster) { monster.x = width / 2; monster.y = height - 120; }
+}
+window.addEventListener('resize', resize);
+
+/** * ФОН (Паралакс) */
+class Environment {
+    constructor() {
+        this.clouds = [
+            { x: 100, y: 150, s: 1, speed: 0.2 },
+            { x: 500, y: 100, s: 1.5, speed: 0.15 },
+            { x: 900, y: 200, s: 0.8, speed: 0.25 }
+        ];
+    }
+    draw(ctx, time, w, h) {
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#74B9FF'); grad.addColorStop(1, '#81ECEC');
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+
+        ctx.save();
+        ctx.translate(w * 0.8, h * 0.2);
+        ctx.rotate(time * 0.0005);
+        ctx.fillStyle = '#FFEAA7';
+        for(let i=0; i<8; i++) {
+            ctx.rotate(Math.PI / 4);
+            ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(0, 90); ctx.lineTo(15, 0); ctx.fill();
+        }
+        ctx.fillStyle = '#FDCB6E';
+        ctx.beginPath(); ctx.arc(0, 0, 50, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+
+        ctx.fillStyle = '#FFFFFF';
+        this.clouds.forEach(c => {
+            c.x -= c.speed;
+            if (c.x < -200) c.x = w + 100;
+            ctx.save();
+            ctx.translate(c.x, c.y); ctx.scale(c.s, c.s);
+            ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI*2);
+            ctx.arc(35, -20, 50, 0, Math.PI*2); ctx.arc(70, 0, 40, 0, Math.PI*2);
+            ctx.fill(); ctx.restore();
+        });
+
+        ctx.fillStyle = '#00b894';
+        ctx.beginPath(); ctx.ellipse(w * 0.2, h, w * 0.8, h * 0.4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#55efc4';
+        ctx.beginPath(); ctx.ellipse(w * 0.8, h, w * 0.7, h * 0.3, 0, 0, Math.PI*2); ctx.fill();
+    }
+}
+
+/** * ЧАСТИНКИ */
+class ConfettiParticle {
+    constructor(x, y) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 20;
+        this.vy = (Math.random() - 1) * 20;
+        this.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+        this.size = Math.random() * 10 + 5;
+        this.life = 1.0;
+        this.rot = Math.random() * Math.PI;
+        this.rotSpeed = (Math.random() - 0.5) * 0.5;
+    }
+    update(dt) {
+        this.x += this.vx; this.y += this.vy;
+        this.vy += 0.5;
+        this.life -= 0.01;
+        this.rot += this.rotSpeed;
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.life);
+        ctx.translate(this.x, this.y); ctx.rotate(this.rot);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+        ctx.restore();
+    }
+}
+
+/** * ПЕРСОНАЖ */
+class Character {
+    constructor(x, y, scale = 1.2) {
+        this.x = x; this.y = y; this.scale = scale;
+        this.state = 'idle';
+        this.pupilLx = 0; this.pupilLy = 0;
+        this.pupilRx = 0; this.pupilRy = 0;
+        this.time = 0;
+    }
+
+    update(dt) {
+        this.time += dt;
+        const maxOffset = 15 * this.scale;
+        const exL = this.x - 30 * this.scale, eyL = this.y - 40 * this.scale;
+        const exR = this.x + 30 * this.scale, eyR = this.y - 40 * this.scale;
+
+        let aL = Math.atan2(pointer.y - eyL, pointer.x - exL);
+        let dL = Math.min(Math.hypot(pointer.x - exL, pointer.y - eyL), maxOffset);
+        this.pupilLx = lerp(this.pupilLx, Math.cos(aL) * dL, 0.15);
+        this.pupilLy = lerp(this.pupilLy, Math.sin(aL) * dL, 0.15);
+
+        let aR = Math.atan2(pointer.y - eyR, pointer.x - exR);
+        let dR = Math.min(Math.hypot(pointer.x - exR, pointer.y - eyR), maxOffset);
+        this.pupilRx = lerp(this.pupilRx, Math.cos(aR) * dR, 0.15);
+        this.pupilRy = lerp(this.pupilRy, Math.sin(aR) * dR, 0.15);
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        const breathe = Math.sin(this.time * 0.005);
+        ctx.scale(this.scale * (1 + breathe * 0.02), this.scale * (1 - breathe * 0.02));
+
+        ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#2d3436';
+
+        // Руки
+        [-70, 70].forEach(tx => {
+            ctx.save();
+            ctx.translate(tx, 0);
+            let angle = (tx < 0 ? 1 : -1) * Math.sin(this.time * 0.003) * 0.2;
+            if (this.state === 'cheer') angle += (tx < 0 ? -2.5 : 2.5);
+            ctx.rotate(angle);
+            if (tx > 0) ctx.scale(-1, 1);
+            ctx.fillStyle = '#fdcb6e';
+            ctx.beginPath(); ctx.ellipse(-35, 20, 45, 18, Math.PI/5, 0, Math.PI*2);
+            ctx.fill(); ctx.stroke();
+            ctx.restore();
+        });
+
+        // Тіло
+        ctx.fillStyle = '#e17055'; 
+        ctx.beginPath(); ctx.ellipse(0, 15, 95, 105, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fab1a0'; 
+        ctx.beginPath(); ctx.ellipse(0, 0, 95, 105, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+        // Очі
+        [-30, 30].forEach(tx => {
+            ctx.save(); ctx.translate(tx, -40);
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(tx<0?this.pupilLx:this.pupilRx, tx<0?this.pupilLy:this.pupilRy, 12, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc((tx<0?this.pupilLx:this.pupilRx)-4, (tx<0?this.pupilLy:this.pupilRy)-4, 4, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
+        });
+
+        // Рот та Емоції
+        ctx.save(); ctx.translate(0, 25);
+        ctx.fillStyle = '#2d3436'; ctx.beginPath();
+        if (this.state === 'sad') { 
+            // Сумний рот
+            ctx.arc(0, 20, 15, Math.PI, Math.PI*2); ctx.stroke(); 
+            
+            // Сльози
+            ctx.fillStyle = '#74B9FF';
+            ctx.strokeStyle = '#0984e3';
+            ctx.lineWidth = 3;
+            // Ліва сльоза
+            ctx.beginPath(); ctx.arc(-25, -5, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            // Права сльоза
+            ctx.beginPath(); ctx.arc(25, -5, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        } 
+        else {
+            ctx.arc(0, 0, 30, 0, Math.PI); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#ff7675'; ctx.beginPath(); ctx.arc(0, 18, 12, 0, Math.PI, true); ctx.fill();
+        }
+        ctx.restore();
+
+        ctx.restore();
+    }
+}
+
+/** * ІГРОВІ ОБ'ЄКТИ */
+class FallingWord {
+    constructor(text, type, boxWidth) {
+        this.text = text; this.type = type;
+        this.width = boxWidth;
+        this.x = getValidSpawnX(this.width);
+        this.y = -80;
+        
+        // ОСЬ ЦЕЙ РЯДОК: Базова швидкість стала ще меншою (в 2.5 рази)
+        this.baseSpeed = 0.015 + Math.random() * 0.015; 
+        
+        this.active = true;
+        this.scale = 0;
+        
+        this.isTrick = type === 'trick';
+        if (this.isTrick) {
+            this.text = Math.random() > 0.8 ? '🎁' : '💣';
+            this.trickValue = this.text === '🎁' ? 1 : -1;
+        }
+    }
+
+    update(dt) {
+        // Динамічний множник швидкості з UI-панелі
+        this.y += this.baseSpeed * gameState.speedMultiplier * dt;
+        if (this.scale < 1) this.scale += 0.05;
+        if (this.y > height + 100) this.active = false;
+    }
+
+    draw(ctx) {
+        ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.scale, this.scale);
+        
+        if (this.isTrick) {
+            ctx.font = '60px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(this.text, 0, 0);
+        } else {
+            ctx.fillStyle = '#6c5ce7'; 
+            ctx.beginPath(); ctx.roundRect(-this.width/2, -40 + 8, this.width, 80, 40); ctx.fill();
+            
+            ctx.fillStyle = '#a29bfe'; 
+            ctx.strokeStyle = '#2d3436'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.roundRect(-this.width/2, -40, this.width, 80, 40); ctx.fill(); ctx.stroke();
+            
+            ctx.fillStyle = 'rgba(255,255,255,0.4)'; 
+            ctx.beginPath(); ctx.roundRect(-this.width/2 + 15, -30, this.width - 30, 20, 10); ctx.fill();
+
+            ctx.font = '900 48px "Segoe UI"'; ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.strokeStyle = '#2d3436'; ctx.lineWidth = 5;
+            ctx.strokeText(this.text, 0, 5); ctx.fillText(this.text, 0, 5);
+        }
+        ctx.restore();
+    }
+
+    hitTest(px, py) {
+        return Math.abs(px - this.x) < this.width/2 + 10 && Math.abs(py - this.y) < 50;
+    }
+}
+
+/** * ЛОГІКА ТА КОЛІЗІЇ */
+let monster, env = new Environment(), words = [], particles = [];
+let gameState = {
+    score: 0, targetTask: 'singular',
+    lastSpawnTime: 0, lastTaskChange: 0,
+    isRunning: false, isTransitioning: false, transitionTimer: 0,
+    poolSingular: [], poolPlural: [],
+    speedMultiplier: 1.0 // Множник швидкості за замовчуванням
+};
+let lastTime = 0;
+
+function changeSpeed(delta) {
+    // Обмежуємо швидкість (від 0.2x до 3.0x)
+    gameState.speedMultiplier = Math.max(0.2, Math.min(3.0, gameState.speedMultiplier + delta));
+    document.getElementById('speed-display').innerText = gameState.speedMultiplier.toFixed(1) + 'x';
+}
+
+function getValidSpawnX(wordWidth) {
+    let attempts = 0, padding = 20; 
+    while (attempts < 20) { 
+        let testX = wordWidth/2 + 20 + Math.random() * (width - wordWidth - 40);
+        let overlap = false;
+        for (let w of words) {
+            if (w.y < 250) { 
+                if (Math.abs(w.x - testX) < (wordWidth/2 + w.width/2 + padding)) {
+                    overlap = true; break;
+                }
+            }
+        }
+        if (!overlap) return testX;
+        attempts++;
+    }
+    return -999; 
+}
+
+function spawnWord(time) {
+    if (gameState.isTransitioning) return;
+    // Інтервал появи також залежить від швидкості гри (щоб екран не був порожнім при швидкій грі)
+    let dynamicSpawnRate = 1200 / Math.max(0.5, gameState.speedMultiplier);
+    
+    if (time - gameState.lastSpawnTime > dynamicSpawnRate) {
+        let type, text;
+        let r = Math.random();
+        if (r < 0.1) { type = 'trick'; text = ''; } 
+        else if (r < 0.55) { type = 'singular'; text = pullRandom(gameState.poolSingular) || pullRandom([...singularWords]); } 
+        else { type = 'plural'; text = pullRandom(gameState.poolPlural) || pullRandom([...pluralWords]); }
+
+        ctx.font = '900 48px "Segoe UI"';
+        let boxW = type === 'trick' ? 80 : ctx.measureText(text).width + 80;
+        
+        let newWord = new FallingWord(text, type, boxW);
+        if (newWord.x !== -999) { 
+            words.push(newWord);
+            gameState.lastSpawnTime = time;
+        }
+    }
+}
+
+function triggerTaskChange() {
+    gameState.targetTask = gameState.targetTask === 'singular' ? 'plural' : 'singular';
+    gameState.isTransitioning = true;
+    gameState.transitionTimer = 3000; 
+    monster.state = 'cheer';
+    for(let i=0; i<50; i++) particles.push(new ConfettiParticle(monster.x, monster.y - 70));
+}
+
+function drawUI(ctx, dt) {
+    ctx.font = '900 40px "Segoe UI"'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = '#FFD700'; ctx.strokeStyle = '#2d3436'; ctx.lineWidth = 6;
+    let st = `⭐ ${Math.max(0, gameState.score)} / 20`;
+    ctx.strokeText(st, 30, 30); ctx.fillText(st, 30, 30);
+
+    if (gameState.isTransitioning) {
+        gameState.transitionTimer -= dt;
+        let progress = 1 - (gameState.transitionTimer / 3000);
+        
+        ctx.fillStyle = `rgba(0,0,0,${Math.sin(progress * Math.PI) * 0.5})`;
+        ctx.fillRect(0, 0, width, height);
+
+        let scale = progress < 0.2 ? Math.sin(progress * 5 * Math.PI / 2) : 1; 
+        if(progress > 0.8) scale = 1 - (progress - 0.8) * 5; 
+
+        ctx.save(); ctx.translate(width/2, height/2); ctx.scale(scale, scale);
+        ctx.font = '900 60px "Segoe UI"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        
+        let msg = `ШУКАЄМО: ${gameState.targetTask === 'singular' ? 'ОДНИНУ' : 'МНОЖИНУ'}!`;
+        ctx.strokeStyle = '#2d3436'; ctx.lineWidth = 12; ctx.strokeText(msg, 0, 0);
+        ctx.fillStyle = '#ffeaa7'; ctx.fillText(msg, 0, 0);
+        ctx.restore();
+
+        if (gameState.transitionTimer <= 0) {
+            gameState.isTransitioning = false;
+            monster.state = 'idle';
+            gameState.lastTaskChange = performance.now();
+        }
+    } else if (performance.now() - gameState.lastTaskChange > 15000) {
+        triggerTaskChange();
+    }
+}
+
+function loop(timestamp) {
+    if (!gameState.isRunning) return;
+    const dt = Math.min(timestamp - lastTime, 32); 
+    lastTime = timestamp;
+
+    ctx.clearRect(0, 0, width, height);
+    env.draw(ctx, timestamp, width, height);
+
+    spawnWord(timestamp);
+
+    for (let i = words.length - 1; i >= 0; i--) {
+        if(!gameState.isTransitioning) words[i].update(dt);
+        words[i].draw(ctx);
+        if (!words[i].active) words.splice(i, 1);
+    }
+
+    monster.update(dt); monster.draw(ctx);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt); particles[i].draw(ctx);
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+
+    drawUI(ctx, dt);
+
+    if (gameState.score >= 20) {
+        gameState.isRunning = false;
+        document.getElementById('ui-layer').style.opacity = 1;
+        document.getElementById('ui-layer').style.pointerEvents = 'auto';
+    } else { requestAnimationFrame(loop); }
+}
+
+function handleInput(e) {
+    // Ігноруємо кліки по інтерфейсу керування швидкістю
+    if(e.target.closest('#game-ui')) return;
+    if(!gameState.isRunning || gameState.isTransitioning) return;
+    
+    pointer.x = e.touches ? e.touches[0].clientX : e.clientX;
+    pointer.y = e.touches ? e.touches[0].clientY : e.clientY;
+
+    for (let i = words.length - 1; i >= 0; i--) {
+        let w = words[i];
+        if (w.hitTest(pointer.x, pointer.y)) {
+            if (w.isTrick) {
+                gameState.score += w.trickValue;
+                monster.state = w.trickValue > 0 ? 'cheer' : 'sad';
+            } else {
+                if (w.type === gameState.targetTask) { gameState.score++; monster.state = 'cheer'; } 
+                else { gameState.score--; monster.state = 'sad'; }
+            }
+            
+            if(monster.state === 'cheer') {
+                for(let j=0; j<15; j++) particles.push(new ConfettiParticle(w.x, w.y));
+            }
+
+            // Сум триває довше (1.5 секунди), щоб дитина помітила емоцію
+            let emotionDuration = monster.state === 'sad' ? 1500 : 600;
+            setTimeout(() => { if(monster.state !== 'idle') monster.state = 'idle'; }, emotionDuration);
+            
+            words.splice(i, 1);
+            break;
+        }
+    }
+}
+
+window.addEventListener('mousemove', e => { pointer.x = e.clientX; pointer.y = e.clientY; });
+window.addEventListener('touchmove', e => { pointer.x = e.touches[0].clientX; pointer.y = e.touches[0].clientY; }, {passive: true});
+window.addEventListener('mousedown', handleInput);
+window.addEventListener('touchstart', handleInput, {passive: false}); // passive:false щоб кнопки UI працювали ідеально на мобільному
+
+function startGame() {
+    document.getElementById('ui-layer').style.opacity = 0;
+    document.getElementById('ui-layer').style.pointerEvents = 'none';
+    gameState.poolSingular = [...singularWords]; gameState.poolPlural = [...pluralWords];
+    gameState.score = 0; gameState.isRunning = true; gameState.isTransitioning = true;
+    gameState.transitionTimer = 3000;
+    words = []; particles = [];
+    resize(); monster = new Character(width / 2, height - 120, 1.2);
+    lastTime = gameState.lastSpawnTime = gameState.lastTaskChange = performance.now();
+    requestAnimationFrame(loop);
+}
+
+window.onload = () => { resize(); startGame(); };
+</script>
+</body>
+</html>
