@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Прикметники - Гра</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0d1b2a;
+            font-family: 'Arial Rounded MT Bold', sans-serif;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 10%;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        h1 {
+            font-size: clamp(40px, 8vw, 72px);
+            margin: 0;
+            color: #00d4ff;
+            text-shadow: 4px 4px 0 #000;
+            pointer-events: auto;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .btn-container {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            right: 30px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 3;
+            pointer-events: auto;
+        }
+
+        .btn {
+            background-color: #ff3366;
+            color: white;
+            border: 4px solid #fff;
+            padding: 15px 30px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 50px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.5);
+            transition: all 0.1s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 120px;
+            height: 70px;
+            user-select: none;
+        }
+
+        .btn:active {
+            transform: translateY(5px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <h1 id="word-text">сонячний</h1>
+</div>
+
+<div class="btn-container">
+    <button class="btn" onclick="game.prevWord()">&larr;</button>
+    <button class="btn" onclick="game.nextWord()">&rarr;</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+class Character {
+    constructor(scale) {
+        this.scale = scale;
+        this.x = 0;
+        this.y = 0;
+        
+        this.lArmAngle = 0;
+        this.rArmAngle = 0;
+        this.targetLArmAngle = 0;
+        this.targetRArmAngle = 0;
+        
+        this.eyeState = 'normal';
+        this.state = 'Idle';
+        this.timer = 0;
+
+        this.colors = { 
+            body: '#ff6b6b', 
+            accent: '#4ecdc4', 
+            outline: '#2d3436', 
+            highlight: 'rgba(255,255,255,0.2)' 
+        };
+    }
+
+    lerp(start, end, amt) {
+        return (1 - amt) * start + amt * end;
+    }
+
+    update(time) {
+        this.breathOffset = Math.sin(time * 0.003) * 5;
+
+        if (this.timer > 0) {
+            switch(this.state) {
+                case 'WaveRight':
+                    this.targetRArmAngle = Math.sin(time * 0.01) * 0.8 - 1.5;
+                    this.targetLArmAngle = 0.5;
+                    this.eyeState = 'happy';
+                    break;
+                case 'WaveLeft':
+                    this.targetLArmAngle = -(Math.sin(time * 0.01) * 0.8 - 1.5);
+                    this.targetRArmAngle = -0.5;
+                    this.eyeState = 'happy';
+                    break;
+                case 'Excited':
+                    this.targetLArmAngle = -2.5;
+                    this.targetRArmAngle = 2.5;
+                    this.eyeState = 'surprised';
+                    break;
+                case 'Sad':
+                    this.targetLArmAngle = 0.3;
+                    this.targetRArmAngle = -0.3;
+                    this.eyeState = 'sad';
+                    break;
+                case 'Thinking':
+                    this.targetLArmAngle = -1.5;
+                    this.targetRArmAngle = 0;
+                    this.eyeState = 'normal';
+                    break;
+                case 'PointRight':
+                    this.targetRArmAngle = 1.5;
+                    this.targetLArmAngle = 0.2;
+                    this.eyeState = 'normal';
+                    break;
+                case 'PointLeft':
+                    this.targetLArmAngle = -1.5;
+                    this.targetRArmAngle = -0.2;
+                    this.eyeState = 'normal';
+                    break;
+                case 'Angry':
+                    this.targetLArmAngle = -1.0;
+                    this.targetRArmAngle = 1.0;
+                    this.eyeState = 'angry';
+                    break;
+                case 'Surprised':
+                    this.targetLArmAngle = -2.0;
+                    this.targetRArmAngle = 2.0;
+                    this.eyeState = 'surprised';
+                    break;
+                case 'HappyIdle':
+                    this.targetLArmAngle = Math.sin(time * 0.005) * 0.2;
+                    this.targetRArmAngle = -Math.sin(time * 0.005) * 0.2;
+                    this.eyeState = 'happy';
+                    break;
+            }
+            this.timer--;
+        } else {
+            this.state = 'Idle';
+            this.targetLArmAngle = Math.sin(time * 0.002) * 0.1; 
+            this.targetRArmAngle = -Math.sin(time * 0.002) * 0.1;
+            this.eyeState = 'normal';
+        }
+
+        this.lArmAngle = this.lerp(this.lArmAngle, this.targetLArmAngle, 0.1);
+        this.rArmAngle = this.lerp(this.rArmAngle, this.targetRArmAngle, 0.1);
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y + this.breathOffset);
+        ctx.scale(this.scale, this.scale);
+
+        ctx.lineWidth = 4 / this.scale;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = this.colors.outline;
+
+        // Ноги
+        this.drawLimb(ctx, -25, -20, 20, 50);
+        this.drawLimb(ctx, 25, -20, 20, 50);
+
+        // Тулуб
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            ctx.roundRect(-65, -150, 130, 140, 35);
+        } else {
+            ctx.rect(-65, -150, 130, 140);
+        }
+        ctx.fillStyle = this.colors.body;
+        ctx.fill();
+        ctx.stroke();
+
+        // Блік
+        ctx.beginPath();
+        ctx.ellipse(-25, -110, 10, 20, Math.PI/4, 0, Math.PI*2);
+        ctx.fillStyle = this.colors.highlight;
+        ctx.fill();
+
+        // Обличчя
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            ctx.roundRect(-45, -135, 90, 70, 15);
+        } else {
+            ctx.rect(-45, -135, 90, 70);
+        }
+        ctx.fillStyle = this.colors.outline;
+        ctx.fill();
+
+        // Очі
+        this.drawEye(ctx, -20, -100);
+        this.drawEye(ctx, 20, -100);
+
+        // Руки
+        this.drawArm(ctx, -65, -100, this.lArmAngle);
+        this.drawArm(ctx, 65, -100, this.rArmAngle);
+
+        ctx.restore();
+    }
+
+    drawEye(ctx, ox, oy) {
+        ctx.save();
+        ctx.translate(ox, oy);
+        ctx.beginPath();
+        if (this.eyeState === 'happy') {
+            ctx.arc(0, 5, 12, Math.PI, 0);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+        } else if (this.eyeState === 'sad') {
+            ctx.arc(0, 0, 14, 0, Math.PI, true);
+            ctx.fillStyle = 'white'; ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -5, 6, 0, Math.PI*2); ctx.fillStyle = 'black'; ctx.fill();
+        } else if (this.eyeState === 'surprised') {
+            ctx.arc(0, 0, 16, 0, Math.PI*2);
+            ctx.fillStyle = 'white'; ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fillStyle = 'black'; ctx.fill();
+        } else if (this.eyeState === 'angry') {
+            ctx.rotate(ox < 0 ? Math.PI/4 : -Math.PI/4);
+            ctx.ellipse(0, 0, 15, 8, 0, 0, Math.PI*2);
+            ctx.fillStyle = 'white'; ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2); ctx.fillStyle = 'black'; ctx.fill();
+        } else {
+            ctx.arc(0, 0, 14, 0, Math.PI*2);
+            ctx.fillStyle = 'white'; ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI*2); ctx.fillStyle = 'black'; ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    drawLimb(ctx, ox, oy, w, h) {
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(ox - w/2, oy, w, h, 10);
+        else ctx.rect(ox - w/2, oy, w, h);
+        ctx.fillStyle = this.colors.outline;
+        ctx.fill();
+    }
+
+    drawArm(ctx, ox, oy, rotation) {
+        ctx.save();
+        ctx.translate(ox, oy);
+        ctx.rotate(rotation);
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(-10, -10, 20, 65, 10);
+        else ctx.rect(-10, -10, 20, 65);
+        ctx.fillStyle = this.colors.accent;
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.pixelRatio = window.devicePixelRatio || 1;
+        
+        this.adjectives = [
+            "сонячний", "місячний", "зірковий", "вітряний", "дощовий", "сніжний", "космічний", "теплий",
+            "холодний", "морозний", "туманний", "темний", "вологий", "штормовий", "спокійний", "сильний",
+            "швидкий", "нічний", "страшний", "невагомий", "вогняний", "металевий", "скляний", "розумний",
+            "зелений", "таємний", "чистий", "брудний", "дурний", "новий"
+        ];
+        
+        this.currentIndex = 0;
+        this.character = new Character(1.2);
+        
+        this.init();
+        this.updateUI();
+        this.animate();
+    }
+
+    init() {
+        window.addEventListener('resize', () => this.resize());
+        this.resize();
+    }
+
+    resize() {
+        this.canvas.width = window.innerWidth * this.pixelRatio;
+        this.canvas.height = window.innerHeight * this.pixelRatio;
+        this.ctx.scale(this.pixelRatio, this.pixelRatio);
+        
+        this.platformY = window.innerHeight * 0.75;
+        this.character.x = window.innerWidth / 2;
+        
+        // ---------------------------------------------------------
+        // ⬅️ ОСЬ ЦЕЙ РЯДОК Я ЗМІНИВ (ПІДНЯВ ПЕРСОНАЖА ВИЩЕ НА 80 ПІКСЕЛІВ)
+        // ---------------------------------------------------------
+        this.character.y = this.platformY - 40; 
+    }
+
+    updateUI() {
+        document.getElementById('word-text').innerText = this.adjectives[this.currentIndex];
+        
+        const reactions = [
+            'WaveRight', 'WaveLeft', 'Excited', 'Sad', 'Thinking', 
+            'PointRight', 'PointLeft', 'Angry', 'Surprised', 'HappyIdle'
+        ];
+        this.character.state = reactions[Math.floor(Math.random() * reactions.length)];
+        this.character.timer = 80;
+    }
+
+    nextWord() {
+        this.currentIndex = (this.currentIndex + 1) % this.adjectives.length;
+        this.updateUI();
+    }
+
+    prevWord() {
+        this.currentIndex = (this.currentIndex - 1 + this.adjectives.length) % this.adjectives.length;
+        this.updateUI();
+    }
+
+    drawEnvironment() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+
+        // Фон неба
+        const grad = this.ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#0d1b2a');
+        grad.addColorStop(1, '#1b263b');
+        this.ctx.fillStyle = grad;
+        this.ctx.fillRect(0, 0, w, h);
+
+        // Зірки
+        this.ctx.fillStyle = "white";
+        for(let i = 0; i < 40; i++) {
+            let x = Math.sin(i * 123) * w/2 + w/2;
+            let y = Math.cos(i * 321) * h/2 + h/2;
+            
+            if (y < this.platformY - 120) {
+                let size = Math.sin(Date.now() * 0.002 + i) * 1.5 + 1.5;
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, size, 0, Math.PI*2);
+                this.ctx.fill();
+            }
+        }
+
+        // Платформа
+        this.ctx.beginPath();
+        this.ctx.ellipse(w/2, this.platformY, 200, 40, 0, 0, Math.PI*2);
+        this.ctx.fillStyle = '#415a77';
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#778da9';
+        this.ctx.lineWidth = 4;
+        this.ctx.stroke();
+    }
+
+    animate() {
+        this.ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+        
+        this.drawEnvironment();
+        
+        const time = Date.now();
+        this.character.update(time);
+        this.character.draw(this.ctx);
+
+        requestAnimationFrame(() => this.animate());
+    }
+}
+
+const game = new Game();
+</script>
+</body>
+</html>
