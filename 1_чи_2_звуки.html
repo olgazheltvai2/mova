@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000b1a; font-family: 'Arial Rounded MT Bold', sans-serif; }
+        #game-viewport { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+
+        /* Живий фон з водоспадами та мохом */
+        #bg-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        
+        /* Кнопки навігації */
+        .btn-nav {
+            position: absolute; bottom: 35px; width: 50px; height: 50px;
+            background: rgba(0, 255, 200, 0.1); border: 1px solid #00ffc8;
+            border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: 0.4s; z-index: 50;
+        }
+        .btn-nav svg { width: 24px; fill: #00ffc8; }
+        .btn-nav:hover { background: rgba(0, 255, 200, 0.3); box-shadow: 0 0 20px #00ffc8; }
+        #prev-btn { left: 40px; }
+        #next-btn { right: 40px; }
+
+        /* Контейнер для слова на плиті з візерунками */
+        #word-container {
+            position: relative; padding: 60px 100px;
+            background: radial-gradient(circle at center, #002b36 0%, #001a1f 100%);
+            border: 3px solid #00ffc8; border-radius: 40px;
+            box-shadow: 0 0 80px rgba(0, 255, 200, 0.2), inset 0 0 30px #000;
+            display: flex; gap: 12px; align-items: center;
+        }
+
+        .letter-tile {
+            font-size: 85px; font-weight: bold; color: #e0fdf7;
+            position: relative; user-select: none;
+        }
+
+        /* Підсвітка цільових літер */
+        .highlight {
+            color: #00ffc8; cursor: pointer;
+            text-shadow: 0 0 15px #00ffc8;
+            transition: 0.3s;
+        }
+        .highlight:hover { transform: scale(1.1); }
+
+        /* Звукові підказки */
+        .sound-pop {
+            position: absolute; top: -80px; left: 50%; transform: translateX(-50%) scale(0);
+            display: flex; gap: 8px; pointer-events: none; transition: 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+        }
+        .sound-pop.active { transform: translateX(-50%) scale(1); top: -110px; }
+        .bubble {
+            background: #00ffc8; color: #001a1f; padding: 12px 20px;
+            border-radius: 18px; font-size: 38px; font-weight: 900;
+            box-shadow: 0 5px 20px rgba(0, 255, 200, 0.4);
+        }
+
+        /* Ефект частинок */
+        .particle {
+            position: absolute; pointer-events: none;
+            background: #00ffc8; border-radius: 50%;
+            animation: float-up 2s forwards;
+        }
+        @keyframes float-up {
+            to { transform: translateY(-100px); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-viewport">
+    <svg id="bg-svg" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+        <rect width="1000" height="1000" fill="#000b1a"/>
+        <path d="M-100 200 Q 500 150 1100 200" stroke="#00334d" stroke-width="150" fill="none" opacity="0.4" />
+        <path d="M-100 800 Q 500 850 1100 800" stroke="#00334d" stroke-width="200" fill="none" opacity="0.3" />
+        <circle cx="100" cy="900" r="80" fill="#001a1f" stroke="#00ffc8" stroke-width="2" />
+        <circle cx="120" cy="880" r="10" fill="#00ffc8"><animate attributeName="opacity" values="0.2;1;0.2" dur="3s" repeatCount="indefinite"/></circle>
+        <circle cx="900" cy="150" r="60" fill="#001a1f" stroke="#00ffc8" stroke-width="2" />
+        <g id="bg-particles"></g>
+    </svg>
+
+    <div id="word-container"></div>
+
+    <button id="prev-btn" class="btn-nav"><svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg></button>
+    <button id="next-btn" class="btn-nav"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg></button>
+</div>
+
+<script>
+    // Повний словник з 50 слів з точними індексами для Я, Ю, Є
+    const words = [
+        { w: "Яма", s: {0: ["й", "а"]} },
+        { w: "Юшка", s: {0: ["й", "у"]} },
+        { w: "Єнот", s: {0: ["й", "е"]} },
+        { w: "Малюнок", s: {3: ["у"]} },
+        { w: "Любов", s: {1: ["у"]} },
+        { w: "Життя", s: {4: ["а"]} },
+        { w: "Синє", s: {3: ["е"]} },
+        { w: "М'ята", s: {2: ["й", "а"]} },
+        { w: "Юнак", s: {0: ["й", "у"]} },
+        { w: "Єва", s: {0: ["й", "е"]} },
+        { w: "Поля", s: {3: ["а"]} },
+        { w: "Ключ", s: {2: ["у"]} },
+        { w: "Моє", s: {2: ["й", "е"]} },
+        { w: "Стаття", s: {5: ["а"]} },
+        { w: "П'ять", s: {2: ["й", "а"]} },
+        { w: "Б'ють", s: {2: ["й", "у"]} },
+        { w: "Єдність", s: {0: ["й", "е"]} },
+        { w: "Якір", s: {0: ["й", "а"]} },
+        { w: "Тюльпан", s: {1: ["у"]} },
+        { w: "Рядок", s: {1: ["а"]} },
+        { w: "Своя", s: {3: ["й", "а"]} },
+        { w: "Малює", s: {4: ["й", "е"]} },
+        { w: "Взуття", s: {5: ["а"]} },
+        { w: "Юпітер", s: {0: ["й", "у"]} },
+        { w: "Лялька", s: {1: ["а"]} },
+        { w: "Європа", s: {0: ["й", "е"]} },
+        { w: "Ягода", s: {0: ["й", "а"]} },
+        { w: "Колючка", s: {3: ["у"]} },
+        { w: "Читання", s: {6: ["а"]} },
+        { w: "Юлія", s: {0: ["й", "у"], 3: ["й", "а"]} },
+        { w: "Знання", s: {5: ["а"]} },
+        { w: "Ялина", s: {0: ["й", "а"]} },
+        { w: "Твоє", s: {3: ["й", "е"]} },
+        { w: "Сім'я", s: {4: ["й", "а"]} },
+        { w: "Буря", s: {3: ["а"]} },
+        { w: "Єхидна", s: {0: ["й", "е"]} },
+        { w: "Раннє", s: {4: ["е"]} },
+        { w: "Надія", s: {4: ["й", "а"]} },
+        { w: "Куля", s: {3: ["а"]} },
+        { w: "Юрба", s: {0: ["й", "у"]} },
+        { w: "Яскраво", s: {0: ["й", "а"]} },
+        { w: "Пір'я", s: {4: ["й", "а"]} },
+        { w: "Маля", s: {3: ["а"]} },
+        { w: "Люди", s: {1: ["у"]} },
+        { w: "Свято", s: {2: ["а"]} },
+        { w: "Обличчя", s: {6: ["а"]} },
+        { w: "Бюджет", s: {1: ["у"]} },
+        { w: "Якість", s: {0: ["й", "а"]} },
+        { w: "Клює", s: {3: ["й", "е"]} },
+        { w: "Комп'ютер", s: {6: ["й", "у"]} } // К-о-м-п-'-ю-т-е-р: ю на 6 позиції
+    ];
+
+    let currentLvl = 0;
+    const container = document.getElementById('word-container');
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // М'який звук (низька гучність)
+    function playBeep(freq, type = 'sine') {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.05, audioCtx.currentTime); // Дуже тихо
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    }
+
+    function createParticles(x, y) {
+        for(let i=0; i<8; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.left = x + 'px';
+            p.style.top = y + 'px';
+            p.style.width = p.style.height = Math.random() * 8 + 4 + 'px';
+            p.style.transform = `translate(${(Math.random()-0.5)*100}px, ${(Math.random()-0.5)*100}px)`;
+            document.body.appendChild(p);
+            setTimeout(() => p.remove(), 2000);
+        }
+    }
+
+    function draw() {
+        const data = words[currentLvl];
+        container.innerHTML = '';
+        
+        [...data.w].forEach((char, i) => {
+            const span = document.createElement('span');
+            span.textContent = char;
+            span.className = 'letter-tile';
+            
+            // Якщо індекс у списку звуків для цього слова - підсвічуємо
+            if (data.s[i]) {
+                span.classList.add('highlight');
+                
+                const pop = document.createElement('div');
+                pop.className = 'sound-pop';
+                data.s[i].forEach(snd => {
+                    const b = document.createElement('div');
+                    b.className = 'bubble';
+                    b.textContent = snd;
+                    pop.appendChild(b);
+                });
+                span.appendChild(pop);
+
+                span.onclick = (e) => {
+                    const isActive = pop.classList.contains('active');
+                    document.querySelectorAll('.sound-pop').forEach(p => p.classList.remove('active'));
+                    
+                    if (!isActive) {
+                        pop.classList.add('active');
+                        playBeep(300 + (i * 50), 'triangle');
+                        createParticles(e.clientX, e.clientY);
+                    }
+                };
+            }
+            container.appendChild(span);
+        });
+    }
+
+    document.getElementById('next-btn').onclick = () => {
+        currentLvl = (currentLvl + 1) % words.length;
+        playBeep(440);
+        draw();
+    };
+
+    document.getElementById('prev-btn').onclick = () => {
+        currentLvl = (currentLvl - 1 + words.length) % words.length;
+        playBeep(330);
+        draw();
+    };
+
+    // Початковий запуск
+    draw();
+
+    // Додаємо трохи плаваючих пилинок на фон через JS
+    const bgParts = document.getElementById('bg-particles');
+    for(let i=0; i<20; i++) {
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("r", Math.random() * 3);
+        c.setAttribute("fill", "#00ffc8");
+        c.setAttribute("opacity", Math.random() * 0.5);
+        const anim = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+        anim.setAttribute("attributeName", "cx");
+        anim.setAttribute("values", `${Math.random()*1000};${Math.random()*1000}`);
+        anim.setAttribute("dur", (Math.random()*10 + 5) + "s");
+        anim.setAttribute("repeatCount", "indefinite");
+        c.appendChild(anim);
+        const animY = document.createElementNS("http://www.w3.org/2000/svg", "animate");
+        animY.setAttribute("attributeName", "cy");
+        animY.setAttribute("values", `${Math.random()*1000};${Math.random()*1000}`);
+        animY.setAttribute("dur", (Math.random()*10 + 5) + "s");
+        animY.setAttribute("repeatCount", "indefinite");
+        c.appendChild(animY);
+        bgParts.appendChild(c);
+    }
+</script>
+
+</body>
+</html>
