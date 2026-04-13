@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noir Detective: Справа про Граматику</title>
+    <style>
+        body, html { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background: #050508; 
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; width: 100vw;
+        }
+        #game-wrapper {
+            position: relative;
+            width: 95vw;
+            max-width: 1280px;
+            aspect-ratio: 16 / 9;
+            box-shadow: 0 0 100px rgba(0,0,0,1);
+            background: #0f0f12;
+            cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'%3E%3C/line%3E%3C/svg%3E"), auto;
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+        .ui-btn { 
+            position: absolute; bottom: 5%; width: 60px; height: 60px; 
+            background: rgba(50, 50, 60, 0.8); border: 2px solid #777; 
+            border-radius: 15px; cursor: pointer; transition: 0.2s;
+            display: flex; justify-content: center; align-items: center; fill: #ccc;
+            z-index: 100;
+        }
+        .ui-btn:hover { background: #ffd700; fill: #000; border-color: #fff; transform: scale(1.1); }
+        #prev-btn { left: 3%; }
+        #next-btn { right: 3%; }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <canvas id="gameCanvas"></canvas>
+    <button id="prev-btn" class="ui-btn">
+        <svg viewBox="0 0 24 24" width="40"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+    </button>
+    <button id="next-btn" class="ui-btn">
+        <svg viewBox="0 0 24 24" width="40"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+    </button>
+</div>
+
+<script>
+/**
+ * ДЕТЕКТИВНА ГРА "НУАР: МОВНА ВАРТА"
+ * Версія з покращеним персонажем та ефектами
+ * Автор: КОД
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const nextBtn = document.getElementById('next-btn');
+const prevBtn = document.getElementById('prev-btn');
+
+canvas.width = 1280;
+canvas.height = 720;
+
+const tasks = [
+    { s: "Темний провулок ховає таємниці.", q: "Знайди слово-назву ПРЕДМЕТА", a: "провулок" },
+    { s: "Старий детектив шукає докази.", q: "Знайди слово-назву ДІЇ", a: "шукає" },
+    { s: "Холодний дощ іде за вікном.", q: "Знайди слово-назву ОЗНАКИ", a: "Холодний" },
+    { s: "Загадковий лист лежить на столі.", q: "Знайди слово-назву ПРЕДМЕТА", a: "лист" },
+    { s: "Чорна кішка швидко пробігла.", q: "Знайди слово-назву ОЗНАКИ", a: "Чорна" },
+    { s: "Ліхтар тьмяно освітлює вулицю.", q: "Знайди слово-назву ДІЇ", a: "освітлює" },
+    { s: "Важка папка впала на підлогу.", q: "Знайди слово-назву ПРЕДМЕТА", a: "папка" },
+    { s: "Розумний пес знайшов слід.", q: "Знайди слово-назву ОЗНАКИ", a: "Розумний" },
+    { s: "Годинник гучно цокає в кабінеті.", q: "Знайди слово-назву ДІЇ", a: "цокає" },
+    { s: "Нічне місто тихо спить.", q: "Знайди слово-назву ОЗНАКИ", a: "Нічне" },
+    { s: "Маленька лампа миготить у кутку.", q: "Знайди слово-назву ПРЕДМЕТА", a: "лампа" },
+    { s: "Сміливий поліцейський пише звіт.", q: "Знайди слово-назву ДІЇ", a: "пише" },
+    { s: "Золотий ключ відмикає замок.", q: "Знайди слово-назву ОЗНАКИ", a: "Золотий" },
+    { s: "Густий туман вкрив дорогу.", q: "Знайди слово-назву ПРЕДМЕТА", a: "туман" },
+    { s: "Дерев'яні двері раптом відчинилися.", q: "Знайди слово-назву ДІЇ", a: "відчинилися" },
+    { s: "Металева ручка була холодною.", q: "Знайди слово-назву ОЗНАКИ", a: "Металева" },
+    { s: "Сірий капелюх лежить у кріслі.", q: "Знайди слово-назву ПРЕДМЕТА", a: "капелюх" },
+    { s: "Хитрий злодій швидко тікає.", q: "Знайди слово-назву ОЗНАКИ", a: "Хитрий" },
+    { s: "Вітер сильно розгойдує штори.", q: "Знайди слово-назву ДІЇ", a: "розгойдує" },
+    { s: "Велике скло розбилося на друзки.", q: "Знайди слово-назву ПРЕДМЕТА", a: "скло" }
+];
+
+let currentLevel = 0;
+let charEmotion = 'neutral';
+let shakeX = 0, shakeY = 0;
+let lightningAlpha = 0;
+let flashAlpha = 0;
+let wordsCoords = [];
+let raindrops = Array.from({length: 200}, () => ({x: Math.random()*1280, y: Math.random()*720, s: 10+Math.random()*15}));
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(freq, type, dur, vol = 0.02) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+}
+
+// Рендеринг фону: цегляна стіна з підсвіткою
+function drawScene() {
+    // Світліший градієнт для стіни, щоб було видно дощ
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, 720);
+    bgGrad.addColorStop(0, '#1a1a20');
+    bgGrad.addColorStop(1, '#0a0a0d');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 1280, 720);
+
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    for(let y=0; y<720; y+=45) {
+        let offset = (y/45 % 2) * 30;
+        for(let x=-60; x<1340; x+=60) {
+            ctx.strokeRect(x+offset, y, 60, 45);
+        }
+    }
+}
+
+// Малювання реалістичнішого персонажа
+function drawCharacter(x, y, emotion) {
+    const time = Date.now() * 0.002;
+    const lookAngle = Math.sin(time) * 0.05 - 0.1; // Дивиться вгору-вправо
+    const bob = Math.sin(time * 1.5) * 3;
+
+    ctx.save();
+    ctx.translate(x, y + bob);
+
+    // Плащ (силует) - розвернутий вправо
+    ctx.fillStyle = '#1a1a1d';
+    ctx.beginPath();
+    ctx.moveTo(-45, 200);
+    ctx.lineTo(45, 200);
+    ctx.quadraticCurveTo(55, 50, 0, 0);
+    ctx.quadraticCurveTo(-55, 50, -45, 200);
+    ctx.fill();
+    ctx.strokeStyle = '#2a2a30'; ctx.stroke();
+
+    // Голова
+    ctx.save();
+    ctx.rotate(lookAngle);
+    ctx.fillStyle = '#0a0a0c';
+    ctx.beginPath();
+    ctx.ellipse(5, -35, 38, 42, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Очі (жовті, зміщені вправо-вгору)
+    const eyeColor = emotion === 'joy' ? '#00ff00' : (emotion === 'sad' ? '#ff4444' : '#ffd700');
+    ctx.fillStyle = eyeColor;
+    if(emotion === 'joy') {
+        ctx.strokeStyle = eyeColor; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(10, -45, 7, 0, Math.PI, true); ctx.stroke();
+        ctx.beginPath(); ctx.arc(35, -45, 7, 0, Math.PI, true); ctx.stroke();
+    } else {
+        ctx.beginPath(); ctx.arc(12, -48, 6, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(38, -48, 6, 0, Math.PI*2); ctx.fill();
+        // Зіниці
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.arc(14, -49, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(40, -49, 2.5, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Дзьоб (класичний детективний ніс птаха)
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.moveTo(30, -35);
+    ctx.lineTo(90, -40); // Кінчик дивиться вгору
+    ctx.lineTo(35, -15);
+    ctx.fill();
+
+    // Капелюх
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(-45, -85, 110, 15); // Поля
+    ctx.fillRect(-10, -135, 75, 55); // Тулія
+    ctx.fillStyle = '#151515';
+    ctx.fillRect(-10, -100, 75, 12); // Стрічка
+    ctx.restore();
+
+    ctx.restore();
+}
+
+// Дощ (світліший для видимості)
+function drawRain() {
+    ctx.strokeStyle = 'rgba(180, 190, 255, 0.25)';
+    ctx.lineWidth = 1.2;
+    raindrops.forEach(d => {
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - 2, d.y + d.s);
+        ctx.stroke();
+        d.y += d.s;
+        if(d.y > 720) { d.y = -20; d.x = Math.random()*1280; }
+    });
+}
+
+// Блискавка на весь екран
+function drawLightning() {
+    if(lightningAlpha <= 0) return;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 255, 255, ${lightningAlpha})`;
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 20; ctx.shadowColor = '#fff';
+    
+    let lx = Math.random() * 1280;
+    ctx.beginPath();
+    ctx.moveTo(lx, 0);
+    for(let i=0; i<10; i++) {
+        lx += (Math.random() - 0.5) * 150;
+        ctx.lineTo(lx, i * 72);
+    }
+    ctx.stroke();
+    ctx.restore();
+}
+
+// Прямокутник завдання та ЦЕНТРУВАННЯ ТЕКСТУ
+function drawTaskFolder() {
+    const taskX = 700, taskY = 360;
+    const taskW = 800, taskH = 460;
+
+    ctx.save();
+    ctx.translate(taskX, taskY);
+    ctx.rotate(0.005);
+    
+    // Фон папки
+    ctx.fillStyle = '#25252a';
+    ctx.shadowBlur = 50; ctx.shadowColor = 'black';
+    ctx.beginPath();
+    ctx.roundRect(-taskW/2, -taskH/2, taskW, taskH, 15);
+    ctx.fill();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.stroke();
+
+    const task = tasks[currentLevel];
+    
+    // Запитання
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 40px Courier New';
+    ctx.fillText(task.q, 0, -150);
+
+    // Розрахунок центрованого тексту речення
+    ctx.font = 'bold 54px Courier New';
+    const words = task.s.split(' ');
+    const maxWidth = 700;
+    let lines = [];
+    let currentLine = [];
+
+    words.forEach(w => {
+        let testLine = [...currentLine, w].join(' ');
+        if(ctx.measureText(testLine).width > maxWidth) {
+            lines.push(currentLine.join(' '));
+            currentLine = [w];
+        } else {
+            currentLine.push(w);
+        }
+    });
+    lines.push(currentLine.join(' '));
+
+    // Малюємо слова з урахуванням вертикального та горизонтального центрування
+    const totalTextHeight = lines.length * 70;
+    let startY = 30 - (totalTextHeight / 2) + 35; // Зсув для центрування по Y всередині області
+
+    wordsCoords = [];
+    lines.forEach((lineText, lineIdx) => {
+        const lineMetrics = ctx.measureText(lineText);
+        let cursorX = -(lineMetrics.width / 2);
+        
+        lineText.split(' ').forEach(w => {
+            const cleanW = w.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+            const m = ctx.measureText(w + " ");
+            
+            ctx.fillStyle = '#fff';
+            ctx.fillText(w, cursorX + m.width/2, startY + (lineIdx * 70));
+            
+            // Зберігаємо світові координати для кліку
+            wordsCoords.push({
+                word: cleanW.toLowerCase(),
+                x: taskX + cursorX - 10,
+                y: taskY + startY + (lineIdx * 70) - 50,
+                w: m.width + 10,
+                h: 70
+            });
+            cursorX += m.width;
+        });
+    });
+
+    ctx.restore();
+}
+
+function render() {
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+    
+    drawScene();
+    drawRain();
+    drawCharacter(200, 500, charEmotion);
+    drawTaskFolder();
+    drawLightning();
+
+    // Плавний білий спалах
+    if(flashAlpha > 0) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+        ctx.fillRect(0,0,1280,720);
+        flashAlpha -= 0.04;
+    }
+
+    if(lightningAlpha > 0) lightningAlpha -= 0.1;
+    shakeX *= 0.8; shakeY *= 0.8;
+
+    ctx.restore();
+    requestAnimationFrame(render);
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    
+    const task = tasks[currentLevel];
+    let found = false;
+
+    wordsCoords.forEach(wc => {
+        if(mx > wc.x && mx < wc.x + wc.w && my > wc.y && my < wc.y + wc.h) {
+            found = true;
+            if(wc.word === task.a.toLowerCase()) {
+                triggerSuccess();
+            } else {
+                triggerFail();
+            }
+        }
+    });
+});
+
+function triggerSuccess() {
+    charEmotion = 'joy';
+    lightningAlpha = 1.5;
+    flashAlpha = 0.6; // Плавний білий спалах
+    playTone(600, 'sine', 0.2, 0.05);
+    setTimeout(() => playTone(900, 'sine', 0.3, 0.05), 150);
+
+    setTimeout(() => {
+        if(currentLevel < tasks.length - 1) {
+            currentLevel++;
+            charEmotion = 'neutral';
+        }
+    }, 1200);
+}
+
+function triggerFail() {
+    charEmotion = 'sad';
+    shakeX = 20; shakeY = 15;
+    // Грім
+    playTone(60, 'sawtooth', 0.6, 0.08);
+    playTone(40, 'sawtooth', 1.0, 0.08);
+    setTimeout(() => charEmotion = 'neutral', 1000);
+}
+
+nextBtn.onclick = () => { if(currentLevel < tasks.length-1) currentLevel++; charEmotion = 'neutral'; };
+prevBtn.onclick = () => { if(currentLevel > 0) currentLevel--; charEmotion = 'neutral'; };
+
+render();
+</script>
+
+</body>
+</html>
