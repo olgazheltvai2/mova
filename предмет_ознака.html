@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сортування слів: Магічне Озеро 2.1</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #060b19; /* Темне нічне небо */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            user-select: none;
+        }
+
+        /* Деталізований SVG фон */
+        #environment {
+            position: absolute;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Кнопки навігації */
+        .nav-btn {
+            position: absolute;
+            bottom: 30px;
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00f3ff;
+            border-radius: 50%;
+            color: #00f3ff;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+            transition: all 0.2s;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #btn-prev { left: 30px; border-color: #ff00ea; color: #ff00ea; box-shadow: 0 0 15px rgba(255, 0, 234, 0.3); }
+        #btn-next { right: 30px; }
+        .nav-btn:hover { transform: scale(1.1); background: rgba(255, 255, 255, 0.2); }
+        .nav-btn:active { transform: scale(0.9); }
+
+        #game-layer {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+
+        /* Контейнери персонажів */
+        .character-container {
+            position: absolute;
+            width: 280px;
+            height: 350px;
+            cursor: pointer;
+            z-index: 999;
+            transition: filter 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+        }
+        .character-container:hover {
+            filter: drop-shadow(0 0 15px rgba(255,255,255,0.5));
+        }
+
+        #frog-container { bottom: 10%; left: 15%; }
+        #duck-container { bottom: 10%; right: 15%; animation: float 4s infinite ease-in-out; }
+
+        /* Текстові підписи біля персонажів */
+        .character-label {
+            color: #ffffff;
+            font-size: 24px;
+            font-weight: 900;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Хмарка зі словом */
+        #cloud-container {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            height: 200px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: left 1s ease-in-out, top 1s ease-in-out, transform 1s ease-in-out, opacity 0.5s;
+        }
+
+        .cloud-svg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            filter: drop-shadow(0 0 30px rgba(255,255,255,0.8));
+        }
+
+        .word-text {
+            position: relative;
+            z-index: 2;
+            color: #000;
+            font-size: 52px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            pointer-events: none;
+        }
+
+        /* Дощ */
+        .raindrop {
+            position: absolute;
+            width: 4px;
+            height: 20px;
+            background: #00f3ff;
+            border-radius: 2px;
+            opacity: 0;
+            z-index: 998;
+        }
+
+        /* Анімації */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+        @keyframes jump {
+            0%, 100% { transform: translateY(0) scaleY(1); }
+            30% { transform: translateY(-100px) scaleY(1.1); }
+            70% { transform: translateY(-100px) scaleY(1.1); }
+        }
+        .jumping { animation: jump 0.8s ease-in-out; }
+        @keyframes flap {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(-40deg); }
+        }
+        .flapping #duck-wing { animation: flap 0.15s infinite alternate; transform-origin: 150px 120px; }
+        @keyframes wrong-shake {
+            0%, 100% { transform: translateX(-50%); }
+            25% { transform: translateX(calc(-50% - 20px)); }
+            75% { transform: translateX(calc(-50% + 20px)); }
+        }
+        .shake { animation: wrong-shake 0.4s ease-in-out; }
+        @keyframes rain-fall {
+            0% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(200px); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<svg id="environment" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#040914"/>
+            <stop offset="100%" stop-color="#12254a"/>
+        </linearGradient>
+        <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#0a1930"/>
+            <stop offset="100%" stop-color="#000914"/>
+        </linearGradient>
+        <filter id="moon-glow">
+            <feGaussianBlur stdDeviation="20" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+    </defs>
+    <rect width="1920" height="600" fill="url(#sky)"/>
+    <circle cx="1500" cy="200" r="80" fill="#fff" filter="url(#moon-glow)"/>
+    <circle cx="300" cy="150" r="3" fill="#fff" opacity="0.8"/><circle cx="800" cy="100" r="4" fill="#fff"/>
+    <rect y="600" width="1920" height="480" fill="url(#water)"/>
+    <path d="M1400,620 L1600,620 L1550,640 L1450,640 Z M1420,660 L1580,660 L1520,680 L1480,680 Z" fill="#fff" opacity="0.2"/>
+    <path d="M0,500 Q300,550 600,700 Q800,800 650,1080 L0,1080 Z" fill="#0d2b1d" stroke="#184d34" stroke-width="10"/>
+    <g transform="translate(150, 750)">
+        <path d="M40,100 Q45,20 50,0 Q55,20 60,100 Z" fill="#a8e6cf"/>
+        <path d="M0,20 Q50,-40 100,20 Q50,40 0,20 Z" fill="#ff00ea" filter="url(#moon-glow)"/>
+        <circle cx="30" cy="10" r="5" fill="#fff"/><circle cx="70" cy="15" r="4" fill="#fff"/>
+    </g>
+    <g transform="translate(1700, 550)">
+        <path d="M10,200 Q0,100 20,0" stroke="#184d34" stroke-width="6" fill="none"/>
+        <rect x="15" y="20" width="10" height="60" fill="#5c4033" rx="5"/>
+        <path d="M50,220 Q40,120 70,20" stroke="#184d34" stroke-width="6" fill="none"/>
+        <rect x="65" y="40" width="10" height="60" fill="#5c4033" rx="5"/>
+    </g>
+</svg>
+
+<button id="btn-prev" class="nav-btn">◀</button>
+<button id="btn-next" class="nav-btn">▶</button>
+
+<div id="game-layer">
+    <div id="frog-container" class="character-container" data-type="noun">
+        <svg viewBox="0 0 300 300" width="100%" height="250">
+            <path d="M50,250 Q10,150 70,180 Q100,200 80,260 L60,265" fill="#00b894"/>
+            <path d="M250,250 Q290,150 230,180 Q200,200 220,260 L240,265" fill="#00b894"/>
+            <circle cx="58" cy="265" r="4" fill="#00b894"/><circle cx="68" cy="265" r="4" fill="#00b894"/> 
+            <circle cx="232" cy="265" r="4" fill="#00b894"/><circle cx="242" cy="265" r="4" fill="#00b894"/>
+            <ellipse cx="150" cy="200" rx="90" ry="70" fill="#00cec9"/>
+            <ellipse cx="150" cy="220" rx="60" ry="40" fill="#a8e6cf" opacity="0.6"/>
+            <ellipse cx="150" cy="120" rx="80" ry="50" fill="#00cec9"/>
+            <circle cx="100" cy="80" r="30" fill="#00cec9"/>
+            <circle cx="100" cy="80" r="20" fill="#fff"/>
+            <circle cx="100" cy="80" r="10" fill="#000" id="frog-pupil-l"/>
+            <circle cx="200" cy="80" r="30" fill="#00cec9"/>
+            <circle cx="200" cy="80" r="20" fill="#fff"/>
+            <circle cx="200" cy="80" r="10" fill="#000" id="frog-pupil-r"/>
+            <path id="frog-mouth" d="M110,140 Q150,170 190,140" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round"/>
+        </svg>
+        <span class="character-label">ПРЕДМЕТ</span>
+    </div>
+
+    <div id="duck-container" class="character-container" data-type="adj">
+        <svg viewBox="0 0 300 300" width="100%" height="250">
+            <path d="M80,200 Q50,250 150,250 Q250,250 260,180 Q260,150 200,180 Q150,200 80,200 Z" fill="#f1c40f"/>
+            <path d="M100,210 Q70,100 120,80 Q150,80 150,120 Q150,180 120,210 Z" fill="#f1c40f"/>
+            <circle cx="120" cy="100" r="12" fill="#fff"/>
+            <circle cx="115" cy="100" r="6" fill="#000" id="duck-pupil"/>
+            <path id="duck-beak" d="M95,110 L50,115 L95,125 Z" fill="#e67e22"/>
+            <g id="duck-wing">
+                <path d="M140,190 Q180,160 230,190 Q180,230 140,190 Z" fill="#f39c12"/>
+            </g>
+        </svg>
+        <span class="character-label">ОЗНАКА</span>
+    </div>
+
+    <div id="cloud-container">
+        <svg class="cloud-svg" viewBox="0 0 400 200">
+            <path d="M150,140 a50,50 0 0,1 0,-100 a70,70 0 0,1 120,-10 a50,50 0 0,1 60,60 a40,40 0 0,1 -20,70 Z" fill="#ffffff"/>
+            <path d="M100,130 a40,40 0 0,1 0,-80 a50,50 0 0,1 70,20 Z" fill="#ffffff"/>
+        </svg>
+        <span id="current-word" class="word-text">СЛОВО</span>
+    </div>
+</div>
+
+<script>
+    // База слів (15 предметів, 15 ознак)
+    let wordsList = [
+        { w: "Ліс", t: "noun" }, { w: "Темний", t: "adj" },
+        { w: "Місяць", t: "noun" }, { w: "Яскравий", t: "adj" },
+        { w: "Озеро", t: "noun" }, { w: "Глибоке", t: "adj" },
+        { w: "Гриб", t: "noun" }, { w: "Магічний", t: "adj" },
+        { w: "Очерет", t: "noun" }, { w: "Зелений", t: "adj" },
+        { w: "Зоря", t: "noun" }, { w: "Далека", t: "adj" },
+        { w: "Берег", t: "noun" }, { w: "Крутий", t: "adj" },
+        { w: "Вода", t: "noun" }, { w: "Холодна", t: "adj" },
+        { w: "Трава", t: "noun" }, { w: "Мокра", t: "adj" },
+        { w: "Камінь", t: "noun" }, { w: "Гладкий", t: "adj" },
+        { w: "Вітер", t: "noun" }, { w: "Тихий", t: "adj" },
+        { w: "Небо", t: "noun" }, { w: "Зоряне", t: "adj" },
+        { w: "Стежка", t: "noun" }, { w: "Вузька", t: "adj" },
+        { w: "Тінь", t: "noun" }, { w: "Довга", t: "adj" },
+        { w: "Секрет", t: "noun" }, { w: "Таємний", t: "adj" }
+    ];
+
+    // Функція для перемішування масиву (рандомізація)
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // Перемішуємо слова при старті
+    shuffleArray(wordsList);
+
+    let currentIdx = 0;
+    let isAnimating = false; // Змінна блокування екрану від подвійних кліків
+
+    const cloud = document.getElementById('cloud-container');
+    const wordDisplay = document.getElementById('current-word');
+    const frogContainer = document.getElementById('frog-container');
+    const duckContainer = document.getElementById('duck-container');
+    const frogMouth = document.getElementById('frog-mouth');
+    const duckBeak = document.getElementById('duck-beak');
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playSound(type) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        if (type === 'success') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        } else {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.4);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+        }
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    }
+
+    function loadWord(index) {
+        isAnimating = true; // Блокуємо дії, поки хмара з'являється
+        
+        wordDisplay.textContent = wordsList[index].w.toUpperCase();
+        cloud.dataset.type = wordsList[index].t;
+        
+        // Повертаємо хмарку в центр миттєво і прозоро
+        cloud.style.transition = 'none';
+        cloud.style.opacity = '0';
+        cloud.style.left = '50%';
+        cloud.style.top = '15%';
+        cloud.style.transform = 'translateX(-50%) scale(0.5)';
+        
+        // Плавно показуємо
+        setTimeout(() => {
+            cloud.style.transition = 'left 1s ease-in-out, top 1s ease-in-out, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.5s';
+            cloud.style.opacity = '1';
+            cloud.style.transform = 'translateX(-50%) scale(1)';
+            
+            // Знімаємо блокування після анімації появи
+            setTimeout(() => {
+                isAnimating = false;
+            }, 800);
+        }, 50);
+    }
+
+    function createRain(targetX, targetY) {
+        for(let i=0; i<20; i++) {
+            const drop = document.createElement('div');
+            drop.className = 'raindrop';
+            drop.style.left = (targetX - 100 + Math.random() * 200) + 'px';
+            drop.style.top = (targetY + 80) + 'px';
+            drop.style.animation = `rain-fall 0.6s linear ${Math.random() * 0.4}s`;
+            document.getElementById('game-layer').appendChild(drop);
+            setTimeout(() => drop.remove(), 1200);
+        }
+    }
+
+    function handleCharacterClick(characterElement, characterType) {
+        if(isAnimating) return; // Ігноруємо кліки, якщо йде анімація
+        
+        const currentType = cloud.dataset.type;
+        
+        if (currentType === characterType) {
+            // ПРАВИЛЬНА ВІДПОВІДЬ
+            isAnimating = true; // Блокуємо екран
+            playSound('success');
+            
+            const rect = characterElement.getBoundingClientRect();
+            const targetX = rect.left + rect.width / 2;
+            const targetY = rect.top - 150; 
+            
+            // Хмара летить
+            cloud.style.transform = 'translateX(0) scale(1)';
+            cloud.style.left = (targetX - 200) + 'px'; 
+            cloud.style.top = targetY + 'px';
+
+            setTimeout(() => {
+                // Починається дощ
+                createRain(targetX, targetY);
+                
+                // Персонаж радіє
+                if(characterType === 'noun') {
+                    characterElement.querySelector('svg').classList.add('jumping');
+                    frogMouth.setAttribute('d', 'M110,130 Q150,180 190,130');
+                    setTimeout(() => {
+                        characterElement.querySelector('svg').classList.remove('jumping');
+                        frogMouth.setAttribute('d', 'M110,140 Q150,170 190,140');
+                    }, 800);
+                } else {
+                    characterElement.querySelector('svg').classList.add('flapping');
+                    duckBeak.setAttribute('d', 'M95,110 L50,100 L95,125 Z');
+                    setTimeout(() => {
+                        characterElement.querySelector('svg').classList.remove('flapping');
+                        duckBeak.setAttribute('d', 'M95,110 L50,115 L95,125 Z');
+                    }, 800);
+                }
+
+                // Затримка на насолоду дощем, потім наступне слово
+                setTimeout(() => {
+                    isAnimating = false; // Важливо! Розблоковуємо екран
+                    nextWord();
+                }, 1500);
+
+            }, 1000); // Час польоту хмари
+
+        } else {
+            // ПОМИЛКА
+            if(isAnimating) return;
+            playSound('error');
+            cloud.classList.add('shake');
+            
+            if(characterElement.id === 'frog-container') {
+                frogMouth.setAttribute('d', 'M130,160 Q150,140 170,160');
+                setTimeout(() => frogMouth.setAttribute('d', 'M110,140 Q150,170 190,140'), 600);
+            } else {
+                document.getElementById('duck-pupil').setAttribute('cx', '125');
+                setTimeout(() => document.getElementById('duck-pupil').setAttribute('cx', '115'), 600);
+            }
+
+            setTimeout(() => cloud.classList.remove('shake'), 400);
+        }
+    }
+
+    frogContainer.addEventListener('click', () => handleCharacterClick(frogContainer, 'noun'));
+    duckContainer.addEventListener('click', () => handleCharacterClick(duckContainer, 'adj'));
+
+    function nextWord() {
+        if(isAnimating) return;
+        currentIdx++;
+        if(currentIdx >= wordsList.length) {
+            // Якщо слова закінчилися - перемішуємо знову і йдемо по колу
+            shuffleArray(wordsList);
+            currentIdx = 0;
+        }
+        loadWord(currentIdx);
+    }
+
+    function prevWord() {
+        if(isAnimating) return;
+        currentIdx--;
+        if(currentIdx < 0) currentIdx = wordsList.length - 1;
+        loadWord(currentIdx);
+    }
+
+    document.getElementById('btn-next').addEventListener('click', nextWord);
+    document.getElementById('btn-prev').addEventListener('click', prevWord);
+
+    // Старт гри
+    loadWord(currentIdx);
+
+</script>
+</body>
+</html>
