@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Інтерактивна гра: Нагодуй песика</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            /* Сюжетний фон */
+            background-image: url('фон.png');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Стилі для інтерактивної їжі */
+        .interactive-food {
+            pointer-events: auto;
+            cursor: pointer;
+            transition: filter 0.2s;
+            /* Центруємо точку масштабування рівно по центру картинки */
+            transform-origin: 50% 50%;
+            transform-box: fill-box;
+        }
+
+        /* Ефект світіння при наведенні мишки */
+        .interactive-food:hover {
+            filter: drop-shadow(0px 0px 15px rgba(255, 200, 50, 0.9)) brightness(1.1);
+        }
+
+        /* Підготовка деталей песика для апаратної анімації */
+        .dog-part {
+            will-change: transform;
+        }
+
+        /* --- СТИЛІ ДЛЯ СЛІВ ТА НАВІГАЦІЇ --- */
+        .nav-btn-minimal {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid #FFF;
+            border-radius: 50%;
+            width: 70px;
+            height: 70px;
+            font-size: 34px;
+            font-weight: bold;
+            color: #FFF;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .nav-btn-minimal:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .nav-btn-minimal:active {
+            transform: scale(0.9);
+        }
+
+        #word-box {
+            background: linear-gradient(135deg, #C27A30 0%, #8B4513 100%);
+            padding: 20px 60px;
+            border-radius: 30px;
+            font-size: 195px;
+            font-weight: 900;
+            color: #FFF;
+            border: 4px solid #FFF;
+            box-shadow: 0 6px 15px rgba(139, 69, 19, 0.6);
+            text-align: center;
+            min-width: 400px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            letter-spacing: 2px;
+            cursor: pointer;
+        }
+
+        .food-locked {
+            pointer-events: none !important;
+            filter: grayscale(100%) opacity(0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div style="position: absolute; top: 30px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 30px; z-index: 1000; pointer-events: auto;">
+        <button class="nav-btn-minimal" id="btn-prev">❮</button>
+        <div id="word-box">Слово</div>
+        <button class="nav-btn-minimal" id="btn-next">❯</button>
+    </div>
+
+    <svg id="game-svg" viewBox="0 0 2000 1200" preserveAspectRatio="xMidYMid meet">
+        
+        <g id="dog-wrapper" transform="translate(150, 600) scale(0.5)"></g>
+        
+        <g id="food-board" transform="translate(1700, 100)">
+            <rect x="0" y="0" width="480" height="980" rx="40" ry="40" 
+                  fill="rgba(60, 30, 15, 0.85)" stroke="#E67E22" stroke-width="6" pointer-events="none" />
+            
+            <path d="M40 40 L440 40 L440 940 L40 940 Z" fill="none" stroke="rgba(255,180,80,0.15)" stroke-width="4" stroke-dasharray="10, 10" pointer-events="none" />
+            
+            <g id="food-items-container"></g>
+        </g>
+    </svg>
+</div>
+
+<audio id="sound-bite" src="bite.mp3"></audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+<script>
+    // Координати та налаштування деталей песика
+    const dogData = [
+      { "file": "хвіст.png", "x": 825, "y": 500, "z": 25, "rotation": 43, "pivotX": 340, "pivotY": 100, "width": 357, "height": 201 },
+      { "file": "голова.png", "x": 1587, "y": 97, "z": 27, "rotation": 0, "pivotX": 26, "pivotY": 90, "width": 560, "height": 486 },
+      { "file": "тулуб.png", "x": 983, "y": 412, "z": 26, "rotation": 0, "pivotX": 50, "pivotY": 50, "width": 888, "height": 690 }
+    ];
+
+    // Файли їжі 
+    const foodFiles = ['1.png', '2.png', '3.png', '4.png', '5.png', '6.png', '7.png', '8.png', '9.png', '10.png'];
+
+    // --- ОНОВЛЕНИЙ МАСИВ СЛІВ ЗІ СТАНАМИ ---
+    const wordData = [
+        { slash: "Не/бо", together: "Небо", separate: "Не бо", isVerb: false },
+        { slash: "Не/діля", together: "Неділя", separate: "Не діля", isVerb: false },
+        { slash: "Не/года", together: "Негода", separate: "Не года", isVerb: false },
+        { slash: "Не/мовля", together: "Немовля", separate: "Не мовля", isVerb: false },
+        { slash: "Не/безпека", together: "Небезпека", separate: "Не безпека", isVerb: false },
+        { slash: "Не/правда", together: "Неправда", separate: "Не правда", isVerb: false },
+        { slash: "Не/бокрай", together: "Небокрай", separate: "Не бокрай", isVerb: false },
+        { slash: "не/долік", together: "недолік", separate: "не долік", isVerb: false },
+        { slash: "не/рви", together: "нерви", separate: "не рви", isVerb: false },
+        { slash: "не/дуга", together: "недуга", separate: "не дуга", isVerb: false },
+        { slash: "не/бачити", together: "небачити", separate: "не бачити", isVerb: true },
+        { slash: "не/довіряти", together: "недовіряти", separate: "не довіряти", isVerb: true },
+        { slash: "не/брати", together: "небрати", separate: "не брати", isVerb: true },
+        { slash: "не/думати", together: "недумати", separate: "не думати", isVerb: true },
+        { slash: "не/боятися", together: "небоятися", separate: "не боятися", isVerb: true },
+        { slash: "не/заважати", together: "незаважати", separate: "не заважати", isVerb: true },
+        { slash: "не/забути", together: "незабути", separate: "не забути", isVerb: true },
+        { slash: "не/вчити", together: "невчити", separate: "не вчити", isVerb: true },
+        { slash: "не/впасти", together: "невпасти", separate: "не впасти", isVerb: true },
+        { slash: "не/говорити", together: "неговорити", separate: "не говорити", isVerb: true }
+    ];
+    
+    wordData.sort(() => Math.random() - 0.5);
+    let currentWordIndex = 0;
+    let currentWordState = 0; // 0: з рискою, 1: разом, 2: окремо
+
+    const dogWrapper = document.getElementById('dog-wrapper');
+    const foodItemsContainer = document.getElementById('food-items-container');
+    const soundBite = document.getElementById('sound-bite');
+
+    dogData.sort((a, b) => a.z - b.z);
+
+    function buildDog() {
+        dogData.forEach(part => {
+            const partName = part.file.split('.')[0];
+            
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('transform', `translate(${part.x}, ${part.y})`);
+            
+            const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.setAttribute('href', part.file);
+            img.setAttribute('width', part.width);
+            img.setAttribute('height', part.height);
+            img.setAttribute('id', `part-${partName}`);
+            img.setAttribute('class', 'dog-part');
+            
+            img.style.transformOrigin = `${part.pivotX}px ${part.pivotY}px`;
+            img.style.transform = `rotate(${part.rotation}deg)`;
+            
+            g.appendChild(img);
+            dogWrapper.appendChild(g);
+        });
+    }
+
+    function buildFoodBoard() {
+        const columns = 2;
+        const startX = 55;
+        const startY = 35;
+        const xOffset = 210;
+        const yOffset = 185;
+        const cellSize = 160;
+
+        foodFiles.forEach((file, index) => {
+            const col = index % columns;
+            const row = Math.floor(index / columns);
+            
+            const currentX = startX + (col * xOffset);
+            const currentY = startY + (row * yOffset);
+
+            const cell = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            cell.setAttribute('x', currentX);
+            cell.setAttribute('y', currentY);
+            cell.setAttribute('width', cellSize);
+            cell.setAttribute('height', cellSize);
+            cell.setAttribute('rx', '25');
+            cell.setAttribute('fill', 'rgba(255, 255, 255, 0.05)');
+            cell.setAttribute('stroke', 'rgba(255, 180, 80, 0.4)'); 
+            cell.setAttribute('stroke-width', '2');
+            cell.style.pointerEvents = 'none'; 
+            
+            foodItemsContainer.appendChild(cell);
+
+            const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.setAttribute('href', file);
+            
+            const foodSize = 130;
+            const foodOffset = (cellSize - foodSize) / 2;
+            img.setAttribute('x', currentX + foodOffset);
+            img.setAttribute('y', currentY + foodOffset);
+            img.setAttribute('width', foodSize);
+            img.setAttribute('height', foodSize);
+            img.setAttribute('class', 'interactive-food');
+            
+            img.addEventListener('click', (e) => {
+                handleFeed(e.target);
+            });
+            
+            foodItemsContainer.appendChild(img);
+        });
+    }
+
+    function startIdleAnimation() {
+        anime({
+            targets: '#part-голова',
+            rotate: ['0deg', '3.5deg'],
+            duration: 2200,
+            direction: 'alternate',
+            loop: true,
+            easing: 'easeInOutSine'
+        });
+    }
+
+    function handleFeed(foodElement) {
+        foodElement.style.pointerEvents = 'none';
+
+        const foodX = parseFloat(foodElement.getAttribute('x'));
+        const foodY = parseFloat(foodElement.getAttribute('y'));
+        const foodSize = parseFloat(foodElement.getAttribute('width'));
+
+        const targetGlobalX = 1174;
+        const targetGlobalY = 833;
+
+        const startGlobalCenterX = 1700 + foodX + (foodSize / 2);
+        const startGlobalCenterY = 100 + foodY + (foodSize / 2);
+
+        const moveX = targetGlobalX - startGlobalCenterX;
+        const moveY = targetGlobalY - startGlobalCenterY;
+
+        const flightTimeline = anime.timeline({
+            targets: foodElement
+        });
+
+        flightTimeline
+        .add({
+            translateX: moveX,
+            translateY: moveY,
+            scale: 0.5,
+            duration: 1000,
+            easing: 'easeInCubic'
+        })
+        .add({
+            scale: 0,
+            opacity: 0,
+            duration: 150, 
+            easing: 'easeOutExpo',
+            begin: () => {
+                soundBite.currentTime = 0;
+                soundBite.play().catch(() => {});
+            },
+            complete: () => {
+                foodElement.remove();
+            }
+        });
+
+        anime({
+            targets: '#part-хвіст',
+            rotate: [
+                { value: '65deg', duration: 150 },
+                { value: '20deg', duration: 150 },
+                { value: '70deg', duration: 150 },
+                { value: '15deg', duration: 150 },
+                { value: '43deg', duration: 200 } 
+            ],
+            easing: 'easeInOutSine'
+        });
+        
+        anime({
+            targets: '#part-голова',
+            translateY: [
+                { value: -20, duration: 200, delay: 1000 },
+                { value: 0, duration: 300 }
+            ],
+            easing: 'easeOutQuad'
+        });
+    }
+
+    // --- ЛОГІКА ВІДОБРАЖЕННЯ ТА БЛОКУВАННЯ ---
+    function updateWordDisplay() {
+        const wordBox = document.getElementById('word-box');
+        const currentData = wordData[currentWordIndex];
+        
+        // Відображаємо текст відповідно до стану
+        if (currentWordState === 0) {
+            wordBox.innerText = currentData.slash;
+        } else if (currentWordState === 1) {
+            wordBox.innerText = currentData.together;
+        } else if (currentWordState === 2) {
+            wordBox.innerText = currentData.separate;
+        }
+
+        const foodItems = document.querySelectorAll('.interactive-food');
+        
+        // Їжа розблоковується ТІЛЬКИ якщо це дієслово і обрано "окремо"
+        // Якщо це іменник (навіть якщо обрано "разом"), їжа залишається заблокованою
+        let shouldUnlock = false;
+        if (currentData.isVerb && currentWordState === 2) {
+            shouldUnlock = true;
+        }
+
+        foodItems.forEach(item => {
+            if (shouldUnlock) {
+                item.classList.remove('food-locked');
+            } else {
+                item.classList.add('food-locked');
+            }
+        });
+    }
+
+    // Зміна стану слова по кліку
+    document.getElementById('word-box').addEventListener('click', () => {
+        currentWordState = (currentWordState + 1) % 3;
+        updateWordDisplay();
+    });
+
+    document.getElementById('btn-next').addEventListener('click', () => {
+        currentWordIndex = (currentWordIndex + 1) % wordData.length;
+        currentWordState = 0; // Скидаємо стан на "з рискою"
+        updateWordDisplay();
+    });
+
+    document.getElementById('btn-prev').addEventListener('click', () => {
+        currentWordIndex = (currentWordIndex - 1 + wordData.length) % wordData.length;
+        currentWordState = 0; // Скидаємо стан на "з рискою"
+        updateWordDisplay();
+    });
+
+    window.onload = () => {
+        buildDog();
+        buildFoodBoard();
+        startIdleAnimation();
+        updateWordDisplay(); 
+    };
+</script>
+
+</body>
+</html>
