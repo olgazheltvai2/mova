@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+        <html lang="uk">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Тетріс-Пазл</title>
+            <style>
+                * { box-sizing: border-box; font-family: Arial, sans-serif; }
+                body {
+                    margin: 0; padding: 0; min-height: 100vh;
+                    background-color: #f0f0f0;
+                    background-size: cover; background-position: center; background-attachment: fixed;
+                    display: flex; justify-content: center; align-items: center;
+                    user-select: none; -webkit-user-select: none;
+                }
+                #theme-btn {
+                    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+                    width: 60px; height: 60px; border-radius: 50%; background: white;
+                    border: 2px solid #ccc; font-size: 30px; cursor: pointer;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    display: flex; justify-content: center; align-items: center;
+                    transition: transform 0.2s;
+                }
+                #theme-btn:hover { transform: scale(1.1); }
+                #theme-modal {
+                    position: fixed; bottom: 90px; right: 20px; z-index: 9998;
+                    width: 320px; max-height: 60vh; background: white; border-radius: 10px;
+                    padding: 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+                    overflow-y: auto; display: none; flex-direction: column; gap: 10px;
+                }
+                .theme-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; }
+                .theme-thumbnail {
+                    position: relative; width: 100%; height: 100px; border-radius: 8px;
+                    cursor: pointer; overflow: hidden; border: 2px solid transparent;
+                    transition: border-color 0.2s;
+                }
+                .theme-thumbnail:hover { border-color: #007bff; }
+                .theme-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+                .theme-thumbnail span {
+                    position: absolute; bottom: 0; left: 0; right: 0;
+                    background: rgba(0,0,0,0.6); color: white; font-size: 12px; padding: 4px;
+                    text-align: center;
+                }
+                #main-wrapper {
+                    background: transparent; border-radius: 20px; padding: 25px;
+                    display: flex; flex-direction: column; gap: 20px;
+                    max-width: 1400px; width: 98%;
+                }
+                .btn {
+                    padding: 10px 20px; background: #007bff; color: white; border: none;
+                    border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px;
+                    transition: background 0.2s, transform 0.1s;
+                }
+                .btn:hover { background: #0056b3; transform: scale(1.02); }
+                #game-panel {
+                    display: flex; gap: 25px; align-items: flex-end; justify-content: center;
+                    flex-direction: row;
+                }
+                #left-window-wrapper {
+                    display: flex; flex-direction: column; gap: 10px; align-items: center;
+                }
+                #left-window {
+                    width: 400px; min-height: 500px; background: white;
+                    border: 4px solid #4a5568; border-radius: 15px;
+                    display: flex; flex-direction: column; justify-content: center;
+                    align-items: center; padding: 25px;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+                    transition: transform 0.2s ease;
+                }
+                #left-window img {
+                    max-width: 100%; max-height: 320px; border-radius: 8px;
+                    object-fit: contain; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                }
+                .task-text-display {
+                    margin-top: 20px; text-align: center; width: 100%;
+                    word-break: break-word; line-height: 1.2;
+                    text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+                }
+                #center-board-container {
+                    display: flex; flex-direction: column; align-items: center; gap: 15px;
+                }
+                .header-stats {
+                    display: flex; justify-content: space-between; width: 100%;
+                    font-size: 28px; font-weight: bold; align-items: center;
+                    padding: 0 5px; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+                }
+                #grid {
+                    display: grid; grid-template-columns: repeat(5, 95px);
+                    grid-template-rows: repeat(5, 95px); gap: 4px;
+                    background: #000000; padding: 6px; border-radius: 10px;
+                    box-shadow: 0 12px 30px rgba(0,0,0,0.5); position: relative;
+                }
+                .cell {
+                    width: 95px; height: 95px; background: #ffffff; border-radius: 6px;
+                    transition: background-color 0.1s, transform 0.1s;
+                    position: relative; overflow: visible;
+                }
+                .cell.hover-valid { background-color: #48bb78 !important; box-shadow: inset 0 0 15px rgba(255,255,255,0.6); }
+                .cell.hover-invalid { background-color: #f56565 !important; box-shadow: inset 0 0 15px rgba(255,255,255,0.4); }
+                .cell.flash-clear { background-color: #ffffff !important; box-shadow: 0 0 30px #ffffff; transform: scale(0.9); z-index: 20; }
+                #hand-container {
+                    display: flex; flex-direction: column; gap: 25px; min-height: 500px;
+                    min-width: 180px; align-items: center; justify-content: center;
+                    padding: 20px; background: rgba(255,255,255,0.9);
+                    border-radius: 15px; border: 4px solid #4a5568;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+                }
+                .piece-wrapper {
+                    cursor: pointer; padding: 12px; border-radius: 10px;
+                    transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+                }
+                .piece-wrapper:hover { transform: scale(1.05); }
+                .piece-wrapper.selected {
+                    background-color: rgba(0,0,0,0.08); transform: scale(1.1);
+                    box-shadow: inset 0 0 8px rgba(0,0,0,0.1); opacity: 0.4;
+                }
+                .piece { display: grid; gap: 2px; }
+                .block {
+                    width: 34px; height: 34px; border-radius: 6px;
+                    box-shadow: inset 2px 2px 4px rgba(255,255,255,0.4), inset -4px -4px 6px rgba(0,0,0,0.4);
+                    border: 1px solid rgba(0,0,0,0.2);
+                }
+                .block-empty { width: 34px; height: 34px; background: transparent; }
+                .cell .block {
+                    width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 10;
+                    border-radius: 6px;
+                    box-shadow: inset 3px 3px 6px rgba(255,255,255,0.4), inset -5px -5px 8px rgba(0,0,0,0.5);
+                }
+                #floating-piece {
+                    position: fixed; pointer-events: none; z-index: 10000;
+                    display: grid; gap: 4px; transform: translate(-47.5px, -47.5px);
+                    transition: transform 0.05s linear;
+                }
+                #floating-piece .block { width: 95px; height: 95px; box-shadow: inset 3px 3px 6px rgba(255,255,255,0.4), inset -5px -5px 8px rgba(0,0,0,0.4); border-radius: 6px; }
+                #floating-piece .block-empty { width: 95px; height: 95px; }
+                .particle {
+                    position: fixed; width: 14px; height: 14px; border-radius: 50%;
+                    pointer-events: none; z-index: 10005;
+                    animation: explode 0.7s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+                }
+                @keyframes explode {
+                    0% { transform: translate(0,0) scale(1); opacity: 1; }
+                    100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+                }
+                .star-cell-burst {
+                    position: fixed; font-size: 70px; pointer-events: none; z-index: 10006;
+                    transform: translate(-50%,-50%) scale(0);
+                    animation: cellStarExplode 0.8s cubic-bezier(0.1,0.9,0.3,1) forwards;
+                }
+                @keyframes cellStarExplode {
+                    0% { transform: translate(-50%,-50%) scale(0) rotate(0deg); opacity: 1; }
+                    30% { transform: translate(-50%,-50%) scale(1.2) rotate(180deg); opacity: 1; }
+                    100% { transform: translate(-50%,-50%) scale(2.5) rotate(360deg); opacity: 0; }
+                }
+            </style>
+        </head>
+        <body>
+            <button id="theme-btn" onclick="toggleThemeModal()">⚙️</button>
+            <div id="theme-modal">
+                <h3 style="margin-top:0; text-align:center; font-size:16px;">Оберіть фон</h3>
+                <div id="theme-gallery" class="theme-grid"></div>
+            </div>
+
+            <div id="main-wrapper">
+                <div id="game-panel">
+                    <div id="left-window-wrapper">
+                        <div id="left-window"><span style="color:#a0aec0;">Тут буде завдання</span></div>
+                    </div>
+                    <div id="center-board-container">
+                        <div class="header-stats">
+                            <div><span id="score" style="color:#ffcc00;">0</span> ⭐</div>
+                            <button class="btn" onclick="restartGame()">Почати заново</button>
+                        </div>
+                        <div id="grid"></div>
+                    </div>
+                    <div id="hand-container"></div>
+                </div>
+            </div>
+
+            <script>
+                // ============================================================
+                // 1. ТЕМИ (фон)
+                // ============================================================
+                const bgBaseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/background_';
+                const maxBgs = 1000;
+                const themeGallery = document.getElementById('theme-gallery');
+
+                function initThemeManager() {
+                    const savedBg = localStorage.getItem('mySavedGameBg');
+                    document.body.style.backgroundImage = savedBg ? `url('${savedBg}')` : `url('${bgBaseUrl}1.webp')`;
+                    loadBackgrounds();
+                }
+                function loadBackgrounds() {
+                    for (let i=1; i<=maxBgs; i++) {
+                        const url = `${bgBaseUrl}${i}.webp`;
+                        const img = new Image();
+                        img.onload = () => {
+                            const thumb = document.createElement('div');
+                            thumb.className = 'theme-thumbnail';
+                            thumb.onclick = () => setBackground(url);
+                            const thumbImg = document.createElement('img');
+                            thumbImg.src = url;
+                            const label = document.createElement('span');
+                            label.innerText = `Фон ${i}`;
+                            thumb.appendChild(thumbImg);
+                            thumb.appendChild(label);
+                            themeGallery.appendChild(thumb);
+                        };
+                        img.src = url;
+                    }
+                }
+                function setBackground(url) {
+                    document.body.style.backgroundImage = `url('${url}')`;
+                    localStorage.setItem('mySavedGameBg', url);
+                    toggleThemeModal();
+                }
+                function toggleThemeModal() {
+                    const modal = document.getElementById('theme-modal');
+                    modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+                }
+                document.addEventListener('click', (e) => {
+                    const modal = document.getElementById('theme-modal');
+                    const btn = document.getElementById('theme-btn');
+                    if (modal.style.display === 'flex' && !modal.contains(e.target) && !btn.contains(e.target)) {
+                        modal.style.display = 'none';
+                    }
+                });
+
+                // ============================================================
+                // 2. СТАН ГРИ
+                // ============================================================
+                let isEditor = false;
+                let tasks = [{"image":null,"text":"в_селий"},{"image":null,"text":"в_рба"},{"image":null,"text":"л_сток"},{"image":null,"text":"ст_бло"},{"image":null,"text":"кр_ло"},{"image":null,"text":"з_лений"},{"image":null,"text":"оз_ро"},{"image":null,"text":"с_ло"},{"image":null,"text":"з_ма"},{"image":null,"text":"т_хенько"},{"image":null,"text":"т_пленький"},{"image":null,"text":"з_мляний"},{"image":null,"text":"в_шневий"},{"image":null,"text":"ч_сло"},{"image":null,"text":"кр_чати"},{"image":null,"text":"ш_рокий"},{"image":null,"text":"гр_бок"},{"image":null,"text":"ст_повий"},{"image":null,"text":"в_селка"},{"image":null,"text":"с_рдечний"},{"image":null,"text":"м_довий"},{"image":null,"text":"кл_новий"},{"image":null,"text":"пл_чистий"},{"image":null,"text":"с_стра"},{"image":null,"text":"в_чірній"},{"image":null,"text":"в_селощі"},{"image":null,"text":"п_кельний"},{"image":null,"text":"з_мелька"},{"image":null,"text":"в_ршина"},{"image":null,"text":"ш_потіти"},{"image":null,"text":"гр_міти"},{"image":null,"text":"д_рева"},{"image":null,"text":"ст_жина"},{"image":null,"text":"гр_чаний"},{"image":null,"text":"с_лач"},{"image":null,"text":"м_шеня"},{"image":null,"text":"т_рпіти"},{"image":null,"text":"д_вина"},{"image":null,"text":"кл_котіти"},{"image":null,"text":"скр_піти"},{"image":null,"text":"з_рнятко"}];
+                let gameSettings = {"fontSize":"48","fontColor":"#1a202c","fontWeight":"900"};
+                let currentTaskIndex = 0;
+                let score = 0;
+                let gridState = Array(5).fill().map(()=>Array(5).fill(null));
+                let availablePieces = [];
+                let selectedPieceIndex = null;
+                let floatingPieceEl = null;
+
+                const SHAPES = [
+                    { shape:[[1]], color:'#FF0000' },
+                    { shape:[[1,1]], color:'#00FF00' },
+                    { shape:[[1],[1]], color:'#0000FF' },
+                    { shape:[[1,1],[1,1]], color:'#FFFF00' },
+                    { shape:[[1,1,1]], color:'#FF00FF' },
+                    { shape:[[1],[1],[1]], color:'#00FFFF' },
+                    { shape:[[1,1],[1,0]], color:'#FF8800' },
+                    { shape:[[1,1],[0,1]], color:'#8800FF' },
+                    { shape:[[1,1,1],[0,1,0]], color:'#00FF88' },
+                    { shape:[[1,0],[1,1],[1,0]], color:'#FF0088' }
+                ];
+
+                // ============================================================
+                // 3. ЛОГІКА ПЕРЕТЯГУВАННЯ ТА ЕФЕКТІВ
+                // ============================================================
+                function createFloatingPiece(piece) {
+                    removeFloatingPiece();
+                    floatingPieceEl = document.createElement('div');
+                    floatingPieceEl.id = 'floating-piece';
+                    floatingPieceEl.style.gridTemplateColumns = `repeat(${piece.shape[0].length}, 95px)`;
+                    piece.shape.forEach(row => {
+                        row.forEach(val => {
+                            const block = document.createElement('div');
+                            if (val === 1) {
+                                block.className = 'block';
+                                block.style.backgroundColor = piece.color;
+                            } else {
+                                block.className = 'block-empty';
+                            }
+                            floatingPieceEl.appendChild(block);
+                        });
+                    });
+                    document.body.appendChild(floatingPieceEl);
+                }
+
+                function removeFloatingPiece() {
+                    if (floatingPieceEl) { floatingPieceEl.remove(); floatingPieceEl = null; }
+                }
+
+                function updateFloatingPosition(x, y) {
+                    if (floatingPieceEl) {
+                        floatingPieceEl.style.left = x + 'px';
+                        floatingPieceEl.style.top = y + 'px';
+                    }
+                }
+
+                document.addEventListener('mousemove', (e) => updateFloatingPosition(e.clientX, e.clientY));
+                document.addEventListener('touchmove', (e) => {
+                    if (e.touches.length) updateFloatingPosition(e.touches[0].clientX, e.touches[0].clientY);
+                }, { passive: true });
+
+                document.addEventListener('dblclick', () => { if (selectedPieceIndex !== null) cancelSelection(); });
+
+                function cancelSelection() {
+                    selectedPieceIndex = null;
+                    removeFloatingPiece();
+                    clearGridHover();
+                    renderHand();
+                }
+
+                function spawnParticles(x, y, color) {
+                    for (let i=0; i<12; i++) {
+                        const p = document.createElement('div');
+                        p.className = 'particle';
+                        p.style.backgroundColor = color || '#00FF66';
+                        p.style.left = x + 'px';
+                        p.style.top = y + 'px';
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = 40 + Math.random() * 90;
+                        p.style.setProperty('--dx', Math.cos(angle)*speed + 'px');
+                        p.style.setProperty('--dy', Math.sin(angle)*speed + 'px');
+                        document.body.appendChild(p);
+                        setTimeout(() => p.remove(), 700);
+                    }
+                }
+
+                function spawnCellStar(x, y) {
+                    const star = document.createElement('div');
+                    star.className = 'star-cell-burst';
+                    star.innerText = '⭐';
+                    star.style.left = x + 'px';
+                    star.style.top = y + 'px';
+                    document.body.appendChild(star);
+                    setTimeout(() => star.remove(), 800);
+                }
+
+                // ============================================================
+                // 4. ІГРОВА ЛОГІКА
+                // ============================================================
+                function initGame() {
+                    if (window._gameInitialized) return;
+                    window._gameInitialized = true;
+
+                    createGrid();
+                    restartGame();
+                    initThemeManager();
+                }
+
+                function restartGame() {
+                    score = 0;
+                    document.getElementById('score').innerText = score;
+                    currentTaskIndex = 0;
+                    gridState = Array(5).fill().map(()=>Array(5).fill(null));
+                    selectedPieceIndex = null;
+                    removeFloatingPiece();
+                    renderGrid();
+                    updateTaskWindow();
+                    availablePieces = [];
+                    for (let i=0; i<3; i++) availablePieces.push(SHAPES[Math.floor(Math.random() * SHAPES.length)]);
+                    renderHand();
+                }
+
+                function updateTaskWindow() {
+                    const win = document.getElementById('left-window');
+                    if (!win) return;
+                    if (!tasks.length) { win.innerHTML = '<span style="color:#a0aec0;">Немає завдань</span>'; return; }
+                    const task = tasks[currentTaskIndex % tasks.length];
+                    win.innerHTML = '';
+                    if (task.image) {
+                        const img = document.createElement('img');
+                        img.src = task.image;
+                        win.appendChild(img);
+                    }
+                    if (task.text) {
+                        const txt = document.createElement('div');
+                        txt.className = 'task-text-display';
+                        txt.innerText = task.text;
+                        txt.style.fontSize = gameSettings.fontSize + 'px';
+                        txt.style.color = gameSettings.fontColor;
+                        txt.style.fontWeight = gameSettings.fontWeight;
+                        win.appendChild(txt);
+                    }
+                }
+
+                function createGrid() {
+                    const gridEl = document.getElementById('grid');
+                    if (!gridEl) return;
+                    gridEl.innerHTML = '';
+                    for (let r=0; r<5; r++) {
+                        for (let c=0; c<5; c++) {
+                            const cell = document.createElement('div');
+                            cell.className = 'cell';
+                            cell.dataset.r = r;
+                            cell.dataset.c = c;
+                            cell.addEventListener('click', () => attemptPlacePiece(r, c));
+                            cell.addEventListener('mouseenter', () => handleCellHover(r, c));
+                            cell.addEventListener('mouseleave', clearGridHover);
+                            gridEl.appendChild(cell);
+                        }
+                    }
+                }
+
+                function handleCellHover(startR, startC) {
+                    clearGridHover();
+                    if (selectedPieceIndex === null) return;
+                    const piece = availablePieces[selectedPieceIndex];
+                    const valid = canPlace(piece, startR, startC);
+                    for (let r=0; r<piece.shape.length; r++) {
+                        for (let c=0; c<piece.shape[r].length; c++) {
+                            if (piece.shape[r][c] === 1) {
+                                const gr = startR + r, gc = startC + c;
+                                if (gr>=0 && gr<5 && gc>=0 && gc<5) {
+                                    const cell = document.querySelector(`.cell[data-r="${gr}"][data-c="${gc}"]`);
+                                    if (cell) cell.classList.add(valid ? 'hover-valid' : 'hover-invalid');
+                                }
+                            }
+                        }
+                    }
+                }
+
+                function clearGridHover() {
+                    document.querySelectorAll('.cell').forEach(c => c.classList.remove('hover-valid', 'hover-invalid'));
+                }
+
+                function renderGrid() {
+                    const gridEl = document.getElementById('grid');
+                    if (!gridEl) return;
+                    for (let r=0; r<5; r++) {
+                        for (let c=0; c<5; c++) {
+                            const idx = r*5 + c;
+                            const cell = gridEl.children[idx];
+                            if (!cell) continue;
+                            cell.innerHTML = '';
+                            cell.classList.remove('flash-clear');
+                            if (gridState[r][c] !== null) {
+                                const block = document.createElement('div');
+                                block.className = 'block';
+                                block.style.backgroundColor = gridState[r][c];
+                                cell.appendChild(block);
+                            }
+                        }
+                    }
+                }
+
+                function renderHand() {
+                    const hand = document.getElementById('hand-container');
+                    if (!hand) return;
+                    hand.innerHTML = '';
+                    availablePieces.forEach((piece, index) => {
+                        if (!piece) return;
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'piece-wrapper';
+                        if (selectedPieceIndex === index) wrapper.classList.add('selected');
+                        wrapper.onclick = (e) => { e.stopPropagation(); selectPiece(index, e); };
+                        const pieceEl = document.createElement('div');
+                        pieceEl.className = 'piece';
+                        pieceEl.style.gridTemplateColumns = `repeat(${piece.shape[0].length}, 34px)`;
+                        piece.shape.forEach(row => {
+                            row.forEach(val => {
+                                const block = document.createElement('div');
+                                if (val === 1) {
+                                    block.className = 'block';
+                                    block.style.backgroundColor = piece.color;
+                                } else {
+                                    block.className = 'block-empty';
+                                }
+                                pieceEl.appendChild(block);
+                            });
+                        });
+                        wrapper.appendChild(pieceEl);
+                        hand.appendChild(wrapper);
+                    });
+                }
+
+                function selectPiece(index, e) {
+                    if (selectedPieceIndex === index) { cancelSelection(); return; }
+                    selectedPieceIndex = index;
+                    renderHand();
+                    createFloatingPiece(availablePieces[index]);
+                    if (e) {
+                        let clientX = e.clientX;
+                        let clientY = e.clientY;
+                        if (e.touches && e.touches.length > 0) {
+                            clientX = e.touches[0].clientX;
+                            clientY = e.touches[0].clientY;
+                        }
+                        updateFloatingPosition(clientX, clientY);
+                    }
+                }
+
+                function canPlace(piece, startR, startC) {
+                    for (let r=0; r<piece.shape.length; r++) {
+                        for (let c=0; c<piece.shape[r].length; c++) {
+                            if (piece.shape[r][c] === 1) {
+                                const gr = startR + r, gc = startC + c;
+                                if (gr<0 || gr>=5 || gc<0 || gc>=5) return false;
+                                if (gridState[gr][gc] !== null) return false;
+                            }
+                        }
+                    }
+                    return true;
+                }
+
+                function attemptPlacePiece(r, c) {
+                    if (selectedPieceIndex === null) return;
+                    const piece = availablePieces[selectedPieceIndex];
+                    if (canPlace(piece, r, c)) {
+                        for (let pr=0; pr<piece.shape.length; pr++) {
+                            for (let pc=0; pc<piece.shape[pr].length; pc++) {
+                                if (piece.shape[pr][pc] === 1) {
+                                    gridState[r+pr][c+pc] = piece.color;
+                                    const cell = document.querySelector(`.cell[data-r="${r+pr}"][data-c="${c+pc}"]`);
+                                    if (cell) {
+                                        const rect = cell.getBoundingClientRect();
+                                        spawnParticles(rect.left + rect.width/2, rect.top + rect.height/2, piece.color);
+                                    }
+                                }
+                            }
+                        }
+                        availablePieces[selectedPieceIndex] = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                        selectedPieceIndex = null;
+                        removeFloatingPiece();
+                        clearGridHover();
+                        renderGrid();
+                        renderHand();
+                        if (tasks.length) {
+                            currentTaskIndex++;
+                            updateTaskWindow();
+                            const win = document.getElementById('left-window');
+                            if (win) { win.style.transform = 'scale(1.03)'; setTimeout(()=>win.style.transform='scale(1)', 150); }
+                        }
+                        checkLines();
+                    } else {
+                        const gridEl = document.getElementById('grid');
+                        if (gridEl) {
+                            gridEl.style.transform = 'translateX(-6px)';
+                            setTimeout(()=>gridEl.style.transform='translateX(6px)', 80);
+                            setTimeout(()=>gridEl.style.transform='translateX(0)', 160);
+                        }
+                    }
+                }
+
+                function checkLines() {
+                    let rowsToClear = [];
+                    let colsToClear = [];
+                    for (let r=0; r<5; r++) {
+                        let full = true;
+                        for (let c=0; c<5; c++) if (gridState[r][c] === null) { full=false; break; }
+                        if (full) rowsToClear.push(r);
+                    }
+                    for (let c=0; c<5; c++) {
+                        let full = true;
+                        for (let r=0; r<5; r++) if (gridState[r][c] === null) { full=false; break; }
+                        if (full) colsToClear.push(c);
+                    }
+                    if (rowsToClear.length || colsToClear.length) {
+                        rowsToClear.forEach(r => {
+                            for (let c=0; c<5; c++) {
+                                const cell = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+                                if (cell) cell.classList.add('flash-clear');
+                            }
+                        });
+                        colsToClear.forEach(c => {
+                            for (let r=0; r<5; r++) {
+                                const cell = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+                                if (cell) cell.classList.add('flash-clear');
+                            }
+                        });
+                        setTimeout(() => clearLines(rowsToClear, colsToClear), 250);
+                    }
+                }
+
+                function clearLines(rows, cols) {
+                    const gridEl = document.getElementById('grid');
+                    if (!gridEl) return;
+                    let points = (rows.length * 5) + (cols.length * 5);
+                    rows.forEach(r => {
+                        for (let c=0; c<5; c++) {
+                            if (gridState[r][c] !== null) {
+                                const cell = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+                                if (cell) {
+                                    const rect = cell.getBoundingClientRect();
+                                    spawnCellStar(rect.left + rect.width/2, rect.top + rect.height/2);
+                                }
+                                gridState[r][c] = null;
+                            }
+                        }
+                    });
+                    cols.forEach(c => {
+                        for (let r=0; r<5; r++) {
+                            if (gridState[r][c] !== null) {
+                                const cell = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+                                if (cell) {
+                                    const rect = cell.getBoundingClientRect();
+                                    spawnCellStar(rect.left + rect.width/2, rect.top + rect.height/2);
+                                }
+                                gridState[r][c] = null;
+                            }
+                        }
+                    });
+                    score += points;
+                    document.getElementById('score').innerText = score;
+                    renderGrid();
+                }
+
+                // ============================================================
+                // 5. АВТОЗАПУСК
+                // ============================================================
+                (function() {
+                    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                        initGame();
+                    } else {
+                        document.addEventListener('DOMContentLoaded', initGame);
+                    }
+                    window.addEventListener('load', function() {
+                        if (!window._gameInitialized) initGame();
+                    });
+                    setTimeout(function() {
+                        if (!window._gameInitialized) initGame();
+                    }, 500);
+                })();
+            </script>
+        </body>
+        </html>
