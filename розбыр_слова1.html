@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гра зі словами: Вода та Сніг</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            min-height: 100vh;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-image 0.5s ease;
+            overflow-x: hidden;
+        }
+
+        /* Головний контейнер гри - розширений для широких екранів */
+        .game-container {
+            width: 95%;
+            max-width: 1200px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            backdrop-filter: blur(5px);
+            border: 4px solid #ffffff;
+            transition: transform 0.1s ease;
+        }
+
+        /* Анімація помилки */
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            20% { transform: translateX(-12px); }
+            40% { transform: translateX(12px); }
+            60% { transform: translateX(-12px); }
+            80% { transform: translateX(12px); }
+            100% { transform: translateX(0); }
+        }
+        .shake {
+            animation: shake 0.4s ease-in-out;
+            border: 4px solid #ff4d4d !important;
+        }
+
+        /* Зелений спалах успіху */
+        @keyframes success-glow {
+            0% { box-shadow: 0 0 0 rgba(46, 204, 113, 0); }
+            50% { box-shadow: 0 0 40px rgba(46, 204, 113, 1); border-color: #2ecc71; }
+            100% { box-shadow: 0 0 0 rgba(46, 204, 113, 0); }
+        }
+        .success-glow {
+            animation: success-glow 0.6s ease-in-out;
+        }
+
+        .screen {
+            display: none;
+        }
+        .screen.active {
+            display: block;
+        }
+
+        .stage-title {
+            font-size: 36px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        /* ЕТАП 1: ШИРОКИЙ ГОРИЗОНТАЛЬНИЙ МАКЕТ */
+        .sorting-layout {
+            display: flex;
+            gap: 25px;
+            align-items: stretch;
+            justify-content: center;
+        }
+        
+        /* Пул слів зліва */
+        .words-sidebar {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 20px;
+            border: 3px dashed #bbb;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+            min-height: 450px;
+        }
+
+        .word-card {
+            background: #ffffff;
+            padding: 15px 35px;
+            border-radius: 40px;
+            font-size: 40px; /* Подвійний великий шрифт */
+            font-weight: bold;
+            color: #222;
+            cursor: pointer;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.12);
+            border: 3px solid #eee;
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+            width: 90%;
+            text-align: center;
+        }
+        .word-card:hover {
+            background-color: #f9f9f9;
+            transform: scale(1.02);
+        }
+        .word-card.active-selection {
+            border-color: #3498db;
+            background-color: #e8f4fd;
+        }
+
+        /* Кошики справа */
+        .baskets-sidebar {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .basket {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.85);
+            border: 4px dashed #3498db;
+            border-radius: 24px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .basket:hover {
+            transform: scale(1.01);
+            background: rgba(255, 255, 255, 0.95);
+        }
+        .basket-water { border-color: #3498db; }
+        .basket-snow { border-color: #9b59b6; }
+        .basket-icon {
+            font-size: 65px;
+            min-width: 80px;
+        }
+        .basket-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-content: center;
+        }
+        /* Зменшені картки всередині кошиків */
+        .basket-content .word-card {
+            font-size: 28px;
+            padding: 8px 20px;
+            width: auto;
+            cursor: default;
+            box-shadow: none;
+        }
+
+        /* ЕТАП 2: РОЗБІР СЛІВ */
+        .word-holder {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 40px 0;
+        }
+        .letter-box {
+            width: 80px;
+            height: 100px;
+            border: 3px solid #ccc;
+            border-radius: 10px;
+            font-size: 48px; /* Подвійний великий шрифт */
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .morpheme-selector {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 35px;
+            flex-wrap: wrap;
+        }
+        .morpheme-btn {
+            padding: 15px 30px;
+            font-size: 24px;
+            font-weight: bold;
+            border: 3px solid transparent;
+            border-radius: 12px;
+            cursor: pointer;
+            color: white;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        .morpheme-btn:active { transform: scale(0.95); }
+        .morpheme-btn.active { border-color: #000; box-shadow: 0 0 12px rgba(0,0,0,0.4); }
+        
+        .btn-prefix { background-color: #e74c3c; }
+        .btn-root { background-color: #2ecc71; }
+        .btn-suffix { background-color: #f1c40f; color: #222; }
+        .btn-ending { background-color: #3498db; }
+
+        .letter-box.m-prefix { background-color: rgba(231, 76, 60, 0.25); border-top: 7px solid #e74c3c; }
+        .letter-box.m-root { background-color: rgba(46, 204, 113, 0.25); border-bottom: 7px solid #2ecc71; }
+        .letter-box.m-suffix { background-color: rgba(241, 196, 15, 0.25); border-top: 7px dashed #f1c40f; }
+        .letter-box.m-ending { background-color: rgba(52, 152, 219, 0.25); border: 5px solid #3498db; }
+
+        .action-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 20px 60px;
+            font-size: 36px;
+            font-weight: bold;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            transition: background 0.2s, transform 0.2s;
+        }
+        .action-btn:hover { background: #219653; }
+        .action-btn:active { transform: scale(0.97); }
+
+        /* Canvas для конфеті */
+        #confetti-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 9995;
+        }
+
+        /* СИСТЕМА ФОНІВ (THEME MANAGER) */
+        .theme-settings-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 2px solid #ddd;
+            font-size: 32px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .theme-modal {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            z-index: 9998;
+            width: 320px;
+            max-height: 60vh;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #eee;
+        }
+        .theme-modal.open { display: flex; }
+        .theme-modal-header {
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+            font-size: 18px;
+            text-align: center;
+        }
+        .theme-grid {
+            padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            overflow-y: auto;
+        }
+        .theme-thumb {
+            position: relative;
+            height: 85px;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            background-size: cover;
+            background-position: center;
+        }
+        .theme-thumb-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            font-size: 12px;
+            text-align: center;
+            padding: 4px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="confetti-canvas"></canvas>
+
+    <div class="game-container" id="gameContainer">
+        
+        <!-- ЕТАП 1: СОРТУВАННЯ КЛІКАМИ -->
+        <div id="sortingScreen" class="screen active">
+            <div class="stage-title">💧 / ❄️</div>
+            <div class="sorting-layout">
+                <!-- Пул слів (активне слово зверху) -->
+                <div class="words-sidebar" id="wordsPool"></div>
+                
+                <!-- Кошики для вибору -->
+                <div class="baskets-sidebar">
+                    <div class="basket basket-water" data-target="water" onclick="selectBasket('water')">
+                        <div class="basket-icon">💧</div>
+                        <div class="basket-content" id="basketWater"></div>
+                    </div>
+                    <div class="basket basket-snow" data-target="snow" onclick="selectBasket('snow')">
+                        <div class="basket-icon">❄️</div>
+                        <div class="basket-content" id="basketSnow"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ЕТАП 2: РОЗБІР ЗА БУДОВОЮ -->
+        <div id="analysisScreen" class="screen">
+            <div class="morpheme-selector">
+                <button class="morpheme-btn btn-prefix" data-morpheme="prefix">Префікс</button>
+                <button class="morpheme-btn btn-root" data-morpheme="root">Корінь</button>
+                <button class="morpheme-btn btn-suffix" data-morpheme="suffix">Суфікс</button>
+                <button class="morpheme-btn btn-ending" data-morpheme="ending">Закінчення</button>
+            </div>
+            <div class="word-holder" id="analysisWordDisplay"></div>
+            <button class="action-btn" id="checkAnalysisBtn">➔</button>
+        </div>
+
+    </div>
+
+    <!-- ТЕМАТИЧНИЙ МЕНЕДЖЕР -->
+    <button class="theme-settings-btn" id="themeBtn">⚙️</button>
+    <div class="theme-modal" id="themeModal">
+        <div class="theme-modal-header">Фон</div>
+        <div class="theme-grid" id="themeGrid"></div>
+    </div>
+
+    <script>
+        const gameData = {
+            words: [
+                { id: "w1", text: "вода", type: "water", parse: { prefix: [], root: [0,1,2], suffix: [], ending: [3] } },
+                { id: "w2", text: "сніг", type: "snow", parse: { prefix: [], root: [0,1,2,3], suffix: [], ending: [] } },
+                { id: "w3", text: "сніговий", type: "snow", parse: { prefix: [], root: [0,1,2,3], suffix: [4,5], ending: [6,7] } },
+                { id: "w4", text: "водяний", type: "water", parse: { prefix: [], root: [0,1,2], suffix: [3,4], ending: [5,6] } },
+                { id: "w5", text: "сніжок", type: "snow", parse: { prefix: [], root: [0,1,2,3], suffix: [4,5], ending: [] } },
+                { id: "w6", text: "водичка", type: "water", parse: { prefix: [], root: [0,1,2], suffix: [3,4,5], ending: [6] } },
+                { id: "w7", text: "підводний", type: "water", parse: { prefix: [0,1,2], root: [3,4,5], suffix: [6], ending: [7,8] } },
+                { id: "w8", text: "сніжинки", type: "snow", parse: { prefix: [], root: [0,1,2,3], suffix: [4,5,6], ending: [7] } }
+            ]
+        };
+
+        let sortedCount = 0;
+        let activeQueue = [];
+        let currentWordIndex = 0;
+        let selectedWordData = null;
+        
+        let selectedMorpheme = null;
+        let userParseState = { prefix: [], root: [], suffix: [], ending: [] };
+
+        // --- WEB AUDIO API (ТИХІ ЗВУКИ: 0.02 - 0.04) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'success') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); 
+                osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.08); 
+                osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.16); 
+                gain.gain.setValueAtTime(0.03, audioCtx.currentTime); 
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+            } else if (type === 'error') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(110, audioCtx.currentTime); 
+                osc.frequency.linearRampToValueAtTime(65, audioCtx.currentTime + 0.25);
+                gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+            } else if (type === 'click') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.02, audioCtx.currentTime); 
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.04);
+            }
+        }
+
+        // --- КОНФЕТІ ---
+        const canvas = id('confetti-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+        function spawnConfetti() {
+            for (let i = 0; i < 50; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width, y: -10,
+                    size: Math.random() * 8 + 6,
+                    color: `hsl(${Math.random() * 360}, 85%, 65%)`,
+                    speedX: Math.random() * 4 - 2, speedY: Math.random() * 4 + 3,
+                    rotation: Math.random() * 360, rotationSpeed: Math.random() * 4 - 2
+                });
+            }
+        }
+        function updateConfetti() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i]; p.y += p.speedY; p.x += p.speedX; p.rotation += p.rotationSpeed;
+                ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rotation * Math.PI / 180);
+                ctx.fillStyle = p.color; ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size); ctx.restore();
+                if (p.y > canvas.height) particles.splice(i, 1);
+            }
+            requestAnimationFrame(updateConfetti);
+        }
+        updateConfetti();
+
+        function triggerSuccess() { spawnConfetti(); playSound('success'); id('gameContainer').classList.add('success-glow'); setTimeout(() => id('gameContainer').classList.remove('success-glow'), 600); }
+        function triggerError() { playSound('error'); id('gameContainer').classList.add('shake'); setTimeout(() => id('gameContainer').classList.remove('shake'), 400); }
+
+        // --- ЕТАП 1: СОРТУВАННЯ КЛІКАМИ ---
+        let sortingPoolWords = [];
+
+        function initSorting() {
+            sortingPoolWords = [...gameData.words].sort(() => Math.random() - 0.5);
+            renderNextWordFromPool();
+        }
+
+        function renderNextWordFromPool() {
+            const pool = id('wordsPool');
+            pool.innerHTML = '';
+            
+            if (sortingPoolWords.length > 0) {
+                // Беремо перше слово з пулу і робимо його активним для вибору
+                selectedWordData = sortingPoolWords[0];
+                const card = document.createElement('div');
+                card.className = 'word-card active-selection';
+                card.innerText = selectedWordData.text;
+                pool.appendChild(card);
+            } else {
+                selectedWordData = null;
+            }
+        }
+
+        function selectBasket(basketType) {
+            if (!selectedWordData) return;
+            playSound('click');
+
+            if (selectedWordData.type === basketType) {
+                // Правильний вибір кошика
+                const basketContent = id(basketType === 'water' ? 'basketWater' : 'basketSnow');
+                const miniCard = document.createElement('div');
+                miniCard.className = 'word-card';
+                miniCard.innerText = selectedWordData.text;
+                basketContent.appendChild(miniCard);
+
+                triggerSuccess();
+                sortedCount++;
+                activeQueue.push(selectedWordData);
+                sortingPoolWords.shift(); // видаляємо вгадане слово
+                
+                renderNextWordFromPool();
+
+                if (sortedCount === gameData.words.length) {
+                    setTimeout(() => {
+                        id('sortingScreen').classList.remove('active');
+                        id('analysisScreen').classList.add('active');
+                        currentWordIndex = 0;
+                        initAnalysisStage();
+                    }, 1000);
+                }
+            } else {
+                triggerError();
+            }
+        }
+
+        // --- ЕТАП 2: РОЗБІР ЗА БУДОВОЮ ---
+        function initAnalysisStage() {
+            if (currentWordIndex >= activeQueue.length) {
+                triggerSuccess();
+                setTimeout(() => location.reload(), 3000);
+                return;
+            }
+            userParseState = { prefix: [], root: [], suffix: [], ending: [] };
+            selectedMorpheme = null;
+            document.querySelectorAll('.morpheme-btn').forEach(b => b.classList.remove('active'));
+
+            const word = activeQueue[currentWordIndex];
+            const display = id('analysisWordDisplay'); display.innerHTML = '';
+
+            word.text.split('').forEach((letter, index) => {
+                const box = document.createElement('div');
+                box.className = 'letter-box'; box.innerText = letter;
+                box.addEventListener('click', () => {
+                    if (!selectedMorpheme) return;
+                    playSound('click');
+                    ['prefix', 'root', 'suffix', 'ending'].forEach(m => userParseState[m] = userParseState[m].filter(i => i !== index));
+                    box.classList.remove('m-prefix', 'm-root', 'm-suffix', 'm-ending');
+                    
+                    box.classList.add(`m-${selectedMorpheme}`);
+                    userParseState[selectedMorpheme].push(index);
+                    userParseState[selectedMorpheme].sort((a,b)=>a-b);
+                });
+                display.appendChild(box);
+            });
+        }
+
+        document.querySelectorAll('.morpheme-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                playSound('click');
+                const type = e.target.getAttribute('data-morpheme');
+                if (selectedMorpheme === type) {
+                    selectedMorpheme = null; e.target.classList.remove('active');
+                } else {
+                    document.querySelectorAll('.morpheme-btn').forEach(b => b.classList.remove('active'));
+                    selectedMorpheme = type;
+                    e.target.classList.add('active');
+                }
+            });
+        });
+
+        id('checkAnalysisBtn').addEventListener('click', () => {
+            const target = activeQueue[currentWordIndex].parse;
+            const comp = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+            if (comp(userParseState.prefix, target.prefix) && comp(userParseState.root, target.root) &&
+                comp(userParseState.suffix, target.suffix) && comp(userParseState.ending, target.ending)) {
+                triggerSuccess(); currentWordIndex++;
+                setTimeout(initAnalysisStage, 800);
+            } else { triggerError(); }
+        });
+
+        // --- THEME MANAGER (СИСТЕМА ДИНАМІЧНИХ ФОНІВ) ---
+        const themeBtn = id('themeBtn'); const themeModal = id('themeModal'); const themeGrid = id('themeGrid');
+        const baseBgUrl = "https://olgazheltvai2.github.io/images/backgrounds/";
+        
+        themeBtn.addEventListener('click', (e) => { themeModal.classList.toggle('open'); e.stopPropagation(); });
+        document.addEventListener('click', (e) => { if (!themeModal.contains(e.target) && e.target !== themeBtn) themeModal.classList.remove('open'); });
+
+        function loadThemes() {
+            for (let i = 1; i <= 15; i++) {
+                const url = `${baseBgUrl}background_${i}.webp`; const img = new Image(); img.src = url;
+                img.onload = () => {
+                    const tile = document.createElement('div'); tile.className = 'theme-thumb'; tile.style.backgroundImage = `url('${url}')`;
+                    const lbl = document.createElement('div'); lbl.className = 'theme-thumb-label'; lbl.innerText = `Фон ${i}`;
+                    tile.appendChild(lbl);
+                    tile.addEventListener('click', () => { document.body.style.backgroundImage = `url('${url}')`; localStorage.setItem('mySavedGameBg', url); playSound('click'); });
+                    themeGrid.appendChild(tile);
+                };
+            }
+        }
+        function initBackground() {
+            const saved = localStorage.getItem('mySavedGameBg');
+            document.body.style.backgroundImage = saved ? `url('${saved}')` : `url('${baseBgUrl}background_1.webp')`;
+        }
+
+        function id(el) { return document.getElementById(el); }
+        initBackground(); loadThemes(); initSorting();
+    </script>
+</body>
+</html>
