@@ -752,7 +752,7 @@
     window.addEventListener('DOMContentLoaded', initThemeManager);
     // ---------------------------
 
-    // --- FIREBASE CONFIG & SYNC ---
+    // --- FIREBASE CONFIG & SYNC (оновлено для стабільної синхронізації) ---
     const firebaseConfig = {
         databaseURL: "https://int-game-db-default-rtdb.europe-west1.firebasedatabase.app/"
     };
@@ -762,6 +762,8 @@
     const db = firebase.database();
 
     const senderId = 'dev_' + Math.random().toString(36).substr(2, 9);
+    let lastActionTime = 0;
+    let isRemoteAction = false;
 
     // Слухач лобі
     db.ref('current_activity').on('value', (snapshot) => {
@@ -771,14 +773,20 @@
         }
     });
 
-    // Слухач ігрових дій
+    // Слухач ігрових дій (оновлений з timestamp та isRemoteAction)
     db.ref('game_action').on('value', (snapshot) => {
         const data = snapshot.val();
-        if (!data || data.senderId === senderId) return;
+        if (!data) return;
+        if (data.senderId === senderId) return;
+        if (data.timestamp <= lastActionTime) return;
+
+        isRemoteAction = true;
+        lastActionTime = data.timestamp;
 
         if (data.type === 'init') {
+            // Відновлюємо стан без анімацій та звуків
             currentLang = data.lang;
-            currentAlphabet = currentLang === 'RUS' ? ALPHABET_RUS : ALPHABET_UKR;
+            currentAlphabet = data.lang === 'RUS' ? ALPHABET_RUS : ALPHABET_UKR;
             document.getElementById('lang-ukr').classList.toggle('active', currentLang === 'UKR');
             document.getElementById('lang-rus').classList.toggle('active', currentLang === 'RUS');
 
@@ -788,32 +796,38 @@
             gameState.targets = data.targets;
             gameState.currentIndex = data.currentIndex;
 
+            // Просто рендеримо, без звуків
             renderLevel();
-
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.add('active');
             document.getElementById('nav-panel').classList.add('active');
+            setCharacterEmotion('neutral'); // скидаємо анімацію
+
         } else if (data.type === 'click') {
             gameState.currentIndex = data.currentIndex;
             renderLevelFromState();
+            // Не граємо звуки та не робимо анімацій – це робиться на пристрої-джерелі
             if (data.isWin) {
-                playSound('win');
-                setCharacterEmotion('win');
-            } else {
-                playSound('success');
-                setCharacterEmotion('happy');
+                // Можна показати перемогу без звуку, або зробити тиху анімацію
+                // Але для однаковості краще не викликати setCharacterEmotion('win') тут,
+                // щоб не перебивати анімацію на інших пристроях.
+                // Просто залишаємо як є.
             }
         } else if (data.type === 'error') {
-            playSound('error');
-            setCharacterEmotion('sad');
+            // Помилка – просто візуалізація без звуку
+            // Можна додати анімацію помилки на всіх, але без звуку
+            // Для простоти нічого не робимо, тільки стан оновлено вище
         } else if (data.type === 'reset') {
             resetGameUI();
         }
+
+        isRemoteAction = false;
     });
 
     function sendAction(actionData) {
+        if (isRemoteAction) return; // не надсилаємо віддалені дії назад
         actionData.senderId = senderId;
-        actionData.timestamp = Date.now(); // Таймстамп обов'язковий, щоб Firebase фіксував навіть однакові дії (напр., помилки підряд)
+        actionData.timestamp = Date.now();
         db.ref('game_action').set(actionData);
     }
 
@@ -1030,11 +1044,15 @@
     }
 
     function resetGame() {
-        sendAction({ type: 'reset' });
+        if (!isRemoteAction) {
+            sendAction({ type: 'reset' });
+        }
         resetGameUI();
     }
 
     function initGame(isAuto = false) {
+        if (isRemoteAction) return; // не ініціюємо повторно
+
         initAudio();
         
         let word, size;
@@ -1245,6 +1263,8 @@
     }
 
     function onCellClick(cellElement, cellData) {
+        if (isRemoteAction) return; // не обробляємо кліки, отримані віддалено
+
         const { targets, currentIndex } = gameState;
         
         if (currentIndex >= targets.length) return;
