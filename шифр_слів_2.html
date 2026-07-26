@@ -128,6 +128,8 @@
             max-width: 100%;
             height: auto;
             display: block;
+            /* Тимчасовий контур для діагностики */
+            /* border: 2px solid red; */
         }
 
         /* --- Theme Manager Styles --- */
@@ -411,7 +413,8 @@
                     btnRU.classList.toggle('active', lang === 'RU');
                 }
                 wordInput.value = word || '';
-                drawGame(slots, pathIndices);
+                // Примусове малювання з невеликою затримкою для синхронізації DOM
+                setTimeout(() => drawGame(slots, pathIndices), 50);
             }
 
             isRemoteAction = false;
@@ -495,17 +498,27 @@
         }
 
         function drawGame(slots, pathIndices) {
-            // Перевірка, щоб уникнути помилок
+            // Якщо дані не передано, використовуємо поточні
             if (!slots || slots.length === 0) {
-                console.warn('⚠️ drawGame: slots порожній, створюємо випадкові літери');
+                console.warn('⚠️ drawGame: slots порожній, використовуємо currentSlots');
+                slots = currentSlots;
+                pathIndices = currentPath;
+            }
+
+            // Якщо все ще порожньо – створюємо випадкові літери
+            if (!slots || slots.length === 0) {
+                console.warn('⚠️ drawGame: створюємо випадкові літери');
                 slots = new Array(TOTAL_SLOTS);
                 for (let i = 0; i < TOTAL_SLOTS; i++) {
                     slots[i] = currentAlphabet[Math.floor(Math.random() * currentAlphabet.length)];
                 }
                 pathIndices = [];
+                currentSlots = slots;
+                currentPath = pathIndices;
             }
-            
+
             console.log('🎨 Малюємо гру, кількість літер:', slots.length);
+            console.log('📌 Шлях:', pathIndices);
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
@@ -513,20 +526,23 @@
             const cy = canvas.height / 2;
             const radius = 240;
 
+            // Зовнішнє коло
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
             ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
             ctx.lineWidth = 3;
             ctx.stroke();
 
+            // Координати літер
             const coords = slots.map((_, i) => {
-                const angle = (i / TOTAL_SLOTS) * 2 * Math.PI - Math.PI / 2;
+                const angle = (i / slots.length) * 2 * Math.PI - Math.PI / 2;
                 return {
                     x: cx + radius * Math.cos(angle),
                     y: cy + radius * Math.sin(angle)
                 };
             });
 
+            // Нитки
             if (pathIndices && pathIndices.length > 1) {
                 ctx.beginPath();
                 ctx.moveTo(coords[pathIndices[0]].x, coords[pathIndices[0]].y);
@@ -542,11 +558,12 @@
                 ctx.stroke();
             }
 
-            // Використовуємо Arial як основний шрифт (надійніше)
+            // Шрифт для літер (Arial – надійний)
             ctx.font = 'bold 32px Arial, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
+            // Малюємо кожну літеру
             slots.forEach((letter, i) => {
                 const c = coords[i];
 
@@ -570,10 +587,8 @@
                 ctx.strokeStyle = '#5c6c5a';
                 ctx.stroke();
 
-                // Колір тексту
+                // Колір тексту та заливка для першої літери
                 if (pathIndices && pathIndices.length > 0 && pathIndices[0] === i) {
-                    ctx.fillStyle = '#ffffff'; // Текст першої літери білий
-                    // Заливаємо кружечок зеленим
                     ctx.fillStyle = '#8c9c8a';
                     ctx.beginPath();
                     ctx.arc(c.x, c.y, 28, 0, 2 * Math.PI);
@@ -612,8 +627,18 @@
 
         // --- ЗАПУСК ---
         window.onload = function() {
-            // Спочатку відновлюємо стан гри, якщо немає – генеруємо нову
-            loadInitialState();
+            // Спочатку малюємо тестові дані, щоб канвас точно щось показав
+            const testSlots = [
+                'А','Б','В','Г','Д','Е','Є','Ж','З','И','І','Ї','Й','К',
+                'Л','М','Н','О','П','Р','С','Т','У','Ф','Х','Ц','Ч','Ш'
+            ];
+            drawGame(testSlots, [0, 5, 10, 15, 20, 25]);
+
+            // Потім відновлюємо стан гри з Firebase
+            setTimeout(() => {
+                loadInitialState();
+            }, 100);
+
             console.log('🚀 Гра "Прочитай слово по нитці" завантажена. Синхронізація активна.');
             console.log('🔑 Sender ID:', senderId);
         };
