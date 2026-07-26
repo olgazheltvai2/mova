@@ -239,33 +239,76 @@
 
     <script>
         /* =========================================
-           СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager)
+           СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager) + СИНХРОНІЗАЦІЯ
            ========================================= */
         const baseBgUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
         const defaultBgUrl = baseBgUrl + 'background_1.webp';
         const themeBtn = document.getElementById('theme-btn');
         const themeModal = document.getElementById('theme-modal');
 
-        // Ініціалізація фону при завантаженні
+        // --- FIREBASE СИНХРОНІЗАЦІЯ ФОНІВ ---
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+        const senderId = 'dev_' + Math.random().toString(36).substr(2, 9);
+        let isRemoteTheme = false;
+
+        // Застосування та збереження вибраного фону (локально + Firebase)
+        function applyBackground(url) {
+            document.body.style.backgroundImage = `url('${url}')`;
+            localStorage.setItem('mySavedGameBg', url);
+            
+            // Відправляємо в Firebase тільки якщо це не віддалена дія
+            if (!isRemoteTheme) {
+                db.ref('game_theme').set({
+                    url: url,
+                    senderId: senderId,
+                    timestamp: Date.now()
+                }).catch(err => console.warn('Помилка синхронізації фону:', err));
+            }
+        }
+
+        // Слухач змін фону від інших пристроїв
+        db.ref('game_theme').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (!data) return;
+            if (data.senderId === senderId) return;
+            
+            isRemoteTheme = true;
+            // Застосовуємо отриманий фон
+            document.body.style.backgroundImage = `url('${data.url}')`;
+            localStorage.setItem('mySavedGameBg', data.url);
+            isRemoteTheme = false;
+        });
+
+        // Відновлення фону при завантаженні (спочатку локальний, потім з Firebase)
         function initTheme() {
+            // Спочатку застосовуємо локальний (якщо є)
             const savedBg = localStorage.getItem('mySavedGameBg');
             if (savedBg) {
                 document.body.style.backgroundImage = `url('${savedBg}')`;
             } else {
                 document.body.style.backgroundImage = `url('${defaultBgUrl}')`;
             }
-        }
 
-        // Застосування та збереження вибраного фону
-        function applyBackground(url) {
-            document.body.style.backgroundImage = `url('${url}')`;
-            localStorage.setItem('mySavedGameBg', url);
+            // Потім перевіряємо Firebase, щоб отримати актуальний фон від іншого пристрою
+            db.ref('game_theme').once('value').then((snapshot) => {
+                const data = snapshot.val();
+                if (data && data.senderId !== senderId) {
+                    document.body.style.backgroundImage = `url('${data.url}')`;
+                    localStorage.setItem('mySavedGameBg', data.url);
+                }
+            }).catch(err => console.warn('Помилка завантаження фону з Firebase:', err));
         }
 
         // Асинхронне завантаження та генерація мініатюр
         function loadThemes() {
             let index = 1;
-            const maxAttempts = 1000; // Ліміт за інструкцією
+            const maxAttempts = 1000;
 
             function checkNextImage() {
                 if (index > maxAttempts) return;
@@ -274,7 +317,6 @@
                 const img = new Image();
                 
                 img.onload = function() {
-                    // Створення плитки (мініатюри)
                     const thumb = document.createElement('div');
                     thumb.className = 'theme-thumb';
                     thumb.style.backgroundImage = `url('${url}')`;
@@ -287,11 +329,10 @@
                     themeModal.appendChild(thumb);
                     
                     index++;
-                    checkNextImage(); // Рекурсивний виклик для наступної картинки
+                    checkNextImage();
                 };
 
                 img.onerror = function() {
-                    // Якщо картинки немає, зупиняємо цикл (перевірка на 404)
                     return;
                 };
 
@@ -310,7 +351,6 @@
             }
         });
 
-        // Клік поза вікном закриває його
         document.addEventListener('click', (e) => {
             if (!themeModal.contains(e.target) && e.target !== themeBtn) {
                 themeModal.style.display = 'none';
@@ -335,24 +375,14 @@
         const alphabetUA = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ";
         const alphabetRU = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
         
-        let currentAlphabet = alphabetUA; // За замовчуванням УКР
+        let currentAlphabet = alphabetUA;
         let currentLang = 'UA';
-        const TOTAL_SLOTS = 28; // Кількість літер по колу
+        const TOTAL_SLOTS = 28;
 
-        // Поточний стан гри
         let currentSlots = [];
         let currentPath = [];
 
-        // --- FIREBASE СИНХРОНІЗАЦІЯ ---
-        const firebaseConfig = {
-            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
-        };
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const db = firebase.database();
-
-        const senderId = 'dev_' + Math.random().toString(36).substr(2, 9);
+        // --- FIREBASE СИНХРОНІЗАЦІЯ ГРИ ---
         let lastActionTime = 0;
         let isRemoteAction = false;
 
@@ -374,10 +404,7 @@
             isRemoteAction = true;
             lastActionTime = data.timestamp;
 
-            console.log('Отримано дію:', data.type, 'від', data.senderId);
-
             if (data.type === 'init' || data.type === 'generate') {
-                // Відновлюємо стан
                 const { slots, pathIndices, word, lang } = data;
                 currentSlots = slots;
                 currentPath = pathIndices;
@@ -387,21 +414,18 @@
                     btnUA.classList.toggle('active', lang === 'UA');
                     btnRU.classList.toggle('active', lang === 'RU');
                 }
-                // Оновлюємо поле вводу (без тригеру подій)
                 wordInput.value = word || '';
                 drawGame(slots, pathIndices);
-                console.log('Стан відновлено з Firebase');
             }
 
             isRemoteAction = false;
         });
 
-        // При завантаженні сторінки відновлюємо стан, якщо є
+        // Відновлення стану гри при завантаженні
         function loadInitialState() {
             db.ref('game_action').once('value').then((snapshot) => {
                 const data = snapshot.val();
                 if (data && (data.type === 'init' || data.type === 'generate') && data.senderId !== senderId) {
-                    console.log('Відновлення початкового стану з Firebase');
                     isRemoteAction = true;
                     const { slots, pathIndices, word, lang } = data;
                     currentSlots = slots;
@@ -416,22 +440,19 @@
                     drawGame(slots, pathIndices);
                     isRemoteAction = false;
                 } else {
-                    // Якщо немає збереженого стану – генеруємо випадкове поле
                     generateGame();
                 }
             }).catch(err => {
-                console.warn('Помилка завантаження початкового стану:', err);
+                console.warn('Помилка завантаження стану гри:', err);
                 generateGame();
             });
         }
 
-        // Відправка дії
         function sendAction(actionData) {
             if (isRemoteAction) return;
             actionData.senderId = senderId;
             actionData.timestamp = Date.now();
             db.ref('game_action').set(actionData);
-            console.log('Відправлено дію:', actionData.type);
         }
 
         // --- ОСНОВНІ ФУНКЦІЇ ГРИ ---
@@ -460,13 +481,11 @@
                 }
             }
 
-            // Зберігаємо поточний стан
             currentSlots = slots;
             currentPath = pathIndices;
 
             drawGame(slots, pathIndices);
 
-            // Відправляємо дію
             sendAction({
                 type: 'generate',
                 slots: slots,
@@ -483,14 +502,12 @@
             const cy = canvas.height / 2;
             const radius = 240;
 
-            // Малюємо зовнішнє коло
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
             ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
             ctx.lineWidth = 3;
             ctx.stroke();
 
-            // Обчислюємо координати для кожної літери
             const coords = slots.map((_, i) => {
                 const angle = (i / TOTAL_SLOTS) * 2 * Math.PI - Math.PI / 2;
                 return {
@@ -499,62 +516,50 @@
                 };
             });
 
-            // Малюємо "нитки" (лінії) між буквами слова
             if (pathIndices.length > 1) {
                 ctx.beginPath();
                 ctx.moveTo(coords[pathIndices[0]].x, coords[pathIndices[0]].y);
                 
                 for (let i = 1; i < pathIndices.length; i++) {
-                    const start = coords[pathIndices[i - 1]];
                     const end = coords[pathIndices[i]];
-                    
-                    // Вигин кривої до центру для ефекту "ниток у клубку"
                     const cpX = cx + (Math.random() * 120 - 60);
                     const cpY = cy + (Math.random() * 120 - 60);
-                    
                     ctx.quadraticCurveTo(cpX, cpY, end.x, end.y);
                 }
-                ctx.strokeStyle = '#8c9c8a'; // Колір нитки
+                ctx.strokeStyle = '#8c9c8a';
                 ctx.lineWidth = 4;
                 ctx.stroke();
             }
 
-            // Налаштування шрифту (крупніший)
             ctx.font = 'bold 32px "Propysy Bold", Arial, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
-            // Відмальовуємо літери та стилізовані кружечки
             slots.forEach((letter, i) => {
                 const c = coords[i];
 
-                // Малюємо тінь для кружечка
                 ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
                 ctx.shadowBlur = 5;
                 ctx.shadowOffsetX = 2;
                 ctx.shadowOffsetY = 2;
 
-                // Основа кружечка
                 ctx.beginPath();
                 ctx.arc(c.x, c.y, 28, 0, 2 * Math.PI);
                 ctx.fillStyle = '#ffffff';
                 ctx.fill();
 
-                // Скидаємо тінь для обідка та тексту
                 ctx.shadowColor = 'transparent';
 
-                // Контрастний обідок
                 ctx.lineWidth = 3;
                 ctx.strokeStyle = '#5c6c5a';
                 ctx.stroke();
 
-                // Якщо це ПЕРША літера слова — виділяємо її кольором
                 if (pathIndices.length > 0 && pathIndices[0] === i) {
                     ctx.fillStyle = '#8c9c8a';
                     ctx.fill();
-                    ctx.fillStyle = '#ffffff'; // Текст першої літери білий
+                    ctx.fillStyle = '#ffffff';
                 } else {
-                    ctx.fillStyle = '#222222'; // Текст інших літер темний
+                    ctx.fillStyle = '#222222';
                 }
 
                 ctx.fillText(letter, c.x, c.y);
@@ -563,25 +568,21 @@
 
         // --- ОБРОБНИКИ ПОДІЙ ---
 
-        // Обробка перемикання мови
         function setLanguage(lang) {
             if (isRemoteAction) return;
-            if (lang === currentLang) return; // Вже активна
+            if (lang === currentLang) return;
             currentLang = lang;
             currentAlphabet = lang === 'UA' ? alphabetUA : alphabetRU;
             btnUA.classList.toggle('active', lang === 'UA');
             btnRU.classList.toggle('active', lang === 'RU');
-            // Перегенерувати поле з новою мовою
-            generateGame(); // Це викличе sendAction
+            generateGame();
         }
 
         btnUA.addEventListener('click', () => setLanguage('UA'));
         btnRU.addEventListener('click', () => setLanguage('RU'));
 
-        // Обробник кнопки генерації
         generateBtn.addEventListener('click', generateGame);
 
-        // Також генеруємо при натисканні Enter у полі вводу
         wordInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 generateGame();
@@ -590,7 +591,6 @@
 
         // --- ЗАПУСК ---
         window.onload = function() {
-            // Спроба відновити стан із Firebase, якщо немає – згенерує випадкове
             loadInitialState();
             console.log('Гра "Прочитай слово по нитці" завантажена. Синхронізація активна.');
         };
