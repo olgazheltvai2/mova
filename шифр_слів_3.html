@@ -675,7 +675,7 @@
     window.addEventListener('DOMContentLoaded', initThemeManager);
 
     // ================================================================
-    // 2. FIREBASE СИНХРОНІЗАЦІЯ (використовуємо ту саму базу, що й в успішній грі)
+    // 2. FIREBASE СИНХРОНІЗАЦІЯ (повна синхронізація дій + анімацій)
     // ================================================================
     const firebaseConfig = {
         databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
@@ -698,7 +698,7 @@
         }
     });
 
-    // Слухач ігрових дій (той самий підхід, що й в успішній грі з емодзі)
+    // Слухач ігрових дій
     db.ref('game_action').on('value', (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
@@ -733,10 +733,28 @@
         } else if (data.type === 'click') {
             gameState.currentIndex = data.currentIndex;
             renderLevelFromState();
-            // Не граємо звуки та не робимо анімацій – це робиться на пристрої-джерелі
+            // Відтворюємо емоцію робота на всіх пристроях (без звуку)
+            if (data.isWin) {
+                setCharacterEmotion('win');
+                // Не скидаємо гру автоматично, це зробить локальний пристрій
+            } else {
+                setCharacterEmotion('happy');
+                // Повертаємо до нейтрального через 600 мс
+                setTimeout(() => setCharacterEmotion('neutral'), 600);
+            }
 
         } else if (data.type === 'error') {
-            // Помилка – тільки візуалізація без звуку (можна додати анімацію, але поки пропускаємо)
+            // Показуємо трясіння клітинки та смуток робота на всіх пристроях
+            const { x, y } = data;
+            const cellEl = window.cellMap ? window.cellMap[`${x}-${y}`] : null;
+            if (cellEl) {
+                cellEl.classList.remove('wrong');
+                void cellEl.offsetWidth;
+                cellEl.classList.add('wrong');
+                setTimeout(() => cellEl.classList.remove('wrong'), 500);
+            }
+            setCharacterEmotion('sad');
+            setTimeout(() => setCharacterEmotion('neutral'), 500);
 
         } else if (data.type === 'reset') {
             resetGameUI();
@@ -745,12 +763,11 @@
         isRemoteAction = false;
     });
 
-    // Також при завантаженні сторінки перевіряємо, чи є вже збережений стан
+    // При завантаженні сторінки відновлюємо стан, якщо є
     function loadInitialState() {
         db.ref('game_action').once('value').then((snapshot) => {
             const data = snapshot.val();
             if (data && data.type === 'init' && data.senderId !== senderId) {
-                // Відновлюємо гру, якщо є ініціалізований стан
                 console.log('Відновлення початкового стану з Firebase');
                 isRemoteAction = true;
                 currentLang = data.lang;
@@ -816,7 +833,7 @@
     spawnParticles();
 
     // ================================================================
-    // 5. АУДІО
+    // 5. АУДІО (тільки локально)
     // ================================================================
     let audioCtx = null;
 
@@ -920,8 +937,7 @@
             fistR.setAttribute('cy', '100');
             fistR.setAttribute('cx', '310');
             robot.style.transform = "translateY(-20px)";
-            setTimeout(() => setCharacterEmotion('neutral'), 600);
-            
+            // Не автоматично повертаємо – це робиться через setTimeout у відповідному місці
         } else if (emotion === 'sad') {
             eyeL.setAttribute('fill', '#ff3d00');
             eyeR.setAttribute('fill', '#ff3d00');
@@ -940,9 +956,9 @@
             }, 40);
             setTimeout(() => {
                 clearInterval(shake);
-                setCharacterEmotion('neutral');
+                // Повертаємо до нейтрального через 500 мс
+                setTimeout(() => setCharacterEmotion('neutral'), 100);
             }, 400);
-            
         } else if (emotion === 'win') {
             let toggle = false;
             let winInt = setInterval(() => {
@@ -962,10 +978,32 @@
             armR.setAttribute('d', 'M 240 280 Q 330 150 310 50');
             fistR.setAttribute('cy', '50');
             fistR.setAttribute('cx', '310');
+            // Зупиняємо анімацію та скидаємо гру через 2.5с – це робить локальний пристрій
+            // На віддалених просто показуємо анімацію, але не скидаємо гру (бо скине локальний)
             setTimeout(() => {
                 clearInterval(winInt);
-                setTimeout(resetGame, 1000);
+                // Повертаємо до нейтрального через невелику затримку
+                setTimeout(() => setCharacterEmotion('neutral'), 300);
             }, 2500);
+        } else { // neutral
+            // Повертаємо стандартний вигляд
+            eyeL.setAttribute('height', '30');
+            eyeL.setAttribute('y', '160');
+            eyeL.setAttribute('fill', '#00ffcc');
+            eyeR.setAttribute('height', '30');
+            eyeR.setAttribute('y', '160');
+            eyeR.setAttribute('fill', '#00ffcc');
+            core.setAttribute('fill', '#00ffcc');
+            antenna.setAttribute('fill', '#ffaa00');
+            armL.setAttribute('d', 'M 60 280 Q -20 350 -10 420');
+            fistL.setAttribute('cy', '420');
+            fistL.setAttribute('cx', '-10');
+            fistL.setAttribute('fill', '#00ffcc');
+            armR.setAttribute('d', 'M 240 280 Q 320 350 310 420');
+            fistR.setAttribute('cy', '420');
+            fistR.setAttribute('cx', '310');
+            fistR.setAttribute('fill', '#00ffcc');
+            robot.style.transform = "translateY(0)";
         }
     }
 
@@ -980,12 +1018,16 @@
         currentIndex: 0     
     };
 
+    // Карта для доступу до клітинок за координатами
+    window.cellMap = {};
+
     function resetGameUI() {
         document.getElementById('setup-screen').classList.remove('hidden');
         document.getElementById('game-screen').classList.remove('active');
         document.getElementById('nav-panel').classList.remove('active');
         setCharacterEmotion('neutral');
         document.getElementById('word-input').value = '';
+        window.cellMap = {};
     }
 
     function resetGame() {
@@ -1098,6 +1140,7 @@
         gridEl.innerHTML = '';
         codesRow.innerHTML = '';
         lettersRow.innerHTML = '';
+        window.cellMap = {};
 
         let cellSize = 80;
         if (size >= 5) cellSize = 60;
@@ -1120,6 +1163,8 @@
                 if (size >= 7) cell.style.fontSize = '28px';
                 cell.onclick = () => onCellClick(cell, cellData);
                 gridEl.appendChild(cell);
+                // Зберігаємо посилання для синхронізації помилок
+                window.cellMap[`${x}-${y}`] = cell;
             }
         }
 
@@ -1208,6 +1253,7 @@
         if (cellData.x === currentTarget.x && cellData.y === currentTarget.y) {
             playSound('success');
             setCharacterEmotion('happy');
+            setTimeout(() => setCharacterEmotion('neutral'), 600);
             
             cellElement.classList.add('solved');
             const currentCode = document.getElementById(`code-${currentIndex}`);
@@ -1227,6 +1273,7 @@
                 setTimeout(() => {
                     playSound('win');
                     setCharacterEmotion('win');
+                    // Скидання гри відбудеться всередині setCharacterEmotion('win') через таймер
                 }, 300);
             }
 
@@ -1238,10 +1285,13 @@
         } else {
             playSound('error');
             setCharacterEmotion('sad');
+            setTimeout(() => setCharacterEmotion('neutral'), 500);
+            
             cellElement.classList.remove('wrong');
             void cellElement.offsetWidth;
             cellElement.classList.add('wrong');
-            sendAction({ type: 'error' });
+            // Відправляємо координати помилки
+            sendAction({ type: 'error', x: cellData.x, y: cellData.y });
         }
     }
 
@@ -1249,7 +1299,6 @@
     // 8. ЗАПУСК ПРИ ЗАВАНТАЖЕННІ
     // ================================================================
     window.onload = function() {
-        // Спроба відновити стан із Firebase
         loadInitialState();
         console.log('Гра-шифратор завантажена. Синхронізація активна.');
     };
