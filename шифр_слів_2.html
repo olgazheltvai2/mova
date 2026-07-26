@@ -59,10 +59,9 @@
         }
 
         .game-container {
-            /* Білий прямокутник прибрано */
             padding: 20px;
             display: flex;
-            flex-direction: row; /* Канвас зліва, вікно керування справа */
+            flex-direction: row;
             justify-content: center;
             align-items: center;
             gap: 60px;
@@ -70,7 +69,6 @@
             max-width: 1200px;
         }
 
-        /* Стилізоване вікно керування (праворуч) */
         .controls-window {
             background: rgba(255, 255, 255, 0.95);
             padding: 30px;
@@ -83,7 +81,6 @@
             align-items: center;
         }
 
-        /* Поле вводу з невидимим текстом */
         #wordInput {
             font-family: 'Propysy Bold', sans-serif;
             font-size: 22px;
@@ -91,7 +88,7 @@
             border: 2px solid #ccc;
             border-radius: 10px;
             background-color: #f4f4f4;
-            color: #f4f4f4; /* Текст зливається з фоном */
+            color: #f4f4f4;
             outline: none;
             width: 220px;
             text-align: center;
@@ -104,7 +101,7 @@
 
         #wordInput::selection {
             background-color: #c0c0c0;
-            color: #333; /* Дозволяє побачити текст при виділенні */
+            color: #333;
         }
 
         #generateBtn {
@@ -202,7 +199,6 @@
             border-radius: 4px;
             pointer-events: none;
         }
-        /* Скроллбар для меню тем */
         #theme-modal::-webkit-scrollbar {
             width: 8px;
         }
@@ -239,14 +235,8 @@
 
     <script>
         /* =========================================
-           СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager) + СИНХРОНІЗАЦІЯ
+           FIREBASE КОНФІГ (спільний для гри та фонів)
            ========================================= */
-        const baseBgUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
-        const defaultBgUrl = baseBgUrl + 'background_1.webp';
-        const themeBtn = document.getElementById('theme-btn');
-        const themeModal = document.getElementById('theme-modal');
-
-        // --- FIREBASE СИНХРОНІЗАЦІЯ ФОНІВ ---
         const firebaseConfig = {
             databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
         };
@@ -255,15 +245,27 @@
         }
         const db = firebase.database();
         const senderId = 'dev_' + Math.random().toString(36).substr(2, 9);
+        let lastActionTime = 0;
+        let isRemoteAction = false;
+
+        /* =========================================
+           СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager) + СИНХРОНІЗАЦІЯ
+           ========================================= */
+        const baseBgUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        const defaultBgUrl = baseBgUrl + 'background_1.webp';
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
         let isRemoteTheme = false;
 
-        // Застосування та збереження вибраного фону (локально + Firebase)
+        // Застосування фону (локально + Firebase)
         function applyBackground(url) {
+            // Застосовуємо локально
             document.body.style.backgroundImage = `url('${url}')`;
             localStorage.setItem('mySavedGameBg', url);
             
-            // Відправляємо в Firebase тільки якщо це не віддалена дія
+            // Надсилаємо в Firebase тільки якщо це не віддалена дія
             if (!isRemoteTheme) {
+                console.log('Відправляємо фон у Firebase:', url);
                 db.ref('game_theme').set({
                     url: url,
                     senderId: senderId,
@@ -278,14 +280,14 @@
             if (!data) return;
             if (data.senderId === senderId) return;
             
+            console.log('Отримано фон з Firebase:', data.url);
             isRemoteTheme = true;
-            // Застосовуємо отриманий фон
             document.body.style.backgroundImage = `url('${data.url}')`;
             localStorage.setItem('mySavedGameBg', data.url);
             isRemoteTheme = false;
         });
 
-        // Відновлення фону при завантаженні (спочатку локальний, потім з Firebase)
+        // Відновлення фону при завантаженні
         function initTheme() {
             // Спочатку застосовуємо локальний (якщо є)
             const savedBg = localStorage.getItem('mySavedGameBg');
@@ -295,17 +297,18 @@
                 document.body.style.backgroundImage = `url('${defaultBgUrl}')`;
             }
 
-            // Потім перевіряємо Firebase, щоб отримати актуальний фон від іншого пристрою
+            // Потім перевіряємо Firebase, щоб отримати актуальний фон
             db.ref('game_theme').once('value').then((snapshot) => {
                 const data = snapshot.val();
                 if (data && data.senderId !== senderId) {
+                    console.log('Відновлення фону з Firebase:', data.url);
                     document.body.style.backgroundImage = `url('${data.url}')`;
                     localStorage.setItem('mySavedGameBg', data.url);
                 }
             }).catch(err => console.warn('Помилка завантаження фону з Firebase:', err));
         }
 
-        // Асинхронне завантаження та генерація мініатюр
+        // Завантаження мініатюр
         function loadThemes() {
             let index = 1;
             const maxAttempts = 1000;
@@ -333,6 +336,7 @@
                 };
 
                 img.onerror = function() {
+                    // Якщо картинки немає, зупиняємо цикл
                     return;
                 };
 
@@ -382,10 +386,6 @@
         let currentSlots = [];
         let currentPath = [];
 
-        // --- FIREBASE СИНХРОНІЗАЦІЯ ГРИ ---
-        let lastActionTime = 0;
-        let isRemoteAction = false;
-
         // Слухач лобі
         db.ref('current_activity').on('value', (snapshot) => {
             const val = snapshot.val();
@@ -403,6 +403,8 @@
 
             isRemoteAction = true;
             lastActionTime = data.timestamp;
+
+            console.log('Отримано дію гри:', data.type);
 
             if (data.type === 'init' || data.type === 'generate') {
                 const { slots, pathIndices, word, lang } = data;
@@ -426,6 +428,7 @@
             db.ref('game_action').once('value').then((snapshot) => {
                 const data = snapshot.val();
                 if (data && (data.type === 'init' || data.type === 'generate') && data.senderId !== senderId) {
+                    console.log('Відновлення стану гри з Firebase');
                     isRemoteAction = true;
                     const { slots, pathIndices, word, lang } = data;
                     currentSlots = slots;
@@ -453,6 +456,7 @@
             actionData.senderId = senderId;
             actionData.timestamp = Date.now();
             db.ref('game_action').set(actionData);
+            console.log('Відправлено дію гри:', actionData.type);
         }
 
         // --- ОСНОВНІ ФУНКЦІЇ ГРИ ---
@@ -593,6 +597,7 @@
         window.onload = function() {
             loadInitialState();
             console.log('Гра "Прочитай слово по нитці" завантажена. Синхронізація активна.');
+            console.log('Sender ID:', senderId);
         };
     </script>
 </body>
