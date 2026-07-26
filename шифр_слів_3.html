@@ -675,10 +675,10 @@
     window.addEventListener('DOMContentLoaded', initThemeManager);
 
     // ================================================================
-    // 2. FIREBASE СИНХРОНІЗАЦІЯ
+    // 2. FIREBASE СИНХРОНІЗАЦІЯ (використовуємо ту саму базу, що й в успішній грі)
     // ================================================================
     const firebaseConfig = {
-        databaseURL: "https://int-game-db-default-rtdb.europe-west1.firebasedatabase.app/"
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
     };
     if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
@@ -688,6 +688,7 @@
     const senderId = 'dev_' + Math.random().toString(36).substr(2, 9);
     let lastActionTime = 0;
     let isRemoteAction = false;
+    let isInitialized = false;
 
     // Слухач лобі
     db.ref('current_activity').on('value', (snapshot) => {
@@ -697,7 +698,7 @@
         }
     });
 
-    // Слухач ігрових дій
+    // Слухач ігрових дій (той самий підхід, що й в успішній грі з емодзі)
     db.ref('game_action').on('value', (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
@@ -707,7 +708,10 @@
         isRemoteAction = true;
         lastActionTime = data.timestamp;
 
+        console.log('Отримано дію:', data.type, 'від', data.senderId);
+
         if (data.type === 'init') {
+            // Відновлюємо стан гри
             currentLang = data.lang;
             currentAlphabet = data.lang === 'RUS' ? ALPHABET_RUS : ALPHABET_UKR;
             document.getElementById('lang-ukr').classList.toggle('active', currentLang === 'UKR');
@@ -724,13 +728,16 @@
             document.getElementById('game-screen').classList.add('active');
             document.getElementById('nav-panel').classList.add('active');
             setCharacterEmotion('neutral');
+            console.log('Гру відновлено з Firebase');
 
         } else if (data.type === 'click') {
             gameState.currentIndex = data.currentIndex;
             renderLevelFromState();
+            // Не граємо звуки та не робимо анімацій – це робиться на пристрої-джерелі
+
         } else if (data.type === 'error') {
-            // Візуалізація помилки на всіх пристроях без звуку
-            // Для простоти нічого не робимо
+            // Помилка – тільки візуалізація без звуку (можна додати анімацію, але поки пропускаємо)
+
         } else if (data.type === 'reset') {
             resetGameUI();
         }
@@ -738,11 +745,42 @@
         isRemoteAction = false;
     });
 
+    // Також при завантаженні сторінки перевіряємо, чи є вже збережений стан
+    function loadInitialState() {
+        db.ref('game_action').once('value').then((snapshot) => {
+            const data = snapshot.val();
+            if (data && data.type === 'init' && data.senderId !== senderId) {
+                // Відновлюємо гру, якщо є ініціалізований стан
+                console.log('Відновлення початкового стану з Firebase');
+                isRemoteAction = true;
+                currentLang = data.lang;
+                currentAlphabet = data.lang === 'RUS' ? ALPHABET_RUS : ALPHABET_UKR;
+                document.getElementById('lang-ukr').classList.toggle('active', currentLang === 'UKR');
+                document.getElementById('lang-rus').classList.toggle('active', currentLang === 'RUS');
+
+                gameState.word = data.word;
+                gameState.size = data.size;
+                gameState.grid = data.grid;
+                gameState.targets = data.targets;
+                gameState.currentIndex = data.currentIndex;
+
+                renderLevel();
+                document.getElementById('setup-screen').classList.add('hidden');
+                document.getElementById('game-screen').classList.add('active');
+                document.getElementById('nav-panel').classList.add('active');
+                setCharacterEmotion('neutral');
+                isRemoteAction = false;
+            }
+        }).catch(err => console.warn('Помилка завантаження початкового стану:', err));
+    }
+
+    // Відправка дії
     function sendAction(actionData) {
         if (isRemoteAction) return;
         actionData.senderId = senderId;
         actionData.timestamp = Date.now();
         db.ref('game_action').set(actionData);
+        console.log('Відправлено дію:', actionData.type);
     }
 
     // ================================================================
@@ -1208,11 +1246,13 @@
     }
 
     // ================================================================
-    // 8. АВТОМАТИЧНИЙ ЗАПУСК
+    // 8. ЗАПУСК ПРИ ЗАВАНТАЖЕННІ
     // ================================================================
-    // Якщо є збережений стан у Firebase – він відновиться через слухач.
-    // Якщо ні – гра покаже екран налаштувань.
-    console.log('Гра-шифратор завантажена. Синхронізація активна.');
+    window.onload = function() {
+        // Спроба відновити стан із Firebase
+        loadInitialState();
+        console.log('Гра-шифратор завантажена. Синхронізація активна.');
+    };
 </script>
 </body>
 </html>
