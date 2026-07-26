@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Гра: Прочитай слово по нитці</title>
+    <!-- Firebase compat -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <style>
         /* Основні стилі та архітектура сторінки */
         body {
@@ -320,7 +323,7 @@
 
 
         /* =========================================
-           ЛОГІКА ГРИ "ПРОЧИТАЙ СЛОВО"
+           ЛОГІКА ГРИ "ПРОЧИТАЙ СЛОВО" + СИНХРОНІЗАЦІЯ
            ========================================= */
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -333,26 +336,110 @@
         const alphabetRU = "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
         
         let currentAlphabet = alphabetUA; // За замовчуванням УКР
+        let currentLang = 'UA';
         const TOTAL_SLOTS = 28; // Кількість літер по колу
 
-        // Обробка перемикання мови
-        btnUA.addEventListener('click', () => {
-            currentAlphabet = alphabetUA;
-            btnUA.classList.add('active');
-            btnRU.classList.remove('active');
-            generateGame(); // Перегенерувати поле
+        // Поточний стан гри
+        let currentSlots = [];
+        let currentPath = [];
+
+        // --- FIREBASE СИНХРОНІЗАЦІЯ ---
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        const senderId = 'dev_' + Math.random().toString(36).substr(2, 9);
+        let lastActionTime = 0;
+        let isRemoteAction = false;
+
+        // Слухач лобі
+        db.ref('current_activity').on('value', (snapshot) => {
+            const val = snapshot.val();
+            if (val === 'lobby' || (val && val.activity === 'lobby')) {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html';
+            }
         });
 
-        btnRU.addEventListener('click', () => {
-            currentAlphabet = alphabetRU;
-            btnRU.classList.add('active');
-            btnUA.classList.remove('active');
-            generateGame(); // Перегенерувати поле
+        // Слухач ігрових дій
+        db.ref('game_action').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (!data) return;
+            if (data.senderId === senderId) return;
+            if (data.timestamp <= lastActionTime) return;
+
+            isRemoteAction = true;
+            lastActionTime = data.timestamp;
+
+            console.log('Отримано дію:', data.type, 'від', data.senderId);
+
+            if (data.type === 'init' || data.type === 'generate') {
+                // Відновлюємо стан
+                const { slots, pathIndices, word, lang } = data;
+                currentSlots = slots;
+                currentPath = pathIndices;
+                if (lang) {
+                    currentLang = lang;
+                    currentAlphabet = lang === 'UA' ? alphabetUA : alphabetRU;
+                    btnUA.classList.toggle('active', lang === 'UA');
+                    btnRU.classList.toggle('active', lang === 'RU');
+                }
+                // Оновлюємо поле вводу (без тригеру подій)
+                wordInput.value = word || '';
+                drawGame(slots, pathIndices);
+                console.log('Стан відновлено з Firebase');
+            }
+
+            isRemoteAction = false;
         });
+
+        // При завантаженні сторінки відновлюємо стан, якщо є
+        function loadInitialState() {
+            db.ref('game_action').once('value').then((snapshot) => {
+                const data = snapshot.val();
+                if (data && (data.type === 'init' || data.type === 'generate') && data.senderId !== senderId) {
+                    console.log('Відновлення початкового стану з Firebase');
+                    isRemoteAction = true;
+                    const { slots, pathIndices, word, lang } = data;
+                    currentSlots = slots;
+                    currentPath = pathIndices;
+                    if (lang) {
+                        currentLang = lang;
+                        currentAlphabet = lang === 'UA' ? alphabetUA : alphabetRU;
+                        btnUA.classList.toggle('active', lang === 'UA');
+                        btnRU.classList.toggle('active', lang === 'RU');
+                    }
+                    wordInput.value = word || '';
+                    drawGame(slots, pathIndices);
+                    isRemoteAction = false;
+                } else {
+                    // Якщо немає збереженого стану – генеруємо випадкове поле
+                    generateGame();
+                }
+            }).catch(err => {
+                console.warn('Помилка завантаження початкового стану:', err);
+                generateGame();
+            });
+        }
+
+        // Відправка дії
+        function sendAction(actionData) {
+            if (isRemoteAction) return;
+            actionData.senderId = senderId;
+            actionData.timestamp = Date.now();
+            db.ref('game_action').set(actionData);
+            console.log('Відправлено дію:', actionData.type);
+        }
+
+        // --- ОСНОВНІ ФУНКЦІЇ ГРИ ---
 
         function generateGame() {
+            if (isRemoteAction) return;
+
             let word = wordInput.value.trim().toUpperCase();
-            // Якщо поле порожнє, генеруємо просто випадкові букви
             let slots = new Array(TOTAL_SLOTS);
             for (let i = 0; i < TOTAL_SLOTS; i++) {
                 slots[i] = currentAlphabet[Math.floor(Math.random() * currentAlphabet.length)];
@@ -373,7 +460,20 @@
                 }
             }
 
+            // Зберігаємо поточний стан
+            currentSlots = slots;
+            currentPath = pathIndices;
+
             drawGame(slots, pathIndices);
+
+            // Відправляємо дію
+            sendAction({
+                type: 'generate',
+                slots: slots,
+                pathIndices: pathIndices,
+                word: word,
+                lang: currentLang
+            });
         }
 
         function drawGame(slots, pathIndices) {
@@ -461,12 +561,39 @@
             });
         }
 
+        // --- ОБРОБНИКИ ПОДІЙ ---
+
+        // Обробка перемикання мови
+        function setLanguage(lang) {
+            if (isRemoteAction) return;
+            if (lang === currentLang) return; // Вже активна
+            currentLang = lang;
+            currentAlphabet = lang === 'UA' ? alphabetUA : alphabetRU;
+            btnUA.classList.toggle('active', lang === 'UA');
+            btnRU.classList.toggle('active', lang === 'RU');
+            // Перегенерувати поле з новою мовою
+            generateGame(); // Це викличе sendAction
+        }
+
+        btnUA.addEventListener('click', () => setLanguage('UA'));
+        btnRU.addEventListener('click', () => setLanguage('RU'));
+
         // Обробник кнопки генерації
         generateBtn.addEventListener('click', generateGame);
-        
-        // Генерація початкового поля при старті
-        generateGame();
 
+        // Також генеруємо при натисканні Enter у полі вводу
+        wordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                generateGame();
+            }
+        });
+
+        // --- ЗАПУСК ---
+        window.onload = function() {
+            // Спроба відновити стан із Firebase, якщо немає – згенерує випадкове
+            loadInitialState();
+            console.log('Гра "Прочитай слово по нитці" завантажена. Синхронізація активна.');
+        };
     </script>
 </body>
 </html>
