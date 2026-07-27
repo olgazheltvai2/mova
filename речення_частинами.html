@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Гра: Читання по словах</title>
+    
+    <!-- Підключення Firebase Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
     <style>
         /* Базові налаштування сторінки */
         body {
@@ -23,7 +28,7 @@
 
         /* Контейнер гри (тільки для показу тексту дитині) */
         #game-container {
-            background: rgba(255, 255, 255, 0.9);
+            background: transparent; /* Жодних фонових прямокутників */
             padding: 40px;
             border-radius: 20px;
             text-align: center;
@@ -53,6 +58,8 @@
             font-size: 80px; /* Крупний шрифт */
             font-weight: bold;
             color: #333;
+            /* Додано білу тінь для контрасту на будь-якому фоні */
+            text-shadow: 2px 2px 4px #ffffff, -2px -2px 4px #ffffff, 2px -2px 4px #ffffff, -2px 2px 4px #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -76,6 +83,8 @@
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             align-items: center;
+            width: auto;
+            max-width: 95%;
         }
 
         /* Ряди для кнопок в панелі адміністратора */
@@ -85,15 +94,17 @@
             align-items: center;
             justify-content: center;
             width: 100%;
+            flex-wrap: wrap;
         }
 
         #sentence-input {
             width: 400px;
+            max-width: 100%;
             padding: 12px;
             font-size: 20px;
-            /* Колір тексту збігається з фоном поля, щоб приховати ввід від дитини */
+            /* Секретне поле вводу */
             background-color: #e8e8e8;
-            color: #e8e8e8;
+            color: transparent; /* Невидимий текст */
             border: 1px solid #ccc;
             border-radius: 5px;
         }
@@ -104,6 +115,7 @@
         
         #sentence-input::selection {
             background-color: transparent;
+            color: transparent; /* Невидиме виділення */
         }
 
         /* Кнопки адміністратора */
@@ -116,6 +128,7 @@
             font-weight: bold;
             color: white;
             transition: transform 0.1s;
+            white-space: nowrap;
         }
 
         .admin-btn:active {
@@ -162,6 +175,7 @@
             overflow-y: auto;
             box-shadow: 0 5px 20px rgba(0,0,0,0.3);
             width: 350px;
+            max-width: 90vw;
             display: none;
         }
 
@@ -198,6 +212,46 @@
             border-radius: 4px;
             pointer-events: none;
         }
+
+        /* Адаптивність (Mobile Friendly) */
+        @media (max-width: 768px) {
+            #display-area {
+                font-size: 50px;
+            }
+            #sentence-input {
+                width: 100%;
+            }
+            .admin-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .admin-btn {
+                width: 100%;
+            }
+            #game-container {
+                margin-bottom: 220px; /* Більше місця для високої панелі кнопок */
+            }
+        }
+
+        /* Стилі екрану-заглушки для блокування */
+        #block-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            color: red;
+            font-size: 40px;
+            font-weight: bold;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100000;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
@@ -225,22 +279,134 @@
         <div class="theme-grid" id="theme-grid"></div>
     </div>
 
+    <!-- Екран-заглушка для Універсального блоку контролю -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
     <script>
+        // Ініціалізація Firebase
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // --- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Ідентифікація, Радар) ---
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        
+        if (myName) {
+            sessionStorage.setItem('myName', myName);
+        } else {
+            myName = sessionStorage.getItem('myName');
+            if (!myName) {
+                myName = "Гість_" + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('myName', myName);
+            }
+        }
+
+        const tabId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 5);
+        const presenceRef = db.ref(`online_users/${myName}/${tabId}`);
+
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                presenceRef.set(true);
+                presenceRef.onDisconnect().remove();
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            presenceRef.remove();
+        });
+
+        // Блокування користувача
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            const blockOverlay = document.getElementById('block-overlay');
+            if (snap.val() === true) {
+                blockOverlay.style.display = 'flex';
+            } else {
+                blockOverlay.style.display = 'none';
+            }
+        });
+
+        // Примусове оновлення (force_refresh)
+        db.ref('force_refresh').on('value', snap => {
+            const timestamp = snap.val();
+            if (timestamp && timestamp > Date.now() - 5000) {
+                window.location.reload();
+            }
+        });
+
+        // Повернення в лобі (з імунітетом першої секунди)
+        const scriptStartTime = Date.now();
+        db.ref('current_activity').on('value', snap => {
+            if (Date.now() - scriptStartTime > 1000) {
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            }
+        });
+
+
         // --- ЛОГІКА ГРИ ---
         const inputEl = document.getElementById('sentence-input');
         const displayArea = document.getElementById('display-area');
         
         let wordsRevealed = 0;
         let currentWords = [];
+        let isRemoteAction = false;
+        const appLaunchTime = Date.now();
+
+        // Функція для відправки дій у Firebase
+        function sendGameAction(type, data = {}) {
+            if (isRemoteAction) return;
+            db.ref('game_action').set({
+                senderId: tabId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        // Синхронізація дій з Firebase
+        db.ref('game_action').on('value', snap => {
+            const action = snap.val();
+            if (!action) return;
+            if (action.timestamp < appLaunchTime) return; // Ігноруємо старі дії
+            if (action.senderId === tabId) return; // Ігноруємо власні дії
+
+            isRemoteAction = true;
+            if (action.type === 'load_sentence') {
+                const text = action.data.text;
+                if (text !== undefined) {
+                    currentWords = text.split(/\s+/);
+                    wordsRevealed = 0;
+                    renderWords();
+                }
+            } else if (action.type === 'next_word') {
+                if (currentWords.length > 0 && wordsRevealed < currentWords.length) {
+                    wordsRevealed++;
+                    renderWords();
+                }
+            } else if (action.type === 'prev_word') {
+                if (wordsRevealed > 0) {
+                    wordsRevealed--;
+                    renderWords();
+                }
+            }
+            isRemoteAction = false;
+        });
 
         // Додавання нового речення
         document.getElementById('btn-submit').addEventListener('click', () => {
             const text = inputEl.value.trim();
             if (text !== '') {
-                // Розбиваємо на слова
                 currentWords = text.split(/\s+/);
                 wordsRevealed = 0;
                 renderWords();
+                sendGameAction('load_sentence', { text: text });
                 inputEl.value = ''; // Очищення поля вводу після завантаження
             }
         });
@@ -250,6 +416,7 @@
             if (currentWords.length > 0 && wordsRevealed < currentWords.length) {
                 wordsRevealed++;
                 renderWords();
+                sendGameAction('next_word');
             }
         });
 
@@ -258,6 +425,7 @@
             if (wordsRevealed > 0) {
                 wordsRevealed--;
                 renderWords();
+                sendGameAction('prev_word');
             }
         });
 
@@ -285,6 +453,7 @@
         
         const baseBgUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
         const defaultBg = `${baseBgUrl}background_1.webp`;
+        let isRemoteThemeUpdate = false;
 
         // Відкриття/закриття меню фонів
         themeBtn.addEventListener('click', () => {
@@ -296,14 +465,29 @@
         });
 
         // Встановлення фону та автозбереження
-        function setBackground(url) {
+        function setBackground(url, sync = true) {
             document.body.style.backgroundImage = `url('${url}')`;
             localStorage.setItem('mySavedGameBg', url);
+            
+            // Синхронізуємо у Firebase тільки якщо це локальна зміна
+            if (sync && !isRemoteThemeUpdate) {
+                db.ref('game_theme').set(url);
+            }
         }
 
-        // Перевірка збереженого фону при завантаженні
+        // Слухач Firebase для синхронізації фонів
+        db.ref('game_theme').on('value', snap => {
+            const url = snap.val();
+            if (url && url !== localStorage.getItem('mySavedGameBg')) {
+                isRemoteThemeUpdate = true;
+                setBackground(url, false);
+                isRemoteThemeUpdate = false;
+            }
+        });
+
+        // Перевірка збереженого фону при завантаженні (локально)
         const savedBg = localStorage.getItem('mySavedGameBg') || defaultBg;
-        setBackground(savedBg);
+        setBackground(savedBg, false);
 
         // Асинхронне завантаження та перевірка наявності картинок (1-1000)
         function loadThemes() {
@@ -321,7 +505,7 @@
                     placeholder.className = 'theme-thumb';
                     placeholder.style.backgroundImage = `url('${url}')`;
                     placeholder.style.display = 'block';
-                    placeholder.onclick = () => setBackground(url);
+                    placeholder.onclick = () => setBackground(url, true);
                     
                     const label = document.createElement('span');
                     label.textContent = `Фон ${i}`;
