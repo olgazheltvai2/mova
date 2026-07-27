@@ -33,6 +33,7 @@
             flex-direction: column;
             box-sizing: border-box;
             overflow-y: auto;
+            overflow-x: hidden;
         }
 
         /* Setup Screen */
@@ -88,14 +89,21 @@
             background-color: #45a049;
         }
 
+        #restart-btn {
+            z-index: 50;
+            position: relative;
+        }
+
         /* Play Screen */
         #play-screen {
             display: none;
             flex-direction: column;
             align-items: center;
-            justify-content: space-evenly;
-            height: 100%;
+            justify-content: center; /* Змінено для уникнення зсувів кнопки на телефонах */
+            gap: 30px; /* Задає стабільний відступ між елементами */
+            min-height: 100%; /* Дозволяє блоку рости і не перекривати кнопку */
             width: 100%;
+            padding: 20px 0;
         }
 
         #slots-area {
@@ -448,17 +456,24 @@
         /* === СИНХРОНІЗАЦІЯ ХОДІВ (GAME ACTION) === */
         function sendAction(type, data = {}) {
             if (isRemoteAction) return;
-            const action = {
-                senderId: senderId,
-                timestamp: Date.now(),
-                type: type,
-                data: data,
-                state: { // Зберігаємо стан для тих, хто запізнився або оновив сторінку
-                    gameWord, slotsData, cardsData, selectedCardId,
-                    isPlayScreen: document.getElementById('play-screen').style.display === 'flex'
-                }
-            };
-            db.ref('game_action').set(action);
+            try {
+                const action = {
+                    senderId: senderId,
+                    timestamp: Date.now(),
+                    type: type,
+                    data: data,
+                    state: { // Зберігаємо стан для тих, хто запізнився або оновив сторінку
+                        gameWord, slotsData, cardsData, selectedCardId,
+                        isPlayScreen: document.getElementById('play-screen').style.display === 'flex'
+                    }
+                };
+                
+                // Очистка об'єкта від можливих undefined
+                const cleanAction = JSON.parse(JSON.stringify(action));
+                db.ref('game_action').set(cleanAction);
+            } catch (e) {
+                console.error("Firebase sync error:", e);
+            }
         }
 
         db.ref('game_action').on('value', snap => {
@@ -470,7 +485,8 @@
                 gameWord = action.state.gameWord || "";
                 slotsData = action.state.slotsData || [];
                 cardsData = action.state.cardsData || [];
-                selectedCardId = action.state.selectedCardId || null;
+                selectedCardId = action.state.selectedCardId !== undefined ? action.state.selectedCardId : false;
+                
                 if (action.state.isPlayScreen) {
                     document.getElementById('setup-screen').style.display = 'none';
                     document.getElementById('play-screen').style.display = 'flex';
@@ -486,27 +502,33 @@
             lastActionTimestamp = action.timestamp;
             isRemoteAction = true;
 
-            switch(action.type) {
-                case 'START_GAME':
-                    gameWord = action.data.gameWord;
-                    slotsData = action.data.slotsData;
-                    cardsData = action.data.cardsData;
-                    selectedCardId = action.data.selectedCardId;
-                    document.getElementById('setup-screen').style.display = 'none';
-                    document.getElementById('play-screen').style.display = 'flex';
-                    renderGame();
-                    break;
-                case 'RESTART':
-                    resetToSetupLocal();
-                    break;
-                case 'CARD_CLICK':
-                    handleCardClickLocal(action.data.id);
-                    break;
-                case 'SLOT_CLICK':
-                    handleSlotClickLocal(action.data.slotIndex);
-                    break;
+            try {
+                switch(action.type) {
+                    case 'START_GAME':
+                        gameWord = action.data.gameWord;
+                        slotsData = action.data.slotsData || [];
+                        cardsData = action.data.cardsData || [];
+                        selectedCardId = action.data.selectedCardId !== undefined ? action.data.selectedCardId : false;
+                        document.getElementById('setup-screen').style.display = 'none';
+                        document.getElementById('play-screen').style.display = 'flex';
+                        renderGame();
+                        break;
+                    case 'RESTART':
+                        resetToSetupLocal();
+                        break;
+                    case 'CARD_CLICK':
+                        handleCardClickLocal(action.data.id);
+                        break;
+                    case 'SLOT_CLICK':
+                        handleSlotClickLocal(action.data.slotIndex);
+                        break;
+                }
+            } catch(e) {
+                console.error("Action processing error:", e);
+            } finally {
+                // Гарантуємо, що блокування ходів знімається навіть у разі помилки
+                isRemoteAction = false;
             }
-            isRemoteAction = false;
         });
 
 
@@ -581,15 +603,16 @@
         let gameWord = "";
         let slotsData = [];
         let cardsData = [];
-        let selectedCardId = null;
+        let selectedCardId = false; // Використовуємо false замість null
 
         const alphabet = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ".split('');
 
-        document.getElementById('start-btn').addEventListener('click', startGame);
-        document.getElementById('restart-btn').addEventListener('click', () => {
+        document.getElementById('start-btn').onclick = startGame;
+        
+        document.getElementById('restart-btn').onclick = () => {
             sendAction('RESTART');
             resetToSetupLocal();
-        });
+        };
 
         function resetToSetupLocal() {
             document.getElementById('play-screen').style.display = 'none';
@@ -598,7 +621,7 @@
             document.getElementById('win-message').style.display = 'none';
             document.getElementById('slots-area').style.display = 'flex';
             document.getElementById('cards-area').style.display = 'flex';
-            slotsData = []; cardsData = []; selectedCardId = null;
+            slotsData = []; cardsData = []; selectedCardId = false;
         }
 
         function startGame() {
@@ -633,7 +656,7 @@
         }
 
         function generateLevel() {
-            slotsData = []; cardsData = []; selectedCardId = null;
+            slotsData = []; cardsData = []; selectedCardId = false;
             let usedWords = new Set();
             let cardIdCounter = 1;
 
@@ -669,16 +692,16 @@
 
                 slotsData.push({
                     index: index,
-                    char: char,           // Велика літера, яка відкриється в квадраті
-                    target: char,         // Літера, яку треба вставити (те саме, що char)
-                    expression: expr,     // Слово з пропуском (напр. 'С_БАКА')
-                    filledWithId: null
+                    char: char,           
+                    target: char,         
+                    expression: expr,     
+                    filledWithId: false // Замість null
                 });
 
                 cardsData.push({
                     id: cardIdCounter++,
-                    target: char,         // На картці буде написана потрібна літера
-                    placedInSlot: null
+                    target: char,         
+                    placedInSlot: false // Замість null
                 });
             });
 
@@ -694,7 +717,7 @@
                 cardsData.push({
                     id: cardIdCounter++,
                     target: char,
-                    placedInSlot: null
+                    placedInSlot: false // Замість null
                 });
             });
 
@@ -713,9 +736,9 @@
                 wrapper.className = 'slot-wrapper';
 
                 const slotEl = document.createElement('div');
-                slotEl.className = 'slot' + (slot.filledWithId ? ' filled' : '');
+                slotEl.className = 'slot' + (slot.filledWithId !== false ? ' filled' : '');
                 
-                if (slot.filledWithId) {
+                if (slot.filledWithId !== false) {
                     // Коли дитина правильно вставляє букву, слот відкриває велику літеру загаданого слова
                     slotEl.innerHTML = `
                         <div style="text-align:center;">
@@ -733,7 +756,7 @@
                 expEl.className = 'expression';
                 
                 // Рендеримо слово під коміркою з підсвіткою пропуску або вставленої літери
-                expEl.innerHTML = slot.filledWithId 
+                expEl.innerHTML = slot.filledWithId !== false 
                     ? slot.expression.replace('_', `<span style="color:#4CAF50">${slot.target}</span>`)
                     : slot.expression.replace('_', '<span style="color:#d32f2f">_</span>');
 
@@ -742,7 +765,7 @@
                 slotsArea.appendChild(wrapper);
             });
 
-            cardsData.filter(c => c.placedInSlot === null).forEach(card => {
+            cardsData.filter(c => c.placedInSlot === false).forEach(card => {
                 const cardEl = document.createElement('div');
                 cardEl.className = 'card' + (selectedCardId === card.id ? ' selected' : '');
                 
@@ -760,7 +783,7 @@
         }
 
         function handleCardClickLocal(id) {
-            selectedCardId = selectedCardId === id ? null : id;
+            selectedCardId = selectedCardId === id ? false : id;
             renderGame();
         }
 
@@ -769,38 +792,41 @@
             const slotEls = document.querySelectorAll('.slot');
             const slotEl = slotEls[slotIndex];
 
-            if (slot.filledWithId) {
+            if (slot.filledWithId !== false) {
                 const card = cardsData.find(c => c.id === slot.filledWithId);
-                card.placedInSlot = null;
-                slot.filledWithId = null;
+                // Додатковий захист від помилки (якщо картки з якихось причин не існує)
+                if (card) {
+                    card.placedInSlot = false;
+                }
+                slot.filledWithId = false;
                 renderGame();
                 return;
             }
 
-            if (selectedCardId) {
+            if (selectedCardId !== false) {
                 const card = cardsData.find(c => c.id === selectedCardId);
                 
                 // Якщо обрана літера співпадає з потрібною літерою у слові-прикладі
-                if (card.target === slot.target) {
+                if (card && card.target === slot.target) {
                     card.placedInSlot = slotIndex;
                     slot.filledWithId = card.id;
-                    selectedCardId = null;
+                    selectedCardId = false;
                     playSound('success'); // Тихий звук успіху
                     renderGame();
                 } else {
-                    if(slotEl) slotEl.classList.add('error-anim');
+                    if (slotEl) slotEl.classList.add('error-anim');
                     playSound('error'); // М'який звук помилки
                     setTimeout(() => {
-                        if(slotEl) slotEl.classList.remove('error-anim');
+                        if (slotEl) slotEl.classList.remove('error-anim');
                     }, 400);
-                    selectedCardId = null;
+                    selectedCardId = false;
                     renderGame();
                 }
             }
         }
 
         function checkWin() {
-            const isWin = slotsData.every(s => s.filledWithId !== null);
+            const isWin = slotsData.every(s => s.filledWithId !== false);
             if (isWin && slotsData.length > 0) {
                 document.getElementById('win-message').innerText = gameWord;
                 document.getElementById('win-message').style.display = 'block';
