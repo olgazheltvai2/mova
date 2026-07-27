@@ -20,10 +20,12 @@
         }
 
         #game-container {
-            background: linear-gradient(135deg, rgba(255, 240, 245, 0.9), rgba(240, 248, 255, 0.9));
+            /* Максимально прозорий контейнер, як вимагалося */
+            background: rgba(255, 255, 255, 0.15); 
+            backdrop-filter: blur(2px);
             padding: 20px;
             border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            box-shadow: none; /* Прибрано тінь для повної прозорості */
             text-align: center;
             width: 98vw;
             height: 98vh;
@@ -50,12 +52,18 @@
             width: 80%;
             border: 2px solid #ccc;
             border-radius: 10px;
-            background-color: #ffffff;
-            color: #ffffff; /* Текст невидимий */
+            background-color: rgba(255, 255, 255, 0.6);
+            /* Секретне поле вводу: невидимий текст та виділення */
+            color: transparent; 
             caret-color: #000000;
             text-transform: uppercase;
             font-family: Arial, sans-serif;
             text-align: center;
+        }
+
+        #word-input::selection {
+            color: transparent;
+            background: transparent;
         }
 
         #word-input:focus {
@@ -117,7 +125,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            background: rgba(200, 200, 200, 0.2);
+            background: rgba(200, 200, 200, 0.4);
             cursor: pointer;
             transition: border-color 0.3s, background 0.3s;
             box-sizing: border-box;
@@ -133,6 +141,9 @@
             font-size: clamp(14px, 1.8vw, 30px); /* Зменшено шрифт для уникнення накладання */
             font-weight: bold;
             color: #333;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 5px 10px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -147,7 +158,7 @@
             flex-wrap: wrap; /* Карткам дозволено переноситися для зручності */
             gap: 15px;
             padding: 20px;
-            background: rgba(0,0,0,0.05);
+            background: rgba(0,0,0,0.1);
             border-radius: 20px;
             min-height: 120px;
             width: 100%;
@@ -189,6 +200,9 @@
             font-weight: bold;
             margin-bottom: 20px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            background: rgba(255,255,255,0.8);
+            padding: 10px 30px;
+            border-radius: 15px;
         }
 
         @keyframes shake {
@@ -260,7 +274,33 @@
             border-bottom-left-radius: 7px;
             border-bottom-right-radius: 7px;
         }
+
+        /* Блок контролю та заглушка */
+        #block-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            color: red;
+            font-size: 40px;
+            font-weight: bold;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        /* Адаптивність */
+        @media (max-width: 768px) {
+            #word-input { width: 95%; font-size: 28px; }
+            .card { width: 70px; height: 90px; }
+            .card .char { font-size: 40px; }
+        }
     </style>
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -280,25 +320,98 @@
 
     <button id="theme-btn">⚙️</button>
     <div id="theme-modal"></div>
+    
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
 
     <script>
+        /* === FIREBASE ІНІЦІАЛІЗАЦІЯ === */
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        /* === УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Ідентифікація, Радар, Блокування) === */
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+        
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const senderId = tabId; 
+        let isRemoteAction = false;
+        let lastActionTimestamp = 0;
+        let immunity = true;
+        setTimeout(() => immunity = false, 1000);
+
+        const connectedRef = db.ref('.info/connected');
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                userRef.onDisconnect().remove();
+                userRef.set(true);
+            }
+        });
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        db.ref('force_refresh').on('value', (snap) => {
+            if (snap.val() && !immunity) window.location.reload();
+        });
+
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            const overlay = document.getElementById('block-overlay');
+            if (snap.val() === true) {
+                overlay.style.display = 'flex';
+            } else {
+                overlay.style.display = 'none';
+            }
+        });
+
+        db.ref('current_activity').on('value', (snap) => {
+            if (!immunity && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
         /* === THEME MANAGER === */
         const baseBgUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
         let currentBgIndex = 1;
         const themeModal = document.getElementById('theme-modal');
         const themeBtn = document.getElementById('theme-btn');
+        let isRemoteTheme = false;
 
         themeBtn.onclick = () => {
             themeModal.style.display = themeModal.style.display === 'grid' ? 'none' : 'grid';
         };
 
-        function setBackground(url) {
+        function setBackground(url, fromRemote = false) {
             document.body.style.backgroundImage = `url(${url})`;
             document.body.style.backgroundSize = 'cover';
             document.body.style.backgroundPosition = 'center';
             document.body.style.backgroundAttachment = 'fixed';
             localStorage.setItem('mySavedGameBg', url);
+            
+            if (!fromRemote) {
+                db.ref('game_theme').set(url);
+            }
         }
+
+        db.ref('game_theme').on('value', snap => {
+            const url = snap.val();
+            if (url) {
+                setBackground(url, true);
+            }
+        });
 
         function checkAndLoadNextBg() {
             if (currentBgIndex > 1000) return;
@@ -329,8 +442,73 @@
             img.src = url;
         }
 
-        setBackground(localStorage.getItem('mySavedGameBg') || `${baseBgUrl}background_1.webp`);
+        setBackground(localStorage.getItem('mySavedGameBg') || `${baseBgUrl}background_1.webp`, true);
         checkAndLoadNextBg();
+
+        /* === СИНХРОНІЗАЦІЯ ХОДІВ (GAME ACTION) === */
+        function sendAction(type, data = {}) {
+            if (isRemoteAction) return;
+            const action = {
+                senderId: senderId,
+                timestamp: Date.now(),
+                type: type,
+                data: data,
+                state: { // Зберігаємо стан для тих, хто запізнився або оновив сторінку
+                    gameWord, slotsData, cardsData, selectedCardId,
+                    isPlayScreen: document.getElementById('play-screen').style.display === 'flex'
+                }
+            };
+            db.ref('game_action').set(action);
+        }
+
+        db.ref('game_action').on('value', snap => {
+            const action = snap.val();
+            if (!action || action.timestamp <= lastActionTimestamp) return;
+
+            // Якщо зайшли вперше (після завантаження), перевіряємо стан гри
+            if (lastActionTimestamp === 0 && action.state) {
+                gameWord = action.state.gameWord || "";
+                slotsData = action.state.slotsData || [];
+                cardsData = action.state.cardsData || [];
+                selectedCardId = action.state.selectedCardId || null;
+                if (action.state.isPlayScreen) {
+                    document.getElementById('setup-screen').style.display = 'none';
+                    document.getElementById('play-screen').style.display = 'flex';
+                    renderGame();
+                }
+            }
+
+            if (action.senderId === senderId) {
+                lastActionTimestamp = action.timestamp;
+                return;
+            }
+
+            lastActionTimestamp = action.timestamp;
+            isRemoteAction = true;
+
+            switch(action.type) {
+                case 'START_GAME':
+                    gameWord = action.data.gameWord;
+                    slotsData = action.data.slotsData;
+                    cardsData = action.data.cardsData;
+                    selectedCardId = action.data.selectedCardId;
+                    document.getElementById('setup-screen').style.display = 'none';
+                    document.getElementById('play-screen').style.display = 'flex';
+                    renderGame();
+                    break;
+                case 'RESTART':
+                    resetToSetupLocal();
+                    break;
+                case 'CARD_CLICK':
+                    handleCardClickLocal(action.data.id);
+                    break;
+                case 'SLOT_CLICK':
+                    handleSlotClickLocal(action.data.slotIndex);
+                    break;
+            }
+            isRemoteAction = false;
+        });
+
 
         /* === SOUND SYSTEM (Web Audio API) === */
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -390,7 +568,7 @@
             "КНИГА", "ШКОЛА", "ЗОШИТ", "РУЧКА", "ОЛІВЕЦЬ", "ПАПІР", "ГУМКА", "ПЕНАЛ", "ПОРТФЕЛЬ", "РЮКЗАК", "ПАРТА", "ДОШКА", "КРЕЙДА", "КЛАС", "УРОК", "ДЗВІНОК", "УЧЕНЬ", "УЧЕНИЦЯ", "ВЧИТЕЛЬ", "ДИРЕКТОР", "ПРАВИЛО", "ЗАВДАННЯ", "ВПРАВА", "ОЦІНКА", "ЩОДЕННИК", "ПЕНЗЛИК", "ФАРБИ", "ПЛАСТИЛІН", "НОЖИЦІ", "КЛЕЙ", "ЛІНІЙКА", "ГЛОБУС", "КАРТА", "СЛОВНИК", "АБЕТКА", "ЧИТАННЯ", "ПИСЬМО", "МАТЕМАТИКА", "ФІЗКУЛЬТУРА", "МИСТЕЦТВО", "ПЕРЕРВА", "КАНІКУЛИ", "СТОЛІТТЯ", "КАБІНЕТ", "ГІМНАЗІЯ", "ЛІЦЕЙ", "ЕКСКУРСІЯ", "БІБЛІОТЕКА", "ЧИТАЛЬНЯ", 
             "ЯБЛУКО", "МОЛОКО", "БОРЩ", "МЯСО", "МАСЛО", "ЦУКОР", "ТОРТ", "ХЛІБ", "КАША", "СУП", "ВАРЕНИКИ", "СИР", "КОВБАСА", "СОСИСКА", "КЕФІР", "ЙОГУРТ", "СМЕТАНА", "ПЕЧИВО", "ЦУКЕРКА", "ШОКОЛАД", "МОРОЗИВО", "СІК", "ЧАЙ", "КАВА", "ВОДА", "КОМПОТ", "КИСІЛЬ", "МЕД", "ВАРЕННЯ", "БУБЛИК", "ПИРІГ", "ПИРІЖОК", "МЛИНЕЦЬ", "ОЛАДКА", "КАРТОПЛЯ", "КАПУСТА", "МОРКВА", "ЦИБУЛЯ", "ЧАСНИК", "БУРЯК", "ОГІРОК", "ПОМІДОР", "ПЕРЕЦЬ", "РЕДИСКА", "ГРУША", "СЛИВА", "ВИШНЯ", "ЧЕРЕШНЯ", "КАВУН", "ДИНЯ", 
             "ХЛОПЧИК", "ДІВЧИНКА", "СІМЯ", "РОДИНА", "ЛЮДИНА", "МАМА", "ТАТО", "БРАТ", "СЕСТРА", "БАБУСЯ", "ДІДУСЬ", "ТІТКА", "ДЯДЬКО", "ПЛЕМІННИК", "ОНУК", "ОНУКА", "ДИТИНА", "МАЛЮК", "ДОБРОДІЙ", "СУСІД", "СУСІДКА", "ДРУГ", "ПОДРУГА", "ТОВАРИШ", "КОЛЕГА", "ГОСПОДАР", "ГОСТІ", "ДІТИ", "БАТЬКИ", "РОДИЧІ", 
-            "ВІКНО", "ДВЕРІ", "КІМНАТА", "КУХНЯ", "СТІНА", "ПІДЛОГА", "ДАХ", "СТІЛ", "ЛІЖКО", "ШАФА", "ДИВАН", "ТЕЛЕФОН", "КРІСЛО", "СТІЛЕЦЬ", "КИЛИМ", "ДЗЕРКАЛО", "ЛАМПА", "ТЕЛЕВІЗОР", "КОМПЮТЕР", "ХОЛОДИЛЬНИК", "ПРАСКА", "ПОСУД", "ТАРІЛКА", "ЧАШКА", "ЛОЖКА", "ВИДЕЛКА", "НІЖ", "КАСТРУЛЯ", "СКЛЯНКА", "ЧАЙНИК", "РУШНИК", "МИЛО", "ШАМПУНЬ", "ЩІТКА", "ГРЕБІНЕЦЬ", "КОВДРА", "ПОДУШКА", "ПРОСТИРАДЛО", "ГОДИННИК", "КАРТИНА", 
+            "ВІКНО", "ДВЕРІ", "КІМНАТА", "КУХНЯ", "СТІНА", "ПІДЛОГА", "ДАХ", "СТІЛ", "ЛІЖКО", "ШАФА", "ДИВАН", "ТЕЛЕФОН", "КРІСЛО", "СТІЛЕЦЬ", "КИЛИМ", "ДЗЕРКАЛО", "ЛАМПА", "ТЕЛЕВІЗОР", "КОМПЮТЕР", "ХОЛОДИЛЬНИК", "ПРАСКА", "ПОСУД", "ТАРІЛКА", "ЧАШКА", "ЛОЖКА", "ВИДЕЛКА", "НІЖ", "КАСТРУЛЯ", "СКЛЯНКА", "ЧАШКА", "РУШНИК", "МИЛО", "ШАМПУНЬ", "ЩІТКА", "ГРЕБІНЕЦЬ", "КОВДРА", "ПОДУШКА", "ПРОСТИРАДЛО", "ГОДИННИК", "КАРТИНА", 
             "ОДЯГ", "ВЗУТТЯ", "СОРОЧКА", "ФУТБОЛКА", "СВЕТР", "КУРТКА", "ШАПКА", "ШАРФ", "ПАЛЬТО", "СУКНЯ", "СПІДНИЦЯ", "ШТАНИ", "ДЖИНСИ", "ШКАРПЕТКИ", "ЧЕРЕВИКИ", "ЧОБОТИ", "ТУФЛІ", "КРОСІВКИ", "КАПЕЦЬ", "ПАНАМА", "РУКАВИЦІ", "ЧЕРВОНИЙ", "ОРАНЖЕВИЙ", "ЖОВТИЙ", "ЗЕЛЕНИЙ", "ГОЛУБИЙ", "СИНІЙ", "ФІОЛЕТОВИЙ", "БІЛИЙ", "ЧОРНИЙ", "СІРИЙ", "КОРИЧНЕВИЙ", "РОЖЕВИЙ", "ЯСКРАВИЙ", "ТЕМНИЙ", "СВІТЛИЙ", "БАРВИСТИЙ", "КОЛЬОРОВИЙ", "СВЯТКОВИЙ", 
             "РОБОТА", "ЧИТАТИ", "ПИСАТИ", "РАХУВАТИ", "СПІВАТИ", "ТАНЦЮВАТИ", "МАЛЮВАТИ", "БІГАТИ", "СТРИБАТИ", "ХОДИТИ", "ПЛАВАТИ", "ЛІТАТИ", "ЇЗДИТИ", "БАЧИТИ", "ЧУТИ", "ГОВОРИТИ", "МОВЧАТИ", "ДУМАТИ", "ЗНАТИ", "ВМІТИ", "РОБИТИ", "ГРАТИ", "ДОПОМАГАТИ", "ПРАЦЮВАТИ", "ВІДПОЧИВАТИ", "СПАТИ", "ЇСТИ", "ПИТИ", "ОДЯГАТИСЯ", "ВМИВАТИСЯ", "СМІЯТИСЯ", "ПЛАКАТИ", "РАДІТИ", "СУМУВАТИ", "ЛЮБИТИ", "ДРУЖИТИ", "СЛУХАТИ", "РОЗПОВІДАТИ", "ПИТАТИ", "ВІДПОВІДАТИ", "ШУКАТИ", "ЗНАХОДИТИ", "ДАВАТИ", "БРАТИ", "НОСИТИ", "ПРИНОСИТИ", "ЧЕКАТИ", "ЗУСТРІЧАТИ", "ПРОВОДЖАТИ", 
             "МАШИНА", "ЛІТАК", "ПОЇЗД", "АВТОБУС", "ТРОЛЕЙБУС", "ТРАМВАЙ", "ВЕЛОСИПЕД", "САМОКАТ", "МОТОЦИКЛ", "ВЕРТОЛІТ", "РАКЕТА", "КОРАБЕЛЬ", "ЧОВЕН", "МЕТРО", "ТАКСІ", "МІСТО", "СЕЛО", "ВУЛИЦЯ", "ПРОСПЕКТ", "ПЛОЩА", "МАЙДАН", "ПАРК", "СКВЕР", "ЛІКАРНЯ", "АПТЕКА", "МАГАЗИН", "СУПЕРМАРКЕТ", "БАЗАР", "РИНОК", "ВОКЗАЛ", "АЕРОПОРТ", "ПОРТ", "ЗУПИНКА", "ПОШТА", "БАНК", "СТАДІОН", "ТЕАТР", "КІНОТЕАТР", "МУЗЕЙ", "ЦИРК", 
@@ -408,9 +586,12 @@
         const alphabet = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ".split('');
 
         document.getElementById('start-btn').addEventListener('click', startGame);
-        document.getElementById('restart-btn').addEventListener('click', resetToSetup);
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            sendAction('RESTART');
+            resetToSetupLocal();
+        });
 
-        function resetToSetup() {
+        function resetToSetupLocal() {
             document.getElementById('play-screen').style.display = 'none';
             document.getElementById('setup-screen').style.display = 'flex';
             document.getElementById('restart-btn').style.display = 'none';
@@ -432,6 +613,15 @@
             document.getElementById('play-screen').style.display = 'flex';
 
             generateLevel();
+            
+            sendAction('START_GAME', {
+                gameWord: gameWord,
+                slotsData: slotsData,
+                cardsData: cardsData,
+                selectedCardId: selectedCardId
+            });
+            
+            renderGame();
         }
 
         function shuffle(array) {
@@ -509,7 +699,6 @@
             });
 
             cardsData = shuffle(cardsData);
-            renderGame();
         }
 
         function renderGame() {
@@ -535,7 +724,10 @@
                     `;
                 }
 
-                slotEl.onclick = () => handleSlotClick(idx, slotEl);
+                slotEl.onclick = () => {
+                    sendAction('SLOT_CLICK', { slotIndex: idx });
+                    handleSlotClickLocal(idx);
+                };
 
                 const expEl = document.createElement('div');
                 expEl.className = 'expression';
@@ -557,20 +749,25 @@
                 cardEl.innerHTML = `
                     <div class="char">${card.target}</div>
                 `;
-                cardEl.onclick = () => handleCardClick(card.id);
+                cardEl.onclick = () => {
+                    sendAction('CARD_CLICK', { id: card.id });
+                    handleCardClickLocal(card.id);
+                };
                 cardsArea.appendChild(cardEl);
             });
 
             checkWin();
         }
 
-        function handleCardClick(id) {
+        function handleCardClickLocal(id) {
             selectedCardId = selectedCardId === id ? null : id;
             renderGame();
         }
 
-        function handleSlotClick(slotIndex, slotEl) {
+        function handleSlotClickLocal(slotIndex) {
             const slot = slotsData[slotIndex];
+            const slotEls = document.querySelectorAll('.slot');
+            const slotEl = slotEls[slotIndex];
 
             if (slot.filledWithId) {
                 const card = cardsData.find(c => c.id === slot.filledWithId);
@@ -591,9 +788,11 @@
                     playSound('success'); // Тихий звук успіху
                     renderGame();
                 } else {
-                    slotEl.classList.add('error-anim');
+                    if(slotEl) slotEl.classList.add('error-anim');
                     playSound('error'); // М'який звук помилки
-                    setTimeout(() => slotEl.classList.remove('error-anim'), 400);
+                    setTimeout(() => {
+                        if(slotEl) slotEl.classList.remove('error-anim');
+                    }, 400);
                     selectedCardId = null;
                     renderGame();
                 }
