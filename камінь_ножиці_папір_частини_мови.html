@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Камінь, Ножиці, Папір - Флеш-картки</title>
+    <title>Камінь, Ножиці, Папір - Механіка</title>
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
@@ -21,7 +21,7 @@
             margin: 0;
             padding: 0;
             min-height: 100vh;
-            background-color: #87CEEB; /* Дефолтний фон */
+            background-color: #87CEEB;
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -109,17 +109,25 @@
             transform: scale(1.1);
         }
 
-        .weapon-card.selected {
-            transform: scale(1.15);
-            filter: drop-shadow(0px 0px 15px yellow);
+        .weapon-card.selected .weapon-emoji {
+            background: rgba(255, 255, 0, 0.5);
+            border-color: #ff9800;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px yellow;
         }
 
-        .weapon-img {
+        .weapon-emoji {
+            font-size: 70px;
             width: 120px;
             height: 120px;
-            object-fit: contain;
-            pointer-events: none;
-            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            border: 3px solid #333;
+            transition: all 0.2s ease;
+            user-select: none;
         }
 
         .weapon-name {
@@ -154,14 +162,6 @@
             flex-direction: column;
             align-items: center;
             min-width: 120px;
-        }
-
-        .player-choice-img {
-            width: 50px;
-            height: 50px;
-            margin-top: 10px;
-            object-fit: contain;
-            border-radius: 5px;
         }
 
         .winner-text {
@@ -282,7 +282,7 @@
         /* Responsive */
         @media (max-width: 600px) {
             .weapons-panel { gap: 15px; }
-            .weapon-img { width: 80px; height: 80px; }
+            .weapon-emoji { width: 80px; height: 80px; font-size: 40px; }
             .flashcard { padding: 20px; margin: 10px 0 20px 0; }
             .player-badge { min-width: 90px; padding: 5px 10px; }
         }
@@ -303,15 +303,15 @@
 
         <div class="weapons-panel">
             <div class="weapon-card" id="card-rock" onclick="makeChoice('rock')">
-                <img class="weapon-img" src="КАМІНЬ.jpg" alt="Камінь">
+                <div class="weapon-emoji">🪨</div>
                 <div class="weapon-name">КАМІНЬ</div>
             </div>
             <div class="weapon-card" id="card-scissors" onclick="makeChoice('scissors')">
-                <img class="weapon-img" src="НОЖИЦІ.jpg" alt="Ножиці">
+                <div class="weapon-emoji">✂️</div>
                 <div class="weapon-name">НОЖИЦІ</div>
             </div>
             <div class="weapon-card" id="card-paper" onclick="makeChoice('paper')">
-                <img class="weapon-img" src="ПАПІР.jpg" alt="Папір">
+                <div class="weapon-emoji">📄</div>
                 <div class="weapon-name">ПАПІР</div>
             </div>
         </div>
@@ -367,6 +367,29 @@
 
         const tabId = Math.random().toString(36).substring(2, 15);
         
+        // --- ВИПРАВЛЕННЯ БАГУ З ЗАЦИКЛЕННЯМ (Привиди) ---
+        let activeUsersGlobal = {};
+        let onlineUsersLoaded = false; // Суворий прапорець завантаження онлайну
+
+        db.ref('online_users').on('value', snap => {
+            activeUsersGlobal = snap.val() || {};
+            onlineUsersLoaded = true; // Тепер ми точно знаємо, хто онлайн
+            checkAndRemoveGhosts();
+        });
+
+        function checkAndRemoveGhosts() {
+            // Не видаляємо нікого, поки не завантажиться глобальний радар!
+            if (!currentPlayers || !onlineUsersLoaded) return; 
+            
+            for (const playerName in currentPlayers) {
+                if (!activeUsersGlobal[playerName]) {
+                    console.log(`Виявлено привида: ${playerName}. Видаляємо з кімнати...`);
+                    db.ref(`game_state/rps_room/players/${playerName}`).remove();
+                }
+            }
+        }
+        // ------------------------------------------------
+
         db.ref('.info/connected').on('value', snap => {
             if (snap.val()) {
                 const ref = db.ref(`online_users/${myName}/${tabId}`);
@@ -390,7 +413,6 @@
             db.ref(`game_state/rps_room/players/${myName}`).remove();
         });
 
-        // Запобіжник від нескінченного циклу перезавантажень
         let firstRefreshLoad = true;
         db.ref('force_refresh').on('value', snap => {
             if (!firstRefreshLoad && snap.val() === true) {
@@ -447,26 +469,22 @@
 
         // 4. Логіка гри Камінь-Ножиці-Папір
         const flashcards = [
-            // 20 Іменників
             "Кіт", "Собака", "Дерево", "Будинок", "Книга", "Сонце", "Місяць", "Автомобіль", "Місто", "Річка",
             "Гора", "Хліб", "Вода", "Стіл", "Вікно", "Двері", "Птах", "Риба", "Квітка", "Яблуко",
-            // 20 Прикметників
             "Великий", "Маленький", "Швидкий", "Повільний", "Добрий", "Злий", "Гарячий", "Холодний", "Новий", "Старий",
             "Чистий", "Брудний", "Високий", "Низький", "Сильний", "Слабкий", "Яскравий", "Темний", "Смачний", "Солодкий",
-            // 20 Дієслів
             "Бігти", "Стрибати", "Плавати", "Літати", "Читати", "Писати", "Говорити", "Мовчати", "Їсти", "Пити",
             "Спати", "Працювати", "Грати", "Співати", "Танцювати", "Дивитися", "Слухати", "Думати", "Розуміти", "Любити"
         ];
 
         let currentPlayers = {};
         let gameState = { status: 'waiting', cardIndex: 0 };
-        const weapons = {
-            rock: 'КАМІНЬ.jpg',
-            scissors: 'НОЖИЦІ.jpg',
-            paper: 'ПАПІР.jpg'
+        const emojis = {
+            rock: '🪨',
+            scissors: '✂️',
+            paper: '📄'
         };
 
-        // ПРЯМА СИНХРОНІЗАЦІЯ (Без циклів та подвійних перезаписів)
         db.ref('game_state/rps_room/state').on('value', snap => {
             const data = snap.val();
             if (data) {
@@ -482,6 +500,8 @@
         db.ref('game_state/rps_room/players').on('value', snap => {
             currentPlayers = snap.val() || {};
             
+            checkAndRemoveGhosts(); // Подвійна перевірка (тільки якщо onlineUsersLoaded == true)
+
             if (currentPlayers[myName]) {
                 document.getElementById('my-score').innerText = currentPlayers[myName].score || 0;
             } else {
@@ -502,7 +522,7 @@
             }
         }
 
-        // Обробка кліку (прямий запис у Firebase, ніяких черг)
+        // Обробка кліку (прямий запис у Firebase)
         window.makeChoice = function(choice) {
             if (gameState.status === 'revealed') return;
             db.ref(`game_state/rps_room/players/${myName}/choice`).set(choice);
@@ -602,9 +622,9 @@
                 
                 if (data.choice) {
                     if (gameState.status === 'revealed' || isMe) {
-                        choiceImg = `<img src="${weapons[data.choice]}" class="player-choice-img" alt="${data.choice}">`;
+                        choiceImg = `<div style="font-size: 40px; margin-top:10px;">${emojis[data.choice]}</div>`;
                     } else {
-                        choiceImg = `<div style="font-size: 30px; margin-top:10px;">❓</div>`;
+                        choiceImg = `<div style="font-size: 40px; margin-top:10px;">❓</div>`;
                     }
                 } else {
                     choiceImg = `<div style="font-size: 14px; margin-top:20px;">Думає...</div>`;
