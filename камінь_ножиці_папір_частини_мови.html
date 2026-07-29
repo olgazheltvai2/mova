@@ -21,7 +21,7 @@
             margin: 0;
             padding: 0;
             min-height: 100vh;
-            background-color: #87CEEB;
+            background-color: #87CEEB; /* Дефолтний фон */
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -303,15 +303,15 @@
 
         <div class="weapons-panel">
             <div class="weapon-card" id="card-rock" onclick="makeChoice('rock')">
-                <img class="weapon-img" src="КАМІНЬ.jpg" alt="Камінь" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0iI2NjYyIvPjx0ZXh0IHg9IjUwIiB5PSI1NSIgZm9udC1zaXplPSIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+S0FNSU5MPC90ZXh0Pjwvc3Zn>'">
+                <img class="weapon-img" src="КАМІНЬ.jpg" alt="Камінь">
                 <div class="weapon-name">КАМІНЬ</div>
             </div>
             <div class="weapon-card" id="card-scissors" onclick="makeChoice('scissors')">
-                <img class="weapon-img" src="НОЖИЦІ.jpg" alt="Ножиці" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0iI2NjYyIvPjx0ZXh0IHg9IjUwIiB5PSI1NSIgZm9udC1zaXplPSIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+Tk9aSElDSTwvdGV4dD48L3N2Zz>'">
+                <img class="weapon-img" src="НОЖИЦІ.jpg" alt="Ножиці">
                 <div class="weapon-name">НОЖИЦІ</div>
             </div>
             <div class="weapon-card" id="card-paper" onclick="makeChoice('paper')">
-                <img class="weapon-img" src="ПАПІР.jpg" alt="Папір" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB4PSIyMCIgeT0iMTAiIHdpZHRoPSI2MCIgaGVpZ2h0PSI4MCIgZmlsbD0iI2NjYyIvPjx0ZXh0IHg9IjUwIiB5PSI1NSIgZm9udC1zaXplPSIyMCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UEFQSVI8L3RleHQ+PC9zdmc>'">
+                <img class="weapon-img" src="ПАПІР.jpg" alt="Папір">
                 <div class="weapon-name">ПАПІР</div>
             </div>
         </div>
@@ -367,13 +367,6 @@
 
         const tabId = Math.random().toString(36).substring(2, 15);
         
-        // Синхронізація активних користувачів (РАДАР)
-        let activeUsersGlobal = {};
-        db.ref('online_users').on('value', snap => {
-            activeUsersGlobal = snap.val() || {};
-            checkAndRemoveGhosts(); // Зачистка привидів щоразу, як змінюється онлайн
-        });
-
         db.ref('.info/connected').on('value', snap => {
             if (snap.val()) {
                 const ref = db.ref(`online_users/${myName}/${tabId}`);
@@ -382,9 +375,9 @@
                 
                 // Приєднання до гри
                 const playerRef = db.ref(`game_state/rps_room/players/${myName}`);
-                playerRef.onDisconnect().remove(); // Залишаємо базовий механізм
+                playerRef.onDisconnect().remove(); 
                 
-                // Ініціалізуємо або зберігаємо поточний рахунок
+                // Ініціалізуємо поточний рахунок лише один раз при вході
                 playerRef.once('value', s => {
                     let currentScore = s.val() ? s.val().score || 0 : 0;
                     playerRef.set({ choice: "", score: currentScore, online: true });
@@ -473,26 +466,14 @@
             paper: 'ПАПІР.jpg'
         };
 
-        // Функція для очищення привидів
-        function checkAndRemoveGhosts() {
-            if (!currentPlayers || Object.keys(activeUsersGlobal).length === 0) return;
-            
-            for (const playerName in currentPlayers) {
-                // Якщо гравця немає в масиві online_users (ні на одній вкладці)
-                if (!activeUsersGlobal[playerName]) {
-                    console.log(`Виявлено привида: ${playerName}. Видаляємо з кімнати...`);
-                    db.ref(`game_state/rps_room/players/${playerName}`).remove();
-                }
-            }
-        }
-
+        // ПРЯМА СИНХРОНІЗАЦІЯ (Без циклів та подвійних перезаписів)
         db.ref('game_state/rps_room/state').on('value', snap => {
             const data = snap.val();
             if (data) {
                 gameState = data;
                 const index = gameState.cardIndex || 0;
                 document.getElementById('flashcard-word').innerText = flashcards[index % flashcards.length];
-                checkAutoReveal();
+                updateUI();
             } else {
                 db.ref('game_state/rps_room/state').set({ status: 'waiting', cardIndex: 0 });
             }
@@ -501,65 +482,77 @@
         db.ref('game_state/rps_room/players').on('value', snap => {
             currentPlayers = snap.val() || {};
             
-            checkAndRemoveGhosts(); // Подвійна перевірка при зміні гравців
-
             if (currentPlayers[myName]) {
                 document.getElementById('my-score').innerText = currentPlayers[myName].score || 0;
             } else {
                 document.getElementById('my-score').innerText = 0;
             }
+            updateUI();
+        });
+
+        // Локальний метод для зміни інтерфейсу
+        function updateUI() {
             renderPlayers();
             checkAutoReveal();
-        });
-
-        function sendAction(type, data = {}) {
-            db.ref('game_action').set({
-                senderId: myName,
-                timestamp: firebase.database.ServerValue.TIMESTAMP,
-                type: type,
-                data: data,
-                isRemoteAction: false
-            });
-        }
-
-        db.ref('game_action').on('value', snap => {
-            const action = snap.val();
-            if (!action || (action.isRemoteAction && action.senderId === myName)) return;
-
-            if (action.type === 'MAKE_CHOICE') {
-                db.ref(`game_state/rps_room/players/${action.senderId}/choice`).set(action.data.choice);
-            } else if (action.type === 'REVEAL') {
-                db.ref('game_state/rps_room/state/status').set('revealed');
-                evaluateWinners();
-            } else if (action.type === 'NEXT_ROUND') {
-                db.ref('game_state/rps_room/state').update({
-                    cardIndex: action.data.newIndex,
-                    status: 'waiting'
-                });
-                for (let p in currentPlayers) {
-                    db.ref(`game_state/rps_room/players/${p}/choice`).set("");
-                }
-                document.getElementById('winner-announcement').innerText = "";
-            }
-        });
-
-        function makeChoice(choice) {
-            if (gameState.status === 'revealed') return; 
             
+            // Оновлення підсвітки кнопок
             ['rock', 'scissors', 'paper'].forEach(c => document.getElementById(`card-${c}`).classList.remove('selected'));
-            document.getElementById(`card-${choice}`).classList.add('selected');
-
-            sendAction('MAKE_CHOICE', { choice: choice });
+            if (currentPlayers[myName] && currentPlayers[myName].choice) {
+                document.getElementById(`card-${currentPlayers[myName].choice}`).classList.add('selected');
+            }
         }
 
-        function forceReveal() {
-            sendAction('REVEAL');
-        }
+        // Обробка кліку (прямий запис у Firebase, ніяких черг)
+        window.makeChoice = function(choice) {
+            if (gameState.status === 'revealed') return;
+            db.ref(`game_state/rps_room/players/${myName}/choice`).set(choice);
+        };
 
-        function nextRound() {
-            sendAction('NEXT_ROUND', { newIndex: (gameState.cardIndex || 0) + 1 });
-            ['rock', 'scissors', 'paper'].forEach(c => document.getElementById(`card-${c}`).classList.remove('selected'));
-        }
+        // Розкриття і підрахунок результатів 
+        window.forceReveal = function() {
+            if (gameState.status === 'revealed') return;
+            
+            let names = Object.keys(currentPlayers);
+            let choices = new Set(names.map(n => currentPlayers[n].choice).filter(c => c));
+            let winningChoice = null;
+
+            if (choices.size === 2) {
+                if (choices.has('rock') && choices.has('scissors')) winningChoice = 'rock';
+                else if (choices.has('scissors') && choices.has('paper')) winningChoice = 'scissors';
+                else if (choices.has('paper') && choices.has('rock')) winningChoice = 'paper';
+            }
+
+            let updates = {};
+            // Записуємо нові бали переможцям
+            if (winningChoice) {
+                names.forEach(n => {
+                    if (currentPlayers[n].choice === winningChoice) {
+                        updates[`game_state/rps_room/players/${n}/score`] = (currentPlayers[n].score || 0) + 1;
+                    }
+                });
+            }
+            
+            // Змінюємо статус гри
+            updates['game_state/rps_room/state/status'] = 'revealed';
+            
+            // Відправляємо всі зміни одним запитом (атомарно)
+            db.ref().update(updates);
+        };
+
+        // Наступний раунд
+        window.nextRound = function() {
+            let updates = {};
+            updates['game_state/rps_room/state/status'] = 'waiting';
+            updates['game_state/rps_room/state/cardIndex'] = (gameState.cardIndex || 0) + 1;
+            
+            // Очищуємо вибір усіх гравців
+            let names = Object.keys(currentPlayers);
+            names.forEach(n => {
+                updates[`game_state/rps_room/players/${n}/choice`] = "";
+            });
+            
+            db.ref().update(updates);
+        };
 
         function checkAutoReveal() {
             const names = Object.keys(currentPlayers);
@@ -568,16 +561,35 @@
             const allChosen = names.every(n => currentPlayers[n].choice !== "");
             
             if (gameState.status === 'waiting') {
+                document.getElementById('winner-announcement').innerText = "";
                 document.getElementById('btn-reveal').style.display = allChosen ? 'block' : 'none';
                 document.getElementById('btn-next').style.display = 'none';
-                
-                if (allChosen && names.includes(myName)) {
-                     if (names.sort()[0] === myName) forceReveal();
-                }
             } else if (gameState.status === 'revealed') {
                 document.getElementById('btn-reveal').style.display = 'none';
                 document.getElementById('btn-next').style.display = 'block';
+                displayWinnerText();
             }
+        }
+
+        function displayWinnerText() {
+            const names = Object.keys(currentPlayers);
+            const choices = new Set(names.map(n => currentPlayers[n].choice).filter(c => c));
+            
+            let winnerText = "Нічия!";
+            let winningChoice = null;
+
+            if (choices.size === 2) {
+                if (choices.has('rock') && choices.has('scissors')) winningChoice = 'rock';
+                else if (choices.has('scissors') && choices.has('paper')) winningChoice = 'scissors';
+                else if (choices.has('paper') && choices.has('rock')) winningChoice = 'paper';
+            }
+
+            if (winningChoice) {
+                const winners = names.filter(n => currentPlayers[n].choice === winningChoice);
+                winnerText = `Переможці: ${winners.join(', ')}!`;
+            }
+
+            document.getElementById('winner-announcement').innerText = winnerText;
         }
 
         function renderPlayers() {
@@ -590,8 +602,7 @@
                 
                 if (data.choice) {
                     if (gameState.status === 'revealed' || isMe) {
-                        choiceImg = `<img src="${weapons[data.choice]}" class="player-choice-img" alt="${data.choice}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                     <div style="display:none; font-size:12px; font-weight:bold; margin-top:5px;">${data.choice}</div>`;
+                        choiceImg = `<img src="${weapons[data.choice]}" class="player-choice-img" alt="${data.choice}">`;
                     } else {
                         choiceImg = `<div style="font-size: 30px; margin-top:10px;">❓</div>`;
                     }
@@ -607,36 +618,6 @@
                     </div>
                 `;
             }
-        }
-
-        function evaluateWinners() {
-            db.ref('game_state/rps_room/players').once('value', snap => {
-                const playersData = snap.val() || {};
-                const names = Object.keys(playersData);
-                const choices = new Set(names.map(n => playersData[n].choice).filter(c => c));
-                
-                let winnerText = "Нічия!";
-                let winningChoice = null;
-
-                if (choices.size === 1 || choices.size === 3) {
-                    // Нічия
-                } else if (choices.size === 2) {
-                    if (choices.has('rock') && choices.has('scissors')) winningChoice = 'rock';
-                    else if (choices.has('scissors') && choices.has('paper')) winningChoice = 'scissors';
-                    else if (choices.has('paper') && choices.has('rock')) winningChoice = 'paper';
-                }
-
-                if (winningChoice) {
-                    const winners = names.filter(n => playersData[n].choice === winningChoice);
-                    winnerText = `Переможці: ${winners.join(', ')}!`;
-                    
-                    if (winners.includes(myName)) {
-                        db.ref(`game_state/rps_room/players/${myName}/score`).set((playersData[myName].score || 0) + 1);
-                    }
-                }
-
-                document.getElementById('winner-announcement').innerText = winnerText;
-            });
         }
 
         function changeFontSize(delta) {
