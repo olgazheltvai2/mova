@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Гра: Тепло-Холодно</title>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #2c3e50;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            color: #fff;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Transparent main container */
+        #main-ui {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: transparent;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Top controls */
+        #top-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background: #3498db;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.1s, background 0.2s;
+        }
+        
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        button:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Playfield */
+        #playfield {
+            flex-grow: 1;
+            position: relative;
+            background: transparent;
+            margin: 10px;
+            border: 2px dashed rgba(255,255,255,0.5);
+            border-radius: 10px;
+            overflow: hidden;
+            touch-action: none; /* Prevent scroll on drag */
+        }
+
+        /* Game Elements */
+        .game-element {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: top 0.1s, left 0.1s;
+        }
+
+        #flower {
+            display: none;
+            z-index: 1;
+            font-size: 50px;
+            text-align: center;
+            line-height: 60px;
+            filter: drop-shadow(0 0 10px yellow);
+        }
+
+        #bee {
+            display: none;
+            z-index: 2;
+            cursor: grab;
+            font-size: 50px;
+            text-align: center;
+            line-height: 60px;
+            transition: filter 0.3s ease, top 0.1s linear, left 0.1s linear;
+        }
+        
+        #bee:active {
+            cursor: grabbing;
+        }
+
+        /* Flashcards UI */
+        #flashcards-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 300px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .secret-input {
+            width: 100%;
+            height: 60px;
+            resize: none;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            padding: 5px;
+            color: transparent !important;
+            background-color: rgba(255,255,255,0.8);
+            caret-color: #333;
+        }
+        
+        .secret-input::selection {
+            background: transparent !important;
+            color: transparent !important;
+        }
+
+        #card-display {
+            width: 100%;
+            min-height: 80px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 24px;
+            padding: 10px;
+            word-break: break-word;
+        }
+
+        #font-controls {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Theme Manager UI */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            background: #e67e22;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 600px;
+            max-height: 60vh;
+            background: rgba(44, 62, 80, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            z-index: 1001;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .close-btn {
+            background: #c0392b;
+            padding: 5px 10px;
+        }
+
+        #bg-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1));
+            gap: 10px;
+        }
+
+        .bg-thumb {
+            width: 100%;
+            height: 80px;
+            background-size: cover;
+            background-position: center;
+            border-radius: 8px;
+            cursor: pointer;
+            position: relative;
+            border: 2px solid transparent;
+            transition: transform 0.2s;
+        }
+
+        .bg-thumb:hover {
+            transform: scale(1.05);
+            border-color: #f1c40f;
+        }
+
+        .bg-thumb span {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            font-size: 12px;
+            text-align: center;
+            padding: 3px 0;
+            border-bottom-left-radius: 6px;
+            border-bottom-right-radius: 6px;
+        }
+
+        /* Lock Screen for Hider */
+        #hider-lock {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 50;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Access Control Overlay */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            color: red;
+            font-size: 32px;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            #flashcards-panel {
+                width: 90%;
+                left: 5%;
+                bottom: 80px;
+            }
+            #bg-grid {
+                grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Game UI -->
+    <div id="main-ui">
+        <div id="top-controls">
+            <button id="btn-hide" onclick="setRole('hider')">Я ховаю</button>
+            <button id="btn-seek" onclick="setRole('seeker')">Я шукаю</button>
+            <button id="btn-restart" onclick="restartGame()">Почати заново</button>
+        </div>
+        
+        <div id="playfield">
+            <!-- Elements use emojis as text if images fail, but attempt to load images -->
+            <div id="flower" class="game-element" style="background-image: url('https://olgazheltvai2.github.io/images/elements/flower.webp');">🌸</div>
+            <div id="bee" class="game-element" style="background-image: url('https://olgazheltvai2.github.io/images/elements/element_1.webp');">🐝</div>
+            
+            <div id="hider-lock">
+                <h2>Ви сховали квітку!</h2>
+                <p>Тепер чекайте, поки інші її знайдуть.</p>
+                <button onclick="restartGame()">Почати заново</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flashcards Panel -->
+    <div id="flashcards-panel">
+        <textarea id="card-input" class="secret-input" placeholder="Введіть слова/приклади (кожен з нового рядка)"></textarea>
+        <div style="display: flex; gap: 5px;">
+            <button onclick="saveCards()" style="flex: 1;">Зберегти список</button>
+            <button onclick="drawCard()" style="flex: 1; background: #27ae60;">Витягнути</button>
+        </div>
+        <div id="card-display">...</div>
+        <div id="font-controls">
+            <button onclick="changeFontSize(-2)">А-</button>
+            <button onclick="changeFontSize(2)">А+</button>
+        </div>
+    </div>
+
+    <!-- Theme Manager -->
+    <button id="theme-btn" onclick="toggleThemeModal()">⚙️</button>
+    <div id="theme-modal">
+        <div class="modal-header">
+            <h3>Оберіть фон</h3>
+            <button class="close-btn" onclick="toggleThemeModal()">X</button>
+        </div>
+        <div id="bg-grid"></div>
+    </div>
+
+    <!-- Universal Access Control Overlay -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <script>
+        /* =========================================
+           1. FIREBASE INIT & CORE VARIABLES
+           ========================================= */
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+        const actionRef = db.ref('game_action');
+        const themeRef = db.ref('game_theme');
+
+        // Identify local tab to prevent loopbacks
+        const myTabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+        let myRole = null; // 'hider' or 'seeker'
+        let currentCards = [];
+        let cardFontSize = 24;
+        let isFlowerPlaced = false;
+        let flowerPos = { x: 50, y: 50 }; // percentages
+        let beePos = { x: 10, y: 10 }; // percentages
+        let isVictory = false;
+
+        /* =========================================
+           2. GAME LOGIC & SYNC
+           ========================================= */
+        
+        function sendAction(type, data) {
+            actionRef.set({
+                senderId: myTabId,
+                timestamp: Date.now(),
+                type: type,
+                data: data
+            });
+        }
+
+        actionRef.on('value', snap => {
+            const val = snap.val();
+            if (!val) return;
+            // Process action even if from self to ensure state is identical, 
+            // but for dragging, we avoid visual stutter by ignoring own quick updates
+            const isRemote = val.senderId !== myTabId;
+
+            switch(val.type) {
+                case 'RESTART':
+                    handleRestart();
+                    break;
+                case 'PLACE_FLOWER':
+                    isFlowerPlaced = true;
+                    flowerPos = val.data;
+                    updateVisuals();
+                    break;
+                case 'MOVE_BEE':
+                    beePos = val.data;
+                    if (isRemote) updateBeePosition();
+                    checkDistance();
+                    break;
+                case 'VICTORY':
+                    isVictory = true;
+                    showVictory();
+                    break;
+                case 'SHOW_CARD':
+                    document.getElementById('card-display').innerText = val.data.text;
+                    break;
+                case 'CHANGE_FONT':
+                    cardFontSize = val.data.size;
+                    document.getElementById('card-display').style.fontSize = cardFontSize + 'px';
+                    break;
+            }
+        });
+
+        function setRole(role) {
+            myRole = role;
+            document.getElementById('btn-hide').style.display = role === 'hider' ? 'inline-block' : 'none';
+            document.getElementById('btn-seek').style.display = role === 'seeker' ? 'inline-block' : 'none';
+            
+            const field = document.getElementById('playfield');
+            const flower = document.getElementById('flower');
+            const bee = document.getElementById('bee');
+
+            if (role === 'hider') {
+                bee.style.display = 'none';
+                if (!isFlowerPlaced) {
+                    flower.style.display = 'block';
+                    // Allow clicking on field to place flower
+                    field.onclick = (e) => {
+                        if (isFlowerPlaced) return;
+                        const rect = field.getBoundingClientRect();
+                        const x = ((e.clientX - rect.left) / rect.width) * 100;
+                        const y = ((e.clientY - rect.top) / rect.height) * 100;
+                        flower.style.left = x + '%';
+                        flower.style.top = y + '%';
+                        flowerPos = { x, y };
+                        
+                        // Confirm placement automatically on click
+                        isFlowerPlaced = true;
+                        sendAction('PLACE_FLOWER', flowerPos);
+                        document.getElementById('hider-lock').style.display = 'flex';
+                    };
+                } else {
+                    document.getElementById('hider-lock').style.display = 'flex';
+                }
+            } else if (role === 'seeker') {
+                field.onclick = null;
+                flower.style.display = 'none';
+                if (isFlowerPlaced) {
+                    bee.style.display = 'block';
+                    updateBeePosition();
+                } else {
+                    alert("Зачекайте, поки хтось сховає квітку!");
+                }
+            }
+        }
+
+        function restartGame() {
+            sendAction('RESTART', {});
+        }
+
+        function handleRestart() {
+            isFlowerPlaced = false;
+            isVictory = false;
+            myRole = null;
+            
+            document.getElementById('btn-hide').style.display = 'inline-block';
+            document.getElementById('btn-seek').style.display = 'inline-block';
+            document.getElementById('hider-lock').style.display = 'none';
+            document.getElementById('flower').style.display = 'none';
+            document.getElementById('bee').style.display = 'none';
+            document.getElementById('playfield').onclick = null;
+            document.getElementById('bee').style.filter = 'none';
+            
+            beePos = { x: 10, y: 10 };
+            updateBeePosition();
+        }
+
+        function updateVisuals() {
+            if (myRole === 'seeker' && isFlowerPlaced && !isVictory) {
+                document.getElementById('bee').style.display = 'block';
+                updateBeePosition();
+            }
+        }
+
+        /* =========================================
+           3. DRAG & DROP & WARM-COLD LOGIC
+           ========================================= */
+        
+        const beeEl = document.getElementById('bee');
+        const playfield = document.getElementById('playfield');
+        let isDragging = false;
+
+        function startDrag(e) {
+            if (myRole !== 'seeker' || !isFlowerPlaced || isVictory) return;
+            isDragging = true;
+        }
+
+        function moveDrag(e) {
+            if (!isDragging) return;
+            e.preventDefault(); // stop scroll on mobile
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const rect = playfield.getBoundingClientRect();
+            
+            let x = ((clientX - rect.left) / rect.width) * 100;
+            let y = ((clientY - rect.top) / rect.height) * 100;
+            
+            x = Math.max(0, Math.min(100, x));
+            y = Math.max(0, Math.min(100, y));
+            
+            beePos = { x, y };
+            updateBeePosition();
+            checkDistance();
+            
+            // Throttle sync slightly in real scenario, here we send on move for fluidity
+            sendAction('MOVE_BEE', beePos); 
+        }
+
+        function endDrag() {
+            isDragging = false;
+        }
+
+        beeEl.addEventListener('mousedown', startDrag);
+        document.addEventListener('mousemove', moveDrag);
+        document.addEventListener('mouseup', endDrag);
+
+        beeEl.addEventListener('touchstart', startDrag, {passive: false});
+        document.addEventListener('touchmove', moveDrag, {passive: false});
+        document.addEventListener('touchend', endDrag);
+
+        function updateBeePosition() {
+            beeEl.style.left = beePos.x + '%';
+            beeEl.style.top = beePos.y + '%';
+        }
+
+        function checkDistance() {
+            if (!isFlowerPlaced || isVictory) return;
+            
+            // Calculate distance in percentages
+            const dx = beePos.x - flowerPos.x;
+            const dy = beePos.y - flowerPos.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            
+            const maxDistance = 141.4; // sqrt(100^2 + 100^2)
+            
+            // Victory condition (less than 5% distance)
+            if (distance < 5 && myRole === 'seeker') {
+                sendAction('VICTORY', {});
+                return;
+            }
+
+            // Warm-Cold visual feedback mapping distance to color
+            // Cold (Blue) -> Warm (Red)
+            // Hue: 240 (Blue) to 0 (Red)
+            const hue = Math.max(0, Math.min(240, (distance / maxDistance) * 360));
+            beeEl.style.filter = `drop-shadow(0 0 20px hsl(${hue}, 100%, 50%))`;
+        }
+
+        function showVictory() {
+            document.getElementById('flower').style.left = flowerPos.x + '%';
+            document.getElementById('flower').style.top = flowerPos.y + '%';
+            document.getElementById('flower').style.display = 'block';
+            document.getElementById('flower').style.transform = 'translate(-50%, -50%) scale(2)';
+            document.getElementById('flower').style.transition = 'transform 1s ease';
+            document.getElementById('bee').style.filter = 'drop-shadow(0 0 30px #f1c40f)';
+            
+            playVictoryMusic();
+        }
+
+        // Web Audio API for quiet victory music without external files
+        function playVictoryMusic() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioContext();
+                
+                const chords = [
+                    [261.63, 329.63, 392.00], // C Major
+                    [329.63, 392.00, 493.88], // E Minor
+                    [349.23, 440.00, 523.25]  // F Major
+                ];
+                
+                chords.forEach((chord, index) => {
+                    chord.forEach(freq => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        
+                        osc.type = 'sine';
+                        osc.frequency.value = freq;
+                        
+                        const startTime = ctx.currentTime + (index * 0.5);
+                        gain.gain.setValueAtTime(0, startTime);
+                        gain.gain.linearRampToValueAtTime(0.05, startTime + 0.1); // Quiet volume (0.05)
+                        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.5);
+                        
+                        osc.start(startTime);
+                        osc.stop(startTime + 2);
+                    });
+                });
+            } catch (e) {
+                console.log("Audio not supported or blocked");
+            }
+        }
+
+        /* =========================================
+           4. FLASHCARDS
+           ========================================= */
+        
+        function saveCards() {
+            const text = document.getElementById('card-input').value;
+            currentCards = text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+            if (currentCards.length > 0) {
+                alert('Список збережено!');
+            }
+        }
+
+        function drawCard() {
+            if (currentCards.length === 0) {
+                document.getElementById('card-display').innerText = "Список порожній!";
+                return;
+            }
+            const randomIndex = Math.floor(Math.random() * currentCards.length);
+            const word = currentCards.splice(randomIndex, 1)[0];
+            sendAction('SHOW_CARD', { text: word });
+        }
+
+        function changeFontSize(delta) {
+            cardFontSize = Math.max(12, Math.min(72, cardFontSize + delta));
+            sendAction('CHANGE_FONT', { size: cardFontSize });
+        }
+
+        /* =========================================
+           5. THEME MANAGER (DYNAMIC BACKGROUNDS)
+           ========================================= */
+        
+        function toggleThemeModal() {
+            const modal = document.getElementById('theme-modal');
+            modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+            if (modal.style.display === 'block' && document.getElementById('bg-grid').children.length === 0) {
+                loadBackgrounds();
+            }
+        }
+
+        async function loadBackgrounds() {
+            const grid = document.getElementById('bg-grid');
+            const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+            
+            // Generator up to 1000, async checking.
+            // To prevent stalling the browser, we process in small batches
+            for (let i = 1; i <= 1000; i++) {
+                const url = `${baseUrl}background_${i}.webp`;
+                const img = new Image();
+                img.src = url;
+                img.onload = () => {
+                    const div = document.createElement('div');
+                    div.className = 'bg-thumb';
+                    div.style.backgroundImage = `url(${url})`;
+                    div.innerHTML = `<span>Фон ${i}</span>`;
+                    div.onclick = () => {
+                        themeRef.set(url);
+                        toggleThemeModal();
+                    };
+                    // Ensure ordered insertion (rough approach)
+                    grid.appendChild(div);
+                };
+                // If onerror fires, we just skip.
+                
+                // Small artificial delay to unblock main thread on huge loops
+                if (i % 20 === 0) {
+                    await new Promise(r => setTimeout(r, 50));
+                }
+            }
+        }
+
+        themeRef.on('value', snap => {
+            const url = snap.val();
+            if (url) {
+                document.body.style.backgroundImage = `url(${url})`;
+                localStorage.setItem('mySavedGameBg', url);
+            }
+        });
+
+        // Init local background if available
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) {
+            document.body.style.backgroundImage = `url(${savedBg})`;
+        }
+
+
+        /* =========================================
+           6. UNIVERSAL ACCESS CONTROL BLOCK
+           ========================================= */
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            let myName = urlParams.get('user');
+
+            if (myName) {
+                sessionStorage.setItem('gameUsername', myName);
+            } else {
+                myName = sessionStorage.getItem('gameUsername');
+                if (!myName) {
+                    myName = "Гість_" + Math.floor(Math.random() * 1000);
+                    sessionStorage.setItem('gameUsername', myName);
+                }
+            }
+
+            const connectedRef = db.ref('.info/connected');
+            const onlineRef = db.ref(`online_users/${myName}/${myTabId}`);
+            const blockedRef = db.ref(`blocked_users/${myName}`);
+            const activityRef = db.ref('current_activity');
+            const forceRefreshRef = db.ref('force_refresh');
+
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    onlineRef.set(true);
+                    onlineRef.onDisconnect().remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                onlineRef.remove();
+            });
+
+            blockedRef.on('value', (snap) => {
+                const overlay = document.getElementById('block-overlay');
+                if (snap.val() === true) {
+                    overlay.style.display = 'flex';
+                } else {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            forceRefreshRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    window.location.reload();
+                }
+            });
+
+            let immunity = true;
+            setTimeout(() => { immunity = false; }, 1000);
+
+            activityRef.on('value', (snap) => {
+                if (immunity) return;
+                const activity = snap.val();
+                if (activity === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        })();
+    </script>
+</body>
+</html>
