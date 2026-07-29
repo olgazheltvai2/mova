@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Камінь, Ножиці, Папір - Флеш-картки</title>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --font-size: 32px;
+        }
+        
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: #87CEEB; /* Дефолтний цікавий фон, поки тема не обрана */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            transition: background-image 0.5s ease;
+            display: flex;
+            flex-direction: column;
+            color: #333;
+        }
+
+        /* Контейнери максимально прозорі */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: transparent;
+            text-shadow: 1px 1px 3px rgba(255,255,255,0.8);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-control {
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 5px 15px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+
+        .btn-control:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .game-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background: transparent;
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .flashcard {
+            font-size: var(--font-size);
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0 40px 0;
+            padding: 30px;
+            width: 100%;
+            max-width: 600px;
+            border-radius: 20px;
+            border: 4px dashed #333;
+            background: rgba(255, 255, 255, 0.3);
+            text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.9);
+            word-wrap: break-word;
+        }
+
+        .weapons-panel {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .weapon-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            background: transparent;
+        }
+
+        .weapon-card:hover {
+            transform: scale(1.1);
+        }
+
+        .weapon-card.selected {
+            transform: scale(1.15);
+            filter: drop-shadow(0px 0px 15px yellow);
+        }
+
+        .weapon-img {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        .weapon-name {
+            font-size: calc(var(--font-size) * 0.5);
+            font-weight: bold;
+            margin-top: 10px;
+            text-shadow: 1px 1px 2px white;
+        }
+
+        .status-area {
+            margin-top: 40px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .players-status {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .player-badge {
+            padding: 10px 20px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.4);
+            border: 2px solid #333;
+            font-size: calc(var(--font-size) * 0.5);
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 120px;
+        }
+
+        .player-choice-img {
+            width: 50px;
+            height: 50px;
+            margin-top: 10px;
+        }
+
+        .winner-text {
+            font-size: calc(var(--font-size) * 0.8);
+            font-weight: bold;
+            color: #d32f2f;
+            text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
+            margin: 20px 0;
+            min-height: 40px;
+        }
+
+        .btn-action {
+            background: #ffeb3b;
+            border: 3px solid #333;
+            border-radius: 12px;
+            padding: 15px 30px;
+            font-size: calc(var(--font-size) * 0.6);
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 4px 4px 0px #333;
+            transition: all 0.1s;
+            margin: 10px;
+        }
+
+        .btn-action:active {
+            transform: translate(4px, 4px);
+            box-shadow: 0px 0px 0px #333;
+        }
+
+        /* Theme Manager Styles */
+        .theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid #333;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .theme-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .theme-content {
+            background: #fff;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .theme-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        .close-theme {
+            cursor: pointer;
+            font-size: 1.5rem;
+            color: red;
+        }
+
+        .theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .theme-thumb {
+            width: 100px;
+            height: 70px;
+            background-size: cover;
+            background-position: center;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .theme-thumb:hover { border-color: #007bff; }
+        .theme-thumb span {
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            padding: 2px 0;
+            pointer-events: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .weapons-panel { gap: 15px; }
+            .weapon-img { width: 80px; height: 80px; }
+            .flashcard { padding: 20px; margin: 10px 0 20px 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>Рахунок: <span id="my-score">0</span></div>
+        <div class="controls">
+            <button class="btn-control" onclick="changeFontSize(-4)">A-</button>
+            <button class="btn-control" onclick="changeFontSize(4)">A+</button>
+        </div>
+    </div>
+
+    <div class="game-container">
+        <div id="flashcard-word" class="flashcard">Завантаження...</div>
+
+        <div class="weapons-panel">
+            <div class="weapon-card" id="card-rock" onclick="makeChoice('rock')">
+                <img class="weapon-img" src="КАМІНЬ.jpg" alt="Камінь">
+                <div class="weapon-name">КАМІНЬ</div>
+            </div>
+            <div class="weapon-card" id="card-scissors" onclick="makeChoice('scissors')">
+                <img class="weapon-img" src="НОЖИЦІ.jpg" alt="Ножиці">
+                <div class="weapon-name">НОЖИЦІ</div>
+            </div>
+            <div class="weapon-card" id="card-paper" onclick="makeChoice('paper')">
+                <img class="weapon-img" src="ПАПІР.jpg" alt="Папір">
+                <div class="weapon-name">ПАПІР</div>
+            </div>
+        </div>
+
+        <div class="status-area">
+            <div id="winner-announcement" class="winner-text"></div>
+            <div class="players-status" id="players-container">
+                <!-- Статуси гравців будуть тут -->
+            </div>
+            
+            <div style="display: flex; justify-content: center; gap: 20px;">
+                <button class="btn-action" id="btn-reveal" onclick="forceReveal()" style="display: none;">Розкрити вибір</button>
+                <button class="btn-action" id="btn-next" onclick="nextRound()" style="display: none;">Наступна картка</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Manager UI -->
+    <button class="theme-btn" onclick="document.getElementById('theme-modal').style.display='flex'">⚙️</button>
+    <div id="theme-modal" class="theme-modal">
+        <div class="theme-content">
+            <div class="theme-header">
+                <span>Оберіть фон</span>
+                <span class="close-theme" onclick="document.getElementById('theme-modal').style.display='none'">&times;</span>
+            </div>
+            <div id="theme-gallery" class="theme-gallery">
+                <!-- Мініатюри будуть згенеровані тут -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Universal Control Block -->
+    <div id="block-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 999999; justify-content: center; align-items: center; color: red; font-size: 3rem; font-weight: bold; font-family: Arial, sans-serif; text-align: center;">Зачекай! Зараз не твій урок.</div>
+
+    <script>
+        // 1. Ініціалізація Firebase
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // 2. Ідентифікація та контроль доступу
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user') || sessionStorage.getItem('userName');
+        if (!myName) {
+            myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('userName', myName);
+
+        const tabId = Math.random().toString(36).substring(2, 15);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val()) {
+                const ref = db.ref(`online_users/${myName}/${tabId}`);
+                ref.onDisconnect().remove();
+                ref.set(true);
+                
+                // Приєднання до гри
+                const playerRef = db.ref(`game_state/rps_room/players/${myName}`);
+                playerRef.onDisconnect().remove();
+                
+                // Ініціалізуємо або зберігаємо поточний рахунок
+                playerRef.once('value', s => {
+                    let currentScore = s.val() ? s.val().score || 0 : 0;
+                    playerRef.set({ choice: "", score: currentScore, online: true });
+                });
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            db.ref(`online_users/${myName}/${tabId}`).remove();
+            db.ref(`game_state/rps_room/players/${myName}`).remove();
+        });
+
+        // Запобіжник від нескінченного циклу перезавантажень!
+        let firstRefreshLoad = true;
+        db.ref('force_refresh').on('value', snap => {
+            if (!firstRefreshLoad && snap.val() === true) {
+                window.location.reload();
+            }
+            firstRefreshLoad = false;
+        });
+
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        let immune = true;
+        setTimeout(() => immune = false, 1000);
+        db.ref('current_activity').on('value', snap => {
+            if (!immune && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // 3. Theme Manager Логіка
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) document.body.style.backgroundImage = `url(${savedBg})`;
+
+        db.ref('game_theme').on('value', snap => {
+            const themeUrl = snap.val();
+            if (themeUrl) {
+                document.body.style.backgroundImage = `url(${themeUrl})`;
+                localStorage.setItem('mySavedGameBg', themeUrl);
+            }
+        });
+
+        async function loadThemes() {
+            const gallery = document.getElementById('theme-gallery');
+            for(let i = 1; i <= 100; i++) { 
+                let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                let img = new Image();
+                img.src = url;
+                img.onload = () => {
+                    let div = document.createElement('div');
+                    div.className = 'theme-thumb';
+                    div.style.backgroundImage = `url(${url})`;
+                    div.innerHTML = `<span>Фон ${i}</span>`;
+                    div.onclick = () => {
+                        db.ref('game_theme').set(url);
+                        document.getElementById('theme-modal').style.display = 'none';
+                    };
+                    gallery.appendChild(div);
+                };
+                if (i % 10 === 0) await new Promise(r => setTimeout(r, 10)); 
+            }
+        }
+        loadThemes();
+
+        // 4. Логіка гри Камінь-Ножиці-Папір
+        const flashcards = [
+            // 20 Іменників
+            "Кіт", "Собака", "Дерево", "Будинок", "Книга", "Сонце", "Місяць", "Автомобіль", "Місто", "Річка",
+            "Гора", "Хліб", "Вода", "Стіл", "Вікно", "Двері", "Птах", "Риба", "Квітка", "Яблуко",
+            // 20 Прикметників
+            "Великий", "Маленький", "Швидкий", "Повільний", "Добрий", "Злий", "Гарячий", "Холодний", "Новий", "Старий",
+            "Чистий", "Брудний", "Високий", "Низький", "Сильний", "Слабкий", "Яскравий", "Темний", "Смачний", "Солодкий",
+            // 20 Дієслів
+            "Бігти", "Стрибати", "Плавати", "Літати", "Читати", "Писати", "Говорити", "Мовчати", "Їсти", "Пити",
+            "Спати", "Працювати", "Грати", "Співати", "Танцювати", "Дивитися", "Слухати", "Думати", "Розуміти", "Любити"
+        ];
+
+        let currentPlayers = {};
+        let gameState = { status: 'waiting', cardIndex: 0 };
+        const weapons = {
+            rock: 'КАМІНЬ.jpg',
+            scissors: 'НОЖИЦІ.jpg',
+            paper: 'ПАПІР.jpg'
+        };
+
+        // Слухаємо глобальний стан (виправлено баг із застряганням на "Завантаження")
+        db.ref('game_state/rps_room/state').on('value', snap => {
+            const data = snap.val();
+            if (data) {
+                gameState = data;
+                const index = gameState.cardIndex || 0;
+                document.getElementById('flashcard-word').innerText = flashcards[index % flashcards.length];
+                checkAutoReveal();
+            } else {
+                // Якщо кімната зовсім порожня (новий запуск), ініціалізуємо її
+                db.ref('game_state/rps_room/state').set({ status: 'waiting', cardIndex: 0 });
+            }
+        });
+
+        // Слухаємо гравців
+        db.ref('game_state/rps_room/players').on('value', snap => {
+            currentPlayers = snap.val() || {};
+            if (currentPlayers[myName]) {
+                document.getElementById('my-score').innerText = currentPlayers[myName].score || 0;
+            } else {
+                document.getElementById('my-score').innerText = 0;
+            }
+            renderPlayers();
+            checkAutoReveal();
+        });
+
+        // Виконання дії через вузол game_action як того вимагає логіка і синхронізація
+        function sendAction(type, data = {}) {
+            db.ref('game_action').set({
+                senderId: myName,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data,
+                isRemoteAction: false
+            });
+        }
+
+        // Обробник game_action (Синхронізація логіки)
+        db.ref('game_action').on('value', snap => {
+            const action = snap.val();
+            if (!action || (action.isRemoteAction && action.senderId === myName)) return;
+
+            if (action.type === 'MAKE_CHOICE') {
+                db.ref(`game_state/rps_room/players/${action.senderId}/choice`).set(action.data.choice);
+            } else if (action.type === 'REVEAL') {
+                db.ref('game_state/rps_room/state/status').set('revealed');
+                evaluateWinners();
+            } else if (action.type === 'NEXT_ROUND') {
+                db.ref('game_state/rps_room/state').update({
+                    cardIndex: action.data.newIndex,
+                    status: 'waiting'
+                });
+                // Очищення виборів усіх гравців
+                for (let p in currentPlayers) {
+                    db.ref(`game_state/rps_room/players/${p}/choice`).set("");
+                }
+                document.getElementById('winner-announcement').innerText = "";
+            }
+        });
+
+        function makeChoice(choice) {
+            if (gameState.status === 'revealed') return; // Блокуємо вибір, якщо розкрито
+            
+            // Візуальне виділення
+            ['rock', 'scissors', 'paper'].forEach(c => document.getElementById(`card-${c}`).classList.remove('selected'));
+            document.getElementById(`card-${choice}`).classList.add('selected');
+
+            sendAction('MAKE_CHOICE', { choice: choice });
+        }
+
+        function forceReveal() {
+            sendAction('REVEAL');
+        }
+
+        function nextRound() {
+            sendAction('NEXT_ROUND', { newIndex: (gameState.cardIndex || 0) + 1 });
+            ['rock', 'scissors', 'paper'].forEach(c => document.getElementById(`card-${c}`).classList.remove('selected'));
+        }
+
+        function checkAutoReveal() {
+            const names = Object.keys(currentPlayers);
+            if (names.length === 0) return;
+
+            const allChosen = names.every(n => currentPlayers[n].choice !== "");
+            
+            if (gameState.status === 'waiting') {
+                document.getElementById('btn-reveal').style.display = allChosen ? 'block' : 'none';
+                document.getElementById('btn-next').style.display = 'none';
+                
+                // Автоматичне розкриття якщо всі походили
+                if (allChosen && names.includes(myName)) {
+                     // Тільки один викликає REVEAL щоб не спамити, наприклад перший по алфавіту
+                     if (names.sort()[0] === myName) forceReveal();
+                }
+            } else if (gameState.status === 'revealed') {
+                document.getElementById('btn-reveal').style.display = 'none';
+                document.getElementById('btn-next').style.display = 'block';
+            }
+        }
+
+        function renderPlayers() {
+            const container = document.getElementById('players-container');
+            container.innerHTML = '';
+            
+            for (const [name, data] of Object.entries(currentPlayers)) {
+                const isMe = name === myName;
+                let choiceImg = '';
+                
+                if (data.choice) {
+                    if (gameState.status === 'revealed' || isMe) {
+                        choiceImg = `<img src="${weapons[data.choice]}" class="player-choice-img" alt="${data.choice}">`;
+                    } else {
+                        choiceImg = `<div style="font-size: 30px; margin-top:10px;">❓</div>`;
+                    }
+                } else {
+                    choiceImg = `<div style="font-size: 14px; margin-top:20px;">Думає...</div>`;
+                }
+
+                container.innerHTML += `
+                    <div class="player-badge">
+                        <span>${name}</span>
+                        <span>⭐ ${data.score || 0}</span>
+                        ${choiceImg}
+                    </div>
+                `;
+            }
+        }
+
+        function evaluateWinners() {
+            // Щоб уникнути проблем зі старими даними, завжди тягнемо свіжі для визначення переможців
+            db.ref('game_state/rps_room/players').once('value', snap => {
+                const playersData = snap.val() || {};
+                const names = Object.keys(playersData);
+                const choices = new Set(names.map(n => playersData[n].choice).filter(c => c));
+                
+                let winnerText = "Нічия!";
+                let winningChoice = null;
+
+                if (choices.size === 1 || choices.size === 3) {
+                    // Нічия (всі однакове або всі три різні)
+                } else if (choices.size === 2) {
+                    if (choices.has('rock') && choices.has('scissors')) winningChoice = 'rock';
+                    else if (choices.has('scissors') && choices.has('paper')) winningChoice = 'scissors';
+                    else if (choices.has('paper') && choices.has('rock')) winningChoice = 'paper';
+                }
+
+                if (winningChoice) {
+                    const winners = names.filter(n => playersData[n].choice === winningChoice);
+                    winnerText = `Переможці: ${winners.join(', ')}!`;
+                    
+                    // Додаємо бали тільки один раз, перевіряючи чи я переможець
+                    if (winners.includes(myName)) {
+                        db.ref(`game_state/rps_room/players/${myName}/score`).set((playersData[myName].score || 0) + 1);
+                    }
+                }
+
+                document.getElementById('winner-announcement').innerText = winnerText;
+            });
+        }
+
+        // Керування розміром шрифту
+        function changeFontSize(delta) {
+            const root = document.documentElement;
+            let currentSize = parseInt(getComputedStyle(root).getPropertyValue('--font-size'));
+            if (isNaN(currentSize)) currentSize = 32;
+            let newSize = currentSize + delta;
+            if (newSize < 16) newSize = 16;
+            if (newSize > 80) newSize = 80;
+            root.style.setProperty('--font-size', newSize + 'px');
+        }
+    </script>
+</body>
+</html>
