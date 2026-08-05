@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Космічний Зв'язок: Вгадай Категорію</title>
+    
+    <!-- Підключення Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* Базові стилі та Шрифт */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #050510;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            color: #0ff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+        }
+
+        /* Жодних фонових прямокутників. Використовуємо лише світіння тексту та рамок */
+        #game-container {
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        h1, h2, h3, p {
+            text-shadow: 0 0 10px #0ff, 0 0 20px #00f;
+            letter-spacing: 2px;
+        }
+
+        h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        h2 { font-size: 2rem; color: #fff; }
+        .word-display { font-size: 2.5rem; color: #ff0; text-shadow: 0 0 10px #f90, 0 0 20px #f00; margin: 10px 0; font-weight: bold;}
+        .category-text { font-size: 2.2rem; color: #0f0; text-shadow: 0 0 10px #0f0; }
+
+        /* Кнопки */
+        button {
+            background: transparent;
+            border: 2px solid #0ff;
+            color: #0ff;
+            font-size: 1.5rem;
+            padding: 15px 30px;
+            border-radius: 15px;
+            cursor: pointer;
+            box-shadow: 0 0 15px inset #0ff, 0 0 15px #0ff;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: all 0.2s;
+            margin: 10px;
+        }
+        button:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 30px inset #0ff, 0 0 30px #0ff;
+        }
+        
+        button.buzz-btn {
+            border: 4px solid #fff;
+            color: #fff;
+            background: radial-gradient(circle, rgba(255,0,0,0.3) 0%, transparent 70%);
+            box-shadow: 0 0 40px #f00, 0 0 40px inset #f00;
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            font-size: 2.5rem;
+            margin-top: 30px;
+        }
+        button.buzz-btn:active {
+            background: radial-gradient(circle, rgba(255,0,0,0.6) 0%, transparent 70%);
+            box-shadow: 0 0 60px #f00, 0 0 60px inset #f00;
+        }
+
+        /* Поля вводу */
+        input[type="text"] {
+            background: transparent;
+            border: 2px solid #0ff;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.5rem;
+            padding: 15px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 0 10px #0ff inset;
+            outline: none;
+            margin: 5px 0;
+        }
+        input[type="text"]::placeholder {
+            color: rgba(0, 255, 255, 0.4);
+        }
+
+        /* Секретний ввід для вчителя */
+        .secret-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+            color: #f0f;
+            text-shadow: 0 0 5px #f0f;
+        }
+        input[type="checkbox"] {
+            transform: scale(1.5);
+            accent-color: #f0f;
+        }
+        input.secret {
+            color: transparent !important;
+            text-shadow: none !important;
+        }
+        input.secret::selection {
+            background: transparent !important;
+            color: transparent !important;
+        }
+
+        /* Менеджер Тем (Theme Manager) */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: transparent;
+            border: 2px solid #0ff;
+            color: #0ff;
+            font-size: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px inset #0ff, 0 0 15px #0ff;
+            cursor: pointer;
+            z-index: 1000;
+            padding: 0;
+            margin: 0;
+        }
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 600px;
+            max-height: 60vh;
+            background: rgba(0, 0, 20, 0.95);
+            border: 2px solid #0ff;
+            box-shadow: 0 0 30px #0ff;
+            border-radius: 15px;
+            z-index: 1001;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        #theme-modal-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #f00;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: none;
+            padding: 0;
+            margin: 0;
+            text-shadow: 0 0 5px #f00;
+        }
+        #theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .theme-item {
+            position: relative;
+            cursor: pointer;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            overflow: hidden;
+            transition: all 0.3s;
+            height: 80px;
+        }
+        .theme-item:hover {
+            border-color: #0ff;
+            box-shadow: 0 0 15px #0ff;
+            transform: scale(1.05);
+        }
+        .theme-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .theme-item span {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            text-align: center;
+            font-size: 12px;
+            padding: 5px 0;
+            text-shadow: none;
+        }
+
+        /* Універсальний Блок Контролю */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        #block-overlay h1 {
+            color: red;
+            font-size: 4rem;
+            text-shadow: 0 0 20px red;
+            text-align: center;
+        }
+
+        /* Адаптивність */
+        @media (max-width: 600px) {
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.5rem; }
+            .word-display { font-size: 1.8rem; }
+            button { font-size: 1.2rem; padding: 10px 20px; }
+            button.buzz-btn { width: 180px; height: 180px; font-size: 1.8rem; }
+            input[type="text"] { font-size: 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Головний контейнер гри -->
+    <div id="game-container">
+        <!-- Контент буде генеруватися через JS -->
+    </div>
+
+    <!-- Менеджер Тем -->
+    <button id="theme-btn">⚙️</button>
+    <div id="theme-modal">
+        <button id="theme-modal-close">✖</button>
+        <h2 style="text-align: center; font-size: 1.5rem;">Галерея Фонів</h2>
+        <div id="theme-grid"></div>
+    </div>
+
+    <!-- Універсальний Блок Контролю (Екран-заглушка) -->
+    <div id="block-overlay">
+        <h1>Зачекай! Зараз не твій урок.</h1>
+    </div>
+
+    <script>
+        // Ініціалізація Firebase
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // 3. Універсальний блок контролю (Ідентифікація, Радар та Блокування)
+        let myName = new URLSearchParams(window.location.search).get('user');
+        if (!myName) myName = sessionStorage.getItem('myName');
+        if (!myName) {
+            myName = "Гість_" + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('myName', myName);
+
+        const tabId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        const presenceRef = db.ref(`online_users/${myName}/${tabId}`);
+        const connectedRef = db.ref('.info/connected');
+
+        connectedRef.on('value', snap => {
+            if (snap.val() === true) {
+                presenceRef.set(true);
+                presenceRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => presenceRef.remove());
+
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        let initTime = Date.now();
+        db.ref('current_activity').on('value', snap => {
+            if (Date.now() - initTime < 1000) return; // Імунітет першої секунди
+            if (snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        db.ref('force_refresh').on('value', snap => {
+            if (snap.val() && Date.now() - initTime > 1000) {
+                window.location.reload();
+            }
+        });
+
+        // 1. Система динамічних фонів (Theme Manager)
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeModalClose = document.getElementById('theme-modal-close');
+        const themeGrid = document.getElementById('theme-grid');
+        const themeRef = db.ref('game_theme');
+
+        themeBtn.onclick = () => themeModal.style.display = 'block';
+        themeModalClose.onclick = () => themeModal.style.display = 'none';
+
+        // Відновлення локального фону
+        const savedTheme = localStorage.getItem('mySavedGameBg');
+        if (savedTheme) document.body.style.backgroundImage = `url('${savedTheme}')`;
+
+        // Синхронізація фону
+        themeRef.on('value', snap => {
+            const url = snap.val();
+            if (url) {
+                document.body.style.backgroundImage = `url('${url}')`;
+                localStorage.setItem('mySavedGameBg', url);
+            }
+        });
+
+        // Асинхронне завантаження галереї фонів
+        async function loadThemes() {
+            let consecutiveErrors = 0;
+            const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/background_';
+            
+            for (let i = 1; i <= 1000; i++) {
+                if (consecutiveErrors > 5) break; // Зупиняємо, якщо підряд немає 5 картинок
+                
+                let url = `${baseUrl}${i}.webp`;
+                let img = new Image();
+                
+                img.onload = () => {
+                    consecutiveErrors = 0;
+                    let div = document.createElement('div');
+                    div.className = 'theme-item';
+                    div.innerHTML = `<img src="${url}" alt="Фон ${i}"><span>Фон ${i}</span>`;
+                    div.onclick = () => {
+                        themeRef.set(url);
+                        themeModal.style.display = 'none';
+                    };
+                    themeGrid.appendChild(div);
+                };
+                
+                img.onerror = () => { consecutiveErrors++; };
+                img.src = url;
+            }
+        }
+        loadThemes();
+
+
+        // Логіка гри
+        const categories = ["Овочі", "Фрукти", "Професії", "Кольори", "Тварини", "Транспорт", "Одяг", "Меблі", "Космос", "Погода", "Шкільні предмети", "Спорт", "Музичні інструменти"];
+        
+        let gameState = {
+            phase: 'idle', // idle, hosting, guessing, result
+            hostId: '',
+            category: '',
+            words: [],
+            winner: ''
+        };
+
+        const actionRef = db.ref('game_action');
+        let lastTimestamp = 0;
+        let isRemoteAction = false;
+
+        function sendAction(type, data = {}) {
+            actionRef.set({
+                senderId: myName,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        actionRef.on('value', snap => {
+            const val = snap.val();
+            if (!val) return;
+            if (val.timestamp <= lastTimestamp) return; 
+            lastTimestamp = val.timestamp;
+            isRemoteAction = val.senderId !== myName;
+
+            processAction(val);
+        });
+
+        function processAction(action) {
+            switch(action.type) {
+                case 'BECOME_HOST':
+                    gameState.phase = 'hosting';
+                    gameState.hostId = action.senderId;
+                    gameState.category = action.data.category;
+                    gameState.words = [];
+                    gameState.winner = '';
+                    break;
+                case 'SUBMIT_WORDS':
+                    gameState.phase = 'guessing';
+                    gameState.words = action.data.words;
+                    break;
+                case 'BUZZ':
+                    if (gameState.phase === 'guessing') {
+                        gameState.phase = 'result';
+                        gameState.winner = action.senderId;
+                    }
+                    break;
+                case 'RESET':
+                    gameState.phase = 'idle';
+                    gameState.hostId = '';
+                    gameState.category = '';
+                    gameState.words = [];
+                    gameState.winner = '';
+                    break;
+            }
+            renderGame();
+        }
+
+        function renderGame() {
+            const container = document.getElementById('game-container');
+            container.innerHTML = '';
+
+            if (gameState.phase === 'idle') {
+                container.innerHTML = `
+                    <h1>КОСМІЧНИЙ ЗВ'ЯЗОК</h1>
+                    <p>Хто буде передавати сигнал наступним?</p>
+                    <button id="btn-host">Я ведучий!</button>
+                `;
+                document.getElementById('btn-host').onclick = () => {
+                    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+                    sendAction('BECOME_HOST', { category: randomCategory });
+                };
+            } 
+            
+            else if (gameState.phase === 'hosting') {
+                if (gameState.hostId === myName) {
+                    container.innerHTML = `
+                        <h2>ТИ ВЕДУЧИЙ!</h2>
+                        <p>Твоя категорія для екіпажу:</p>
+                        <div class="category-text">${gameState.category}</div>
+                        
+                        <div class="secret-container">
+                            <input type="checkbox" id="secret-toggle">
+                            <label for="secret-toggle">Секретний ввід (сховати текст)</label>
+                        </div>
+
+                        <input type="text" id="w1" placeholder="Слово 1" autocomplete="off">
+                        <input type="text" id="w2" placeholder="Слово 2" autocomplete="off">
+                        <input type="text" id="w3" placeholder="Слово 3" autocomplete="off">
+                        <button id="btn-submit">Відправити сигнал</button>
+                    `;
+                    
+                    const toggle = document.getElementById('secret-toggle');
+                    const inputs = [document.getElementById('w1'), document.getElementById('w2'), document.getElementById('w3')];
+                    
+                    toggle.onchange = (e) => {
+                        inputs.forEach(input => {
+                            if(e.target.checked) input.classList.add('secret');
+                            else input.classList.remove('secret');
+                        });
+                    };
+
+                    document.getElementById('btn-submit').onclick = () => {
+                        const words = inputs.map(i => i.value.trim()).filter(v => v !== '');
+                        if(words.length < 3) {
+                            alert("Введи всі 3 слова!");
+                            return;
+                        }
+                        sendAction('SUBMIT_WORDS', { words: words });
+                    };
+                } else {
+                    container.innerHTML = `
+                        <h2>ЧЕКАЄМО СИГНАЛ...</h2>
+                        <p>Ведучий <b>${gameState.hostId}</b> зараз готує слова.</p>
+                        <p>Готуйся швидко тиснути кнопку!</p>
+                    `;
+                }
+            } 
+            
+            else if (gameState.phase === 'guessing') {
+                container.innerHTML = `
+                    <h2>ПРИЙНЯТО СИГНАЛ:</h2>
+                    <div class="word-display">${gameState.words.join(' • ')}</div>
+                `;
+
+                if (gameState.hostId === myName) {
+                    container.innerHTML += `<p style="margin-top:20px;">Чекай, поки хтось із екіпажу відгадає категорію...</p>`;
+                } else {
+                    container.innerHTML += `
+                        <button class="buzz-btn" id="btn-buzz">Я ЗНАЮ<br>КАТЕГОРІЮ!</button>
+                    `;
+                    document.getElementById('btn-buzz').onclick = () => {
+                        sendAction('BUZZ');
+                    };
+                }
+            } 
+            
+            else if (gameState.phase === 'result') {
+                container.innerHTML = `
+                    <h1>СТОП ГРА!</h1>
+                    <h2>Гравець <span style="color:#f0f">${gameState.winner}</span> зреагував першим!</h2>
+                    <p style="margin-top: 15px;">Загадана категорія була:</p>
+                    <div class="category-text">${gameState.category}</div>
+                    <div class="word-display" style="font-size: 1.5rem; color: #fff;">(${gameState.words.join(', ')})</div>
+                    <button id="btn-next" style="margin-top:30px;">Наступний раунд</button>
+                `;
+                document.getElementById('btn-next').onclick = () => {
+                    sendAction('RESET');
+                };
+            }
+        }
+
+        // Первинний рендер
+        renderGame();
+
+    </script>
+</body>
+</html>
