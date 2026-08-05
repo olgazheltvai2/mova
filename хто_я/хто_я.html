@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гра: Хто я?</title>
+    
+    <!-- Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <style>
+        /* Базові стилі та шрифти */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: #333; /* Запасний колір */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Контейнер гри (максимально прозорий) */
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background: transparent;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        /* Панель керування */
+        .controls-panel {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 15px;
+            backdrop-filter: blur(5px);
+        }
+
+        button {
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 3px rgba(0,0,0,0.3);
+        }
+
+        .btn-draw { background-color: #4CAF50; color: white; }
+        .btn-draw:hover { background-color: #45a049; }
+
+        .btn-reveal { background-color: #FF9800; color: white; }
+        .btn-reveal:hover { background-color: #e68a00; }
+
+        .btn-reset { background-color: #f44336; color: white; }
+        .btn-reset:hover { background-color: #da190b; }
+
+        /* Ігрове поле з картками */
+        .board {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .player-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-name {
+            font-size: 22px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 4px #000, -1px -1px 2px #000;
+            background: rgba(0,0,0,0.4);
+            padding: 5px 15px;
+            border-radius: 10px;
+        }
+
+        .card-element {
+            width: 250px;
+            height: 350px;
+            border-radius: 20px;
+            border: 5px solid white;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+            object-fit: cover;
+            background-color: #fff;
+        }
+
+        .hidden-card {
+            width: 250px;
+            height: 350px;
+            border-radius: 20px;
+            border: 5px solid white;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: white;
+            padding: 20px;
+            box-sizing: border-box;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .hidden-card span {
+            font-size: 40px;
+            margin-bottom: 15px;
+        }
+
+        /* --- Theme Manager Styles --- */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            border-radius: 50%;
+            background: #333;
+            color: white;
+            border: 2px solid white;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 600px;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            z-index: 1001;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        #theme-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 1000;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .close-btn {
+            cursor: pointer;
+            font-size: 24px;
+            color: red;
+            background: none;
+            border: none;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .theme-item {
+            position: relative;
+            cursor: pointer;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 3px solid transparent;
+            aspect-ratio: 16/9;
+            background-color: #ddd;
+        }
+
+        .theme-item:hover { border-color: #4CAF50; }
+
+        .theme-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .theme-item .theme-name {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            text-align: center;
+            font-size: 14px;
+            padding: 5px 0;
+            font-weight: bold;
+        }
+
+        /* --- Блок контролю доступу --- */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 9999;
+            color: red;
+            font-size: 40px;
+            font-weight: bold;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Адаптивність (Mobile) */
+        @media (max-width: 600px) {
+            .card-element, .hidden-card {
+                width: 200px;
+                height: 280px;
+            }
+            .controls-panel {
+                flex-direction: column;
+                width: 100%;
+            }
+            button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-wrapper">
+        <div class="controls-panel">
+            <button class="btn-draw" onclick="drawCard()">Отримати рандомну картку</button>
+            <button class="btn-reveal" onclick="revealCards()">Показати всі картки</button>
+            <button class="btn-reset" onclick="resetGame()">Новий раунд</button>
+        </div>
+
+        <div id="board" class="board">
+            <!-- Картки гравців будуть з'являтися тут -->
+        </div>
+    </div>
+
+    <!-- Theme Manager UI -->
+    <button id="theme-btn" onclick="openThemeModal()">⚙️</button>
+    <div id="theme-modal-overlay" onclick="closeThemeModal()"></div>
+    <div id="theme-modal">
+        <div class="modal-header">
+            <span>Оберіть фон</span>
+            <button class="close-btn" onclick="closeThemeModal()">✖</button>
+        </div>
+        <div class="gallery" id="theme-gallery">
+            <p>Завантаження фонів...</p>
+        </div>
+    </div>
+
+    <!-- БЛОК КОНТРОЛЮ (ОБОВ'ЯЗКОВИЙ) -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <script>
+        // ==========================================
+        // 1. ІДЕНТИФІКАЦІЯ
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+
+        // ==========================================
+        // 2. ІНІЦІАЛІЗАЦІЯ FIREBASE
+        // ==========================================
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let isFirebaseConnected = false;
+        db.ref('.info/connected').on('value', snap => {
+            isFirebaseConnected = snap.val() === true;
+        });
+
+        // ==========================================
+        // 3. ЛОГІКА ГРИ "ХТО Я"
+        // ==========================================
+        
+        let gameState = { players: {}, reveal: false };
+
+        // Слухаємо стан гри
+        db.ref('whoami_state').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                gameState = snapshot.val();
+                if (!gameState.players) gameState.players = {};
+            } else {
+                gameState = { players: {}, reveal: false };
+            }
+            renderBoard();
+        });
+
+        // Слухаємо дії (захист від зациклення)
+        let lastActionTime = 0;
+        db.ref('whoami_action').on('value', (snapshot) => {
+            if (!snapshot.exists()) return;
+            const action = snapshot.val();
+            
+            // Якщо дія стара або від нас самих - ігноруємо, 
+            // оскільки стан оновиться через whoami_state
+            if (action.timestamp <= lastActionTime) return;
+            const isRemoteAction = action.senderId !== myName;
+            
+            if (isRemoteAction) {
+                console.log("Отримана дія від:", action.senderId, action.type);
+            }
+        });
+
+        function pushAction(type, data = {}) {
+            const timestamp = Date.now();
+            lastActionTime = timestamp;
+
+            const actionObj = { senderId: myName, timestamp: timestamp, type: type, data: data };
+            
+            if (isFirebaseConnected) {
+                db.ref('whoami_action').set(actionObj);
+            }
+
+            // Застосовуємо логіку до стану
+            if (type === 'DRAW_CARD') {
+                gameState.players[myName] = data.cardUrl;
+            } else if (type === 'REVEAL') {
+                gameState.reveal = true;
+            } else if (type === 'RESET') {
+                gameState.players = {};
+                gameState.reveal = false;
+            }
+
+            // Синхронізуємо стан
+            if (isFirebaseConnected) {
+                db.ref('whoami_state').set(gameState);
+            } else {
+                renderBoard(); // Робота без підключення
+            }
+        }
+
+        function drawCard() {
+            // Згідно з вказівками елементи від ~9 до 60.
+            const cardNum = Math.floor(Math.random() * 52) + 9;
+            const url = `kartka_${cardNum}.webp`;
+            pushAction('DRAW_CARD', { cardUrl: url });
+        }
+
+        function revealCards() {
+            pushAction('REVEAL');
+        }
+
+        function resetGame() {
+            pushAction('RESET');
+        }
+
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+
+            for (const [playerName, cardUrl] of Object.entries(gameState.players)) {
+                const block = document.createElement('div');
+                block.className = 'player-block';
+
+                const nameLabel = document.createElement('div');
+                nameLabel.className = 'player-name';
+                nameLabel.textContent = playerName;
+                block.appendChild(nameLabel);
+
+                // Якщо це моя картка і всі ще не відкриті - ховаємо її, інші картки показуємо відкрито
+                if (playerName === myName && !gameState.reveal) {
+                    const hiddenDiv = document.createElement('div');
+                    hiddenDiv.className = 'hidden-card';
+                    hiddenDiv.innerHTML = '<span>❓</span>Це твоя картка.<br>Ти її не бачиш, поки інші вгадують або доки не відкриють всі картки!';
+                    block.appendChild(hiddenDiv);
+                } else {
+                    const img = document.createElement('img');
+                    img.className = 'card-element';
+                    img.src = cardUrl;
+                    img.onerror = function() {
+                        this.src = 'https://olgazheltvai2.github.io/images/elements/element_1.webp'; 
+                    };
+                    block.appendChild(img);
+                }
+
+                board.appendChild(block);
+            }
+        }
+
+        // ==========================================
+        // 4. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
+        // ==========================================
+        const bgBaseUrl = "https://olgazheltvai2.github.io/images/backgrounds/background_";
+        let validBackgrounds = [];
+
+        // Відновлюємо фон при завантаженні (спочатку локально для швидкості)
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) {
+            document.body.style.backgroundImage = `url('${savedBg}')`;
+        }
+
+        // Синхронізація фону через Firebase
+        db.ref('game_theme').on('value', (snapshot) => {
+            const themeUrl = snapshot.val();
+            if (themeUrl) {
+                document.body.style.backgroundImage = `url('${themeUrl}')`;
+                localStorage.setItem('mySavedGameBg', themeUrl);
+            }
+        });
+
+        async function checkImage(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        }
+
+        async function loadBackgrounds() {
+            const gallery = document.getElementById('theme-gallery');
+            gallery.innerHTML = '';
+            validBackgrounds = [];
+            
+            let i = 1;
+            let consecutiveErrors = 0;
+            
+            while (consecutiveErrors < 3 && i <= 1000) {
+                const url = `${bgBaseUrl}${i}.webp`;
+                const exists = await checkImage(url);
+                
+                if (exists) {
+                    validBackgrounds.push(url);
+                    consecutiveErrors = 0;
+                    
+                    const item = document.createElement('div');
+                    item.className = 'theme-item';
+                    item.onclick = () => selectTheme(url);
+                    
+                    const img = document.createElement('img');
+                    img.src = url;
+                    
+                    const label = document.createElement('div');
+                    label.className = 'theme-name';
+                    label.textContent = `Фон ${i}`;
+                    
+                    item.appendChild(img);
+                    item.appendChild(label);
+                    gallery.appendChild(item);
+                } else {
+                    consecutiveErrors++;
+                }
+                i++;
+            }
+            if (validBackgrounds.length === 0) {
+                gallery.innerHTML = '<p>Фони не знайдено.</p>';
+            }
+        }
+
+        function openThemeModal() {
+            document.getElementById('theme-modal').style.display = 'block';
+            document.getElementById('theme-modal-overlay').style.display = 'block';
+            if (validBackgrounds.length === 0) {
+                loadBackgrounds();
+            }
+        }
+
+        function closeThemeModal() {
+            document.getElementById('theme-modal').style.display = 'none';
+            document.getElementById('theme-modal-overlay').style.display = 'none';
+        }
+
+        function selectTheme(url) {
+            if (isFirebaseConnected) {
+                db.ref('game_theme').set(url);
+            } else {
+                document.body.style.backgroundImage = `url('${url}')`;
+                localStorage.setItem('mySavedGameBg', url);
+            }
+            closeThemeModal();
+        }
+
+        // ==========================================
+        // 5. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (РАДАР)
+        // ==========================================
+        const tabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+        const myRef = db.ref(`online_users/${myName}/${tabId}`);
+
+        db.ref('.info/connected').on('value', (snap) => {
+            if (snap.val() === true) {
+                myRef.set(true);
+                myRef.onDisconnect().remove();
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            myRef.remove();
+        });
+
+        // Слухаємо примусове оновлення сторінки
+        db.ref('force_refresh').on('value', (snapshot) => {
+            if (snapshot.val() === true) {
+                window.location.reload();
+            }
+        });
+
+        // Слухаємо блокування конкретного учня
+        db.ref(`blocked_users/${myName}`).on('value', (snapshot) => {
+            const overlay = document.getElementById('block-overlay');
+            if (snapshot.val() === true) {
+                overlay.style.display = 'flex';
+            } else {
+                overlay.style.display = 'none';
+            }
+        });
+
+        // Механізм переходу в лобі з імунітетом першої секунди
+        let hasImmunity = true;
+        setTimeout(() => { hasImmunity = false; }, 1500);
+
+        db.ref('current_activity').on('value', (snapshot) => {
+            const activity = snapshot.val();
+            if (activity === 'lobby' && !hasImmunity) {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+    </script>
+</body>
+</html>
