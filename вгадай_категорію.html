@@ -116,7 +116,6 @@
             border-radius: 50%;
             font-size: 2.5rem;
             margin-top: 30px;
-            /* ВИПРАВЛЕННЯ: Гарантоване центрування тексту всередині кола */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -344,3 +343,306 @@
             firebase.initializeApp(firebaseConfig);
         }
         const db = firebase.database();
+
+        // 3. Універсальний блок контролю (Ідентифікація, Радар та Блокування)
+        let myName = new URLSearchParams(window.location.search).get('user');
+        if (!myName) myName = sessionStorage.getItem('myName');
+        if (!myName) {
+            myName = "Гість_" + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('myName', myName);
+
+        const tabId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        const presenceRef = db.ref(`online_users/${myName}/${tabId}`);
+        const connectedRef = db.ref('.info/connected');
+
+        connectedRef.on('value', snap => {
+            if (snap.val() === true) {
+                presenceRef.set(true);
+                presenceRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => presenceRef.remove());
+
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        let initTime = Date.now();
+        db.ref('current_activity').on('value', snap => {
+            if (Date.now() - initTime < 1000) return; // Імунітет першої секунди
+            if (snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        db.ref('force_refresh').on('value', snap => {
+            if (snap.val() && Date.now() - initTime > 1000) {
+                window.location.reload();
+            }
+        });
+
+        // 1. Система динамічних фонів (Theme Manager)
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeModalClose = document.getElementById('theme-modal-close');
+        const themeGrid = document.getElementById('theme-grid');
+        const themeRef = db.ref('game_theme');
+
+        themeBtn.onclick = () => themeModal.style.display = 'block';
+        themeModalClose.onclick = () => themeModal.style.display = 'none';
+
+        // Відновлення локального фону
+        const savedTheme = localStorage.getItem('mySavedGameBg');
+        if (savedTheme) document.body.style.backgroundImage = `url('${savedTheme}')`;
+
+        // Синхронізація фону
+        themeRef.on('value', snap => {
+            const url = snap.val();
+            if (url) {
+                document.body.style.backgroundImage = `url('${url}')`;
+                localStorage.setItem('mySavedGameBg', url);
+            }
+        });
+
+        // Асинхронне завантаження галереї фонів
+        async function loadThemes() {
+            let consecutiveErrors = 0;
+            const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/background_';
+            
+            for (let i = 1; i <= 1000; i++) {
+                if (consecutiveErrors > 5) break; // Зупиняємо, якщо підряд немає 5 картинок
+                
+                let url = `${baseUrl}${i}.webp`;
+                let img = new Image();
+                
+                img.onload = () => {
+                    consecutiveErrors = 0;
+                    let div = document.createElement('div');
+                    div.className = 'theme-item';
+                    div.innerHTML = `<img src="${url}" alt="Фон ${i}"><span>Фон ${i}</span>`;
+                    div.onclick = () => {
+                        themeRef.set(url);
+                        themeModal.style.display = 'none';
+                    };
+                    themeGrid.appendChild(div);
+                };
+                
+                img.onerror = () => { consecutiveErrors++; };
+                img.src = url;
+            }
+        }
+        loadThemes();
+
+
+        // Слухач балів (Зірочки)
+        let globalScores = {};
+        db.ref('game_scores').on('value', snap => {
+            globalScores = snap.val() || {};
+            renderScoreboard();
+        });
+
+        function renderScoreboard() {
+            const sb = document.getElementById('scoreboard');
+            if(!sb) return;
+            let html = '';
+            for(let player in globalScores) {
+                if(globalScores[player] > 0) {
+                    let stars = '⭐'.repeat(globalScores[player]);
+                    html += `<div class="score-item">${player}: ${stars}</div>`;
+                }
+            }
+            sb.innerHTML = html;
+        }
+
+        // Логіка гри (100 категорій для початкової школи)
+        const categories = [
+            "Овочі", "Фрукти", "Ягоди", "Дикі тварини", "Свійські тварини", "Птахи", "Риби", "Комахи", "Дерева", "Квіти",
+            "Кущі", "Транспорт", "Одяг", "Взуття", "Головні убори", "Меблі", "Шкільне приладдя", "Кольори", "Пори року", "Дні тижня",
+            "Місяці", "Частини тіла", "Професії", "Спорт", "Спортивний інвентар", "Музичні інструменти", "Іграшки", "Казки", "Мультфільми", "Емоції",
+            "Посуд", "Кухонне приладдя", "Напої", "Солодощі", "Молочні продукти", "М'ясні продукти", "Хлібобулочні вироби", "Овочеві страви", "Геометричні фігури", "Будівлі",
+            "Кімнати", "Сім'я", "Свята", "Природні явища", "Погода", "Космос", "Планети", "Ігри на вулиці", "Настільні ігри", "Комп'ютерні ігри",
+            "Хобі", "Домашні улюбленці", "Динозаври", "Казкові герої", "Супергерої", "Електроніка", "Інструменти", "Канцелярські товари", "Гриби", "Кімнатні рослини",
+            "Міста", "Країни", "Водний транспорт", "Повітряний транспорт", "Наземний транспорт", "Дорожні знаки", "Парки розваг", "Цирк", "Театр", "Музей",
+            "Бібліотека", "Магазини", "Гроші", "Прикраси", "Предмети гігієни", "Літні розваги", "Зимові розваги", "Водойми", "Гори", "Ліс",
+            "Зоопарк", "Ферма", "Місто", "Село", "Рятувальні служби", "Лікарі", "Магазин іграшок", "Магазин продуктів", "Парк", "Дитячий майданчик",
+            "Ранкова рутина", "Шкільні уроки", "Оцінки", "Шкільна перерва", "Канікули", "Подорожі", "Транспорт майбутнього", "Професії майбутнього", "Моя кімната", "Корисна їжа"
+        ];
+        
+        let gameState = {
+            phase: 'idle', // idle, hosting, guessing, result
+            hostId: '',
+            category: '',
+            words: [],
+            winner: ''
+        };
+
+        const actionRef = db.ref('game_action');
+        let lastTimestamp = 0;
+        let isRemoteAction = false;
+
+        function sendAction(type, data = {}) {
+            actionRef.set({
+                senderId: myName,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        actionRef.on('value', snap => {
+            const val = snap.val();
+            if (!val) return;
+            if (val.timestamp <= lastTimestamp) return; 
+            lastTimestamp = val.timestamp;
+            isRemoteAction = val.senderId !== myName;
+
+            processAction(val);
+        });
+
+        function processAction(action) {
+            switch(action.type) {
+                case 'BECOME_HOST':
+                    gameState.phase = 'hosting';
+                    gameState.hostId = action.senderId;
+                    gameState.category = action.data.category;
+                    gameState.words = [];
+                    gameState.winner = '';
+                    break;
+                case 'SUBMIT_WORDS':
+                    gameState.phase = 'guessing';
+                    gameState.words = action.data.words;
+                    break;
+                case 'BUZZ':
+                    if (gameState.phase === 'guessing') {
+                        gameState.phase = 'result';
+                        gameState.winner = action.senderId;
+                        
+                        // Додаємо зірочку переможцю (це виконує сам переможець, щоб уникнути дублювань)
+                        if (action.senderId === myName) {
+                            db.ref(`game_scores/${myName}`).transaction(currentScore => {
+                                return (currentScore || 0) + 1;
+                            });
+                        }
+                    }
+                    break;
+                case 'RESET':
+                    gameState.phase = 'idle';
+                    gameState.hostId = '';
+                    gameState.category = '';
+                    gameState.words = [];
+                    gameState.winner = '';
+                    break;
+            }
+            renderGame();
+        }
+
+        function renderGame() {
+            const container = document.getElementById('game-container');
+            container.innerHTML = '';
+
+            if (gameState.phase === 'idle') {
+                container.innerHTML = `
+                    <h1>КОСМІЧНИЙ ЗВ'ЯЗОК</h1>
+                    <p>Хто буде передавати сигнал наступним?</p>
+                    <button id="btn-host">Я ведучий!</button>
+                    <button id="btn-reset-scores" style="margin-top:40px;">Скинути всі зірочки</button>
+                `;
+                document.getElementById('btn-host').onclick = () => {
+                    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+                    sendAction('BECOME_HOST', { category: randomCategory });
+                };
+                document.getElementById('btn-reset-scores').onclick = () => {
+                    if(confirm("Точно скинути всі зірочки екіпажу?")) {
+                        db.ref('game_scores').remove();
+                    }
+                };
+            } 
+            
+            else if (gameState.phase === 'hosting') {
+                if (gameState.hostId === myName) {
+                    container.innerHTML = `
+                        <h2>ТИ ВЕДУЧИЙ!</h2>
+                        <p>Твоя категорія для екіпажу:</p>
+                        <div class="category-text">${gameState.category}</div>
+                        
+                        <div class="secret-container">
+                            <input type="checkbox" id="secret-toggle">
+                            <label for="secret-toggle">Секретний ввід (сховати текст)</label>
+                        </div>
+
+                        <input type="text" id="w1" placeholder="Слово 1" autocomplete="off">
+                        <input type="text" id="w2" placeholder="Слово 2" autocomplete="off">
+                        <input type="text" id="w3" placeholder="Слово 3" autocomplete="off">
+                        <button id="btn-submit">Відправити сигнал</button>
+                    `;
+                    
+                    const toggle = document.getElementById('secret-toggle');
+                    const inputs = [document.getElementById('w1'), document.getElementById('w2'), document.getElementById('w3')];
+                    
+                    toggle.onchange = (e) => {
+                        inputs.forEach(input => {
+                            if(e.target.checked) input.classList.add('secret');
+                            else input.classList.remove('secret');
+                        });
+                    };
+
+                    document.getElementById('btn-submit').onclick = () => {
+                        const words = inputs.map(i => i.value.trim()).filter(v => v !== '');
+                        if(words.length < 3) {
+                            alert("Введи всі 3 слова!");
+                            return;
+                        }
+                        sendAction('SUBMIT_WORDS', { words: words });
+                    };
+                } else {
+                    container.innerHTML = `
+                        <h2>ЧЕКАЄМО СИГНАЛ...</h2>
+                        <p>Ведучий <b>${gameState.hostId}</b> зараз готує слова.</p>
+                        <p>Готуйся швидко тиснути кнопку!</p>
+                    `;
+                }
+            } 
+            
+            else if (gameState.phase === 'guessing') {
+                // Відцентрований блок сигналу
+                container.innerHTML = `
+                    <div class="signal-container">
+                        <h2>ПРИЙНЯТО СИГНАЛ:</h2>
+                        <div class="word-display">${gameState.words.join(' • ')}</div>
+                    </div>
+                `;
+
+                if (gameState.hostId === myName) {
+                    container.innerHTML += `<p style="margin-top:20px;">Чекай, поки хтось із екіпажу відгадає категорію...</p>`;
+                } else {
+                    container.innerHTML += `
+                        <button class="buzz-btn" id="btn-buzz">Я ЗНАЮ<br>КАТЕГОРІЮ!</button>
+                    `;
+                    document.getElementById('btn-buzz').onclick = () => {
+                        sendAction('BUZZ');
+                    };
+                }
+            } 
+            
+            else if (gameState.phase === 'result') {
+                container.innerHTML = `
+                    <h1>СТОП ГРА!</h1>
+                    <h2>Гравець <span style="color:#f0f">${gameState.winner}</span> зреагував першим і отримує ⭐!</h2>
+                    <p style="margin-top: 15px;">Загадана категорія була:</p>
+                    <div class="category-text">${gameState.category}</div>
+                    <div class="word-display" style="font-size: 1.5rem; color: #fff;">(${gameState.words.join(', ')})</div>
+                    <button id="btn-next" style="margin-top:30px;">Наступний раунд</button>
+                `;
+                document.getElementById('btn-next').onclick = () => {
+                    sendAction('RESET');
+                };
+            }
+        }
+
+        // Первинний рендер
+        renderGame();
+
+    </script>
+</body>
+</html>
