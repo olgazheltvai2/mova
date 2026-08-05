@@ -16,7 +16,7 @@
             margin: 0;
             padding: 0;
             min-height: 100vh;
-            background-color: #333; /* Запасний колір */
+            background-color: #333;
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -314,6 +314,9 @@
             }
         }
 
+        // Очищення імені від недопустимих символів для Firebase ключів, якщо такі є
+        const safeMyName = myName.replace(/[.#$[\]]/g, '_');
+
         // ==========================================
         // 2. ІНІЦІАЛІЗАЦІЯ FIREBASE
         // ==========================================
@@ -335,7 +338,7 @@
         
         let gameState = { players: {}, reveal: false };
 
-        // Слухаємо стан гри
+        // Слухаємо загальний стан гри
         db.ref('whoami_state').on('value', (snapshot) => {
             if (snapshot.exists()) {
                 gameState = snapshot.val();
@@ -346,63 +349,54 @@
             renderBoard();
         });
 
-        // Слухаємо дії (захист від зациклення)
+        // Слухаємо дії для логування (без зациклення)
         let lastActionTime = 0;
         db.ref('whoami_action').on('value', (snapshot) => {
             if (!snapshot.exists()) return;
             const action = snapshot.val();
             
-            // Якщо дія стара або від нас самих - ігноруємо, 
-            // оскільки стан оновиться через whoami_state
             if (action.timestamp <= lastActionTime) return;
-            const isRemoteAction = action.senderId !== myName;
+            lastActionTime = action.timestamp;
             
+            const isRemoteAction = action.senderId !== safeMyName;
             if (isRemoteAction) {
                 console.log("Отримана дія від:", action.senderId, action.type);
             }
         });
 
-        function pushAction(type, data = {}) {
-            const timestamp = Date.now();
-            lastActionTime = timestamp;
-
-            const actionObj = { senderId: myName, timestamp: timestamp, type: type, data: data };
-            
-            if (isFirebaseConnected) {
-                db.ref('whoami_action').set(actionObj);
-            }
-
-            // Застосовуємо логіку до стану
-            if (type === 'DRAW_CARD') {
-                gameState.players[myName] = data.cardUrl;
-            } else if (type === 'REVEAL') {
-                gameState.reveal = true;
-            } else if (type === 'RESET') {
-                gameState.players = {};
-                gameState.reveal = false;
-            }
-
-            // Синхронізуємо стан
-            if (isFirebaseConnected) {
-                db.ref('whoami_state').set(gameState);
-            } else {
-                renderBoard(); // Робота без підключення
-            }
-        }
-
         function drawCard() {
-            // Згідно з вказівками елементи від ~9 до 60.
+            // Генеруємо номер картки від 9 до 60
             const cardNum = Math.floor(Math.random() * 52) + 9;
             const url = `kartka_${cardNum}.webp`;
-            pushAction('DRAW_CARD', { cardUrl: url });
+            
+            if (isFirebaseConnected) {
+                // Точкове оновлення лише власної картки, щоб не перезаписати інших гравців
+                db.ref(`whoami_state/players/${safeMyName}`).set(url);
+                db.ref('whoami_action').set({ senderId: safeMyName, timestamp: Date.now(), type: 'DRAW_CARD', data: { cardUrl: url } });
+            } else {
+                gameState.players[safeMyName] = url;
+                renderBoard();
+            }
         }
 
         function revealCards() {
-            pushAction('REVEAL');
+            if (isFirebaseConnected) {
+                db.ref('whoami_state/reveal').set(true);
+                db.ref('whoami_action').set({ senderId: safeMyName, timestamp: Date.now(), type: 'REVEAL' });
+            } else {
+                gameState.reveal = true;
+                renderBoard();
+            }
         }
 
         function resetGame() {
-            pushAction('RESET');
+            if (isFirebaseConnected) {
+                db.ref('whoami_state').set({ reveal: false, players: {} });
+                db.ref('whoami_action').set({ senderId: safeMyName, timestamp: Date.now(), type: 'RESET' });
+            } else {
+                gameState = { players: {}, reveal: false };
+                renderBoard();
+            }
         }
 
         function renderBoard() {
@@ -415,11 +409,13 @@
 
                 const nameLabel = document.createElement('div');
                 nameLabel.className = 'player-name';
-                nameLabel.textContent = playerName;
+                // Повертаємо оригінальне ім'я для відображення, якщо воно було змінене
+                nameLabel.textContent = playerName === safeMyName ? myName : playerName; 
                 block.appendChild(nameLabel);
 
+                // ЛОГІКА ВІДОБРАЖЕННЯ: 
                 // Якщо це моя картка і всі ще не відкриті - ховаємо її, інші картки показуємо відкрито
-                if (playerName === myName && !gameState.reveal) {
+                if (playerName === safeMyName && !gameState.reveal) {
                     const hiddenDiv = document.createElement('div');
                     hiddenDiv.className = 'hidden-card';
                     hiddenDiv.innerHTML = '<span>❓</span>Це твоя картка.<br>Ти її не бачиш, поки інші вгадують або доки не відкриють всі картки!';
@@ -444,13 +440,11 @@
         const bgBaseUrl = "https://olgazheltvai2.github.io/images/backgrounds/background_";
         let validBackgrounds = [];
 
-        // Відновлюємо фон при завантаженні (спочатку локально для швидкості)
         const savedBg = localStorage.getItem('mySavedGameBg');
         if (savedBg) {
             document.body.style.backgroundImage = `url('${savedBg}')`;
         }
 
-        // Синхронізація фону через Firebase
         db.ref('game_theme').on('value', (snapshot) => {
             const themeUrl = snapshot.val();
             if (themeUrl) {
@@ -535,7 +529,7 @@
         // 5. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (РАДАР)
         // ==========================================
         const tabId = 'tab_' + Math.random().toString(36).substr(2, 9);
-        const myRef = db.ref(`online_users/${myName}/${tabId}`);
+        const myRef = db.ref(`online_users/${safeMyName}/${tabId}`);
 
         db.ref('.info/connected').on('value', (snap) => {
             if (snap.val() === true) {
@@ -548,15 +542,13 @@
             myRef.remove();
         });
 
-        // Слухаємо примусове оновлення сторінки
         db.ref('force_refresh').on('value', (snapshot) => {
             if (snapshot.val() === true) {
                 window.location.reload();
             }
         });
 
-        // Слухаємо блокування конкретного учня
-        db.ref(`blocked_users/${myName}`).on('value', (snapshot) => {
+        db.ref(`blocked_users/${safeMyName}`).on('value', (snapshot) => {
             const overlay = document.getElementById('block-overlay');
             if (snapshot.val() === true) {
                 overlay.style.display = 'flex';
@@ -565,7 +557,6 @@
             }
         });
 
-        // Механізм переходу в лобі з імунітетом першої секунди
         let hasImmunity = true;
         setTimeout(() => { hasImmunity = false; }, 1500);
 
