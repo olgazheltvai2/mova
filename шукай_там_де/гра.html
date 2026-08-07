@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Інтерактивна гра: Знайди об'єкт</title>
+
+    <!-- Firebase Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* БАЗОВІ СТИЛІ ТА ШРИФТ */
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ПРОЗОРІ КОНТЕЙНЕРИ ІГРИ */
+        #game-ui {
+            position: absolute;
+            top: 5%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 800px;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none; /* Щоб не блокувати кліки по картинці */
+        }
+        #question-display {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 15px;
+            padding: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            border: 2px solid rgba(255,255,255,0.4);
+            transition: all 0.3s ease;
+        }
+
+        /* КОНТЕЙНЕР ЗОБРАЖЕННЯ */
+        #image-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 1000px;
+            height: 80vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 5;
+        }
+        #main-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            cursor: crosshair;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        
+        /* ЕФЕКТ ФІДБЕКУ ПРИ ЗНАХОДЖЕННІ */
+        .feedback-ripple {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle, rgba(0,255,0,0.8) 0%, rgba(0,255,0,0) 70%);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            animation: rippleAnim 1s ease-out forwards;
+            pointer-events: none;
+            z-index: 20;
+        }
+        @keyframes rippleAnim {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(3); opacity: 0.8; }
+            100% { transform: translate(-50%, -50%) scale(5); opacity: 0; }
+        }
+
+        /* ІНСТРУМЕНТ КООРДИНАТОР (ДЛЯ ВЧИТЕЛЯ) */
+        #dev-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: #0f0;
+            padding: 10px;
+            font-size: 14px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+
+        /* THEME MANAGER UI */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(5px);
+            border: 2px solid white;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            transition: transform 0.2s;
+        }
+        #theme-btn:active { transform: scale(0.9); }
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 600px;
+            max-height: 60vh;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid white;
+            border-radius: 15px;
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+        }
+        .theme-item {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            cursor: pointer;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid transparent;
+        }
+        .theme-item:hover { border-color: #fff; }
+        .theme-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .theme-item span {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            font-size: 12px;
+            text-align: center;
+            padding: 4px 0;
+            font-weight: bold;
+        }
+        #theme-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* БЛОК ДОСТУПУ (ЗАГЛУШКА) */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 99999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #block-overlay h1 {
+            color: red;
+            font-size: 40px;
+            text-align: center;
+            margin: 0 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 5px black;
+        }
+
+        /* АДАПТИВНІСТЬ */
+        @media (max-width: 600px) {
+            #question-display { font-size: 18px; padding: 15px; }
+            #image-container { height: 70vh; width: 95%; top: 55%; }
+            .theme-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ІНСТРУМЕНТ КООРДИНАТОР -->
+    <div id="dev-panel">
+        Клікніть по картинці, щоб отримати координати<br>
+        Останній клік: <span id="dev-coords">X: 0%, Y: 0%</span>
+    </div>
+
+    <!-- UI ІГРИ -->
+    <div id="game-ui">
+        <div id="question-display">Завантаження...</div>
+    </div>
+
+    <!-- КОНТЕЙНЕР ІГРОВОГО ПОЛЯ -->
+    <div id="image-container">
+        <!-- Змініть шлях на ваш фон.png -->
+        <img id="main-image" src="фон.png" alt="Ігрове поле">
+        <div id="ripple-container"></div>
+    </div>
+
+    <!-- THEME MANAGER UI -->
+    <div id="theme-btn">⚙️</div>
+    <div id="theme-modal">
+        <div id="theme-close">×</div>
+        <h2 style="color:white; text-align:center; margin-top:0;">Виберіть фон</h2>
+        <div class="theme-grid" id="theme-grid"></div>
+    </div>
+
+    <!-- ЕКРАН-ЗАГЛУШКА -->
+    <div id="block-overlay">
+        <h1>Зачекай! Зараз не твій урок.</h1>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. ДАНІ ГРИ ТА КООРДИНАТИ
+        // ==========================================
+        // x та y - це координати центру об'єкта у відсотках від ширини та висоти картинки
+        // radius - радіус чутливості кліку у відсотках (наскільки точно треба попасти)
+        const questionsData = [
+            { id: 1, text: "Шукай там, де холодно.", x: 15, y: 20, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3" },
+            { id: 2, text: "Шукай там, де відпочивають.", x: 30, y: 50, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2001/2001-preview.mp3" },
+            { id: 3, text: "Шукай там, де говорять.", x: 45, y: 10, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2002/2002-preview.mp3" },
+            { id: 4, text: "Шукай там, де чисто.", x: 60, y: 80, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3" },
+            { id: 5, text: "Шукай там, де реклама.", x: 75, y: 40, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2004/2004-preview.mp3" },
+            { id: 6, text: "Шукай там, де біжить час.", x: 10, y: 90, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2005/2005-preview.mp3" },
+            { id: 7, text: "Шукай там, де є другий ти.", x: 85, y: 15, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2006/2006-preview.mp3" },
+            { id: 8, text: "Шукай там, де смачно.", x: 50, y: 50, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2007/2007-preview.mp3" },
+            { id: 9, text: "Шукай там, де смердить.", x: 90, y: 90, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2008/2008-preview.mp3" },
+            { id: 10, text: "Шукай там, де небезпечно.", x: 5, y: 50, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2009/2009-preview.mp3" }
+        ];
+
+        let availableQuestions = [...questionsData];
+        let currentQuestion = null;
+        let isGameFinished = false;
+
+        // ==========================================
+        // 2. ІДЕНТИФІКАЦІЯ
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = "Гість_" + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const senderId = myName + "_" + tabId;
+
+        // ==========================================
+        // 3. FIREBASE ІНІЦІАЛІЗАЦІЯ
+        // ==========================================
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // ==========================================
+        // 4. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (РАДАР ТА БЛОКУВАННЯ)
+        // ==========================================
+        const radarRef = db.ref(`online_users/${myName}/${tabId}`);
+        const connectedRef = db.ref('.info/connected');
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                radarRef.set({ timestamp: firebase.database.ServerValue.TIMESTAMP });
+                radarRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => { radarRef.remove(); });
+
+        db.ref('force_refresh').on('value', (snap) => {
+            if(snap.val()) {
+                const now = Date.now();
+                if(now - snap.val() < 5000) window.location.reload();
+            }
+        });
+
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        let immunity = true;
+        setTimeout(() => { immunity = false; }, 1000);
+        db.ref('current_activity').on('value', (snap) => {
+            if(immunity) return;
+            const activity = snap.val();
+            if (activity === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // ==========================================
+        // 5. THEME MANAGER З СИНХРОНІЗАЦІЄЮ
+        // ==========================================
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeClose = document.getElementById('theme-close');
+        const themeGrid = document.getElementById('theme-grid');
+        const baseUrl = "https://olgazheltvai2.github.io/images/backgrounds/";
+
+        themeBtn.onclick = () => themeModal.style.display = 'block';
+        themeClose.onclick = () => themeModal.style.display = 'none';
+
+        async function loadThemes() {
+            themeGrid.innerHTML = '';
+            for (let i = 1; i <= 1000; i++) {
+                const url = `${baseUrl}background_${i}.webp`;
+                const img = new Image();
+                img.src = url;
+                img.onload = () => {
+                    const div = document.createElement('div');
+                    div.className = 'theme-item';
+                    div.innerHTML = `<img src="${url}"><span>Фон ${i}</span>`;
+                    div.onclick = () => {
+                        db.ref('game_theme').set(url);
+                        themeModal.style.display = 'none';
+                    };
+                    themeGrid.appendChild(div);
+                };
+                img.onerror = () => { i = 1001; }; // Перериваємо, якщо не знайдено
+            }
+        }
+        loadThemes();
+
+        db.ref('game_theme').on('value', (snap) => {
+            const url = snap.val();
+            if (url) {
+                document.body.style.backgroundImage = `url('${url}')`;
+                localStorage.setItem('mySavedGameBg', url);
+            }
+        });
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+
+        // ==========================================
+        // 6. ЛОГІКА ІГРИ ТА СИНХРОНІЗАЦІЯ ДІЙ
+        // ==========================================
+        const questionDisplay = document.getElementById('question-display');
+        const mainImage = document.getElementById('main-image');
+        const rippleContainer = document.getElementById('ripple-container');
+        const devCoords = document.getElementById('dev-coords');
+        
+        let lastActionTimestamp = 0;
+
+        function pickRandomQuestion() {
+            if (availableQuestions.length === 0) return null;
+            const randomIndex = Math.floor(Math.random() * availableQuestions.length);
+            return availableQuestions[randomIndex];
+        }
+
+        function setQuestion(questionObj) {
+            currentQuestion = questionObj;
+            if (currentQuestion) {
+                questionDisplay.innerText = currentQuestion.text;
+                questionDisplay.style.transform = 'scale(1.1)';
+                setTimeout(() => questionDisplay.style.transform = 'scale(1)', 300);
+            } else {
+                questionDisplay.innerText = "Всі предмети знайдено!";
+                triggerConfetti();
+                isGameFinished = true;
+            }
+        }
+
+        function sendGameAction(type, data) {
+            db.ref('game_action').set({
+                senderId: senderId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        // Обробка кліку по картинці
+        mainImage.addEventListener('click', (e) => {
+            if (isGameFinished || !currentQuestion) return;
+
+            const rect = mainImage.getBoundingClientRect();
+            const clickX = ((e.clientX - rect.left) / rect.width) * 100;
+            const clickY = ((e.clientY - rect.top) / rect.height) * 100;
+
+            // Виведення для розробника (Вчителя)
+            devCoords.innerText = `X: ${clickX.toFixed(2)}%, Y: ${clickY.toFixed(2)}%`;
+
+            // Перевірка влучання (за допомогою теореми Піфагора для кола)
+            const dx = clickX - currentQuestion.x;
+            const dy = clickY - currentQuestion.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+
+            if (distance <= currentQuestion.radius) {
+                // Влучання! Видаляємо питання зі списку
+                availableQuestions = availableQuestions.filter(q => q.id !== currentQuestion.id);
+                const nextQ = pickRandomQuestion();
+                
+                sendGameAction('target_found', {
+                    clickX: clickX,
+                    clickY: clickY,
+                    soundUrl: currentQuestion.sound,
+                    nextQuestionId: nextQ ? nextQ.id : null
+                });
+            }
+        });
+
+        function playSound(url) {
+            const audio = new Audio(url);
+            audio.volume = 0.5;
+            audio.play().catch(e => console.log("Аудіо заблоковано браузером", e));
+        }
+
+        function showRipple(xPercent, yPercent) {
+            const ripple = document.createElement('div');
+            ripple.className = 'feedback-ripple';
+            // Позиціонуємо відносно картинки
+            ripple.style.left = `${xPercent}%`;
+            ripple.style.top = `${yPercent}%`;
+            mainImage.parentElement.appendChild(ripple);
+            
+            setTimeout(() => { ripple.remove(); }, 1000);
+        }
+
+        function triggerConfetti() {
+            var duration = 3 * 1000;
+            var end = Date.now() + duration;
+            (function frame() {
+                confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 }, colors: ['#ff0000', '#00ff00', '#0000ff'] });
+                confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 }, colors: ['#ff0000', '#00ff00', '#0000ff'] });
+                if (Date.now() < end) requestAnimationFrame(frame);
+            }());
+        }
+
+        // Слухач дій через Firebase
+        db.ref('game_action').on('value', (snap) => {
+            const action = snap.val();
+            if (!action) return;
+            
+            const isRemoteAction = action.senderId !== senderId;
+            // Захист від старих дій при першому завантаженні та зациклень
+            if (action.timestamp <= lastActionTimestamp) return;
+            lastActionTimestamp = action.timestamp;
+
+            if (action.type === 'start_game') {
+                const startQ = questionsData.find(q => q.id === action.data.firstQuestionId);
+                availableQuestions = questionsData.filter(q => q.id !== action.data.firstQuestionId);
+                setQuestion(startQ);
+            } 
+            else if (action.type === 'target_found') {
+                showRipple(action.data.clickX, action.data.clickY);
+                playSound(action.data.soundUrl);
+                
+                // Встановлюємо наступне питання синхронно для всіх
+                if (action.data.nextQuestionId) {
+                    const nextQ = questionsData.find(q => q.id === action.data.nextQuestionId);
+                    availableQuestions = availableQuestions.filter(q => q.id !== nextQ.id);
+                    setQuestion(nextQ);
+                } else {
+                    setQuestion(null); // Кінець гри
+                }
+            }
+        });
+
+        // Ініціалізація першого запуску
+        db.ref('game_action').once('value').then(snap => {
+            const action = snap.val();
+            const now = Date.now();
+            // Якщо гра ще не почалась або дія була дуже давно (більше години)
+            if (!action || (now - action.timestamp > 3600000)) {
+                const firstQ = pickRandomQuestion();
+                sendGameAction('start_game', { firstQuestionId: firstQ.id });
+            }
+        });
+
+    </script>
+</body>
+</html>
