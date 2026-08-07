@@ -279,7 +279,7 @@
         let startX, startY, initialLeft, initialTop;
 
         function onDragStart(e) {
-            if (e.target.id === 'next-btn') return; // Кнопка має натискатися, а не тягнутися
+            if (e.target.id === 'next-btn') return;
             isDragging = true;
             
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
@@ -289,7 +289,6 @@
             startY = clientY;
             
             const rect = gameUI.getBoundingClientRect();
-            // Скидаємо transform і переходимо на жорсткі координати, щоб вікно не "стрибало"
             gameUI.style.transform = 'none';
             gameUI.style.left = rect.left + 'px';
             gameUI.style.top = rect.top + 'px';
@@ -300,7 +299,7 @@
 
         function onDragMove(e) {
             if (!isDragging) return;
-            e.preventDefault(); // Запобігаємо скролу на мобільних при перетягуванні
+            e.preventDefault();
             
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
@@ -326,7 +325,7 @@
 
 
         // ==========================================
-        // 1. ДАНІ ГРИ ТА КООРДИНАТИ (Задані користувачем)
+        // 1. ДАНІ ГРИ ТА КООРДИНАТИ
         // ==========================================
         const questionsData = [
             { id: 1, text: "Шукай там, де холодно.", x: 52.23, y: 36.85, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3" },
@@ -344,6 +343,7 @@
         let availableQuestions = [...questionsData];
         let currentQuestion = null;
         let isGameFinished = false;
+        let isGameStarted = false; // Маркер старту гри
 
         // ==========================================
         // 2. ІДЕНТИФІКАЦІЯ
@@ -451,7 +451,28 @@
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 type: type,
                 data: data
-            });
+            }).catch(e => console.log("Офлайн режим. Дані не відправлено.", e));
+        }
+
+        // Універсальна обробка дій (і для локальних кліків, і для вхідних від Firebase)
+        function processActionLocally(type, data) {
+            // Завжди синхронізуємо пул питань, щоб нові гравці бачили актуальний стан
+            if (data.availableIds) {
+                availableQuestions = questionsData.filter(q => data.availableIds.includes(q.id));
+            }
+
+            if (type === 'start_game') {
+                const startQ = questionsData.find(q => q.id === data.firstQuestionId);
+                setQuestion(startQ);
+            } 
+            else if (type === 'target_found' || type === 'skip_question') {
+                if (type === 'target_found') {
+                    showRipple(data.clickX, data.clickY);
+                    playSound(data.soundUrl);
+                }
+                const nextQ = data.nextQuestionId ? questionsData.find(q => q.id === data.nextQuestionId) : null;
+                setQuestion(nextQ);
+            }
         }
 
         // Обробка кнопки "Наступне питання"
@@ -461,9 +482,13 @@
             availableQuestions = availableQuestions.filter(q => q.id !== currentQuestion.id);
             const nextQ = pickRandomQuestion();
             
-            sendGameAction('skip_question', {
-                nextQuestionId: nextQ ? nextQ.id : null
-            });
+            const data = {
+                nextQuestionId: nextQ ? nextQ.id : null,
+                availableIds: availableQuestions.map(q => q.id)
+            };
+            
+            processActionLocally('skip_question', data); // Миттєве застосування локально
+            sendGameAction('skip_question', data);       // Відправка іншим гравцям
         });
 
         // Обробка кліку по картинці
@@ -474,22 +499,24 @@
             const clickX = ((e.clientX - rect.left) / rect.width) * 100;
             const clickY = ((e.clientY - rect.top) / rect.height) * 100;
 
-            // Перевірка влучання (за теоремою Піфагора)
             const dx = clickX - currentQuestion.x;
             const dy = clickY - currentQuestion.y;
             const distance = Math.sqrt(dx*dx + dy*dy);
 
             if (distance <= currentQuestion.radius) {
-                // Влучання! Готуємо наступне питання
                 availableQuestions = availableQuestions.filter(q => q.id !== currentQuestion.id);
                 const nextQ = pickRandomQuestion();
                 
-                sendGameAction('target_found', {
+                const data = {
                     clickX: clickX,
                     clickY: clickY,
                     soundUrl: currentQuestion.sound,
-                    nextQuestionId: nextQ ? nextQ.id : null
-                });
+                    nextQuestionId: nextQ ? nextQ.id : null,
+                    availableIds: availableQuestions.map(q => q.id)
+                };
+                
+                processActionLocally('target_found', data); // Миттєве застосування локально
+                sendGameAction('target_found', data);       // Відправка іншим гравцям
             }
         });
 
@@ -518,48 +545,62 @@
             }());
         }
 
-        // Слухач дій через Firebase
+        // ==========================================
+        // ІНІЦІАЛІЗАЦІЯ ТА СЛУХАЧ FIREBASE
+        // ==========================================
+        function startNewGame() {
+            if (isGameStarted) return;
+            isGameStarted = true;
+            availableQuestions = [...questionsData];
+            const firstQ = pickRandomQuestion();
+            availableQuestions = availableQuestions.filter(q => q.id !== firstQ.id);
+            
+            const data = {
+                firstQuestionId: firstQ.id,
+                availableIds: availableQuestions.map(q => q.id)
+            };
+            
+            processActionLocally('start_game', data);
+            sendGameAction('start_game', data);
+        }
+
+        // 1. Слухаємо всі майбутні зміни
         db.ref('game_action').on('value', (snap) => {
             const action = snap.val();
             if (!action) return;
             
+            // Ігноруємо старі дії, щоб уникнути зациклення
             if (action.timestamp <= lastActionTimestamp) return;
             lastActionTimestamp = action.timestamp;
+            isGameStarted = true;
 
-            if (action.type === 'start_game') {
-                const startQ = questionsData.find(q => q.id === action.data.firstQuestionId);
-                availableQuestions = questionsData.filter(q => q.id !== action.data.firstQuestionId);
-                setQuestion(startQ);
-            } 
-            else if (action.type === 'target_found' || action.type === 'skip_question') {
-                
-                if (action.type === 'target_found') {
-                    showRipple(action.data.clickX, action.data.clickY);
-                    playSound(action.data.soundUrl);
-                }
-
-                if (currentQuestion) {
-                    availableQuestions = availableQuestions.filter(q => q.id !== currentQuestion.id);
-                }
-                
-                if (action.data.nextQuestionId) {
-                    const nextQ = questionsData.find(q => q.id === action.data.nextQuestionId);
-                    setQuestion(nextQ);
-                } else {
-                    setQuestion(null);
-                }
+            // Відхиляємо свої ж події, адже ми їх вже локально обробили миттєво
+            const isRemoteAction = action.senderId !== senderId;
+            if (isRemoteAction) {
+                processActionLocally(action.type, action.data);
             }
         });
 
-        // Ініціалізація першого запуску
+        // 2. Перевірка при старті сторінки (якщо база порожня або дія стара)
         db.ref('game_action').once('value').then(snap => {
             const action = snap.val();
             const now = Date.now();
-            if (!action || (now - action.timestamp > 3600000)) {
-                const firstQ = pickRandomQuestion();
-                sendGameAction('start_game', { firstQuestionId: firstQ.id });
-            }
+            // Якщо дії взагалі немає АБО вона старіша за 1 годину -> Почати нову гру
+            if (!action || !action.timestamp || (now - action.timestamp > 3600000)) {
+                startNewGame();
+            } 
+            // Якщо гра актуальна, `on('value')` підхопить її самостійно завдяки sync-пакету
+        }).catch(e => {
+            // Якщо Firebase заблоковано (офлайн)
+            startNewGame();
         });
+
+        // 3. Запасний парашут: якщо з'єднання висить вічно
+        setTimeout(() => {
+            if (!isGameStarted) {
+                startNewGame();
+            }
+        }, 2500);
 
         // ==========================================
         // 6. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ
