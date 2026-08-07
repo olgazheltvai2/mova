@@ -282,8 +282,8 @@
             if (e.target.id === 'next-btn') return;
             isDragging = true;
             
-            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            const clientX = e.type.includes('mouse') ? e.clientX : (e.touches && e.touches.length > 0 ? e.touches[0].clientX : 0);
+            const clientY = e.type.includes('mouse') ? e.clientY : (e.touches && e.touches.length > 0 ? e.touches[0].clientY : 0);
             
             startX = clientX;
             startY = clientY;
@@ -301,8 +301,8 @@
             if (!isDragging) return;
             e.preventDefault();
             
-            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            const clientX = e.type.includes('mouse') ? e.clientX : (e.touches && e.touches.length > 0 ? e.touches[0].clientX : 0);
+            const clientY = e.type.includes('mouse') ? e.clientY : (e.touches && e.touches.length > 0 ? e.touches[0].clientY : 0);
             
             const dx = clientX - startX;
             const dy = clientY - startY;
@@ -363,14 +363,24 @@
         const senderId = myName + "_" + tabId;
 
         // ==========================================
-        // 3. FIREBASE ІНІЦІАЛІЗАЦІЯ
+        // 3. БЕЗПЕЧНА FIREBASE ІНІЦІАЛІЗАЦІЯ
         // ==========================================
-        const firebaseConfig = {
-            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
-            projectId: "lesson-13c44"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        let db = null;
+        try {
+            const firebaseConfig = {
+                databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+                projectId: "lesson-13c44"
+            };
+            // Перевіряємо чи завантажився скрипт Firebase
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+            } else {
+                console.warn("Скрипт Firebase заблоковано браузером. Гра працюватиме локально.");
+            }
+        } catch (error) {
+            console.error("Помилка підключення до Firebase:", error);
+        }
 
         // ==========================================
         // 4. THEME MANAGER З СИНХРОНІЗАЦІЄЮ
@@ -401,7 +411,8 @@
                     div.className = 'theme-item';
                     div.innerHTML = `<img src="${url}"><span>Фон ${i}</span>`;
                     div.onclick = () => {
-                        db.ref('game_theme').set(url);
+                        if (db) db.ref('game_theme').set(url).catch(()=>{});
+                        else applyThemeLocally(url); // Для офлайн режиму
                         themeModal.style.display = 'none';
                     };
                     themeGrid.appendChild(div);
@@ -412,15 +423,19 @@
         }
         loadThemes();
 
-        db.ref('game_theme').on('value', (snap) => {
-            const url = snap.val();
-            if (url) {
-                document.body.style.backgroundImage = `url('${url}')`;
-                localStorage.setItem('mySavedGameBg', url);
-            }
-        });
+        function applyThemeLocally(url) {
+            document.body.style.backgroundImage = `url('${url}')`;
+            localStorage.setItem('mySavedGameBg', url);
+        }
+
+        if (db) {
+            db.ref('game_theme').on('value', (snap) => {
+                const url = snap.val();
+                if (url) applyThemeLocally(url);
+            });
+        }
         const savedBg = localStorage.getItem('mySavedGameBg');
-        if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+        if (savedBg) applyThemeLocally(savedBg);
 
         // ==========================================
         // 5. ЛОГІКА ІГРИ ТА СИНХРОНІЗАЦІЯ ДІЙ
@@ -453,6 +468,7 @@
         }
 
         function sendGameAction(type, data) {
+            if (!db) return;
             db.ref('game_action').set({
                 senderId: senderId,
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
@@ -473,7 +489,6 @@
                 availableIds: availableQuestions.map(q => q.id)
             };
             
-            // Локальне застосування
             setQuestion(nextQ);
             sendGameAction('skip_question', data);
         });
@@ -483,8 +498,12 @@
             if (isGameFinished || !currentQuestion) return;
 
             const rect = mainImage.getBoundingClientRect();
-            const clickX = ((e.clientX - rect.left) / rect.width) * 100;
-            const clickY = ((e.clientY - rect.top) / rect.height) * 100;
+            // Захист для сенсорних екранів
+            const clientX = e.type.includes('mouse') ? e.clientX : (e.touches && e.touches.length > 0 ? e.touches[0].clientX : 0);
+            const clientY = e.type.includes('mouse') ? e.clientY : (e.touches && e.touches.length > 0 ? e.touches[0].clientY : 0);
+
+            const clickX = ((clientX - rect.left) / rect.width) * 100;
+            const clickY = ((clientY - rect.top) / rect.height) * 100;
 
             const dx = clickX - currentQuestion.x;
             const dy = clickY - currentQuestion.y;
@@ -502,7 +521,6 @@
                     availableIds: availableQuestions.map(q => q.id)
                 };
                 
-                // Локальне застосування
                 showRipple(clickX, clickY);
                 playSound(currentQuestion.sound);
                 setQuestion(nextQ);
@@ -537,7 +555,7 @@
         }
 
         // ==========================================
-        // НОВА, СТАБІЛЬНА ЛОГІКА ІНІЦІАЛІЗАЦІЇ
+        // СТАБІЛЬНА ЛОГІКА ІНІЦІАЛІЗАЦІЇ ІЗ ЗАХИСТОМ ВІД ЗБОЇВ
         // ==========================================
         function startNewGame() {
             if (isGameStarted) return;
@@ -556,111 +574,125 @@
             sendGameAction('start_game', data);
         }
 
-        // Слухаємо базу даних безперервно
-        db.ref('game_action').on('value', (snap) => {
-            const action = snap.val();
-            
-            // 1. База порожня (чистий старт)
-            if (!action) {
-                if (!isGameStarted) startNewGame();
-                return;
-            }
-
-            // 2. Перше завантаження (відновлення стану, якщо ви оновили сторінку)
+        // ЗАПОБІЖНИК: Якщо Firebase не відповідає або заблокований, гра запуститься через 1.5 сек
+        const fallbackTimer = setTimeout(() => {
             if (!isGameStarted) {
-                const now = Date.now();
-                if (now - action.timestamp < 3600000) { // Стан свіжий (< 1 години)
-                    isGameStarted = true;
-                    lastActionTimestamp = action.timestamp;
-
-                    // Відновлюємо масив питань
-                    if (action.data && action.data.availableIds) {
-                        availableQuestions = questionsData.filter(q => action.data.availableIds.includes(q.id));
-                    }
-
-                    // Відновлюємо поточне питання
-                    if (action.type === 'start_game') {
-                        const startQ = questionsData.find(q => q.id === action.data.firstQuestionId);
-                        setQuestion(startQ);
-                    } else if (action.type === 'target_found' || action.type === 'skip_question') {
-                        const nextQ = action.data.nextQuestionId ? questionsData.find(q => q.id === action.data.nextQuestionId) : null;
-                        setQuestion(nextQ);
-                    }
-                } else {
-                    // Стан старий, генеруємо нову гру
-                    startNewGame();
-                }
-                return; // Зупиняємо виконання, бо це ініціалізація
-            }
-
-            // 3. Звичайний процес гри (захист від дублювання та циклів)
-            if (action.timestamp <= lastActionTimestamp) return;
-            lastActionTimestamp = action.timestamp;
-
-            // Відхиляємо свої дії, ми їх вже обробили миттєво
-            const isRemoteAction = action.senderId !== senderId;
-            if (isRemoteAction) {
-                
-                if (action.data && action.data.availableIds) {
-                    availableQuestions = questionsData.filter(q => action.data.availableIds.includes(q.id));
-                }
-
-                if (action.type === 'start_game') {
-                    const startQ = questionsData.find(q => q.id === action.data.firstQuestionId);
-                    setQuestion(startQ);
-                } else if (action.type === 'target_found' || action.type === 'skip_question') {
-                    
-                    if (action.type === 'target_found') {
-                        showRipple(action.data.clickX, action.data.clickY);
-                        playSound(action.data.soundUrl);
-                    }
-                    
-                    const nextQ = action.data.nextQuestionId ? questionsData.find(q => q.id === action.data.nextQuestionId) : null;
-                    setQuestion(nextQ);
-                }
-            }
-        });
-
-        // 4. Запасний парашут: якщо Firebase не відповів за 2.5 секунди (офлайн/блок)
-        setTimeout(() => {
-            if (!isGameStarted) {
+                console.warn("Примусовий старт: перевищено час очікування бази даних.");
                 startNewGame();
             }
-        }, 2500);
+        }, 1500);
+
+        if (db) {
+            db.ref('game_action').on('value', (snap) => {
+                try {
+                    const action = snap.val();
+                    
+                    if (!action || !action.timestamp || !action.type) {
+                        if (!isGameStarted) startNewGame();
+                        return;
+                    }
+
+                    const now = Date.now();
+                    
+                    if (!isGameStarted) {
+                        if (now - action.timestamp < 3600000) { 
+                            isGameStarted = true;
+                            lastActionTimestamp = action.timestamp;
+
+                            // Безпечне відновлення масиву (захист від старих баз)
+                            if (action.data && Array.isArray(action.data.availableIds)) {
+                                availableQuestions = questionsData.filter(q => action.data.availableIds.includes(q.id));
+                            } else {
+                                availableQuestions = [...questionsData]; // Скидання, якщо структура бази стара
+                            }
+
+                            // Безпечне відновлення поточного питання
+                            let restoredQ = null;
+                            if (action.type === 'start_game' && action.data && action.data.firstQuestionId) {
+                                restoredQ = questionsData.find(q => q.id === action.data.firstQuestionId);
+                            } else if ((action.type === 'target_found' || action.type === 'skip_question') && action.data && action.data.nextQuestionId) {
+                                restoredQ = questionsData.find(q => q.id === action.data.nextQuestionId);
+                            }
+                            
+                            // Якщо питання не знайшлося в базі, генеруємо нове
+                            if (!restoredQ && availableQuestions.length > 0) {
+                                restoredQ = pickRandomQuestion();
+                                availableQuestions = availableQuestions.filter(q => q.id !== restoredQ.id);
+                            }
+                            
+                            setQuestion(restoredQ);
+                        } else {
+                            startNewGame(); // Стан старий, генеруємо нову гру
+                        }
+                        return;
+                    }
+
+                    // Звичайний процес гри
+                    if (action.timestamp <= lastActionTimestamp) return;
+                    lastActionTimestamp = action.timestamp;
+
+                    const isRemoteAction = action.senderId !== senderId;
+                    if (isRemoteAction) {
+                        if (action.data && Array.isArray(action.data.availableIds)) {
+                            availableQuestions = questionsData.filter(q => action.data.availableIds.includes(q.id));
+                        }
+
+                        let nextQ = null;
+                        if (action.type === 'start_game' && action.data && action.data.firstQuestionId) {
+                            nextQ = questionsData.find(q => q.id === action.data.firstQuestionId);
+                        } else if (action.type === 'target_found' || action.type === 'skip_question') {
+                            if (action.type === 'target_found' && action.data) {
+                                showRipple(action.data.clickX, action.data.clickY);
+                                if (action.data.soundUrl) playSound(action.data.soundUrl);
+                            }
+                            if (action.data && action.data.nextQuestionId) {
+                                nextQ = questionsData.find(q => q.id === action.data.nextQuestionId);
+                            }
+                        }
+                        setQuestion(nextQ);
+                    }
+                } catch (err) {
+                    console.error("Критична помилка обробки даних з Firebase. Примусове перезавантаження.", err);
+                    if (!isGameStarted) startNewGame();
+                }
+            });
+        }
 
         // ==========================================
         // 6. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ
         // ==========================================
-        const radarRef = db.ref(`online_users/${myName}/${tabId}`);
-        const connectedRef = db.ref('.info/connected');
-        connectedRef.on('value', (snap) => {
-            if (snap.val() === true) {
-                radarRef.set({ timestamp: firebase.database.ServerValue.TIMESTAMP });
-                radarRef.onDisconnect().remove();
-            }
-        });
-        window.addEventListener('beforeunload', () => { radarRef.remove(); });
+        if (db) {
+            const radarRef = db.ref(`online_users/${myName}/${tabId}`);
+            const connectedRef = db.ref('.info/connected');
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    radarRef.set({ timestamp: firebase.database.ServerValue.TIMESTAMP });
+                    radarRef.onDisconnect().remove();
+                }
+            });
+            window.addEventListener('beforeunload', () => { radarRef.remove(); });
 
-        db.ref('force_refresh').on('value', (snap) => {
-            if(snap.val()) {
-                const now = Date.now();
-                if(now - snap.val() < 5000) window.location.reload();
-            }
-        });
+            db.ref('force_refresh').on('value', (snap) => {
+                if(snap.val()) {
+                    const now = Date.now();
+                    if(now - snap.val() < 5000) window.location.reload();
+                }
+            });
 
-        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
-            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
-        });
+            db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+                document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+            });
 
-        let immunity = true;
-        setTimeout(() => { immunity = false; }, 1000);
-        db.ref('current_activity').on('value', (snap) => {
-            if(immunity) return;
-            const activity = snap.val();
-            if (activity === 'lobby') {
-                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
-            }
-        });
+            let immunity = true;
+            setTimeout(() => { immunity = false; }, 1000);
+            db.ref('current_activity').on('value', (snap) => {
+                if(immunity) return;
+                const activity = snap.val();
+                if (activity === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }
     </script>
 </body>
 </html>
