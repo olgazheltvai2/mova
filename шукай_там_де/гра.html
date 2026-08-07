@@ -373,7 +373,7 @@
         const db = firebase.database();
 
         // ==========================================
-        // 4. THEME MANAGER З СИНХРОНІЗАЦІЄЮ (ВИПРАВЛЕНО ДЛЯ GITHUB)
+        // 4. THEME MANAGER З СИНХРОНІЗАЦІЄЮ
         // ==========================================
         const themeBtn = document.getElementById('theme-btn');
         const themeModal = document.getElementById('theme-modal');
@@ -389,7 +389,6 @@
             for (let i = 1; i <= 1000; i++) {
                 const url = `${baseUrl}background_${i}.webp`;
                 
-                // Асинхронне завантаження по черзі, щоб уникнути блокування GitHub (Rate Limit)
                 const isLoaded = await new Promise((resolve) => {
                     const img = new Image();
                     img.onload = () => resolve(true);
@@ -407,7 +406,7 @@
                     };
                     themeGrid.appendChild(div);
                 } else {
-                    break; // Зупиняємо перевірку, як тільки натрапляємо на відсутній файл (без помилок 404 у великій кількості)
+                    break;
                 }
             }
         }
@@ -462,25 +461,7 @@
             }).catch(e => console.log("Офлайн режим. Дані не відправлено.", e));
         }
 
-        function processActionLocally(type, data) {
-            if (data.availableIds) {
-                availableQuestions = questionsData.filter(q => data.availableIds.includes(q.id));
-            }
-
-            if (type === 'start_game') {
-                const startQ = questionsData.find(q => q.id === data.firstQuestionId);
-                setQuestion(startQ);
-            } 
-            else if (type === 'target_found' || type === 'skip_question') {
-                if (type === 'target_found') {
-                    showRipple(data.clickX, data.clickY);
-                    playSound(data.soundUrl);
-                }
-                const nextQ = data.nextQuestionId ? questionsData.find(q => q.id === data.nextQuestionId) : null;
-                setQuestion(nextQ);
-            }
-        }
-
+        // Обробка натискання "Наступне питання"
         nextBtn.addEventListener('click', () => {
             if (isGameFinished || !currentQuestion) return;
             
@@ -492,10 +473,12 @@
                 availableIds: availableQuestions.map(q => q.id)
             };
             
-            processActionLocally('skip_question', data);
+            // Локальне застосування
+            setQuestion(nextQ);
             sendGameAction('skip_question', data);
         });
 
+        // Обробка кліку по зображенню
         mainImage.addEventListener('click', (e) => {
             if (isGameFinished || !currentQuestion) return;
 
@@ -519,7 +502,11 @@
                     availableIds: availableQuestions.map(q => q.id)
                 };
                 
-                processActionLocally('target_found', data);
+                // Локальне застосування
+                showRipple(clickX, clickY);
+                playSound(currentQuestion.sound);
+                setQuestion(nextQ);
+
                 sendGameAction('target_found', data);
             }
         });
@@ -550,11 +537,12 @@
         }
 
         // ==========================================
-        // ІНІЦІАЛІЗАЦІЯ ТА СЛУХАЧ FIREBASE
+        // НОВА, СТАБІЛЬНА ЛОГІКА ІНІЦІАЛІЗАЦІЇ
         // ==========================================
         function startNewGame() {
             if (isGameStarted) return;
             isGameStarted = true;
+            
             availableQuestions = [...questionsData];
             const firstQ = pickRandomQuestion();
             availableQuestions = availableQuestions.filter(q => q.id !== firstQ.id);
@@ -564,34 +552,76 @@
                 availableIds: availableQuestions.map(q => q.id)
             };
             
-            processActionLocally('start_game', data);
+            setQuestion(firstQ);
             sendGameAction('start_game', data);
         }
 
+        // Слухаємо базу даних безперервно
         db.ref('game_action').on('value', (snap) => {
             const action = snap.val();
-            if (!action) return;
             
+            // 1. База порожня (чистий старт)
+            if (!action) {
+                if (!isGameStarted) startNewGame();
+                return;
+            }
+
+            // 2. Перше завантаження (відновлення стану, якщо ви оновили сторінку)
+            if (!isGameStarted) {
+                const now = Date.now();
+                if (now - action.timestamp < 3600000) { // Стан свіжий (< 1 години)
+                    isGameStarted = true;
+                    lastActionTimestamp = action.timestamp;
+
+                    // Відновлюємо масив питань
+                    if (action.data && action.data.availableIds) {
+                        availableQuestions = questionsData.filter(q => action.data.availableIds.includes(q.id));
+                    }
+
+                    // Відновлюємо поточне питання
+                    if (action.type === 'start_game') {
+                        const startQ = questionsData.find(q => q.id === action.data.firstQuestionId);
+                        setQuestion(startQ);
+                    } else if (action.type === 'target_found' || action.type === 'skip_question') {
+                        const nextQ = action.data.nextQuestionId ? questionsData.find(q => q.id === action.data.nextQuestionId) : null;
+                        setQuestion(nextQ);
+                    }
+                } else {
+                    // Стан старий, генеруємо нову гру
+                    startNewGame();
+                }
+                return; // Зупиняємо виконання, бо це ініціалізація
+            }
+
+            // 3. Звичайний процес гри (захист від дублювання та циклів)
             if (action.timestamp <= lastActionTimestamp) return;
             lastActionTimestamp = action.timestamp;
-            isGameStarted = true;
 
+            // Відхиляємо свої дії, ми їх вже обробили миттєво
             const isRemoteAction = action.senderId !== senderId;
             if (isRemoteAction) {
-                processActionLocally(action.type, action.data);
+                
+                if (action.data && action.data.availableIds) {
+                    availableQuestions = questionsData.filter(q => action.data.availableIds.includes(q.id));
+                }
+
+                if (action.type === 'start_game') {
+                    const startQ = questionsData.find(q => q.id === action.data.firstQuestionId);
+                    setQuestion(startQ);
+                } else if (action.type === 'target_found' || action.type === 'skip_question') {
+                    
+                    if (action.type === 'target_found') {
+                        showRipple(action.data.clickX, action.data.clickY);
+                        playSound(action.data.soundUrl);
+                    }
+                    
+                    const nextQ = action.data.nextQuestionId ? questionsData.find(q => q.id === action.data.nextQuestionId) : null;
+                    setQuestion(nextQ);
+                }
             }
         });
 
-        db.ref('game_action').once('value').then(snap => {
-            const action = snap.val();
-            const now = Date.now();
-            if (!action || !action.timestamp || (now - action.timestamp > 3600000)) {
-                startNewGame();
-            } 
-        }).catch(e => {
-            startNewGame();
-        });
-
+        // 4. Запасний парашут: якщо Firebase не відповів за 2.5 секунди (офлайн/блок)
         setTimeout(() => {
             if (!isGameStarted) {
                 startNewGame();
