@@ -39,7 +39,7 @@
             max-width: 900px;
             text-align: center;
             z-index: 10;
-            pointer-events: none; /* Щоб не блокувати кліки по картинці */
+            pointer-events: none;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -48,14 +48,14 @@
         
         /* КОНТРАСТНИЙ ШРИФТ ПИТАННЯ */
         #question-display {
-            background: rgba(0, 0, 0, 0.85); /* Темна контрастна підкладка */
+            background: rgba(0, 0, 0, 0.85);
             backdrop-filter: blur(5px);
             -webkit-backdrop-filter: blur(5px);
             border-radius: 15px;
             padding: 15px 30px;
             font-size: 32px;
             font-weight: 900;
-            color: #FFFF00; /* Яскраво-жовтий текст */
+            color: #FFFF00;
             text-transform: uppercase;
             letter-spacing: 1px;
             text-shadow: 
@@ -64,7 +64,7 @@
                 2px -2px 0 #000, 
                 -2px 2px 0 #000, 
                 2px 2px 0 #000,
-                0px 5px 15px rgba(0,0,0,1); /* Потужний чорний контур і тінь */
+                0px 5px 15px rgba(0,0,0,1);
             border: 3px solid #FFFF00;
             transition: transform 0.3s ease;
         }
@@ -81,7 +81,7 @@
             border-radius: 12px;
             cursor: pointer;
             box-shadow: 0 5px 15px rgba(0,0,0,0.6);
-            pointer-events: auto; /* Дозволяємо клікати, незважаючи на батьківський контейнер */
+            pointer-events: auto;
             transition: all 0.2s;
             text-shadow: 1px 1px 2px #000;
         }
@@ -106,7 +106,7 @@
         #main-image {
             width: 100%;
             height: 100%;
-            object-fit: contain; /* Зберігає пропорції без обрізки */
+            object-fit: contain;
             cursor: crosshair;
             position: relative;
         }
@@ -141,7 +141,11 @@
             border-radius: 5px;
             border: 1px solid #0f0;
             z-index: 100;
-            pointer-events: none; /* Щоб можна було клікати крізь панель, якщо вона перекриває картинку */
+            cursor: pointer; /* Тепер клікабельно */
+            transition: background 0.2s;
+        }
+        #dev-panel:active {
+            background: rgba(0,255,0,0.3);
         }
 
         /* THEME MANAGER UI */
@@ -254,8 +258,9 @@
 <body>
 
     <!-- ІНСТРУМЕНТ КООРДИНАТОР -->
-    <div id="dev-panel">
-        Клікніть по картинці для координат<br>
+    <div id="dev-panel" title="Натисніть сюди, щоб скопіювати координати">
+        1. Клікніть по картинці<br>
+        2. <b>Клікніть ТУТ, щоб скопіювати</b><br>
         <span id="dev-coords">X: 0%, Y: 0%</span>
     </div>
 
@@ -382,6 +387,7 @@
         const questionDisplay = document.getElementById('question-display');
         const nextBtn = document.getElementById('next-btn');
         const mainImage = document.getElementById('main-image');
+        const devPanel = document.getElementById('dev-panel');
         const devCoords = document.getElementById('dev-coords');
         
         let lastActionTimestamp = 0;
@@ -420,7 +426,6 @@
         nextBtn.addEventListener('click', () => {
             if (isGameFinished || !currentQuestion) return;
             
-            // Локально видаляємо поточне питання перед тим, як обрати наступне
             availableQuestions = availableQuestions.filter(q => q.id !== currentQuestion.id);
             const nextQ = pickRandomQuestion();
             
@@ -429,7 +434,7 @@
             });
         });
 
-        // Обробка кліку по картинці
+        // Обробка кліку по картинці для знаходження координат
         mainImage.addEventListener('click', (e) => {
             if (isGameFinished || !currentQuestion) return;
 
@@ -437,8 +442,11 @@
             const clickX = ((e.clientX - rect.left) / rect.width) * 100;
             const clickY = ((e.clientY - rect.top) / rect.height) * 100;
 
-            // Виведення для розробника (Вчителя)
-            devCoords.innerText = `X: ${clickX.toFixed(2)}%, Y: ${clickY.toFixed(2)}%`;
+            // Виведення для розробника та підготовка для копіювання
+            const xStr = clickX.toFixed(2);
+            const yStr = clickY.toFixed(2);
+            devCoords.innerText = `X: ${xStr}%, Y: ${yStr}%`;
+            devPanel.dataset.coords = `x: ${xStr}, y: ${yStr}`;
 
             // Перевірка влучання
             const dx = clickX - currentQuestion.x;
@@ -455,6 +463,24 @@
                     clickY: clickY,
                     soundUrl: currentQuestion.sound,
                     nextQuestionId: nextQ ? nextQ.id : null
+                });
+            }
+        });
+
+        // Обробка кліку по панелі для копіювання в буфер
+        devPanel.addEventListener('click', () => {
+            const coords = devPanel.dataset.coords;
+            if (coords) {
+                navigator.clipboard.writeText(coords).then(() => {
+                    const originalText = devCoords.innerText;
+                    devCoords.innerText = "Скопійовано!";
+                    devCoords.style.color = "#fff";
+                    setTimeout(() => { 
+                        devCoords.innerText = originalText;
+                        devCoords.style.color = "#0f0";
+                    }, 1000);
+                }).catch(err => {
+                    console.error('Не вдалося скопіювати', err);
                 });
             }
         });
@@ -504,17 +530,15 @@
                     playSound(action.data.soundUrl);
                 }
 
-                // Всі учасники видаляють поточне питання з пулу
                 if (currentQuestion) {
                     availableQuestions = availableQuestions.filter(q => q.id !== currentQuestion.id);
                 }
                 
-                // Встановлюємо наступне питання синхронно для всіх
                 if (action.data.nextQuestionId) {
                     const nextQ = questionsData.find(q => q.id === action.data.nextQuestionId);
                     setQuestion(nextQ);
                 } else {
-                    setQuestion(null); // Кінець гри
+                    setQuestion(null);
                 }
             }
         });
