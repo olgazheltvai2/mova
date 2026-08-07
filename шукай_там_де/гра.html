@@ -343,7 +343,7 @@
         let availableQuestions = [...questionsData];
         let currentQuestion = null;
         let isGameFinished = false;
-        let isGameStarted = false; // Маркер старту гри
+        let isGameStarted = false;
 
         // ==========================================
         // 2. ІДЕНТИФІКАЦІЯ
@@ -373,7 +373,7 @@
         const db = firebase.database();
 
         // ==========================================
-        // 4. THEME MANAGER З СИНХРОНІЗАЦІЄЮ
+        // 4. THEME MANAGER З СИНХРОНІЗАЦІЄЮ (ВИПРАВЛЕНО ДЛЯ GITHUB)
         // ==========================================
         const themeBtn = document.getElementById('theme-btn');
         const themeModal = document.getElementById('theme-modal');
@@ -388,9 +388,16 @@
             themeGrid.innerHTML = '';
             for (let i = 1; i <= 1000; i++) {
                 const url = `${baseUrl}background_${i}.webp`;
-                const img = new Image();
-                img.src = url;
-                img.onload = () => {
+                
+                // Асинхронне завантаження по черзі, щоб уникнути блокування GitHub (Rate Limit)
+                const isLoaded = await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => resolve(true);
+                    img.onerror = () => resolve(false);
+                    img.src = url;
+                });
+
+                if (isLoaded) {
                     const div = document.createElement('div');
                     div.className = 'theme-item';
                     div.innerHTML = `<img src="${url}"><span>Фон ${i}</span>`;
@@ -399,8 +406,9 @@
                         themeModal.style.display = 'none';
                     };
                     themeGrid.appendChild(div);
-                };
-                img.onerror = () => { i = 1001; };
+                } else {
+                    break; // Зупиняємо перевірку, як тільки натрапляємо на відсутній файл (без помилок 404 у великій кількості)
+                }
             }
         }
         loadThemes();
@@ -454,9 +462,7 @@
             }).catch(e => console.log("Офлайн режим. Дані не відправлено.", e));
         }
 
-        // Універсальна обробка дій (і для локальних кліків, і для вхідних від Firebase)
         function processActionLocally(type, data) {
-            // Завжди синхронізуємо пул питань, щоб нові гравці бачили актуальний стан
             if (data.availableIds) {
                 availableQuestions = questionsData.filter(q => data.availableIds.includes(q.id));
             }
@@ -475,7 +481,6 @@
             }
         }
 
-        // Обробка кнопки "Наступне питання"
         nextBtn.addEventListener('click', () => {
             if (isGameFinished || !currentQuestion) return;
             
@@ -487,11 +492,10 @@
                 availableIds: availableQuestions.map(q => q.id)
             };
             
-            processActionLocally('skip_question', data); // Миттєве застосування локально
-            sendGameAction('skip_question', data);       // Відправка іншим гравцям
+            processActionLocally('skip_question', data);
+            sendGameAction('skip_question', data);
         });
 
-        // Обробка кліку по картинці
         mainImage.addEventListener('click', (e) => {
             if (isGameFinished || !currentQuestion) return;
 
@@ -515,8 +519,8 @@
                     availableIds: availableQuestions.map(q => q.id)
                 };
                 
-                processActionLocally('target_found', data); // Миттєве застосування локально
-                sendGameAction('target_found', data);       // Відправка іншим гравцям
+                processActionLocally('target_found', data);
+                sendGameAction('target_found', data);
             }
         });
 
@@ -564,38 +568,30 @@
             sendGameAction('start_game', data);
         }
 
-        // 1. Слухаємо всі майбутні зміни
         db.ref('game_action').on('value', (snap) => {
             const action = snap.val();
             if (!action) return;
             
-            // Ігноруємо старі дії, щоб уникнути зациклення
             if (action.timestamp <= lastActionTimestamp) return;
             lastActionTimestamp = action.timestamp;
             isGameStarted = true;
 
-            // Відхиляємо свої ж події, адже ми їх вже локально обробили миттєво
             const isRemoteAction = action.senderId !== senderId;
             if (isRemoteAction) {
                 processActionLocally(action.type, action.data);
             }
         });
 
-        // 2. Перевірка при старті сторінки (якщо база порожня або дія стара)
         db.ref('game_action').once('value').then(snap => {
             const action = snap.val();
             const now = Date.now();
-            // Якщо дії взагалі немає АБО вона старіша за 1 годину -> Почати нову гру
             if (!action || !action.timestamp || (now - action.timestamp > 3600000)) {
                 startNewGame();
             } 
-            // Якщо гра актуальна, `on('value')` підхопить її самостійно завдяки sync-пакету
         }).catch(e => {
-            // Якщо Firebase заблоковано (офлайн)
             startNewGame();
         });
 
-        // 3. Запасний парашут: якщо з'єднання висить вічно
         setTimeout(() => {
             if (!isGameStarted) {
                 startNewGame();
