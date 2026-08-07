@@ -29,21 +29,25 @@
             flex-direction: column;
         }
 
-        /* ПРОЗОРІ КОНТЕЙНЕРИ ІГРИ */
+        /* ПРОЗОРІ КОНТЕЙНЕРИ ІГРИ ТА ПАНЕЛЬ ПИТАННЯ (ПЕРЕТЯГУЄТЬСЯ) */
         #game-ui {
             position: absolute;
             top: 2%;
             left: 50%;
             transform: translateX(-50%);
-            width: 95%;
-            max-width: 900px;
+            width: max-content;
+            max-width: 95%;
             text-align: center;
             z-index: 10;
-            pointer-events: none;
+            pointer-events: auto; /* Дозволяємо клікати та перетягувати */
+            cursor: grab; /* Курсор перетягування */
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 15px;
+        }
+        #game-ui:active {
+            cursor: grabbing;
         }
         
         /* КОНТРАСТНИЙ ШРИФТ ПИТАННЯ */
@@ -67,6 +71,7 @@
                 0px 5px 15px rgba(0,0,0,1);
             border: 3px solid #FFFF00;
             transition: transform 0.3s ease;
+            user-select: none; /* Щоб текст не виділявся при перетягуванні */
         }
 
         /* КНОПКА "НАСТУПНЕ ПИТАННЯ" */
@@ -109,6 +114,7 @@
             object-fit: contain;
             cursor: crosshair;
             position: relative;
+            pointer-events: auto;
         }
         
         /* ЕФЕКТ ФІДБЕКУ ПРИ ЗНАХОДЖЕННІ */
@@ -127,25 +133,6 @@
             0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
             50% { transform: translate(-50%, -50%) scale(4); opacity: 0.9; }
             100% { transform: translate(-50%, -50%) scale(6); opacity: 0; }
-        }
-
-        /* ІНСТРУМЕНТ КООРДИНАТОР (ДЛЯ ВЧИТЕЛЯ) */
-        #dev-panel {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.8);
-            color: #0f0;
-            padding: 10px;
-            font-size: 14px;
-            border-radius: 5px;
-            border: 1px solid #0f0;
-            z-index: 100;
-            cursor: pointer; /* Тепер клікабельно */
-            transition: background 0.2s;
-        }
-        #dev-panel:active {
-            background: rgba(0,255,0,0.3);
         }
 
         /* THEME MANAGER UI */
@@ -257,14 +244,7 @@
 </head>
 <body>
 
-    <!-- ІНСТРУМЕНТ КООРДИНАТОР -->
-    <div id="dev-panel" title="Натисніть сюди, щоб скопіювати координати">
-        1. Клікніть по картинці<br>
-        2. <b>Клікніть ТУТ, щоб скопіювати</b><br>
-        <span id="dev-coords">X: 0%, Y: 0%</span>
-    </div>
-
-    <!-- UI ІГРИ -->
+    <!-- UI ІГРИ (МОЖНА ПЕРЕТЯГУВАТИ) -->
     <div id="game-ui">
         <div id="question-display">ЗАВАНТАЖЕННЯ...</div>
         <button id="next-btn" style="display: none;">Наступне питання ➔</button>
@@ -292,19 +272,73 @@
 
     <script>
         // ==========================================
-        // 1. ДАНІ ГРИ ТА КООРДИНАТИ
+        // ЛОГІКА ПЕРЕТЯГУВАННЯ ПАНЕЛІ (DRAG & DROP)
+        // ==========================================
+        const gameUI = document.getElementById('game-ui');
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+
+        function onDragStart(e) {
+            if (e.target.id === 'next-btn') return; // Кнопка має натискатися, а не тягнутися
+            isDragging = true;
+            
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            
+            startX = clientX;
+            startY = clientY;
+            
+            const rect = gameUI.getBoundingClientRect();
+            // Скидаємо transform і переходимо на жорсткі координати, щоб вікно не "стрибало"
+            gameUI.style.transform = 'none';
+            gameUI.style.left = rect.left + 'px';
+            gameUI.style.top = rect.top + 'px';
+            
+            initialLeft = rect.left;
+            initialTop = rect.top;
+        }
+
+        function onDragMove(e) {
+            if (!isDragging) return;
+            e.preventDefault(); // Запобігаємо скролу на мобільних при перетягуванні
+            
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            
+            const dx = clientX - startX;
+            const dy = clientY - startY;
+            
+            gameUI.style.left = (initialLeft + dx) + 'px';
+            gameUI.style.top = (initialTop + dy) + 'px';
+        }
+
+        function onDragEnd() {
+            isDragging = false;
+        }
+
+        gameUI.addEventListener('mousedown', onDragStart);
+        document.addEventListener('mousemove', onDragMove, { passive: false });
+        document.addEventListener('mouseup', onDragEnd);
+
+        gameUI.addEventListener('touchstart', onDragStart, { passive: false });
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('touchend', onDragEnd);
+
+
+        // ==========================================
+        // 1. ДАНІ ГРИ ТА КООРДИНАТИ (Задані користувачем)
         // ==========================================
         const questionsData = [
-            { id: 1, text: "Шукай там, де холодно.", x: 15, y: 20, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3" },
-            { id: 2, text: "Шукай там, де відпочивають.", x: 30, y: 50, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2001/2001-preview.mp3" },
-            { id: 3, text: "Шукай там, де говорять.", x: 45, y: 10, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2002/2002-preview.mp3" },
-            { id: 4, text: "Шукай там, де чисто.", x: 60, y: 80, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3" },
-            { id: 5, text: "Шукай там, де реклама.", x: 75, y: 40, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2004/2004-preview.mp3" },
-            { id: 6, text: "Шукай там, де біжить час.", x: 10, y: 90, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2005/2005-preview.mp3" },
-            { id: 7, text: "Шукай там, де є другий ти.", x: 85, y: 15, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2006/2006-preview.mp3" },
-            { id: 8, text: "Шукай там, де смачно.", x: 50, y: 50, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2007/2007-preview.mp3" },
-            { id: 9, text: "Шукай там, де смердить.", x: 90, y: 90, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2008/2008-preview.mp3" },
-            { id: 10, text: "Шукай там, де небезпечно.", x: 5, y: 50, radius: 5, sound: "https://assets.mixkit.co/active_storage/sfx/2009/2009-preview.mp3" }
+            { id: 1, text: "Шукай там, де холодно.", x: 52.23, y: 36.85, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3" },
+            { id: 2, text: "Шукай там, де відпочивають.", x: 32.87, y: 57.02, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2001/2001-preview.mp3" },
+            { id: 3, text: "Шукай там, де говорять.", x: 12.75, y: 66.93, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2002/2002-preview.mp3" },
+            { id: 4, text: "Шукай там, де чисто.", x: 58.75, y: 37.18, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3" },
+            { id: 5, text: "Шукай там, де реклама.", x: 70.74, y: 44.46, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2004/2004-preview.mp3" },
+            { id: 6, text: "Шукай там, де біжить час.", x: 58.60, y: 10.08, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2005/2005-preview.mp3" },
+            { id: 7, text: "Шукай там, де є другий ти.", x: 58.75, y: 28.43, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2006/2006-preview.mp3" },
+            { id: 8, text: "Шукай там, де смачно.", x: 19.66, y: 64.45, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2007/2007-preview.mp3" },
+            { id: 9, text: "Шукай там, де смердить.", x: 79.57, y: 78.83, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2008/2008-preview.mp3" },
+            { id: 10, text: "Шукай там, де небезпечно.", x: 13.67, y: 22.48, radius: 6, sound: "https://assets.mixkit.co/active_storage/sfx/2009/2009-preview.mp3" }
         ];
 
         let availableQuestions = [...questionsData];
@@ -387,8 +421,6 @@
         const questionDisplay = document.getElementById('question-display');
         const nextBtn = document.getElementById('next-btn');
         const mainImage = document.getElementById('main-image');
-        const devPanel = document.getElementById('dev-panel');
-        const devCoords = document.getElementById('dev-coords');
         
         let lastActionTimestamp = 0;
 
@@ -434,7 +466,7 @@
             });
         });
 
-        // Обробка кліку по картинці для знаходження координат
+        // Обробка кліку по картинці
         mainImage.addEventListener('click', (e) => {
             if (isGameFinished || !currentQuestion) return;
 
@@ -442,13 +474,7 @@
             const clickX = ((e.clientX - rect.left) / rect.width) * 100;
             const clickY = ((e.clientY - rect.top) / rect.height) * 100;
 
-            // Виведення для розробника та підготовка для копіювання
-            const xStr = clickX.toFixed(2);
-            const yStr = clickY.toFixed(2);
-            devCoords.innerText = `X: ${xStr}%, Y: ${yStr}%`;
-            devPanel.dataset.coords = `x: ${xStr}, y: ${yStr}`;
-
-            // Перевірка влучання
+            // Перевірка влучання (за теоремою Піфагора)
             const dx = clickX - currentQuestion.x;
             const dy = clickY - currentQuestion.y;
             const distance = Math.sqrt(dx*dx + dy*dy);
@@ -463,24 +489,6 @@
                     clickY: clickY,
                     soundUrl: currentQuestion.sound,
                     nextQuestionId: nextQ ? nextQ.id : null
-                });
-            }
-        });
-
-        // Обробка кліку по панелі для копіювання в буфер
-        devPanel.addEventListener('click', () => {
-            const coords = devPanel.dataset.coords;
-            if (coords) {
-                navigator.clipboard.writeText(coords).then(() => {
-                    const originalText = devCoords.innerText;
-                    devCoords.innerText = "Скопійовано!";
-                    devCoords.style.color = "#fff";
-                    setTimeout(() => { 
-                        devCoords.innerText = originalText;
-                        devCoords.style.color = "#0f0";
-                    }, 1000);
-                }).catch(err => {
-                    console.error('Не вдалося скопіювати', err);
                 });
             }
         });
