@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Асоціації - Джунглі</title>
+    <!-- Підключення Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+    <style>
+        /* Глобальні налаштування, щоб уникнути прокрутки та відступів */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #0a1f12;
+            user-select: none;
+            font-family: Arial, sans-serif; 
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* Деталізований векторний фон */
+        #bg-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Анімація води на фоні */
+        @keyframes waterFlow {
+            0% { transform: translateX(-10px); }
+            50% { transform: translateX(10px); }
+            100% { transform: translateX(-10px); }
+        }
+        .water-wave {
+            animation: waterFlow 4s ease-in-out infinite;
+        }
+
+        /* Кнопка запуску слова (вгорі, не накладається на інші елементи) */
+        #word-trigger {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: linear-gradient(135deg, #ff9a44, #fc6076);
+            border: 4px solid #7a281c;
+            border-radius: 20px;
+            padding: 15px 50px;
+            font-size: 32px;
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #7a281c, 0 15px 25px rgba(0,0,0,0.5);
+            text-transform: uppercase;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.6);
+            transition: transform 0.1s, box-shadow 0.1s;
+            font-family: Arial, sans-serif;
+        }
+
+        #word-trigger:active {
+            transform: translate(-50%, 8px);
+            box-shadow: 0 0 0 #7a281c, 0 5px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Контейнер для слова, що падає */
+        #falling-word-container {
+            position: absolute;
+            top: -150px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 40;
+            /* Стилізована дощечка замість білого прямокутника */
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><rect width="300" height="100" rx="15" fill="%238d6e63" stroke="%234e342e" stroke-width="8"/><line x1="10" y1="20" x2="290" y2="20" stroke="%235d4037" stroke-width="3"/><line x1="10" y1="50" x2="290" y2="50" stroke="%235d4037" stroke-width="3"/><line x1="10" y1="80" x2="290" y2="80" stroke="%235d4037" stroke-width="3"/></svg>') center/cover;
+            width: 300px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.6);
+            border-radius: 15px;
+        }
+
+        #falling-word-text {
+            font-size: 40px;
+            color: #fff;
+            text-shadow: 3px 3px 0 #2a1a15;
+            letter-spacing: 2px;
+            font-family: Arial, sans-serif; 
+        }
+
+        /* Анімація падіння дощечки зі словом */
+        @keyframes fallDown {
+            0% { top: -150px; opacity: 1; transform: translateX(-50%) rotate(-4deg); }
+            30% { transform: translateX(-50%) rotate(4deg); }
+            60% { transform: translateX(-50%) rotate(-2deg); }
+            80% { top: 40%; transform: translateX(-50%) scale(1.05); }
+            100% { top: 35%; opacity: 1; transform: translateX(-50%) scale(1) rotate(0deg); }
+        }
+
+        .falling {
+            animation: fallDown 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        /* Зона для гравців */
+        #players-area {
+            position: absolute;
+            bottom: 140px;
+            display: flex;
+            gap: 20px;
+            z-index: 50;
+            width: 100%;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* Картка гравця */
+        .player-card {
+            background: linear-gradient(135deg, rgba(46, 204, 113, 0.9), rgba(39, 174, 96, 0.9));
+            border: 6px solid #145a32;
+            border-radius: 20px;
+            padding: 15px;
+            position: relative;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.4), 0 10px 20px rgba(0,0,0,0.5);
+            transition: transform 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .player-card::after {
+            content: '';
+            position: absolute;
+            top: -15px;
+            right: -15px;
+            width: 40px;
+            height: 40px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M50 0 L60 40 L100 50 L60 60 L50 100 L40 60 L0 50 L40 40 Z" fill="%23f1c40f"/></svg>') center/contain no-repeat;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        .player-name-edit {
+            background: rgba(0,0,0,0.2);
+            border: 1px dashed #7dcea0;
+            border-radius: 5px;
+            color: white;
+            font-size: 18px;
+            width: 140px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 2px;
+            outline: none;
+        }
+
+        .delete-player-btn {
+            background: #e74c3c;
+            border: 2px solid #c0392b;
+            color: white;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .player-input {
+            background: #0f351e;
+            border: 3px dashed #7dcea0;
+            border-radius: 12px;
+            color: #f1c40f;
+            font-size: 30px;
+            text-align: center;
+            padding: 15px 10px;
+            width: 200px;
+            outline: none;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+            transition: all 0.3s ease;
+            font-family: Arial, sans-serif !important; 
+        }
+
+        .player-input:focus {
+            border-color: #f1c40f;
+            background: #144b2a;
+            box-shadow: 0 0 15px rgba(241, 196, 15, 0.5);
+        }
+
+        /* Секретні поля вводу (діти не бачать, що пишуть) */
+        .secret-input {
+            color: transparent !important;
+            text-shadow: none !important;
+        }
+        .secret-input::selection {
+            background: transparent !important;
+            color: transparent !important;
+        }
+
+        #add-player-btn {
+            position: absolute;
+            right: 5%;
+            bottom: 140px;
+            background: #3498db;
+            border: 3px solid #2980b9;
+            border-radius: 15px;
+            padding: 10px 20px;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 60;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.5);
+        }
+        #add-player-btn:active { transform: translateY(3px); }
+
+        /* Кнопка перевірки */
+        #check-btn {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(to right, #11998e, #38ef7d);
+            border: 4px solid #0a5c55;
+            border-radius: 25px;
+            padding: 15px 70px;
+            font-size: 34px;
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #0a5c55, 0 15px 25px rgba(0,0,0,0.5);
+            z-index: 100;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        #check-btn:active {
+            transform: translate(-50%, 8px);
+            box-shadow: 0 0 0 #0a5c55, 0 5px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Шар для візуального фідбеку */
+        #feedback-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 200;
+        }
+
+        @keyframes burst {
+            0% { transform: scale(0); opacity: 1; }
+            80% { transform: scale(1.5); opacity: 1; }
+            100% { transform: scale(1.6); opacity: 0; }
+        }
+
+        @keyframes rainFall {
+            0% { transform: translateY(-50px) rotate(15deg); opacity: 0; }
+            20% { opacity: 1; }
+            100% { transform: translateY(110vh) rotate(15deg); opacity: 0; }
+        }
+
+        /* Система динамічних фонів (Theme Manager) */
+        #theme-manager-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 35px;
+            background: rgba(0,0,0,0.6);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            z-index: 9999;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%;
+            max-width: 800px;
+            max-height: 60vh;
+            background: rgba(20, 40, 25, 0.95);
+            border: 3px solid #2ecc71;
+            border-radius: 20px;
+            overflow-y: auto;
+            z-index: 10000;
+            padding: 20px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+        #theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .theme-item {
+            position: relative;
+            cursor: pointer;
+            border: 3px solid transparent;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .theme-item:hover {
+            transform: scale(1.05);
+            border-color: #2ecc71;
+        }
+        .theme-item img {
+            width: 100%;
+            height: 110px;
+            object-fit: cover;
+            display: block;
+        }
+        .theme-item span {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            text-align: center;
+            padding: 6px 0;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        #close-theme-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            color: #e74c3c;
+            font-size: 30px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-weight: bold;
+        }
+
+        /* Універсальний блок (Заглушка) */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.9);
+            z-index: 999999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #block-overlay h1 {
+            color: #ff4d4d;
+            font-size: 50px;
+            font-family: Arial, sans-serif;
+            text-transform: uppercase;
+            text-align: center;
+            text-shadow: 2px 2px 10px rgba(255,0,0,0.5);
+        }
+
+        /* Адаптивність (Mobile Friendly) */
+        @media (max-width: 768px) {
+            #players-area { flex-wrap: wrap; bottom: 90px; }
+            .player-card { padding: 10px; transform: scale(0.9); }
+            .player-input { width: 140px; font-size: 22px; padding: 10px; }
+            #word-trigger { font-size: 20px; padding: 10px 30px; top: 15px; }
+            #check-btn { font-size: 24px; padding: 10px 40px; bottom: 15px; }
+            #add-player-btn { bottom: 90px; right: 10px; font-size: 16px; padding: 8px 12px; }
+            #falling-word-container { width: 220px; height: 80px; }
+            #falling-word-text { font-size: 28px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Складний, яскравий SVG фон за замовчуванням -->
+        <svg id="bg-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="jungle-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#ffb347"/>
+                    <stop offset="40%" stop-color="#ffcc33"/>
+                    <stop offset="100%" stop-color="#3b8d99"/>
+                </linearGradient>
+                <linearGradient id="river" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#00c6ff"/>
+                    <stop offset="50%" stop-color="#0072ff"/>
+                    <stop offset="100%" stop-color="#00c6ff"/>
+                </linearGradient>
+                <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#fff59d"/>
+                    <stop offset="50%" stop-color="#fbc02d"/>
+                    <stop offset="100%" stop-color="#f57f17" stop-opacity="0"/>
+                </radialGradient>
+            </defs>
+            
+            <rect width="1920" height="1080" fill="url(#jungle-sky)" />
+            <circle cx="1500" cy="300" r="250" fill="url(#sun)" />
+            <circle cx="1500" cy="300" r="100" fill="#fff" opacity="0.8" />
+            
+            <path d="M0,700 Q200,400 500,650 T1000,500 T1600,600 L1920,400 L1920,1080 L0,1080 Z" fill="#2c5e4f" opacity="0.7"/>
+            <path d="M-100,800 Q300,500 700,750 T1400,600 T2000,800 L2000,1080 L-100,1080 Z" fill="#1b4332"/>
+
+            <path d="M500,800 Q700,750 900,850 T1300,800 T1920,950 L1920,1080 L0,1080 L0,950 Q200,850 500,800 Z" fill="url(#river)"/>
+            <path class="water-wave" d="M600,850 Q800,820 1000,880 T1400,850" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.4"/>
+            <path class="water-wave" d="M300,950 Q600,900 800,980 T1300,930" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.3"/>
+
+            <g transform="translate(-100, 100) scale(1.5)">
+                <path d="M0,0 C100,200 300,100 400,400 C200,350 100,500 0,600 Z" fill="#0c4a24"/>
+                <path d="M0,100 C150,250 250,50 350,300 C150,280 50,450 0,500 Z" fill="#126e37"/>
+            </g>
+            <g transform="translate(1600, -50) scale(1.8) rotate(-20)">
+                <path d="M0,0 C100,200 300,100 400,400 C200,350 100,500 0,600 Z" fill="#09381b"/>
+                <path d="M0,100 C150,250 250,50 350,300 C150,280 50,450 0,500 Z" fill="#147c3e"/>
+            </g>
+            
+            <path d="M200,-10 Q250,150 200,300 T250,600" fill="none" stroke="#5c3a21" stroke-width="12"/>
+            <path d="M200,100 Q230,120 250,100 Z" fill="#27ae60"/>
+            <path d="M220,250 Q190,270 170,250 Z" fill="#2ecc71"/>
+            <path d="M1400,-10 Q1350,200 1400,400 T1350,750" fill="none" stroke="#4a2e1b" stroke-width="15"/>
+            <path d="M1400,200 Q1370,230 1350,200 Z" fill="#2ecc71"/>
+            <path d="M1380,450 Q1420,480 1440,450 Z" fill="#27ae60"/>
+        </svg>
+
+        <button id="word-trigger">⏬</button>
+
+        <div id="word-drop-zone">
+            <div id="falling-word-container">
+                <span id="falling-word-text"></span>
+            </div>
+        </div>
+
+        <!-- Динамічна зона гравців -->
+        <div id="players-area"></div>
+        <button id="add-player-btn">+ Гравець</button>
+
+        <button id="check-btn">✔</button>
+
+        <div id="feedback-layer"></div>
+    </div>
+
+    <!-- UI Системи динамічних фонів -->
+    <button id="theme-manager-btn">⚙️</button>
+    <div id="theme-modal">
+        <button id="close-theme-btn">✖</button>
+        <h2 style="color:white; font-family:Arial; text-align:center; margin-top:0;">Обери фон</h2>
+        <div id="theme-grid"></div>
+    </div>
+
+    <!-- Універсальний екран-заглушка -->
+    <div id="block-overlay">
+        <h1>Зачекай! Зараз не твій урок.</h1>
+    </div>
+<script>
+        // Ініціалізація Firebase (compat)
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // 1. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ
+        let myName = new URLSearchParams(window.location.search).get('user');
+        if (!myName) myName = sessionStorage.getItem('myName');
+        if (!myName) myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        sessionStorage.setItem('myName', myName);
+
+        const myTabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+        const connectedRef = db.ref('.info/connected');
+        const onlineRef = db.ref('online_users/' + myName + '/' + myTabId);
+
+        connectedRef.on('value', snap => {
+            if (snap.val() === true) {
+                onlineRef.set(true);
+                onlineRef.onDisconnect().remove();
+            }
+        });
+
+        window.addEventListener('beforeunload', () => onlineRef.remove());
+
+        db.ref('force_refresh').on('value', snap => {
+            if (snap.val() === true) window.location.reload();
+        });
+
+        db.ref('blocked_users/' + myName).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() === true ? 'flex' : 'none';
+        });
+
+        let immunity = true;
+        setTimeout(() => { immunity = false; }, 1000);
+        db.ref('current_activity').on('value', snap => {
+            if (immunity) return;
+            if (snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // 2. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
+        const themeBtn = document.getElementById('theme-manager-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const closeThemeBtn = document.getElementById('close-theme-btn');
+        const themeGrid = document.getElementById('theme-grid');
+        const bgSvg = document.getElementById('bg-svg');
+        
+        themeBtn.onclick = () => themeModal.style.display = 'block';
+        closeThemeBtn.onclick = () => themeModal.style.display = 'none';
+
+        async function loadThemes() {
+            let i = 1;
+            let consecutiveFails = 0;
+            while(i <= 1000 && consecutiveFails < 3) {
+                let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                try {
+                    // Асинхронна перевірка наявності фону
+                    let res = await fetch(url, {method: 'HEAD'});
+                    if (res.ok) {
+                        const div = document.createElement('div');
+                        div.className = 'theme-item';
+                        div.innerHTML = `<img src="${url}" alt="Фон ${i}"><span>Фон ${i}</span>`;
+                        div.onclick = () => selectTheme(url);
+                        themeGrid.appendChild(div);
+                        consecutiveFails = 0;
+                    } else {
+                        consecutiveFails++;
+                    }
+                } catch(e) {
+                    consecutiveFails++;
+                }
+                i++;
+            }
+        }
+        loadThemes();
+
+        function selectTheme(url, isRemote = false) {
+            document.getElementById('game-container').style.backgroundImage = `url('${url}')`;
+            bgSvg.style.display = 'none';
+            localStorage.setItem('mySavedGameBg', url);
+            if (!isRemote) {
+                db.ref('game_theme').set(url);
+            }
+        }
+
+        // Синхронізація теми та відновлення з LocalStorage
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) selectTheme(savedBg, true);
+
+        db.ref('game_theme').on('value', snap => {
+            if (snap.val()) selectTheme(snap.val(), true);
+        });
+
+
+        // 3. ЛОГІКА ГРИ ТА СИНХРОНІЗАЦІЯ ДІЙ
+        let isRemoteAction = false;
+        
+        function sendAction(type, payload) {
+            db.ref('game_action').set({
+                senderId: myTabId,
+                timestamp: Date.now(),
+                type: type,
+                payload: payload
+            });
+        }
+
+        db.ref('game_action').on('value', snap => {
+            const action = snap.val();
+            if (!action) return;
+            if (action.senderId === myTabId) return; // Запобігання зацикленню
+            
+            isRemoteAction = true;
+            handleAction(action.type, action.payload);
+            isRemoteAction = false;
+        });
+
+        const wordsDB = [
+            "дерево", "сонце", "річка", "гора", "море", "океан", "дощ", "сніг", "вітер", "хмара",
+            "квітка", "трава", "ліс", "поле", "степ", "камінь", "пісок", "глина", "земля", "небо",
+            "яблуко", "груша", "слива", "вишня", "кавун", "диня", "банан", "апельсин", "лимон", "ананас",
+            "помідор", "огірок", "морква", "капуста", "буряк", "цибуля", "часник", "перець", "горіх", "гриб",
+            "кіт", "собака", "корова", "кінь", "свиня", "вівця", "коза", "курка", "качка", "гуска",
+            "вовк", "лисиця", "ведмідь", "заєць", "білка", "їжак", "олень", "кабан", "миша", "щур",
+            "слон", "лев", "тигр", "жираф", "зебра", "крокодил", "мавпа", "носоріг", "бегемот", "кенгуру",
+            "стіл", "стілець", "ліжко", "шафа", "диван", "крісло", "двері", "вікно", "дах", "підлога",
+            "будинок", "квартира", "місто", "село", "вулиця", "дорога", "машина", "автобус", "трамвай", "поїзд",
+            "книга", "зошит", "ручка", "олівець", "фарби", "пензлик", "лінійка", "школа", "урок", "клас"
+        ];
+
+        let availableWords = [...wordsDB];
+        let playersData = [
+            { id: 'p1', name: 'Гравець 1', text: '' },
+            { id: 'p2', name: 'Гравець 2', text: '' }
+        ];
+
+        const playersArea = document.getElementById('players-area');
+        const wordTriggerBtn = document.getElementById('word-trigger');
+        const fallingContainer = document.getElementById('falling-word-container');
+        const fallingText = document.getElementById('falling-word-text');
+        const checkBtn = document.getElementById('check-btn');
+        const feedbackLayer = document.getElementById('feedback-layer');
+        const addPlayerBtn = document.getElementById('add-player-btn');
+
+        // Рендер гравців
+        function renderPlayers(sync = true) {
+            playersArea.innerHTML = '';
+            playersData.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'player-card';
+                card.innerHTML = `
+                    <div class="player-header">
+                        <input type="text" class="player-name-edit" value="${p.name}" onchange="changeName('${p.id}', this.value)">
+                        <button class="delete-player-btn" onclick="removePlayer('${p.id}')">✖</button>
+                    </div>
+                    <input type="text" id="input-${p.id}" class="player-input secret-input" autocomplete="off" spellcheck="false" value="${p.text}" oninput="updateText('${p.id}', this.value)">
+                `;
+                playersArea.appendChild(card);
+            });
+            if (sync && !isRemoteAction) sendAction('SYNC_PLAYERS', playersData);
+        }
+
+        window.changeName = function(id, newName) {
+            const p = playersData.find(x => x.id === id);
+            if(p) { p.name = newName; sendAction('SYNC_PLAYERS', playersData); }
+        };
+
+        window.removePlayer = function(id) {
+            playersData = playersData.filter(x => x.id !== id);
+            renderPlayers();
+        };
+
+        window.updateText = function(id, newText) {
+            const p = playersData.find(x => x.id === id);
+            if(p) { 
+                p.text = newText; 
+                sendAction('UPDATE_TEXT', {id, text: newText}); 
+            }
+        };
+
+        addPlayerBtn.onclick = () => {
+            const newId = 'p' + Date.now();
+            playersData.push({ id: newId, name: 'Новий гравець', text: '' });
+            renderPlayers();
+        };
+
+        // Аудіо 
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            initAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'drop') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.6);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+                osc.start(now);
+                osc.stop(now + 0.6);
+            } 
+            else if (type === 'win') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now); 
+                osc.frequency.setValueAtTime(659.25, now + 0.1); 
+                osc.frequency.setValueAtTime(783.99, now + 0.2); 
+                osc.frequency.setValueAtTime(1046.50, now + 0.3); 
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.8);
+                osc.start(now);
+                osc.stop(now + 0.8);
+                
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.type = 'square';
+                osc2.frequency.setValueAtTime(1046.50, now + 0.3);
+                osc2.frequency.exponentialRampToValueAtTime(523.25, now + 0.8);
+                gain2.gain.setValueAtTime(0.2, now + 0.3);
+                gain2.gain.linearRampToValueAtTime(0, now + 0.8);
+                osc2.start(now + 0.3);
+                osc2.stop(now + 0.8);
+            } 
+            else if (type === 'lose') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(250, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.6);
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.6);
+                osc.start(now);
+                osc.stop(now + 0.6);
+            }
+        }
+
+        // Ігрові дії
+        function triggerWord(word) {
+            playersData.forEach(p => p.text = ''); // Очистка при новому слові
+            renderPlayers(false); // Оновлюємо без відправки загального масиву знову
+            
+            // Повертаємо секретність полям
+            document.querySelectorAll('.player-input').forEach(inp => {
+                inp.classList.add('secret-input');
+                inp.style.borderColor = '#7dcea0';
+                inp.style.backgroundColor = '#0f351e';
+                inp.style.boxShadow = 'none';
+            });
+            
+            feedbackLayer.innerHTML = '';
+            fallingText.textContent = word.toUpperCase();
+            
+            fallingContainer.classList.remove('falling');
+            void fallingContainer.offsetWidth; 
+            fallingContainer.classList.add('falling');
+            
+            playSound('drop');
+        }
+
+        wordTriggerBtn.onclick = () => {
+            initAudio();
+            if (availableWords.length === 0) availableWords = [...wordsDB];
+            const word = availableWords.splice(Math.floor(Math.random() * availableWords.length), 1)[0];
+            triggerWord(word);
+            sendAction('DROP_WORD', { word });
+        };
+
+        function executeCheck() {
+            initAudio();
+            const validValues = playersData.map(p => p.text.trim().toLowerCase()).filter(v => v.length > 0);
+            if (validValues.length === 0) return;
+
+            const counts = {};
+            let hasMatch = false;
+            
+            validValues.forEach(val => {
+                counts[val] = (counts[val] || 0) + 1;
+                if (counts[val] > 1) hasMatch = true;
+            });
+
+            // Відкриваємо секретні поля, щоб всі побачили результати
+            document.querySelectorAll('.player-input').forEach(inp => {
+                inp.classList.remove('secret-input');
+            });
+
+            if (hasMatch) showWinFeedback(counts);
+            else showLoseFeedback();
+        }
+
+        checkBtn.onclick = () => {
+            executeCheck();
+            sendAction('CHECK_RESULTS', {});
+        };
+
+        function showWinFeedback(counts) {
+            playSound('win');
+            
+            document.querySelectorAll('.player-input').forEach((inp) => {
+                const val = inp.value.trim().toLowerCase();
+                if (val && counts[val] > 1) {
+                    inp.style.borderColor = '#ffd700';
+                    inp.style.backgroundColor = '#1a522e';
+                    inp.style.boxShadow = '0 0 20px #ffd700';
+                }
+            });
+
+            let svgVisuals = `<svg width="100%" height="100%" style="position:absolute; top:0; left:0;">`;
+            const colors = ['#FF1493', '#00FF00', '#FFD700', '#00FFFF', '#FF4500', '#9400D3'];
+            
+            for (let i = 0; i < 40; i++) {
+                const x = 10 + Math.random() * 80; 
+                const y = 10 + Math.random() * 80; 
+                const scale = Math.random() * 1.5 + 0.5;
+                const rot = Math.random() * 360;
+                const col = colors[Math.floor(Math.random() * colors.length)];
+                const delay = Math.random() * 0.4;
+                
+                svgVisuals += `
+                    <g transform="translate(${x}vw, ${y}vh) scale(${scale}) rotate(${rot})" 
+                       style="animation: burst 0.8s cubic-bezier(0.1, 0.9, 0.2, 1) both ${delay}s;">
+                        <path d="M0,-30 L10,-10 L30,-10 L15,5 L20,25 L0,15 L-20,25 L-15,5 L-30,-10 L-10,-10 Z" fill="${col}" opacity="0.9"/>
+                        <circle cx="0" cy="0" r="8" fill="#fff"/>
+                        <circle cx="0" cy="0" r="4" fill="${col}"/>
+                    </g>
+                `;
+            }
+            svgVisuals += `</svg>`;
+            feedbackLayer.innerHTML = svgVisuals;
+
+            setTimeout(() => {
+                feedbackLayer.innerHTML = '';
+            }, 2500);
+        }
+
+        function showLoseFeedback() {
+            playSound('lose');
+            
+            document.querySelectorAll('.player-input').forEach(inp => {
+                if (inp.value.trim().length > 0) {
+                    inp.style.borderColor = '#ff4d4d';
+                    inp.style.backgroundColor = '#4a1515';
+                }
+            });
+
+            let svgVisuals = `<svg width="100%" height="100%" style="position:absolute; top:0; left:0;">
+                <rect width="100%" height="100%" fill="#000" opacity="0.5" style="transition: opacity 0.5s"/>
+            `;
+            
+            for(let c = 0; c < 3; c++) {
+                const cx = 20 + c * 30;
+                svgVisuals += `
+                    <g transform="translate(${cx}vw, 15vh) scale(4)" opacity="0.9">
+                        <path d="M-30,0 C-30,-20 -10,-30 0,-20 C15,-35 40,-25 40,-5 C55,-5 55,15 40,20 L-25,20 C-40,20 -40,0 -30,0 Z" fill="#2c3e50"/>
+                        <path d="M-25,5 C-25,-10 -5,-15 5,-5 C15,-20 35,-15 35,5 C45,5 45,20 35,25 L-20,25 C-30,25 -30,5 -25,5 Z" fill="#1a252f"/>
+                    </g>
+                `;
+            }
+
+            for(let i = 0; i < 80; i++) {
+                const x = Math.random() * 100;
+                const delay = Math.random() * 0.5;
+                const duration = 0.4 + Math.random() * 0.3;
+                svgVisuals += `
+                    <line x1="${x}vw" y1="-10vh" x2="${x - 10}vw" y2="10vh" 
+                          stroke="#74b9ff" stroke-width="${Math.random() * 3 + 1}" stroke-linecap="round" 
+                          style="animation: rainFall ${duration}s linear infinite ${delay}s; opacity:0;"/>
+                `;
+            }
+            svgVisuals += `</svg>`;
+            feedbackLayer.innerHTML = svgVisuals;
+
+            setTimeout(() => {
+                feedbackLayer.innerHTML = '';
+            }, 2500);
+        }
+
+        // Обробка Firebase дій
+        function handleAction(type, payload) {
+            if (type === 'DROP_WORD') {
+                triggerWord(payload.word);
+            } 
+            else if (type === 'CHECK_RESULTS') {
+                executeCheck();
+            } 
+            else if (type === 'SYNC_PLAYERS') {
+                playersData = payload;
+                renderPlayers(false); // false щоб не було циклу
+            } 
+            else if (type === 'UPDATE_TEXT') {
+                const p = playersData.find(x => x.id === payload.id);
+                if (p) {
+                    p.text = payload.text;
+                    const el = document.getElementById('input-' + payload.id);
+                    if (el && document.activeElement !== el) {
+                        el.value = payload.text;
+                    }
+                }
+            }
+        }
+
+        // Ініціалізація інтерфейсу при старті
+        renderPlayers(false);
+
+    </script>
+</body>
+</html>
