@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Версія гри: v1.1.0 -->
+    <!-- Підключення Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        /* Стилізація. Фон прозорий для Theme Manager */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #004d40; /* Запасний колір */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            font-family: Arial, sans-serif; /* Шрифт Arial згідно вимог */
+            touch-action: none; 
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Модальне вікно питання (зроблено менш прозорим) */
+        #questionModal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.7);
+            /* Майже непрозорий фон для покращення читабельності */
+            background: radial-gradient(ellipse at center, #546e7a 0%, #263238 100%);
+            padding: 50px;
+            border-radius: 30px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9), inset 0 0 30px rgba(0,0,0,0.8);
+            border: 8px solid #37474f;
+            z-index: 2000;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.4s, transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            width: 450px;
+            max-width: 90vw;
+            background-image: 
+                linear-gradient(45deg, transparent 48%, rgba(69, 90, 100, 0.8) 49%, rgba(69, 90, 100, 0.8) 51%, transparent 52%),
+                linear-gradient(-45deg, transparent 48%, rgba(69, 90, 100, 0.8) 49%, rgba(69, 90, 100, 0.8) 51%, transparent 52%);
+            background-size: 60px 60px;
+        }
+        #questionModal.active {
+            display: block;
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        #qText {
+            color: #ffe082;
+            font-size: 28px;
+            line-height: 1.4;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.9);
+            margin-top: 0;
+            margin-bottom: 40px;
+            background: rgba(0,0,0,0.6);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px dashed #ffca28;
+        }
+
+        #btnNextQuestion {
+            display: inline-block;
+            background: linear-gradient(to bottom, #81c784, #388e3c);
+            border: 4px solid #1b5e20;
+            color: #003300;
+            padding: 20px 50px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: 0 8px 0 #2e7d32;
+            transition: all 0.1s;
+        }
+        #btnNextQuestion:active {
+            transform: translateY(8px);
+            box-shadow: 0 0px 0 #2e7d32;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background: transparent;
+        }
+
+        /* Мобільні елементи керування */
+        #mobileControls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        #mobileControls .dpad {
+            display: flex;
+            gap: 10px;
+        }
+        #mobileControls .action-pad {
+            /* Відступ, щоб не перекривати кнопку налаштувань */
+            margin-right: 80px; 
+        }
+        #mobileControls button {
+            width: 65px;
+            height: 65px;
+            border-radius: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            font-size: 28px;
+            pointer-events: auto;
+            user-select: none;
+            touch-action: manipulation;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #mobileControls button:active {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(2px);
+            box-shadow: 0 2px 3px rgba(0,0,0,0.4);
+        }
+        #mobileControls .jump-btn {
+            width: 90px;
+            height: 90px;
+            border-radius: 45px;
+            font-size: 16px;
+            font-weight: bold;
+            background: rgba(0, 77, 64, 0.8);
+            border: 3px solid #4db6ac;
+            text-align: center;
+        }
+
+        @media (min-width: 1400px) {
+            #mobileControls { display: none; }
+        }
+
+        /* UI Theme Manager */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 9999;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.2);
+            transition: transform 0.2s;
+        }
+        #theme-btn:hover { transform: scale(1.1); }
+        
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90vw;
+            max-width: 600px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 2px solid #555;
+            border-radius: 15px;
+            padding: 20px;
+            z-index: 10000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        #theme-modal h3 {
+            color: white;
+            margin-top: 0;
+            text-align: center;
+        }
+        #theme-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        #theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 10px 0;
+        }
+        .theme-item {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            border-radius: 10px;
+            cursor: pointer;
+            overflow: hidden;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .theme-item:hover {
+            border-color: #4db6ac;
+            transform: scale(1.05);
+        }
+        .theme-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .theme-item span {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            text-align: center;
+            font-size: 12px;
+            padding: 4px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Кнопка та модалка Theme Manager -->
+    <div id="theme-btn">⚙️</div>
+    <div id="theme-modal">
+        <div id="theme-close">✖</div>
+        <h3>Оберіть фон</h3>
+        <div id="theme-grid"></div>
+    </div>
+
+    <div id="questionModal">
+        <h2 id="qText">Питання</h2>
+        <div id="btnNextQuestion">Далі</div>
+    </div>
+
+    <!-- Мобільні кнопки -->
+    <div id="mobileControls">
+        <div class="dpad">
+            <button id="btnLeft">⬅️</button>
+            <button id="btnDown">🔽</button>
+            <button id="btnRight">➡️</button>
+        </div>
+        <div class="action-pad">
+            <button id="btnUp" class="jump-btn">СТРИБОК<br>вгору</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        // --- Список запитань та логіка перемішування ---
+        const first9Questions = [
+            "Слово жіночого роду з твердою основою.",
+            "Слово жіночого роду з м'якою основою.",
+            "Слово жіночого роду з основою з [й].",
+            "Слово чоловічого роду з твердою основою.",
+            "Слово чоловічого роду з м'якою основою.",
+            "Слово чоловічого роду з основою з [й].",
+            "Слово жіночого роду з твердою основою з нульовим закінченням.",
+            "Слово жіночого роду з м'якою основою з нульовим закінченням.",
+            "Слово жіночого роду з двома приголосними з нульовим закінченням."
+        ];
+        const lastQuestion = "На які питання відповідають родовий, давальний, орудний та місцевий відмінки?";
+
+        // Перемішування перших 9 запитань за алгоритмом Fisher-Yates
+        function getShuffledQuestions() {
+            let shuffled = [...first9Questions];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            shuffled.push(lastQuestion); // 10-те фінальне питання завжди останнє
+            return shuffled;
+        }
+
+        const gameQuestions = getShuffledQuestions();
+
+        // --- Ініціалізація Firebase ---
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+        let myName = sessionStorage.getItem('myName') || 'Гість_' + Math.floor(Math.random() * 1000);
+        let isRemoteAction = false;
+
+        // --- Theme Manager Logic ---
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeClose = document.getElementById('theme-close');
+        const themeGrid = document.getElementById('theme-grid');
+        
+        themeBtn.addEventListener('click', () => { themeModal.style.display = 'block'; });
+        themeClose.addEventListener('click', () => { themeModal.style.display = 'none'; });
+        
+        async function loadThemes() {
+            let i = 1;
+            let consecutiveErrors = 0;
+            while(i <= 1000 && consecutiveErrors < 3) {
+                let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                try {
+                    let response = await fetch(url, { method: 'HEAD' });
+                    if(response.ok) {
+                        consecutiveErrors = 0;
+                        let div = document.createElement('div');
+                        div.className = 'theme-item';
+                        div.innerHTML = `<img src="${url}" alt="Фон ${i}"><span>Фон ${i}</span>`;
+                        div.onclick = () => {
+                            applyTheme(url);
+                            db.ref('game_theme').set({ url: url, timestamp: Date.now() });
+                            themeModal.style.display = 'none';
+                        };
+                        themeGrid.appendChild(div);
+                    } else {
+                        consecutiveErrors++;
+                    }
+                } catch(e) {
+                    consecutiveErrors++;
+                }
+                i++;
+            }
+        }
+        
+        function applyTheme(url) {
+            document.body.style.backgroundImage = `url('${url}')`;
+            localStorage.setItem('mySavedGameBg', url);
+        }
+        
+        let savedBg = localStorage.getItem('mySavedGameBg');
+        if(savedBg) applyTheme(savedBg);
+        
+        db.ref('game_theme').on('value', snap => {
+            const data = snap.val();
+            if(data && data.url) {
+                applyTheme(data.url);
+            }
+        });
+        
+        loadThemes();
+
+        // --- Відправка дій у Firebase (Ігровий процес) ---
+        function sendAction(type, data) {
+            try {
+                db.ref('game_action').set({
+                    senderId: myName,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    type: type,
+                    data: data
+                });
+            } catch (e) {
+                console.log("Firebase not available for sendAction");
+            }
+        }
+
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === myName) return; 
+
+            const age = Date.now() - (val.timestamp || 0);
+            if (age > 5000) return; 
+
+            isRemoteAction = true;
+            if (val.type === 'QUESTION_OPEN') {
+                let obs = levelData.obstacles.find(o => o.qIdx === val.data.qIdx);
+                if (obs) triggerQuestion(obs, true);
+            } else if (val.type === 'QUESTION_CLOSE') {
+                closeQuestion(true);
+            } else if (val.type === 'ENTER_HOUSE') {
+                triggerHouseEnter(true);
+            } else if (val.type === 'FINISH') {
+                triggerFinish(true);
+            }
+            isRemoteAction = false;
+        });
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d', { alpha: true }); 
+        
+        let width, height;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+            
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.04, now + 0.02); 
+            
+            switch (type) {
+                case 'jump':
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(700, now + 0.2);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    osc.start(now); osc.stop(now + 0.3);
+                    break;
+                case 'candy':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(900, now);
+                    osc.frequency.setValueAtTime(1300, now + 0.1);
+                    osc.frequency.setValueAtTime(1800, now + 0.2);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    osc.start(now); osc.stop(now + 0.3);
+                    break;
+                case 'question_appear':
+                    osc.type = 'square';
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(300, now);
+                    filter.frequency.linearRampToValueAtTime(2500, now + 0.4);
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.linearRampToValueAtTime(350, now + 0.4);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                    osc.start(now); osc.stop(now + 0.6);
+                    break;
+                case 'next':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                    osc.start(now); osc.stop(now + 0.4);
+                    break;
+                case 'climb':
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.linearRampToValueAtTime(200, now + 0.1);
+                    gain.gain.setValueAtTime(0.02, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                    osc.start(now); osc.stop(now + 0.15);
+                    break;
+                case 'confetti':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, now);
+                    osc.frequency.linearRampToValueAtTime(1600, now + 0.5);
+                    gain.gain.linearRampToValueAtTime(0.05, now + 0.2);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+                    osc.start(now); osc.stop(now + 0.8);
+                    break;
+                case 'splash':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    osc.start(now); osc.stop(now + 0.3);
+                    break;
+            }
+        }
+
+        const keys = { right: false, left: false, up: false, down: false };
+        
+        const handleKeyDown = (key) => {
+            keys[key] = true;
+            if(key === 'up' && !player.isClimbing) player.jump();
+        };
+        const handleKeyUp = (key) => { keys[key] = false; };
+
+        window.addEventListener('keydown', (e) => {
+            if(e.code === 'ArrowRight' || e.code === 'KeyD') handleKeyDown('right');
+            if(e.code === 'ArrowLeft' || e.code === 'KeyA') handleKeyDown('left');
+            if(e.code === 'ArrowDown' || e.code === 'KeyS') handleKeyDown('down');
+            if(e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'KeyW') handleKeyDown('up');
+        });
+        window.addEventListener('keyup', (e) => {
+            if(e.code === 'ArrowRight' || e.code === 'KeyD') handleKeyUp('right');
+            if(e.code === 'ArrowLeft' || e.code === 'KeyA') handleKeyUp('left');
+            if(e.code === 'ArrowDown' || e.code === 'KeyS') handleKeyUp('down');
+            if(e.code === 'ArrowUp' || e.code === 'Space' || e.code === 'KeyW') handleKeyUp('up');
+        });
+
+        const addControl = (id, key) => {
+            const btn = document.getElementById(id);
+            if(!btn) return;
+            const press = (e) => { e.preventDefault(); handleKeyDown(key); };
+            const release = (e) => { e.preventDefault(); handleKeyUp(key); };
+            btn.addEventListener('touchstart', press, {passive: false});
+            btn.addEventListener('touchend', release, {passive: false});
+            btn.addEventListener('mousedown', press, {passive: false});
+            btn.addEventListener('mouseup', release, {passive: false});
+            btn.addEventListener('mouseleave', release, {passive: false});
+        };
+        addControl('btnLeft', 'left');
+        addControl('btnRight', 'right');
+        addControl('btnUp', 'up');
+        addControl('btnDown', 'down');
+
+        let gameState = 'PLAYING'; // PLAYING, QUESTION, ENTERING_HOUSE, FINISHED
+        let cameraX = 0;
+        let cameraY = 0;
+        let frameCount = 0;
+        let currentObstacle = null;
+        let particles = [];
+
+        // --- Персонаж ---
+        const player = {
+            x: 100, y: 100, width: 70, height: 50,
+            vx: 0, vy: 0, speed: 7, jumpPower: -17,
+            grounded: false, isClimbing: false, currentPlatform: null,
+            facingRight: true, state: 'idle', 
+            baseColor: '#7cb342', glowTimer: 0,
+            entered: false, 
+            
+            respawn() {
+                let bestPlatform = null;
+                let minDistance = Infinity;
+
+                // Шукаємо найближчу по X тверду платформу (землю або руїни)
+                for(let p of levelData.platforms) {
+                    if (p.type === 'ground' || p.type === 'ruins') {
+                        let pCenterX = p.x + p.w / 2;
+                        let dist = Math.abs(this.x - pCenterX);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            bestPlatform = p;
+                        }
+                    }
+                }
+
+                if (bestPlatform) {
+                    // Ставимо гравця так, щоб він гарантовано був на платформі з відступом
+                    this.x = Math.max(bestPlatform.x + 40, Math.min(this.x, bestPlatform.x + bestPlatform.w - this.width - 40));
+                    this.y = bestPlatform.y - this.height - 5;
+                } else {
+                    this.x = 100;
+                    this.y = 100;
+                }
+
+                this.vy = 0;
+                this.vx = 0;
+                this.isClimbing = false;
+                this.state = 'idle';
+                
+                cameraX = this.x - width / 2.5;
+                cameraY = this.y - height / 1.5;
+                playSound('splash');
+            },
+
+            update() {
+                if(gameState !== 'PLAYING') {
+                    if (gameState === 'FINISHED') {
+                        this.state = 'idle'; 
+                        this.vx = 0; this.vy = 0;
+                    }
+                    return;
+                }
+
+                this.state = 'idle';
+
+                // Ліани
+                let activeVine = null;
+                for(let v of levelData.vines) {
+                    if(this.x + this.width > v.x - 40 && this.x < v.x + v.w + 40 &&
+                       this.y + this.height > v.y && this.y < v.y + v.h + 20) {
+                        activeVine = v;
+                        break;
+                    }
+                }
+
+                if (activeVine) {
+                    if (keys.up || keys.down) {
+                        this.isClimbing = true;
+                    }
+                    if (this.isClimbing) {
+                        let targetX = activeVine.x + activeVine.w/2 - this.width/2;
+                        this.x += (targetX - this.x) * 0.15;
+                    }
+                } else {
+                    this.isClimbing = false;
+                }
+
+                if (this.isClimbing) {
+                    this.vx = 0;
+                    this.vy = 0;
+                    this.state = 'climb';
+                    if (keys.up) { this.y -= this.speed; if(frameCount%15===0) playSound('climb'); }
+                    if (keys.down) { this.y += this.speed; if(frameCount%15===0) playSound('climb'); }
+                } else {
+                    this.vy += 0.9;
+                    if(this.vy > 18) this.vy = 18;
+
+                    if (keys.right) { this.vx = this.speed; this.facingRight = true; this.state = 'walk'; }
+                    else if (keys.left) { this.vx = -this.speed; this.facingRight = false; this.state = 'walk'; }
+                    else { this.vx = 0; }
+
+                    if (!this.grounded && this.vy !== 0) this.state = 'jump';
+                }
+
+                // Додаємо швидкість рухомої платформи
+                if (this.grounded && this.currentPlatform && this.currentPlatform.type === 'moving') {
+                    this.x += this.currentPlatform.vx;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Захист від падіння
+                if(this.y > cameraY + 1200 || this.y > 3000) {
+                    this.respawn();
+                }
+
+                if(this.glowTimer > 0) this.glowTimer--;
+            },
+            jump() {
+                if(this.grounded && gameState === 'PLAYING') {
+                    this.vy = this.jumpPower;
+                    this.grounded = false;
+                    playSound('jump');
+                } else if (this.isClimbing && gameState === 'PLAYING') {
+                    this.isClimbing = false;
+                    this.vy = this.jumpPower;
+                    playSound('jump');
+                }
+            },
+            draw() {
+                if (this.entered) return; // Не малюємо, якщо зайшли в дім
+
+                ctx.save();
+                ctx.translate(this.x - cameraX + this.width/2, this.y - cameraY + this.height/2);
+                if(!this.facingRight) ctx.scale(-1, 1);
+
+                let bodyBounce = 0;
+                let tailCurl = Math.sin(frameCount * 0.05) * 0.3;
+                let legAngle = 0;
+
+                if (this.state === 'walk') {
+                    bodyBounce = Math.abs(Math.sin(frameCount * 0.3)) * -6;
+                    legAngle = Math.sin(frameCount * 0.4) * 0.6;
+                } else if (this.state === 'climb') {
+                    bodyBounce = Math.sin(frameCount * 0.2) * -3;
+                    legAngle = Math.sin(frameCount * 0.3) * 0.8;
+                    ctx.rotate(-Math.PI/4); 
+                }
+
+                ctx.translate(0, bodyBounce);
+                let currentColor = this.glowTimer > 0 ? '#ffff00' : this.baseColor;
+
+                // Хвіст
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = 14;
+                ctx.lineCap = 'round';
+                ctx.save();
+                ctx.translate(-25, 5);
+                ctx.rotate(tailCurl);
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(-30, 10, -40, -20, -20, -30);
+                ctx.bezierCurveTo(0, -35, 10, -10, -5, 0);
+                ctx.stroke();
+                ctx.restore();
+
+                // Задні лапи
+                ctx.fillStyle = '#558b2f';
+                ctx.save(); ctx.translate(-15, 15); ctx.rotate(-legAngle);
+                ctx.beginPath(); ctx.ellipse(0, 10, 6, 12, 0, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(5, 20, 6, Math.PI, 0); ctx.fill(); 
+                ctx.restore();
+
+                // Тіло
+                ctx.fillStyle = currentColor;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 32, 20, 0, 0, Math.PI*2);
+                ctx.fill();
+
+                // Гребінь на спині
+                ctx.fillStyle = '#ffb300';
+                for(let i = -20; i <= 20; i+=10) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, -18);
+                    ctx.lineTo(i-5, -28 + Math.sin(frameCount*0.1 + i)*3);
+                    ctx.lineTo(i-10, -15);
+                    ctx.fill();
+                }
+
+                // Передні лапи
+                ctx.fillStyle = '#558b2f';
+                ctx.save(); ctx.translate(15, 15); ctx.rotate(legAngle);
+                ctx.beginPath(); ctx.ellipse(0, 10, 5, 12, 0, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(5, 20, 5, Math.PI, 0); ctx.fill();
+                ctx.restore();
+
+                // Голова
+                ctx.save();
+                ctx.translate(25, -10);
+                if (gameState === 'QUESTION') ctx.rotate(-0.2); 
+                
+                ctx.fillStyle = currentColor;
+                ctx.beginPath();
+                ctx.ellipse(5, 0, 20, 25, Math.PI/4, 0, Math.PI*2);
+                ctx.fill();
+
+                // Роги
+                ctx.fillStyle = '#ffb300';
+                ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(10, -35); ctx.lineTo(15, -18); ctx.fill();
+
+                // Око 
+                ctx.fillStyle = '#fff9c4'; 
+                ctx.beginPath(); ctx.arc(10, -5, 12, 0, Math.PI*2); ctx.fill();
+                
+                let pupilOffset = (this.state === 'walk' || gameState === 'FINISHED') ? 4 : 0;
+                ctx.fillStyle = '#000';
+                ctx.beginPath(); ctx.arc(10 + pupilOffset, -5, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#e0f7fa'; 
+                ctx.beginPath(); ctx.arc(11 + pupilOffset, -7, 1.5, 0, Math.PI*2); ctx.fill();
+
+                // Рот
+                ctx.strokeStyle = '#33691e';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                if(this.glowTimer > 0 || gameState === 'FINISHED') { 
+                    ctx.arc(15, 10, 8, 0, Math.PI);
+                } else if(gameState === 'QUESTION') {
+                    ctx.arc(15, 12, 4, 0, Math.PI*2);
+                } else {
+                    ctx.moveTo(10, 12);
+                    ctx.quadraticCurveTo(15, 15, 22, 10);
+                }
+                ctx.stroke();
+
+                ctx.restore(); 
+                ctx.restore(); 
+            }
+        };
+
+        // --- Генерація різноманітного рівня ---
+        const levelData = {
+            platforms: [],
+            vines: [],
+            clouds: [],
+            obstacles: [], 
+            candies: [],
+            house: null
+        };
+
+        function buildLevel() {
+            let cx = 0;
+            let cy = 600;
+
+            levelData.platforms.push({ x: cx, y: cy, w: 600, h: 400, type: 'ground' });
+            
+            for(let i = 0; i < 10; i++) {
+                let layoutType = i % 4; 
+                
+                if (layoutType === 0) {
+                    // Острівці + Рухома платформа
+                    cx += 600;
+                    levelData.platforms.push({ x: cx + 50, y: cy - 50, w: 100, h: 50, type: 'floating' });
+                    levelData.platforms.push({ x: cx + 250, y: cy - 100, w: 150, h: 50, type: 'moving', startX: cx + 200, endX: cx + 400, speed: 2, currentDir: 1, vx: 2 });
+                    levelData.candies.push({ x: cx + 300, y: cy - 150, collected: false });
+                    levelData.platforms.push({ x: cx + 500, y: cy - 150, w: 100, h: 50, type: 'floating' });
+                    cx += 750; cy -= 150;
+                    levelData.platforms.push({ x: cx, y: cy, w: 700, h: 400, type: 'ground' });
+                } else if (layoutType === 1) {
+                    // Вода (Озеро)
+                    cx += 700;
+                    levelData.platforms.push({ x: cx, y: cy, w: 600, h: 400, type: 'water' });
+                    levelData.platforms.push({ x: cx + 200, y: cy - 50, w: 80, h: 40, type: 'floating' });
+                    levelData.candies.push({ x: cx + 220, y: cy - 100, collected: false });
+                    levelData.platforms.push({ x: cx + 400, y: cy - 100, w: 80, h: 40, type: 'floating' });
+                    cx += 600; cy -= 100;
+                    levelData.platforms.push({ x: cx, y: cy, w: 700, h: 400, type: 'ground' });
+                } else if (layoutType === 2) {
+                    // Ліана
+                    cx += 700;
+                    levelData.vines.push({ x: cx + 150, y: cy - 250, w: 40, h: 400 });
+                    levelData.candies.push({ x: cx + 150, y: cy - 100, collected: false });
+                    cx += 300; cy -= 250;
+                    levelData.platforms.push({ x: cx, y: cy, w: 700, h: 400, type: 'ruins' });
+                } else {
+                    // Дощові хмари
+                    cx += 700;
+                    levelData.clouds.push({ x: cx + 150, y: cy - 350, w: 200, h: 60, rainTimer: 0, isRaining: false });
+                    levelData.platforms.push({ x: cx, y: cy, w: 600, h: 400, type: 'ground' });
+                    cx += 600;
+                    levelData.platforms.push({ x: cx, y: cy, w: 700, h: 400, type: 'ground' });
+                }
+
+                // Додавання перешкоди з прив'язкою тексту запитання
+                levelData.obstacles.push({
+                    x: cx + 200, y: cy - 120, w: 80, h: 120,
+                    active: true, qIdx: i + 1,
+                    text: gameQuestions[i],
+                    type: (i % 2 === 0) ? 'flower' : 'statue'
+                });
+                
+                levelData.candies.push({ x: cx + 350, y: cy - 150, collected: false });
+            }
+
+            // Будинок
+            cx += 800;
+            levelData.platforms.push({ x: cx, y: cy, w: 1500, h: 400, type: 'ground' });
+            levelData.house = { x: cx + 600, y: cy - 200, w: 300, h: 200, doorState: 0 };
+        }
+
+        // Оновлення рухомих об'єктів та хмар
+        function updateLevelEnvironment() {
+            levelData.platforms.forEach(p => {
+                if (p.type === 'moving') {
+                    p.x += p.vx;
+                    if (p.x > p.endX) { p.x = p.endX; p.currentDir = -1; p.vx = -p.speed; }
+                    if (p.x < p.startX) { p.x = p.startX; p.currentDir = 1; p.vx = p.speed; }
+                }
+            });
+
+            levelData.clouds.forEach(c => {
+                c.rainTimer++;
+                if (c.isRaining && c.rainTimer > 80) { c.isRaining = false; c.rainTimer = 0; }
+                if (!c.isRaining && c.rainTimer > 120) { c.isRaining = true; c.rainTimer = 0; }
+            });
+        }
+
+        function drawParallaxBackground() {
+            let layer1Speed = 0.2;
+            let spacing1 = 800;
+            let startIdx1 = Math.floor(cameraX * layer1Speed / spacing1) - 1;
+            let endIdx1 = startIdx1 + Math.ceil(width / spacing1) + 2;
+
+            ctx.fillStyle = 'rgba(0, 77, 64, 0.7)'; 
+            for(let i = startIdx1; i <= endIdx1; i++) {
+                let drawX = (i * spacing1) - (cameraX * layer1Speed);
+                ctx.beginPath();
+                ctx.moveTo(drawX, height);
+                ctx.lineTo(drawX + 150, height - 300 - cameraY*0.1);
+                ctx.lineTo(drawX + 400, height - 400 - cameraY*0.1);
+                ctx.lineTo(drawX + 650, height - 250 - cameraY*0.1);
+                ctx.lineTo(drawX + 800, height);
+                ctx.fill();
+            }
+
+            let layer2Speed = 0.4;
+            let spacing2 = 600;
+            let startIdx2 = Math.floor(cameraX * layer2Speed / spacing2) - 1;
+            let endIdx2 = startIdx2 + Math.ceil(width / spacing2) + 2;
+
+            for(let i = startIdx2; i <= endIdx2; i++) {
+                let drawX = (i * spacing2) - (cameraX * layer2Speed);
+                
+                ctx.fillStyle = 'rgba(0, 121, 107, 0.8)';
+                ctx.beginPath();
+                ctx.ellipse(drawX + 100, height - 100 - cameraY*0.2, 150, 200, 0.5, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = 'rgba(0, 105, 92, 0.8)';
+                ctx.beginPath();
+                ctx.ellipse(drawX + 400, height - 50 - cameraY*0.2, 200, 150, -0.3, 0, Math.PI*2);
+                ctx.fill();
+                
+                ctx.strokeStyle = 'rgba(0, 77, 64, 0.8)';
+                ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(drawX - 50, height - cameraY*0.2); ctx.lineTo(drawX + 200, height - 300 - cameraY*0.2); ctx.stroke();
+            }
+        }
+
+        function drawLevel() {
+            // Вода (Озера)
+            levelData.platforms.forEach(p => {
+                if (p.type === 'water') {
+                    let drawX = p.x - cameraX;
+                    let drawY = p.y - cameraY;
+                    if(drawX + p.w < -100 || drawX > width + 100) return;
+
+                    ctx.fillStyle = 'rgba(0, 188, 212, 0.6)';
+                    ctx.fillRect(drawX, drawY + 20, p.w, p.h);
+                    
+                    ctx.fillStyle = 'rgba(77, 208, 225, 0.8)';
+                    ctx.beginPath();
+                    for(let x = 0; x <= p.w; x += 20) {
+                        let yOffset = Math.sin(frameCount * 0.1 + x * 0.05) * 8;
+                        if(x === 0) ctx.moveTo(drawX + x, drawY + 20 + yOffset);
+                        else ctx.lineTo(drawX + x, drawY + 20 + yOffset);
+                    }
+                    ctx.lineTo(drawX + p.w, drawY + p.h);
+                    ctx.lineTo(drawX, drawY + p.h);
+                    ctx.fill();
+                }
+            });
+
+            // Ліани
+            levelData.vines.forEach(v => {
+                let drawX = v.x - cameraX;
+                let drawY = v.y - cameraY;
+                if(drawX + v.w < -100 || drawX > width + 100) return;
+                
+                ctx.strokeStyle = '#33691e';
+                ctx.lineWidth = 12;
+                ctx.lineCap = 'round';
+                
+                ctx.beginPath();
+                for(let y = 0; y <= v.h; y+=20) {
+                    let wave = Math.sin((y + frameCount) * 0.05) * 8;
+                    if(y===0) ctx.moveTo(drawX + v.w/2 + wave, drawY + y);
+                    else ctx.lineTo(drawX + v.w/2 + wave, drawY + y);
+                }
+                ctx.stroke();
+                
+                ctx.fillStyle = '#64dd17';
+                for(let y = 30; y < v.h; y+=40) {
+                    ctx.beginPath();
+                    ctx.ellipse(drawX + v.w/2 + 15, drawY + y, 10, 5, Math.PI/4, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.ellipse(drawX + v.w/2 - 15, drawY + y + 20, 10, 5, -Math.PI/4, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            });
+
+            // Платформи
+            levelData.platforms.forEach(p => {
+                if (p.type === 'water') return; // Воду вже намалювали
+                let drawX = p.x - cameraX;
+                let drawY = p.y - cameraY;
+                
+                if(drawX + p.w < -100 || drawX > width + 100) return;
+                if(drawY > height + 100 || drawY + p.h < -100) return;
+
+                if (p.type === 'ground' || p.type === 'floating' || p.type === 'moving') {
+                    let grad = ctx.createLinearGradient(0, drawY, 0, drawY + p.h);
+                    grad.addColorStop(0, '#558b2f'); 
+                    grad.addColorStop(0.1, '#3e2723'); 
+                    grad.addColorStop(1, '#1b1b1b'); 
+                    
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    if(p.type === 'floating' || p.type === 'moving') ctx.roundRect(drawX, drawY, p.w, p.h, 15);
+                    else ctx.rect(drawX, drawY, p.w, p.h);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#2e1c15';
+                    for(let i=10; i<p.w; i+=40) {
+                        ctx.beginPath(); ctx.arc(drawX + i, drawY + 30 + Math.sin(i)*10, 8, 0, Math.PI*2); ctx.fill();
+                    }
+
+                    ctx.fillStyle = '#7cb342';
+                    for(let i = 0; i < p.w; i += 15) {
+                        let h = 10 + Math.sin(frameCount*0.1 + i)*5;
+                        ctx.beginPath();
+                        ctx.moveTo(drawX + i, drawY + 2);
+                        ctx.lineTo(drawX + i + 5, drawY - h);
+                        ctx.lineTo(drawX + i + 10, drawY + 2);
+                        ctx.fill();
+                    }
+                } else if (p.type === 'ruins') {
+                    ctx.fillStyle = '#546e7a';
+                    ctx.fillRect(drawX, drawY, p.w, p.h);
+                    
+                    ctx.strokeStyle = '#37474f';
+                    ctx.lineWidth = 4;
+                    for(let y = 0; y < p.h; y+=50) {
+                        ctx.beginPath(); ctx.moveTo(drawX, drawY + y); ctx.lineTo(drawX + p.w, drawY + y); ctx.stroke();
+                        for(let x = (y%100===0?0:25); x < p.w; x+=50) {
+                            ctx.beginPath(); ctx.moveTo(drawX + x, drawY + y); ctx.lineTo(drawX + x, drawY + y + 50); ctx.stroke();
+                            
+                            if((x+y)%3===0) {
+                                ctx.strokeStyle = '#263238';
+                                ctx.lineWidth = 2;
+                                ctx.strokeRect(drawX + x + 15, drawY + y + 15, 20, 20);
+                                ctx.beginPath(); ctx.arc(drawX + x + 25, drawY + y + 25, 4, 0, Math.PI*2); ctx.stroke();
+                                ctx.strokeStyle = '#37474f';
+                                ctx.lineWidth = 4;
+                            }
+                        }
+                    }
+                    
+                    ctx.fillStyle = 'rgba(56, 142, 60, 0.6)';
+                    ctx.beginPath();
+                    ctx.moveTo(drawX, drawY);
+                    ctx.lineTo(drawX + p.w/2, drawY + 30);
+                    ctx.lineTo(drawX + p.w, drawY);
+                    ctx.fill();
+                }
+            });
+
+            // Цукерки
+            levelData.candies.forEach(c => {
+                if (c.collected) return;
+                let drawX = c.x - cameraX;
+                let drawY = c.y - cameraY;
+                if(drawX + 40 < 0 || drawX > width || drawY > height || drawY < -40) return;
+
+                let floatY = Math.sin(frameCount * 0.1 + c.x) * 8;
+                
+                ctx.save();
+                ctx.translate(drawX + 20, drawY + 20 + floatY);
+                ctx.rotate(frameCount * 0.03);
+                
+                ctx.fillStyle = '#ff4081';
+                ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI*2); ctx.fill();
+                
+                ctx.fillStyle = '#ffff00';
+                ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI); ctx.fill();
+                
+                ctx.fillStyle = '#00e5ff';
+                ctx.beginPath();
+                ctx.moveTo(-15, 0); ctx.lineTo(-30, -15); ctx.lineTo(-30, 15); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(15, 0); ctx.lineTo(30, -15); ctx.lineTo(30, 15); ctx.fill();
+
+                ctx.restore();
+            });
+
+            // Хмари та Дощ
+            levelData.clouds.forEach(c => {
+                let drawX = c.x - cameraX;
+                let drawY = c.y - cameraY;
+                if(drawX + c.w < 0 || drawX > width) return;
+
+                // Малюємо дощ
+                if (c.isRaining) {
+                    ctx.strokeStyle = 'rgba(0, 150, 255, 0.6)';
+                    ctx.lineWidth = 2;
+                    for(let i = 10; i < c.w; i += 15) {
+                        let dropY = (frameCount * 15 + i * 7) % 400; 
+                        ctx.beginPath();
+                        ctx.moveTo(drawX + i, drawY + c.h/2 + dropY);
+                        ctx.lineTo(drawX + i, drawY + c.h/2 + dropY + 25);
+                        ctx.stroke();
+                    }
+                }
+
+                // Малюємо хмаринку
+                ctx.fillStyle = c.isRaining ? '#546e7a' : '#90a4ae';
+                ctx.beginPath();
+                ctx.arc(drawX + 40, drawY + 30, 30, 0, Math.PI*2);
+                ctx.arc(drawX + 100, drawY + 20, 45, 0, Math.PI*2);
+                ctx.arc(drawX + 160, drawY + 30, 30, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Будинок (із анімацією дверей)
+            if (levelData.house) {
+                let hx = levelData.house.x - cameraX;
+                let hy = levelData.house.y - cameraY;
+                if (hx < width && hx + levelData.house.w > 0) {
+                    ctx.fillStyle = '#8D6E63'; 
+                    ctx.fillRect(hx, hy + 50, levelData.house.w, levelData.house.h - 50);
+                    
+                    ctx.fillStyle = '#5D4037'; 
+                    ctx.fillRect(hx - 10, hy + 50, levelData.house.w + 20, 20);
+                    ctx.fillRect(hx - 10, hy + levelData.house.h - 20, levelData.house.w + 20, 20);
+                    
+                    ctx.fillStyle = '#D84315'; 
+                    ctx.beginPath();
+                    ctx.moveTo(hx - 40, hy + 50);
+                    ctx.lineTo(hx + levelData.house.w / 2, hy - 80);
+                    ctx.lineTo(hx + levelData.house.w + 40, hy + 50);
+                    ctx.fill();
+
+                    // Вікна
+                    ctx.fillStyle = '#FFF59D'; 
+                    ctx.fillRect(hx + 30, hy + 80, 50, 50);
+                    ctx.fillRect(hx + levelData.house.w - 80, hy + 80, 50, 50);
+                    
+                    ctx.strokeStyle = '#3E2723'; ctx.lineWidth = 4; 
+                    ctx.strokeRect(hx + 30, hy + 80, 50, 50);
+                    ctx.beginPath(); ctx.moveTo(hx + 55, hy + 80); ctx.lineTo(hx + 55, hy + 130); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(hx + 30, hy + 105); ctx.lineTo(hx + 80, hy + 105); ctx.stroke();
+                    
+                    ctx.strokeRect(hx + levelData.house.w - 80, hy + 80, 50, 50);
+                    ctx.beginPath(); ctx.moveTo(hx + levelData.house.w - 55, hy + 80); ctx.lineTo(hx + levelData.house.w - 55, hy + 130); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(hx + levelData.house.w - 80, hy + 105); ctx.lineTo(hx + levelData.house.w - 30, hy + 105); ctx.stroke();
+
+                    // Двері
+                    let doorW = 30;
+                    let doorOpenOffset = doorW * levelData.house.doorState;
+                    
+                    // Темрява всередині
+                    ctx.fillStyle = '#1a0000';
+                    ctx.fillRect(hx + levelData.house.w/2 - 30, hy + levelData.house.h - 90, 60, 90);
+
+                    // Стулки дверей
+                    ctx.fillStyle = '#4E342E';
+                    ctx.fillRect(hx + levelData.house.w/2 - 30 - doorOpenOffset, hy + levelData.house.h - 90, doorW, 90);
+                    ctx.fillRect(hx + levelData.house.w/2 + doorOpenOffset, hy + levelData.house.h - 90, doorW, 90);
+                }
+            }
+
+            // Перешкоди
+            levelData.obstacles.forEach(o => {
+                if (!o.active) return;
+                let drawX = o.x - cameraX;
+                let drawY = o.y - cameraY;
+                if(drawX + o.w < 0 || drawX > width || drawY > height || drawY + o.h < 0) return;
+
+                ctx.save();
+                ctx.translate(drawX + o.w/2, drawY + o.h);
+                
+                if (o.type === 'flower') {
+                    let sway = Math.sin(frameCount * 0.05 + o.x) * 0.1;
+                    ctx.rotate(sway);
+                    
+                    ctx.strokeStyle = '#8bc34a';
+                    ctx.lineWidth = 12;
+                    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(20, -o.h/2, 0, -o.h); ctx.stroke();
+                    
+                    ctx.translate(0, -o.h);
+                    let openAmount = Math.abs(Math.sin(frameCount * 0.1)) * 0.5; 
+                    
+                    ctx.fillStyle = '#d32f2f';
+                    ctx.save(); ctx.rotate(-openAmount);
+                    ctx.beginPath(); ctx.arc(0, 0, 40, Math.PI, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#ffeb3b';
+                    for(let x=-30; x<=30; x+=15) {
+                        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x+7, 15); ctx.lineTo(x+15, 0); ctx.fill();
+                    }
+                    ctx.restore();
+                    
+                    ctx.fillStyle = '#b71c1c';
+                    ctx.save(); ctx.rotate(openAmount);
+                    ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI); ctx.fill();
+                    ctx.fillStyle = '#ffeb3b';
+                    for(let x=-30; x<=30; x+=15) {
+                        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x+7, -15); ctx.lineTo(x+15, 0); ctx.fill();
+                    }
+                    ctx.restore();
+
+                } else {
+                    let hover = Math.sin(frameCount * 0.1 + o.x) * 5;
+                    ctx.translate(0, hover);
+                    
+                    ctx.fillStyle = '#795548';
+                    ctx.fillRect(-30, -o.h, 60, o.h);
+                    ctx.fillStyle = '#5d4037';
+                    ctx.fillRect(-20, -o.h - 20, 40, 20); 
+                    
+                    ctx.fillStyle = '#00e676';
+                    let eyeGlow = Math.abs(Math.sin(frameCount * 0.05)) * 10 + 5;
+                    ctx.shadowColor = '#00e676';
+                    ctx.shadowBlur = eyeGlow;
+                    ctx.beginPath(); ctx.ellipse(-12, -o.h + 30, 8, 4, -0.2, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(12, -o.h + 30, 8, 4, 0.2, 0, Math.PI*2); ctx.fill();
+                    ctx.shadowBlur = 0; 
+                    
+                    ctx.strokeStyle = '#d7ccc8';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(-20, -o.h + 60); ctx.lineTo(0, -o.h + 80); ctx.lineTo(20, -o.h + 60); ctx.stroke();
+                }
+
+                ctx.restore();
+            });
+        }
+
+        function initConfetti() {
+            particles = [];
+            for (let i = 0; i < 150; i++) {
+                particles.push({
+                    x: width / 2,
+                    y: height / 2,
+                    vx: (Math.random() - 0.5) * 25,
+                    vy: (Math.random() - 0.5) * 25 - 10,
+                    size: Math.random() * 10 + 5,
+                    color: `hsl(${Math.random() * 360}, 100%, 50%)`,
+                    rot: Math.random() * Math.PI * 2,
+                    rotSpeed: (Math.random() - 0.5) * 0.2
+                });
+            }
+            playSound('confetti');
+        }
+
+        function drawConfettiUI() {
+            particles.forEach(p => {
+                p.vy += 0.5; 
+                p.x += p.vx;
+                p.y += p.vy;
+                p.rot += p.rotSpeed;
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                ctx.restore();
+            });
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.roundRect(width/2 - 250, height/2 - 150, 500, 100, 20);
+            ctx.fill();
+            
+            ctx.fillStyle = '#FFEB3B';
+            ctx.font = 'bold 50px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = '#FF9800';
+            ctx.shadowBlur = 10;
+            ctx.fillText("ТИ ПРОЙШОВ УСЕ!", width / 2, height / 2 - 100);
+            ctx.shadowBlur = 0;
+        }
+
+        function checkCollisions() {
+            player.grounded = false;
+            player.currentPlatform = null;
+
+            if(!player.isClimbing) {
+                for(let p of levelData.platforms) {
+                    if (p.type === 'water') {
+                        if (player.x + player.width > p.x && player.x < p.x + p.w &&
+                            player.y + player.height > p.y + 20 && player.y < p.y + p.h) {
+                            player.respawn();
+                        }
+                    } else {
+                        if (player.x + player.width > p.x && player.x < p.x + p.w &&
+                            player.y + player.height >= p.y && player.y + player.height <= p.y + 25 &&
+                            player.vy >= 0) {
+                            player.y = p.y - player.height;
+                            player.vy = 0;
+                            player.grounded = true;
+                            player.currentPlatform = p;
+                        }
+                    }
+                }
+            }
+
+            // Дощ
+            levelData.clouds.forEach(c => {
+                if (c.isRaining &&
+                    player.x + player.width > c.x && player.x < c.x + c.w &&
+                    player.y + player.height > c.y + c.h && player.y < c.y + c.h + 400) {
+                    player.respawn();
+                }
+            });
+
+            for(let c of levelData.candies) {
+                if (!c.collected) {
+                    let dx = (player.x + player.width/2) - (c.x + 20);
+                    let dy = (player.y + player.height/2) - (c.y + 20);
+                    if (Math.sqrt(dx*dx + dy*dy) < 45) {
+                        c.collected = true;
+                        player.glowTimer = 20; 
+                        playSound('candy');
+                    }
+                }
+            }
+
+            for(let o of levelData.obstacles) {
+                if (o.active) {
+                    if (player.x + player.width > o.x && player.x < o.x + o.w &&
+                        player.y + player.height > o.y && player.y < o.y + o.h) {
+                        
+                        player.vx = 0;
+                        player.vy = 0;
+                        if (player.x < o.x) player.x = o.x - player.width - 2;
+                        else player.x = o.x + o.w + 2;
+
+                        triggerQuestion(o, false);
+                    }
+                }
+            }
+
+            if (levelData.house && gameState === 'PLAYING') {
+                if (player.x > levelData.house.x + levelData.house.w/2 - 60) {
+                    triggerHouseEnter(false);
+                }
+            }
+        }
+
+        const modal = document.getElementById('questionModal');
+        const qText = document.getElementById('qText');
+        const btnNextQuestion = document.getElementById('btnNextQuestion');
+
+        function triggerQuestion(obstacle, fromRemote = false) {
+            if (gameState === 'QUESTION') return;
+            gameState = 'QUESTION';
+            currentObstacle = obstacle;
+            
+            playSound('question_appear');
+            keys.right = false; keys.left = false; keys.up = false; keys.down = false;
+
+            qText.innerText = obstacle.text || `Питання ${obstacle.qIdx}`;
+            modal.classList.add('active');
+
+            if (!fromRemote) {
+                sendAction('QUESTION_OPEN', { qIdx: obstacle.qIdx });
+            }
+        }
+
+        function closeQuestion(fromRemote = false) {
+            if (gameState !== 'QUESTION') return;
+            playSound('next');
+            modal.classList.remove('active');
+            
+            if(currentObstacle) currentObstacle.active = false;
+            
+            setTimeout(() => { 
+                if (gameState !== 'FINISHED') gameState = 'PLAYING'; 
+            }, 300);
+
+            if (!fromRemote) {
+                sendAction('QUESTION_CLOSE', {});
+            }
+        }
+
+        btnNextQuestion.addEventListener('click', () => closeQuestion(false));
+
+        function triggerHouseEnter(fromRemote = false) {
+            if (gameState === 'ENTERING_HOUSE' || gameState === 'FINISHED') return;
+            gameState = 'ENTERING_HOUSE';
+            levelData.house.doorState = 0;
+            player.vx = 0;
+            keys.right = false; keys.left = false; keys.up = false; keys.down = false;
+
+            if (!fromRemote) {
+                sendAction('ENTER_HOUSE', {});
+            }
+        }
+
+        function triggerFinish(fromRemote = false) {
+            if (gameState === 'FINISHED') return;
+            gameState = 'FINISHED';
+            keys.right = false; keys.left = false; keys.up = false; keys.down = false;
+            initConfetti();
+
+            if (!fromRemote) {
+                sendAction('FINISH', {});
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, width, height);
+            
+            if (gameState === 'PLAYING' || gameState === 'QUESTION') {
+                updateLevelEnvironment();
+            }
+
+            player.update();
+            if (gameState === 'PLAYING') {
+                checkCollisions();
+            }
+
+            // Логіка входу в дім
+            if (gameState === 'ENTERING_HOUSE') {
+                if (levelData.house.doorState < 1 && !player.entered) {
+                    levelData.house.doorState += 0.03; // Відкриваємо двері
+                } else if (!player.entered) {
+                    let targetX = levelData.house.x + levelData.house.w/2 - player.width/2;
+                    if (player.x < targetX) {
+                        player.x += 2;
+                        player.state = 'walk';
+                    } else {
+                        player.entered = true;
+                    }
+                } else if (player.entered) {
+                    if (levelData.house.doorState > 0) {
+                        levelData.house.doorState -= 0.03; // Зачиняємо двері
+                    } else {
+                        triggerFinish(false);
+                    }
+                }
+            }
+
+            let targetCamX = player.x - width / 2.5;
+            let targetCamY = player.y - height / 1.5;
+            
+            if(targetCamY > 500) targetCamY = 500;
+            if(gameState === 'ENTERING_HOUSE' || gameState === 'FINISHED') {
+                targetCamX = levelData.house.x + levelData.house.w/2 - width/2;
+                targetCamY = levelData.house.y - height/2 + 100; 
+            }
+            
+            cameraX += (targetCamX - cameraX) * 0.1;
+            cameraY += (targetCamY - cameraY) * 0.1;
+
+            drawParallaxBackground();
+            drawLevel();
+            player.draw();
+
+            if (gameState === 'FINISHED') {
+                drawConfettiUI();
+            }
+
+            frameCount++;
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Ініціалізація та старт
+        buildLevel();
+        gameLoop();
+    </script>
+
+    <!-- Універсальний блок контролю (Ідентифікація, Радар та Блокування) -->
+    <div id="block-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 99999; color: red; font-size: 5vw; text-align: center; line-height: 100vh; font-weight: bold; pointer-events: none; user-select: none;">Зачекай! Зараз не твій урок.</div>
+    <script>
+        (function() {
+            try {
+                if (!window.db) window.db = firebase.database();
+                
+                const urlParams = new URLSearchParams(window.location.search);
+                let myName = urlParams.get('user');
+                
+                if (myName) {
+                    sessionStorage.setItem('myName', myName);
+                } else {
+                    myName = sessionStorage.getItem('myName');
+                    if (!myName) {
+                        myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                        sessionStorage.setItem('myName', myName);
+                    }
+                }
+                
+                const tabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+                const userRef = window.db.ref('online_users/' + myName + '/' + tabId);
+                const blockRef = window.db.ref('blocked_users/' + myName);
+                const activityRef = window.db.ref('current_activity');
+                const forceRefreshRef = window.db.ref('force_refresh');
+                
+                const connectedRef = window.db.ref('.info/connected');
+                connectedRef.on('value', (snap) => {
+                    if (snap.val() === true) {
+                        userRef.set(true);
+                        userRef.onDisconnect().remove();
+                    }
+                });
+                
+                window.addEventListener('beforeunload', () => {
+                    userRef.remove();
+                });
+                
+                const blockOverlay = document.getElementById('block-overlay');
+                blockRef.on('value', (snap) => {
+                    if (snap.val() === true) {
+                        blockOverlay.style.display = 'block';
+                    } else {
+                        blockOverlay.style.display = 'none';
+                    }
+                });
+                
+                let immunity = true;
+                setTimeout(() => { immunity = false; }, 1000);
+                
+                activityRef.on('value', (snap) => {
+                    if (immunity) return;
+                    const activity = snap.val();
+                    if (activity === 'lobby') {
+                        window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                    }
+                });
+                
+                let firstLoad = true;
+                forceRefreshRef.on('value', (snap) => {
+                    if (firstLoad) { firstLoad = false; return; }
+                    if (snap.val()) { window.location.reload(); }
+                });
+                
+            } catch (err) {
+                console.log("Firebase Control Block error:", err);
+            }
+        })();
+    </script>
+</body>
+</html>
