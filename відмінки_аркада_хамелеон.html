@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Версія гри: v1.2.0 -->
+    <!-- Версія гри: v1.3.0 -->
     <!-- Підключення Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
@@ -322,7 +322,22 @@
         const db = firebase.database();
         let myName = sessionStorage.getItem('myName') || 'Гість_' + Math.floor(Math.random() * 1000);
         let isRemoteAction = false;
-        let lastInputTime = 0; // Час останнього натискання клавіш (для синхронізації рухів)
+        
+        // --- Система "Лідер - Слідувач" ---
+        let currentLeaderId = null; 
+
+        // Отримання актуального лідера з мережі
+        db.ref('game_leader').on('value', snap => {
+            currentLeaderId = snap.val();
+        });
+
+        // Запит на лідерство при дії
+        function claimLeadership() {
+            if (currentLeaderId !== myName) {
+                currentLeaderId = myName;
+                db.ref('game_leader').set(myName);
+            }
+        }
 
         // --- Theme Manager Logic ---
         const themeBtn = document.getElementById('theme-btn');
@@ -431,10 +446,9 @@
         });
 
         // --- Синхронізація рухів (Player Sync) ---
-        // Відправлення координат, якщо ми активно граємо
+        // Відправлення координат, ТІЛЬКИ якщо ми є Лідером
         setInterval(() => {
-            // Якщо ми натискали клавіші в останні 2 секунди, ми вважаємось "Лідером" рухів
-            if (Date.now() - lastInputTime < 2000 && gameState === 'PLAYING') {
+            if (currentLeaderId === myName && gameState === 'PLAYING') {
                 db.ref('player_sync').set({
                     senderId: myName,
                     x: player.x,
@@ -447,24 +461,21 @@
                     timestamp: firebase.database.ServerValue.TIMESTAMP
                 });
             }
-        }, 50); // Синхронізація 20 разів на секунду для плавності
+        }, 50); // 20 разів на секунду
 
-        // Отримання координат, якщо грає інший пристрій
+        // Отримання координат, ТІЛЬКИ якщо ми Слідувач
         db.ref('player_sync').on('value', snap => {
             const data = snap.val();
-            if (!data || data.senderId === myName) return;
-            if (Date.now() - (data.timestamp || 0) > 2000) return; // Ігноруємо старі дані
+            if (!data || data.senderId === myName) return; // Ігноруємо свої ж дані
+            if (currentLeaderId === myName) return; // Ми лідер, ігноруємо чужі застарілі дані
+            if (Date.now() - (data.timestamp || 0) > 2000) return;
 
-            // Якщо ми зараз самі НЕ натискаємо кнопки (ми "Слідувач")
-            if (Date.now() - lastInputTime > 500) {
-                player.x = data.x;
-                player.y = data.y;
-                player.vx = data.vx;
-                player.vy = data.vy;
-                player.state = data.state;
-                player.facingRight = data.facingRight;
-                player.isClimbing = data.isClimbing;
-            }
+            // Встановлюємо цільові координати для інтерполяції
+            player.targetX = data.x;
+            player.targetY = data.y;
+            player.state = data.state;
+            player.facingRight = data.facingRight;
+            player.isClimbing = data.isClimbing;
         });
 
         const canvas = document.getElementById('gameCanvas');
@@ -559,12 +570,11 @@
         
         const handleKeyDown = (key) => {
             keys[key] = true;
-            lastInputTime = Date.now(); // Оновлюємо час при натисканні
-            if(key === 'up' && !player.isClimbing) player.jump();
+            claimLeadership(); // Якщо ми натиснули кнопку, ми стаємо Лідером
+            if(key === 'up' && !player.isClimbing && currentLeaderId === myName) player.jump();
         };
         const handleKeyUp = (key) => { 
             keys[key] = false; 
-            lastInputTime = Date.now(); // Оновлюємо час при відпусканні
         };
 
         window.addEventListener('keydown', (e) => {
@@ -611,7 +621,8 @@
             facingRight: true, state: 'idle', 
             baseColor: '#7cb342', glowTimer: 0,
             entered: false, 
-            lookOffsetX: 0, // Для переведення погляду
+            lookOffsetX: 0, 
+            targetX: undefined, targetY: undefined, // Для Слідувача
             
             respawn() {
                 let bestPlatform = null;
@@ -640,6 +651,8 @@
                 this.vx = 0;
                 this.isClimbing = false;
                 this.state = 'idle';
+                this.targetX = this.x;
+                this.targetY = this.y;
                 
                 cameraX = this.x - width / 2.5;
                 cameraY = this.y - height / 1.5;
@@ -647,7 +660,6 @@
             },
 
             update() {
-                // Випадкове переведення погляду
                 if (frameCount % 80 === 0 && Math.random() > 0.4) {
                     this.lookOffsetX = (Math.random() - 0.5) * 6;
                 }
@@ -660,63 +672,71 @@
                     return;
                 }
 
-                // Якщо ми самі не керуємо, але прийшли дані з Firebase, ми не оновлюємо фізику кнопок, 
-                // вона просто малюється згідно з даними Firebase. Але застосуємо гравітацію, якщо ми не під контролем іншого гравця.
-                if (Date.now() - lastInputTime > 500 && Object.keys(keys).every(k => !keys[k])) {
-                    // Ми слідувач, тому дозволяємо Firebase керувати координатами. 
-                    // Щоб персонаж не провалювався при затримках, мінімальна фізика:
-                    if (!this.grounded && !this.isClimbing) this.vy += 0.9;
-                    if(this.vy > 18) this.vy = 18;
-                    this.y += this.vy;
-                    this.x += this.vx;
-                } else {
-                    // Ми Лідер рухів (ми натискали клавіші нещодавно)
-                    this.state = 'idle';
-
-                    let activeVine = null;
-                    for(let v of levelData.vines) {
-                        if(this.x + this.width > v.x - 40 && this.x < v.x + v.w + 40 &&
-                           this.y + this.height > v.y && this.y < v.y + v.h + 20) {
-                            activeVine = v;
-                            break;
+                // РЕЖИМ СЛІДУВАЧА: Повне відключення локальної гравітації та фізики!
+                // Персонаж просто плавно слідує за координатами Лідера.
+                if (currentLeaderId !== null && currentLeaderId !== myName) {
+                    if (this.targetX !== undefined && this.targetY !== undefined) {
+                        // Якщо різниця надто велика (наприклад, Лідер відродився) - телепорт
+                        if (Math.abs(this.targetX - this.x) > 200 || Math.abs(this.targetY - this.y) > 200) {
+                            this.x = this.targetX;
+                            this.y = this.targetY;
+                        } else {
+                            // Плавне примагнічування
+                            this.x += (this.targetX - this.x) * 0.4;
+                            this.y += (this.targetY - this.y) * 0.4;
                         }
                     }
-
-                    if (activeVine) {
-                        if (keys.up || keys.down) this.isClimbing = true;
-                        if (this.isClimbing) {
-                            let targetX = activeVine.x + activeVine.w/2 - this.width/2;
-                            this.x += (targetX - this.x) * 0.15;
-                        }
-                    } else {
-                        this.isClimbing = false;
-                    }
-
-                    if (this.isClimbing) {
-                        this.vx = 0;
-                        this.vy = 0;
-                        this.state = 'climb';
-                        if (keys.up) { this.y -= this.speed; if(frameCount%15===0) playSound('climb'); }
-                        if (keys.down) { this.y += this.speed; if(frameCount%15===0) playSound('climb'); }
-                    } else {
-                        this.vy += 0.9;
-                        if(this.vy > 18) this.vy = 18;
-
-                        if (keys.right) { this.vx = this.speed; this.facingRight = true; this.state = 'walk'; }
-                        else if (keys.left) { this.vx = -this.speed; this.facingRight = false; this.state = 'walk'; }
-                        else { this.vx = 0; }
-
-                        if (!this.grounded && this.vy !== 0) this.state = 'jump';
-                    }
-
-                    if (this.grounded && this.currentPlatform && this.currentPlatform.type === 'moving') {
-                        this.x += this.currentPlatform.vx;
-                    }
-
-                    this.x += this.vx;
-                    this.y += this.vy;
+                    // Ні гравітації, ні перевірки колізій - слідувач захищений від падінь!
+                    return; 
                 }
 
+                // РЕЖИМ ЛІДЕРА: Повноцінна фізика
+                this.state = 'idle';
+
+                let activeVine = null;
+                for(let v of levelData.vines) {
+                    if(this.x + this.width > v.x - 40 && this.x < v.x + v.w + 40 &&
+                       this.y + this.height > v.y && this.y < v.y + v.h + 20) {
+                        activeVine = v;
+                        break;
+                    }
+                }
+
+                if (activeVine) {
+                    if (keys.up || keys.down) this.isClimbing = true;
+                    if (this.isClimbing) {
+                        let targetX = activeVine.x + activeVine.w/2 - this.width/2;
+                        this.x += (targetX - this.x) * 0.15;
+                    }
+                } else {
+                    this.isClimbing = false;
+                }
+
+                if (this.isClimbing) {
+                    this.vx = 0;
+                    this.vy = 0;
+                    this.state = 'climb';
+                    if (keys.up) { this.y -= this.speed; if(frameCount%15===0) playSound('climb'); }
+                    if (keys.down) { this.y += this.speed; if(frameCount%15===0) playSound('climb'); }
+                } else {
+                    this.vy += 0.9; // Гравітація
+                    if(this.vy > 18) this.vy = 18;
+
+                    if (keys.right) { this.vx = this.speed; this.facingRight = true; this.state = 'walk'; }
+                    else if (keys.left) { this.vx = -this.speed; this.facingRight = false; this.state = 'walk'; }
+                    else { this.vx = 0; }
+
+                    if (!this.grounded && this.vy !== 0) this.state = 'jump';
+                }
+
+                if (this.grounded && this.currentPlatform && this.currentPlatform.type === 'moving') {
+                    this.x += this.currentPlatform.vx;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Захист від падіння у прірву
                 if(this.y > cameraY + 1200 || this.y > 3000) {
                     this.respawn();
                 }
@@ -871,7 +891,8 @@
                 if (layoutType === 0) {
                     cx += 600;
                     levelData.platforms.push({ x: cx + 50, y: cy - 50, w: 100, h: 50, type: 'floating' });
-                    levelData.platforms.push({ x: cx + 250, y: cy - 100, w: 150, h: 50, type: 'moving', startX: cx + 200, endX: cx + 400, speed: 2, currentDir: 1, vx: 2 });
+                    // Додано timeOffset для детермінованості за часом
+                    levelData.platforms.push({ x: cx + 250, y: cy - 100, w: 150, h: 50, type: 'moving', startX: cx + 200, endX: cx + 400, timeOffset: i * 1000 });
                     levelData.candies.push({ x: cx + 300, y: cy - 150, collected: false });
                     levelData.platforms.push({ x: cx + 500, y: cy - 150, w: 100, h: 50, type: 'floating' });
                     cx += 750; cy -= 150;
@@ -892,7 +913,7 @@
                     levelData.platforms.push({ x: cx, y: cy, w: 700, h: 400, type: 'ruins' });
                 } else {
                     cx += 700;
-                    levelData.clouds.push({ x: cx + 150, y: cy - 350, w: 200, h: 60, rainTimer: 0, isRaining: false });
+                    levelData.clouds.push({ x: cx + 150, y: cy - 350, w: 200, h: 60, timeOffset: i * 2000, isRaining: false });
                     levelData.platforms.push({ x: cx, y: cy, w: 600, h: 400, type: 'ground' });
                     cx += 600;
                     levelData.platforms.push({ x: cx, y: cy, w: 700, h: 400, type: 'ground' });
@@ -913,19 +934,27 @@
             levelData.house = { x: cx + 600, y: cy - 200, w: 300, h: 200, doorState: 0 };
         }
 
+        // Оновлення середовища (прив'язано до Date.now(), щоб працювало однаково на всіх моніторах)
         function updateLevelEnvironment() {
+            const now = Date.now();
+            
             levelData.platforms.forEach(p => {
                 if (p.type === 'moving') {
-                    p.x += p.vx;
-                    if (p.x > p.endX) { p.x = p.endX; p.currentDir = -1; p.vx = -p.speed; }
-                    if (p.x < p.startX) { p.x = p.startX; p.currentDir = 1; p.vx = p.speed; }
+                    // Цикл 4 секунди
+                    let cycleDuration = 4000;
+                    let progress = ((now + p.timeOffset) % cycleDuration) / cycleDuration;
+                    let factor = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+                    let newX = p.startX + (p.endX - p.startX) * factor;
+                    p.vx = newX - p.x; // Встановлюємо швидкість для переносу персонажа
+                    p.x = newX;
                 }
             });
 
             levelData.clouds.forEach(c => {
-                c.rainTimer++;
-                if (c.isRaining && c.rainTimer > 80) { c.isRaining = false; c.rainTimer = 0; }
-                if (!c.isRaining && c.rainTimer > 120) { c.isRaining = true; c.rainTimer = 0; }
+                // Цикл дощу 8 секунд
+                let cycleDuration = 8000;
+                let progress = ((now + c.timeOffset) % cycleDuration) / cycleDuration;
+                c.isRaining = progress < 0.4; // 40% часу йде дощ
             });
         }
 
@@ -1212,8 +1241,8 @@
         }
 
         function checkCollisions() {
-            // Щоб уникнути подвійних розрахунків у слідувача, довіряємо Firebase
-            if (Date.now() - lastInputTime > 500 && Object.keys(keys).every(k => !keys[k])) return;
+            // Лише Лідер перевіряє колізії, Слідувачу це не потрібно, він просто летить за Лідером
+            if (currentLeaderId !== myName && currentLeaderId !== null) return;
 
             player.grounded = false;
             player.currentPlatform = null;
