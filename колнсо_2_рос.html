@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Подключение пиксельного шрифта для стиля Майнкрафт -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+    <!-- Подключение Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* Сброс стилей и блочный курсор */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #5C94FC;
+            font-family: 'Press Start 2P', monospace;
+            user-select: none;
+            cursor: crosshair;
+        }
+
+        /* Кубический фон */
+        #bg-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* Кубический персонаж (Свинка) */
+        #character {
+            position: absolute;
+            bottom: 80px;
+            left: 5%;
+            height: 300px;
+            width: 300px;
+            z-index: 1;
+            filter: drop-shadow(10px 10px 0px rgba(0,0,0,0.3));
+            animation: bobbing 2s steps(4) infinite;
+        }
+
+        /* Анимация "дыхания/движения" в кубическом стиле */
+        @keyframes bobbing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Подвижные зрачки свинки */
+        .pupil {
+            transition: transform 0.1s steps(2);
+        }
+
+        /* Контейнер игры */
+        #game-container {
+            position: absolute;
+            top: 50%;
+            left: 55%;
+            transform: translate(-30%, -50%);
+            width: 800px;
+            height: 800px;
+            z-index: 2;
+        }
+
+        /* Колесо */
+        #wheel-svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(15px 15px 0px rgba(0,0,0,0.5));
+            transition: transform 0.1s;
+        }
+
+        /* Указатель (Алмазная кирка) */
+        #pointer {
+            position: absolute;
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
+            z-index: 4;
+            filter: drop-shadow(5px 5px 0px rgba(0,0,0,0.5));
+            animation: hit 0.5s steps(3) infinite alternate;
+        }
+
+        @keyframes hit {
+            0% { transform: translateX(-50%) rotate(-10deg); }
+            100% { transform: translateX(-50%) rotate(10deg); }
+        }
+
+        /* Рычаг (Ручка) */
+        #handle {
+            position: absolute;
+            bottom: -20px;
+            right: -20px;
+            width: 180px;
+            height: 180px;
+            z-index: 5;
+            cursor: pointer;
+            filter: drop-shadow(8px 8px 0px rgba(0,0,0,0.5));
+            transition: transform 0.1s steps(2);
+        }
+
+        #handle:hover {
+            transform: scale(1.1);
+        }
+
+        #handle:active {
+            transform: scale(0.9) rotate(15deg);
+        }
+
+        /* Экран результата - Деревянная табличка */
+        #result-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s steps(3);
+        }
+
+        #result-text {
+            color: #000;
+            font-size: 2rem;
+            line-height: 1.5;
+            text-align: center;
+            transform: scale(0);
+            transition: transform 0.3s steps(4);
+            padding: 40px;
+            background-color: #d4a373; /* Цвет дубовых досок */
+            border: 8px solid #5c3a21;
+            box-shadow: inset 4px 4px 0px #e6ccb2, inset -4px -4px 0px #8a5a44, 10px 10px 0px rgba(0,0,0,0.5);
+            max-width: 60%;
+            word-wrap: break-word;
+            position: relative;
+            image-rendering: pixelated;
+        }
+
+        /* Кнопка на табличке */
+        #btn-action {
+            margin-top: 30px;
+            background-color: #8b8b8b;
+            border: 4px solid #000;
+            color: #fff;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            font-family: 'Press Start 2P', monospace;
+            cursor: pointer;
+            box-shadow: inset 4px 4px 0px #c6c6c6, inset -4px -4px 0px #555555, 5px 5px 0px rgba(0,0,0,0.5);
+            text-shadow: 2px 2px 0px #000;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .show-result #btn-action {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #btn-action:active {
+            box-shadow: inset 4px 4px 0px #555555, inset -4px -4px 0px #c6c6c6, 0px 0px 0px rgba(0,0,0,0);
+            transform: translate(5px, 5px);
+        }
+
+        .show-result {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+
+        .show-result #result-text {
+            transform: scale(1) !important;
+        }
+
+        .eaten {
+            opacity: 0;
+            transform: scale(0.1);
+            transition: opacity 0.2s, transform 0.2s steps(2);
+        }
+
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            color: #ff5555;
+            font-size: 3vw;
+            z-index: 99999;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            text-shadow: 4px 4px 0px #aa0000;
+        }
+
+        @media (max-width: 900px) {
+            #game-container {
+                width: 95vw;
+                height: 95vw;
+                transform: translate(-50%, -50%);
+                left: 50%;
+            }
+            #character {
+                height: 150px;
+                width: 150px;
+                left: 0;
+                bottom: 20px;
+            }
+            #result-text {
+                font-size: 1.2rem;
+                padding: 20px;
+                border-width: 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Блочный фон -->
+    <svg id="bg-pattern" width="100%" height="100%" preserveAspectRatio="none">
+        <defs>
+            <!-- Текстура земли с травой -->
+            <pattern id="dirt-block" width="64" height="64" patternUnits="userSpaceOnUse">
+                <rect width="64" height="64" fill="#8B5A2B" />
+                <rect x="0" y="0" width="32" height="32" fill="#7A4B24" />
+                <rect x="32" y="32" width="32" height="32" fill="#7A4B24" />
+                <rect x="16" y="16" width="16" height="16" fill="#693F1D" />
+                <rect x="48" y="48" width="16" height="16" fill="#693F1D" />
+            </pattern>
+            <!-- Текстура травы сверху -->
+            <pattern id="grass-top" width="64" height="32" patternUnits="userSpaceOnUse">
+                <rect width="64" height="32" fill="#4CAF50" />
+                <rect x="0" y="0" width="16" height="16" fill="#388E3C" />
+                <rect x="32" y="16" width="16" height="16" fill="#388E3C" />
+                <!-- Пиксельные свисающие травинки -->
+                <rect x="8" y="32" width="8" height="8" fill="#4CAF50" />
+                <rect x="24" y="32" width="8" height="16" fill="#4CAF50" />
+                <rect x="48" y="32" width="8" height="8" fill="#4CAF50" />
+            </pattern>
+            <!-- Облака -->
+            <pattern id="clouds" width="200" height="100" patternUnits="userSpaceOnUse">
+                <rect x="20" y="20" width="80" height="30" fill="#ffffff" opacity="0.8"/>
+                <rect x="40" y="10" width="40" height="10" fill="#ffffff" opacity="0.8"/>
+                <rect x="140" y="50" width="50" height="20" fill="#ffffff" opacity="0.8"/>
+            </pattern>
+        </defs>
+
+        <!-- Небо -->
+        <rect width="100%" height="100%" fill="#5C94FC" />
+        <rect width="100%" height="40%" fill="url(#clouds)" />
+
+        <!-- Земля -->
+        <rect y="75%" width="100%" height="25%" fill="url(#dirt-block)" />
+        <rect y="72%" width="100%" height="48" fill="url(#grass-top)" />
+
+        <!-- Солнце (кубическое) -->
+        <rect x="80%" y="10%" width="100" height="100" fill="#FFD700" />
+    </svg>
+
+    <!-- Кубическая Свинка -->
+    <svg id="character" viewBox="0 0 100 100">
+        <!-- Тень -->
+        <rect x="20" y="90" width="60" height="10" fill="rgba(0,0,0,0.3)" />
+
+        <!-- Задние ноги -->
+        <rect x="30" y="70" width="12" height="20" fill="#F08080" />
+        <rect x="58" y="70" width="12" height="20" fill="#F08080" />
+
+        <!-- Тело -->
+        <rect x="20" y="40" width="60" height="40" fill="#FFA07A" />
+
+        <!-- Передние ноги -->
+        <rect x="25" y="75" width="12" height="20" fill="#FFA07A" />
+        <rect x="63" y="75" width="12" height="20" fill="#FFA07A" />
+
+        <!-- Голова -->
+        <rect x="25" y="15" width="50" height="40" fill="#FFA07A" />
+
+        <!-- Уши -->
+        <rect x="20" y="10" width="10" height="15" fill="#F08080" />
+        <rect x="70" y="10" width="10" height="15" fill="#F08080" />
+
+        <!-- Глаза (белки) -->
+        <rect x="30" y="25" width="10" height="10" fill="#ffffff" />
+        <rect x="60" y="25" width="10" height="10" fill="#ffffff" />
+
+        <!-- Зрачки -->
+        <rect id="pupil-left" class="pupil" x="30" y="25" width="4" height="4" fill="#000000" />
+        <rect id="pupil-right" class="pupil" x="60" y="25" width="4" height="4" fill="#000000" />
+
+        <!-- Пятачок -->
+        <rect x="40" y="35" width="20" height="15" fill="#F08080" />
+        <!-- Ноздри -->
+        <rect x="42" y="38" width="4" height="6" fill="#8B4513" />
+        <rect x="54" y="38" width="4" height="6" fill="#8B4513" />
+    </svg>
+
+    <div id="game-container">
+        <!-- Пиксельная алмазная кирка вместо стрелки -->
+        <svg id="pointer" viewBox="0 0 32 32">
+            <!-- Ручка -->
+            <rect x="14" y="16" width="4" height="16" fill="#8B5A2B" />
+            <rect x="16" y="16" width="2" height="16" fill="#5C3A21" />
+
+            <!-- Лезвие кирки -->
+            <rect x="4" y="10" width="24" height="6" fill="#00FFFF" />
+            <rect x="6" y="8" width="20" height="2" fill="#00FFFF" />
+            <rect x="14" y="6" width="4" height="4" fill="#00FFFF" />
+            <rect x="4" y="12" width="24" height="2" fill="#00CED1" />
+            <rect x="14" y="10" width="4" height="6" fill="#008B8B" />
+        </svg>
+
+        <!-- Колесо (с пиксельной обводкой) -->
+        <svg id="wheel-svg" viewBox="0 0 800 800">
+            <!-- Блочная рамка (стилизация под рамку предмета) -->
+            <circle cx="400" cy="400" r="370" fill="#8B8B8B" />
+            <circle cx="400" cy="400" r="360" fill="#C6C6C6" stroke="#555555" stroke-width="15" stroke-dasharray="20, 20"/>
+
+            <g id="wheel-group"></g>
+
+            <!-- Центральный блок (Редстоун) -->
+            <rect x="360" y="360" width="80" height="80" fill="#FF0000" stroke="#AA0000" stroke-width="8" />
+            <rect x="370" y="370" width="20" height="20" fill="#FF5555" />
+        </svg>
+
+        <!-- Рычаг -->
+        <svg id="handle" viewBox="0 0 100 100">
+            <!-- Основа (Булыжник) -->
+            <rect x="20" y="60" width="60" height="30" fill="#7F7F7F" />
+            <rect x="20" y="60" width="30" height="15" fill="#999999" />
+            <rect x="50" y="75" width="30" height="15" fill="#555555" />
+            <!-- Палка -->
+            <rect x="45" y="10" width="10" height="60" fill="#8B5A2B" />
+            <!-- Красная пыль на ручке -->
+            <rect x="40" y="10" width="20" height="10" fill="#FF0000" />
+        </svg>
+    </div>
+
+    <!-- Экран результата -->
+    <div id="result-overlay">
+        <div id="result-text"></div>
+        <button id="btn-action">ГОТОВО</button>
+    </div>
+
+    <!-- Универсальный экран блокировки -->
+    <div id="block-overlay">Подожди! Сейчас не твой урок.</div>
+
+    <!-- Theme Manager UI -->
+    <div id="theme-btn" style="position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; background: #333; color: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 24px; cursor: pointer; z-index: 90001; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">⚙️</div>
+    
+    <div id="theme-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 10px; z-index: 90002; width: 80%; max-width: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <h3 style="margin-top: 0; font-family: sans-serif; text-align: center; color: black;">Выбор фона</h3>
+        <div id="theme-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; padding-right: 10px;">
+            <!-- Сгенерировано через JS -->
+        </div>
+        <button id="close-theme-modal" style="margin-top: 20px; width: 100%; padding: 10px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">Закрыть</button>
+    </div>
+    <div id="theme-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 90001;"></div>
+
+    <!-- Глобальный инструмент рисования -->
+    <canvas id="global-draw-canvas" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 90000; pointer-events: none;"></canvas>
+    
+    <button id="toggle-draw-btn-global" style="position: fixed; bottom: 85px; right: 20px; background: #8e44ad; color: white; border: none; border-radius: 5px; padding: 10px 15px; font-size: 16px; cursor: pointer; z-index: 90001; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-family: sans-serif;">✏️ Рисовать</button>
+    
+    <div id="draw-panel-global" style="display: none; position: fixed; top: 20px; left: 20px; background: white; border: 2px solid #ccc; border-radius: 8px; z-index: 90001; width: 250px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); font-family: Arial, sans-serif; overflow: hidden;">
+        <div id="draw-panel-header" style="background: #eee; padding: 10px; cursor: move; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc;">
+            <span style="font-weight: bold; color: black; font-size: 14px;">Инструменты</span>
+            <span id="close-draw-panel" style="cursor: pointer; color: red; font-weight: bold; padding: 0 5px;">✕</span>
+        </div>
+        <div style="padding: 10px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 5px;">
+                <button id="draw-tool-pencil" style="flex: 1; padding: 5px; background: #ddd; border: 1px solid #999; border-radius: 4px; cursor: pointer; font-weight: bold; color: black;">✏️ Карандаш</button>
+                <button id="draw-tool-eraser" style="flex: 1; padding: 5px; background: #fff; border: 1px solid #999; border-radius: 4px; cursor: pointer; color: black;">🧽 Ластик</button>
+            </div>
+            <div>
+                <label style="font-size: 12px; color: black;">Толщина: <span id="draw-width-val">5</span>px</label>
+                <input type="range" id="draw-width-slider" min="1" max="50" value="5" style="width: 100%;">
+            </div>
+            <div>
+                <label style="font-size: 12px; color: black;">Цвет:</label>
+                <input type="color" id="draw-color-picker" value="#ff0000" style="width: 100%; height: 30px; border: none; cursor: pointer;">
+            </div>
+            <button id="draw-tool-clear" style="padding: 8px; background: #ff4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🗑️ Очистить</button>
+        </div>
+    </div>
+
+    <script>
+        // Идентификатор игры для localStorage
+        const CONFIG = { gameId: 'wheel_mc_ru_v1' };
+
+        // Инициализация Firebase
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        let db;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            db = firebase.database();
+        } catch (error) {
+            console.error("Firebase init failed:", error);
+        }
+
+        // Новые вопросы (без пересечений с предыдущими)
+        const questions = [
+            "Что бывает стеклянным?",
+            "Что бывает квадратным?",
+            "Что бывает бумажным?",
+            "Что бывает опасным?",
+            "Что бывает золотым?",
+            "Что бывает медленным?",
+            "Что бывает жидким?",
+            "Что бывает каменным?",
+            "Что бывает мудрым?",
+            "Что бывает невидимым?",
+            "Что бывает быстрым?",
+            "Что бывает липким?"
+        ];
+
+        // Цвета блоков (Шерсть из игры)
+        const colors = [
+            "#E42C22", "#F9801D", "#FED83D", "#80C71F", 
+            "#3AB3DA", "#3C44AA", "#8932B8", "#F38BAA", 
+            "#474F52", "#9D9D97", "#161616", "#835432"
+        ];
+
+        let activeQuestions = [...questions];
+        let activeColors = [...colors];
+
+        const wheelGroup = document.getElementById('wheel-group');
+        let numSectors = activeQuestions.length;
+        let anglePerSector = 360 / numSectors;
+        const radius = 350; 
+        const cx = 400;
+        const cy = 400;
+
+        let currentRotation = 0;
+        let isSpinning = false;
+        let currentWinningIndex = -1;
+
+        // Построение колеса с выравниванием текста для предотвращения вылезания
+        function createWheel() {
+            wheelGroup.innerHTML = ''; 
+            numSectors = activeQuestions.length;
+            if (numSectors === 0) return; 
+
+            anglePerSector = 360 / numSectors;
+
+            for (let i = 0; i < numSectors; i++) {
+                const startAngle = i * anglePerSector - anglePerSector / 2;
+                const endAngle = (i + 1) * anglePerSector - anglePerSector / 2;
+
+                const startRad = (Math.PI / 180) * startAngle;
+                const endRad = (Math.PI / 180) * endAngle;
+
+                const x1 = cx + radius * Math.cos(startRad);
+                const y1 = cy + radius * Math.sin(startRad);
+                const x2 = cx + radius * Math.cos(endRad);
+                const y2 = cy + radius * Math.sin(endRad);
+
+                let pathData;
+                if (numSectors === 1) {
+                    pathData = `M ${cx} ${cy - radius} A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius} A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius} Z`;
+                } else {
+                    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+                    pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+                }
+
+                const sectorGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                sectorGroup.setAttribute("id", `sector-${i}`);
+                sectorGroup.style.transformOrigin = `${cx}px ${cy}px`;
+
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", pathData);
+                path.setAttribute("fill", activeColors[i % activeColors.length]);
+                path.setAttribute("stroke", "#111");
+                path.setAttribute("stroke-width", "6");
+                sectorGroup.appendChild(path);
+
+                // Декоративные "пиксели" на секторах
+                if (numSectors > 1) {
+                    const pxLayer = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    const toppingDist = radius * 0.7;
+                    const toppingAngle = startRad + (endRad - startRad) / 2;
+                    pxLayer.setAttribute("x", cx + toppingDist * Math.cos(toppingAngle) - 10);
+                    pxLayer.setAttribute("y", cy + toppingDist * Math.sin(toppingAngle) - 10);
+                    pxLayer.setAttribute("width", "20");
+                    pxLayer.setAttribute("height", "20");
+                    pxLayer.setAttribute("fill", "#000");
+                    pxLayer.setAttribute("opacity", "0.15");
+                    sectorGroup.appendChild(pxLayer);
+                }
+
+                // Текст вопроса: Выравниваем к краю радиуса, чтобы не вылезал за круг
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                const textAngle = startAngle + anglePerSector / 2;
+                // Радиус смещения - 0.93 (немного меньше края колеса)
+                text.setAttribute("transform", `translate(${cx}, ${cy}) rotate(${textAngle}) translate(${radius * 0.93}, 4)`);
+                // Привязка конца строки к рассчитанной точке
+                text.setAttribute("text-anchor", "end");
+                text.setAttribute("fill", "#fff");
+                text.setAttribute("font-size", "14px"); // Пиксельный шрифт широкий, размер 14px - безопасный
+                text.style.textShadow = "2px 2px 0px #000"; // Обводка текста как в игре
+                text.setAttribute("id", `text-${i}`);
+                text.textContent = activeQuestions[i];
+
+                sectorGroup.appendChild(text);
+                wheelGroup.appendChild(sectorGroup);
+            }
+
+            wheelGroup.setAttribute('transform', `rotate(${currentRotation} ${cx} ${cy})`);
+        }
+
+        createWheel();
+
+        // 8-bit Аудио
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Звук перещелкивания (Клик блока)
+        function playTick() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.type = 'square'; // 8-bit
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.05);
+
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        // Звук Level Up (Опыт)
+        function playWinSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const playTone = (freq, time, dur) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.type = 'square'; 
+                osc.frequency.value = freq;
+
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(0.15, time + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + dur);
+
+                osc.start(time);
+                osc.stop(time + dur);
+            };
+
+            const now = audioCtx.currentTime;
+            // Мелодия собирания орба опыта
+            playTone(659.25, now, 0.15); // E5
+            playTone(880.00, now + 0.15, 0.3); // A5
+        }
+
+        // Firebase Синхронизация
+        const gameSenderId = Math.random().toString(36).substring(2, 10);
+        let lastProcessedTimestamp = 0;
+
+        function sendGameAction(actionData) {
+            if (typeof db !== 'undefined') {
+                db.ref('game_action').set({
+                    senderId: gameSenderId,
+                    timestamp: Date.now(), 
+                    ...actionData
+                });
+            }
+        }
+
+        if (typeof db !== 'undefined') {
+            db.ref('game_action').on('value', snap => {
+                const data = snap.val();
+                if (data) {
+                    const isRemoteAction = data.senderId !== gameSenderId;
+                    
+                    if (data.type === 'draw_line' && isRemoteAction) {
+                        drawLineLocal(data.data);
+                    } else if (data.type === 'clear_canvas' && isRemoteAction) {
+                        clearCanvasLocal();
+                    } else if (isRemoteAction && data.timestamp > lastProcessedTimestamp) {
+                        lastProcessedTimestamp = data.timestamp;
+
+                        if (data.type === 'spin' && !isSpinning) {
+                            triggerSpinAnimation(data.targetRotation);
+                        } else if (data.type === 'read_and_remove') {
+                            executeSectorRemoval(data.index);
+                        }
+                    }
+                }
+            });
+        }
+
+        // Логика вращения
+        const handle = document.getElementById('handle');
+        const overlay = document.getElementById('result-overlay');
+        const overlayText = document.getElementById('result-text');
+        const btnAction = document.getElementById('btn-action');
+
+        handle.addEventListener('click', () => {
+            if (isSpinning || activeQuestions.length === 0) return;
+
+            const spins = (Math.floor(Math.random() * 4) + 4) * 360;
+            const extraDegrees = Math.floor(Math.random() * 360);
+            const targetRotation = currentRotation + spins + extraDegrees;
+
+            sendGameAction({ type: 'spin', targetRotation: targetRotation });
+            triggerSpinAnimation(targetRotation);
+        });
+
+        function triggerSpinAnimation(targetR) {
+            isSpinning = true;
+            overlay.classList.remove('show-result');
+
+            const duration = 4000;
+            const startTime = performance.now();
+            const startRotation = currentRotation;
+
+            let lastTickAngle = currentRotation;
+
+            function animateSpin(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                // Дискретное замедление для эффекта "старой игры"
+                const ease = 1 - Math.pow(1 - progress, 3); 
+
+                currentRotation = startRotation + (targetR - startRotation) * ease;
+                wheelGroup.setAttribute('transform', `rotate(${currentRotation} ${cx} ${cy})`);
+
+                if (currentRotation - lastTickAngle > anglePerSector) {
+                    playTick();
+                    lastTickAngle += anglePerSector;
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSpin);
+                } else {
+                    isSpinning = false;
+                    finishSpin(targetR);
+                }
+            }
+
+            requestAnimationFrame(animateSpin);
+        }
+
+        function finishSpin(finalRot) {
+            const normalizedRotation = finalRot % 360;
+            const pointerAngle = 270; 
+            let winningAngle = (pointerAngle - normalizedRotation + 360) % 360;
+            winningAngle = (winningAngle + anglePerSector / 2) % 360;
+
+            currentWinningIndex = Math.floor(winningAngle / anglePerSector);
+
+            const sectorElement = document.getElementById(`sector-${currentWinningIndex}`);
+
+            if (sectorElement && currentWinningIndex < activeQuestions.length) {
+                const resultString = activeQuestions[currentWinningIndex];
+
+                playWinSound();
+                overlayText.textContent = resultString;
+                overlay.classList.add('show-result');
+            } else {
+                isSpinning = false;
+            }
+        }
+
+        // Удаление сектора (разбивание блока)
+        btnAction.addEventListener('click', () => {
+            if (currentWinningIndex !== -1) {
+                sendGameAction({ type: 'read_and_remove', index: currentWinningIndex });
+                executeSectorRemoval(currentWinningIndex);
+            }
+        });
+
+        function executeSectorRemoval(index) {
+            if (index < 0 || index >= activeQuestions.length) return;
+
+            overlay.classList.remove('show-result');
+            const sectorElement = document.getElementById(`sector-${index}`);
+
+            if (sectorElement) {
+                sectorElement.classList.add('eaten');
+
+                // Звук разбивания блока
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + 0.2);
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.2);
+
+                setTimeout(() => {
+                    activeQuestions.splice(index, 1);
+                    activeColors.splice(index, 1);
+                    currentWinningIndex = -1;
+                    createWheel(); 
+                }, 300);
+            } else {
+                activeQuestions.splice(index, 1);
+                activeColors.splice(index, 1);
+                currentWinningIndex = -1;
+                createWheel();
+            }
+        }
+
+        // Анимация подвижных зрачков свинки
+        const leftPupil = document.getElementById('pupil-left');
+        const rightPupil = document.getElementById('pupil-right');
+
+        function moveEyes() {
+            // Дискретные позиции для зрачков (стиль майнкрафт)
+            const positions = [
+                {x: 0, y: 0},
+                {x: 4, y: 0},
+                {x: -4, y: 0},
+                {x: 0, y: 4},
+                {x: 0, y: -4}
+            ];
+            const pos = positions[Math.floor(Math.random() * positions.length)];
+
+            leftPupil.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+            rightPupil.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+
+            const nextMoveDelay = 1000 + Math.random() * 2000;
+            setTimeout(moveEyes, nextMoveDelay);
+        }
+
+        moveEyes();
+
+
+        // --- СИСТЕМА ДИНАМИЧЕСКИХ ФОНОВ (Theme Manager) ---
+        const TH_BASE_URL = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeOverlay = document.getElementById('theme-overlay');
+        const themeGallery = document.getElementById('theme-gallery');
+        const closeThemeBtn = document.getElementById('close-theme-modal');
+        
+        themeBtn.addEventListener('click', () => {
+            themeModal.style.display = 'block';
+            themeOverlay.style.display = 'block';
+        });
+        
+        const closeTheme = () => {
+            themeModal.style.display = 'none';
+            themeOverlay.style.display = 'none';
+        };
+        closeThemeBtn.addEventListener('click', closeTheme);
+        themeOverlay.addEventListener('click', closeTheme);
+        
+        function applyTheme(url) {
+            if(url === 'none') {
+                document.body.style.backgroundImage = 'none';
+                document.getElementById('bg-pattern').style.display = 'block'; // Возвращаем родной фон
+            } else {
+                document.body.style.backgroundImage = `url(${url})`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundPosition = 'center';
+                document.body.style.backgroundRepeat = 'no-repeat';
+                document.getElementById('bg-pattern').style.display = 'none'; // Прячем родной фон, чтобы была видна картинка
+            }
+        }
+        
+        // Загрузка локального индивидуального фона
+        const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if(savedBg) applyTheme(savedBg);
+        
+        // Генерация галереи
+        function initThemes() {
+            // Опция "Без фона"
+            const noneCard = document.createElement('div');
+            noneCard.style.cssText = 'position: relative; cursor: pointer; border: 2px solid #ccc; border-radius: 5px; overflow: hidden; height: 80px; display: flex; align-items: center; justify-content: center; background: #eee;';
+            noneCard.innerHTML = `<span style="background: rgba(0,0,0,0.6); color: white; padding: 2px 5px; font-size: 12px; font-family: Arial, sans-serif; position: absolute; bottom: 5px; left: 5px; border-radius: 3px;">Без фона</span>`;
+            noneCard.onclick = () => selectTheme('none');
+            themeGallery.appendChild(noneCard);
+            
+            let i = 1;
+            function loadNextImage() {
+                if(i > 1000) return;
+                const url = `${TH_BASE_URL}background_${i}.webp`;
+                const img = new Image();
+                img.onload = () => {
+                    const card = document.createElement('div');
+                    card.style.cssText = `position: relative; cursor: pointer; border: 2px solid #ccc; border-radius: 5px; overflow: hidden; height: 80px; background-image: url(${url}); background-size: cover; background-position: center;`;
+                    card.innerHTML = `<span style="background: rgba(0,0,0,0.6); color: white; padding: 2px 5px; font-size: 12px; font-family: Arial, sans-serif; position: absolute; bottom: 5px; left: 5px; border-radius: 3px;">Фон ${i}</span>`;
+                    card.onclick = () => selectTheme(url);
+                    themeGallery.appendChild(card);
+                    i++;
+                    loadNextImage(); // Асинхронно грузим следующую, чтобы не было разрывов
+                };
+                img.onerror = () => {
+                    // Останавливаем загрузку при первом отсутствии файла
+                };
+                img.src = url;
+            }
+            loadNextImage();
+        }
+        initThemes();
+        
+        function selectTheme(url) {
+            applyTheme(url);
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            if (typeof db !== 'undefined') {
+                db.ref('game_theme').set(url);
+            }
+            closeTheme();
+        }
+        
+        // Синхронизация темы через Firebase
+        document.addEventListener('DOMContentLoaded', () => {
+            if(typeof db !== 'undefined') {
+                db.ref('game_theme').on('value', snap => {
+                    const url = snap.val();
+                    if(url) {
+                        applyTheme(url);
+                        localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+                    }
+                });
+            }
+        });
+
+
+        // --- ГЛОБАЛЬНЫЙ ИНСТРУМЕНТ РИСОВАНИЯ ---
+        const drawCanvas = document.getElementById('global-draw-canvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        const drawPanel = document.getElementById('draw-panel-global');
+        const closeDrawPanel = document.getElementById('close-draw-panel');
+        const drawHeader = document.getElementById('draw-panel-header');
+        
+        const btnPencil = document.getElementById('draw-tool-pencil');
+        const btnEraser = document.getElementById('draw-tool-eraser');
+        const sliderWidth = document.getElementById('draw-width-slider');
+        const widthVal = document.getElementById('draw-width-val');
+        const colorPicker = document.getElementById('draw-color-picker');
+        const btnClear = document.getElementById('draw-tool-clear');
+        
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let currentTool = 'pencil'; 
+        let lastX = 0;
+        let lastY = 0;
+        
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        toggleDrawBtn.addEventListener('click', () => {
+            drawPanel.style.display = 'block';
+            drawCanvas.style.pointerEvents = 'auto';
+            isDrawingMode = true;
+            setTool('pencil');
+        });
+        
+        closeDrawPanel.addEventListener('click', () => {
+            drawPanel.style.display = 'none';
+            drawCanvas.style.pointerEvents = 'none';
+            isDrawingMode = false;
+        });
+        
+        function setTool(tool) {
+            currentTool = tool;
+            if(tool === 'pencil') {
+                btnPencil.style.background = '#ddd';
+                btnEraser.style.background = '#fff';
+            } else {
+                btnEraser.style.background = '#ddd';
+                btnPencil.style.background = '#fff';
+            }
+        }
+        
+        btnPencil.addEventListener('click', () => setTool('pencil'));
+        btnEraser.addEventListener('click', () => setTool('eraser'));
+        
+        sliderWidth.addEventListener('input', (e) => {
+            widthVal.textContent = e.target.value;
+        });
+        
+        // Перетаскивание панели
+        let isDraggingPanel = false;
+        let panelOffsetX = 0;
+        let panelOffsetY = 0;
+        
+        drawHeader.addEventListener('mousedown', (e) => {
+            isDraggingPanel = true;
+            panelOffsetX = e.clientX - drawPanel.getBoundingClientRect().left;
+            panelOffsetY = e.clientY - drawPanel.getBoundingClientRect().top;
+        });
+        document.addEventListener('mousemove', (e) => {
+            if(isDraggingPanel) {
+                drawPanel.style.left = (e.clientX - panelOffsetX) + 'px';
+                drawPanel.style.top = (e.clientY - panelOffsetY) + 'px';
+            }
+        });
+        document.addEventListener('mouseup', () => { isDraggingPanel = false; });
+
+        // Поддержка Touch для перетаскивания
+        drawHeader.addEventListener('touchstart', (e) => {
+            isDraggingPanel = true;
+            panelOffsetX = e.touches[0].clientX - drawPanel.getBoundingClientRect().left;
+            panelOffsetY = e.touches[0].clientY - drawPanel.getBoundingClientRect().top;
+        }, {passive: true});
+        document.addEventListener('touchmove', (e) => {
+            if(isDraggingPanel) {
+                drawPanel.style.left = (e.touches[0].clientX - panelOffsetX) + 'px';
+                drawPanel.style.top = (e.touches[0].clientY - panelOffsetY) + 'px';
+            }
+        }, {passive: true});
+        document.addEventListener('touchend', () => { isDraggingPanel = false; });
+        
+        // Рисование
+        function getNormalizedPos(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX / rect.width,
+                y: clientY / rect.height
+            };
+        }
+        
+        function startDraw(e) {
+            if(!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getNormalizedPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+        
+        function doDraw(e) {
+            if(!isDrawing || !isDrawingMode) return;
+            e.preventDefault(); 
+            const pos = getNormalizedPos(e);
+            
+            const lineData = {
+                x0: lastX, y0: lastY,
+                x1: pos.x, y1: pos.y,
+                color: currentTool === 'eraser' ? 'rgba(0,0,0,1)' : colorPicker.value,
+                width: sliderWidth.value,
+                isEraser: currentTool === 'eraser'
+            };
+            
+            drawLineLocal(lineData);
+            
+            // Отправка через set для game_action
+            if(typeof db !== 'undefined') {
+                db.ref('game_action').set({
+                    senderId: gameSenderId,
+                    timestamp: Date.now(),
+                    type: 'draw_line',
+                    data: lineData
+                });
+            }
+            
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+        
+        function endDraw() {
+            isDrawing = false;
+        }
+        
+        drawCanvas.addEventListener('mousedown', startDraw);
+        drawCanvas.addEventListener('mousemove', doDraw);
+        drawCanvas.addEventListener('mouseup', endDraw);
+        drawCanvas.addEventListener('mouseout', endDraw);
+        
+        drawCanvas.addEventListener('touchstart', startDraw, {passive: false});
+        drawCanvas.addEventListener('touchmove', doDraw, {passive: false});
+        drawCanvas.addEventListener('touchend', endDraw);
+        
+        function drawLineLocal(data) {
+            const w = drawCanvas.width;
+            const h = drawCanvas.height;
+            
+            drawCtx.beginPath();
+            drawCtx.moveTo(data.x0 * w, data.y0 * h);
+            drawCtx.lineTo(data.x1 * w, data.y1 * h);
+            drawCtx.strokeStyle = data.color;
+            drawCtx.lineWidth = data.width;
+            drawCtx.lineCap = 'round';
+            drawCtx.globalCompositeOperation = data.isEraser ? 'destination-out' : 'source-over';
+            drawCtx.stroke();
+        }
+        
+        btnClear.addEventListener('click', () => {
+            clearCanvasLocal();
+            if(typeof db !== 'undefined') {
+                db.ref('game_action').set({
+                    senderId: gameSenderId,
+                    timestamp: Date.now(),
+                    type: 'clear_canvas'
+                });
+            }
+        });
+        
+        function clearCanvasLocal() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        }
+
+
+        // --- БЛОК КОНТРОЛЯ СЕССИИ ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            let myName = urlParams.get('user') || sessionStorage.getItem('myName');
+
+            if (!myName) {
+                myName = 'Гость_' + Math.floor(Math.random() * 1000);
+            }
+            sessionStorage.setItem('myName', myName);
+
+            if (typeof db !== 'undefined') {
+                const tabId = Math.random().toString(36).substring(2, 10);
+                const amOnline = db.ref('.info/connected');
+                const userRef = db.ref(`online_users/${myName}/${tabId}`);
+
+                amOnline.on('value', snapshot => {
+                    if (snapshot.val()) {
+                        userRef.onDisconnect().remove();
+                        userRef.set(true);
+                    }
+                });
+
+                window.addEventListener('beforeunload', () => {
+                    userRef.remove();
+                });
+
+                db.ref(`blocked_users/${myName}`).on('value', snap => {
+                    document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+                });
+
+                let isFirstRefreshCheck = true;
+                db.ref('force_refresh').on('value', snap => {
+                    if (!isFirstRefreshCheck && snap.val()) {
+                        window.location.reload();
+                    }
+                    isFirstRefreshCheck = false;
+                });
+
+                let immunity = true;
+                setTimeout(() => immunity = false, 1000);
+                db.ref('current_activity').on('value', snap => {
+                    if (!immunity && snap.val() === 'lobby') {
+                        window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
