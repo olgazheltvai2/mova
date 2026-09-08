@@ -128,7 +128,7 @@
 
     <!-- Кнопка Вчителя -->
     <div class="panel teacher-btn-container">
-        <button class="teacher-btn" onclick="openModal('teacher-modal')">⚙️ Вчитель</button>
+        <button class="teacher-btn" onclick="tryOpenTeacherPanel()">⚙️ Вчитель</button>
     </div>
 
     <!-- Кнопки Зуму -->
@@ -259,6 +259,46 @@
         }
         let isRemoteAction = false;
 
+        // Хелпер для коректного зчитування координат з тачскрінів та мишки
+        function getEventPoint(e) {
+            if (e.e.touches && e.e.touches.length > 0) {
+                return { x: e.e.touches[0].clientX, y: e.e.touches[0].clientY };
+            } else if (e.e.changedTouches && e.e.changedTouches.length > 0) {
+                return { x: e.e.changedTouches[0].clientX, y: e.e.changedTouches[0].clientY };
+            }
+            return { x: e.e.clientX || 0, y: e.e.clientY || 0 };
+        }
+
+        // Функція для підтримання кружечків завжди зверху
+        function keepCirclesOnTop() {
+            if (!canvas) return;
+            canvas.getObjects().forEach(obj => {
+                if (obj.type === 'circle' || obj.id === 'print-frame') {
+                    obj.bringToFront();
+                }
+            });
+        }
+
+        // Ексклюзивна панель вчителя
+        function tryOpenTeacherPanel() {
+            const ref = dbFirebase.ref(CONFIG.gameId + '/teacher_id');
+            ref.transaction((currentTeacher) => {
+                // Якщо порожньо або це ми - займаємо місце
+                if (currentTeacher === null || currentTeacher === myName) {
+                    return myName;
+                }
+                return; // Інакше перериваємо
+            }, (error, committed, snapshot) => {
+                if (committed) {
+                    // Звільняємо місце при відключенні
+                    ref.onDisconnect().remove();
+                    openModal('teacher-modal');
+                } else {
+                    alert('Панель вчителя вже використовується іншим користувачем!');
+                }
+            });
+        }
+
         function initCanvas() {
             gridCanvas = document.getElementById('grid-canvas');
             gridCtx = gridCanvas.getContext('2d');
@@ -302,17 +342,23 @@
                 }
             });
 
-            // Новостворені малюнки від олівця ховають рамки
+            // Новостворені малюнки від олівця ховають рамки та робляться прозорими всередині (захист від заливки)
             canvas.on('path:created', function(e) {
                 e.path.set({
                     hasControls: false, hasBorders: false,
-                    hoverCursor: 'default', moveCursor: 'default'
+                    hoverCursor: 'default', moveCursor: 'default',
+                    fill: 'transparent' // Виправлення помилки з літерою "о"
                 });
+                keepCirclesOnTop();
                 saveState();
                 syncAction('path_created');
             });
             
-            canvas.on('object:modified', () => { saveState(); syncAction('modify'); });
+            canvas.on('object:modified', () => { 
+                keepCirclesOnTop();
+                saveState(); 
+                syncAction('modify'); 
+            });
 
             // --- ПОДВІЙНИЙ КЛІК ДЛЯ РАМОК ---
             canvas.on('mouse:dblclick', function(e) {
@@ -323,6 +369,7 @@
                         hoverCursor: 'move', 
                         moveCursor: 'move'
                     });
+                    keepCirclesOnTop();
                     canvas.requestRenderAll();
                     saveState();
                 }
@@ -345,20 +392,21 @@
             // --- МИША DOWN ---
             canvas.on('mouse:down', function(e) {
                 document.getElementById('object-menu').style.display = 'none';
+                let point = getEventPoint(e);
                 
                 if (mode === 'pan') {
                     isPanning = true;
-                    lastClientX = e.e.clientX;
-                    lastClientY = e.e.clientY;
+                    lastClientX = point.x;
+                    lastClientY = point.y;
                     canvas.defaultCursor = 'grabbing';
                 } 
                 else if (mode === 'erase') {
                     // Початок миттєвої затирачки
                     isErasing = true;
-                    let pointer = canvas.getPointer(e.e);
+                    let fabricPointer = canvas.getPointer(e.e);
                     let eSize = parseInt(document.getElementById('erase-width').value) / currentZoom;
                     
-                    erasePoints = [{x: pointer.x, y: pointer.y}, {x: pointer.x, y: pointer.y}];
+                    erasePoints = [{x: fabricPointer.x, y: fabricPointer.y}, {x: fabricPointer.x, y: fabricPointer.y}];
                     
                     currentErasePath = new fabric.Polyline(erasePoints, {
                         strokeWidth: eSize,
@@ -373,27 +421,29 @@
                     });
                     
                     canvas.add(currentErasePath);
-                    canvas.renderAll(); // Рендеримо миттєво
+                    canvas.renderAll(); 
                 }
                 
                 if (e.button === 3 && e.target && e.target.type === 'image') {
                     canvas.setActiveObject(e.target);
                     let menu = document.getElementById('object-menu');
                     menu.style.display = 'block';
-                    menu.style.left = e.e.clientX + 'px';
-                    menu.style.top = e.e.clientY + 'px';
+                    menu.style.left = point.x + 'px';
+                    menu.style.top = point.y + 'px';
                     e.e.preventDefault();
                 }
             });
 
             // --- МИША MOVE ---
             canvas.on('mouse:move', function(e) {
+                let point = getEventPoint(e);
+
                 if (isPanning && mode === 'pan') {
-                    let dx = lastClientX - e.e.clientX;
-                    let dy = lastClientY - e.e.clientY;
+                    let dx = lastClientX - point.x;
+                    let dy = lastClientY - point.y;
                     window.scrollBy(dx, dy);
-                    lastClientX = e.e.clientX;
-                    lastClientY = e.e.clientY;
+                    lastClientX = point.x;
+                    lastClientY = point.y;
                 }
 
                 // Візуальний курсор затирачки
@@ -403,12 +453,12 @@
                     let eSize = parseInt(document.getElementById('erase-width').value);
                     cursor.style.width = eSize + 'px';
                     cursor.style.height = eSize + 'px';
-                    cursor.style.left = e.e.clientX + 'px';
-                    cursor.style.top = e.e.clientY + 'px';
+                    cursor.style.left = point.x + 'px';
+                    cursor.style.top = point.y + 'px';
                     
                     if (isErasing && currentErasePath) {
-                        let pointer = canvas.getPointer(e.e);
-                        erasePoints.push({x: pointer.x, y: pointer.y});
+                        let fabricPointer = canvas.getPointer(e.e);
+                        erasePoints.push({x: fabricPointer.x, y: fabricPointer.y});
                         
                         // Додаємо координати на льоту і одразу відмальовуємо
                         currentErasePath.set({ points: erasePoints });
@@ -429,10 +479,11 @@
                 } else if (mode === 'erase') {
                     isErasing = false;
                     if (currentErasePath) {
-                        currentErasePath.set({ objectCaching: true }); // Вмикаємо кешування після завершення руху для оптимізації
+                        currentErasePath.set({ objectCaching: true }); 
                         currentErasePath.setCoords();
+                        keepCirclesOnTop();
                         saveState();
-                        syncAction('path_created'); // Зберігаємо як звичайний шлях
+                        syncAction('path_created'); 
                         currentErasePath = null;
                     }
                 }
@@ -472,6 +523,7 @@
 
             canvas.add(printFrame);
             canvas.setActiveObject(printFrame);
+            keepCirclesOnTop();
             canvas.requestRenderAll();
             closeModals();
         }
@@ -609,8 +661,8 @@
             document.getElementById('zoom-wrapper').style.transform = `scale(1)`;
         }
 
-        // --- МАЛЮВАННЯ СІТКИ ---
-        function applyGrid() {
+        // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ ---
+        function applyGrid(emit = true) {
             let w = parseInt(document.getElementById('g-width').value);
             let h = parseInt(document.getElementById('g-height').value);
             let skew = parseInt(document.getElementById('g-skew').value);
@@ -636,6 +688,14 @@
             
             gridCtx.stroke();
             saveState();
+            
+            if (emit && !isRemoteAction) {
+                dbFirebase.ref(CONFIG.gameId + '/grid_state').set({
+                    senderId: myName,
+                    timestamp: Date.now(),
+                    settings: { w, h, skew, line, color, opacity }
+                });
+            }
         }
 
         // --- МОДАЛКИ ---
@@ -746,6 +806,7 @@
                 
                 canvas.add(img);
                 canvas.setActiveObject(img);
+                keepCirclesOnTop();
                 saveState();
                 syncAction('add_image');
             });
@@ -791,6 +852,8 @@
             if (isPulsing) {
                 pulsingCircles.push({ obj: circle, direction: 1 });
             }
+            keepCirclesOnTop();
+            canvas.requestRenderAll();
             saveState();
             syncAction('add_circle');
             closeModals();
@@ -841,7 +904,7 @@
                     document.getElementById('g-line').value = d.line;
                     document.getElementById('g-color').value = d.color;
                     document.getElementById('g-opacity').value = d.opacity;
-                    applyGrid();
+                    applyGrid(false); // Завантажуємо локально, не спамимо в Firebase
                 }
             };
 
@@ -858,6 +921,7 @@
                                 printFrame = obj;
                             }
                         });
+                        keepCirclesOnTop();
                     });
                 }
             };
@@ -877,11 +941,12 @@
                 senderId: myName,
                 timestamp: Date.now(),
                 type: actionType,
-                data: canvas.toJSON(['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id'])
+                data: canvas.toJSON(['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill'])
             });
         }
 
         function setupFirebaseSync() {
+            // Синхронізація полотна
             dbFirebase.ref(CONFIG.gameId + '/canvas_state').on('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val && val.senderId !== myName) {
@@ -898,9 +963,26 @@
                                 printFrame = obj;
                             }
                         });
+                        keepCirclesOnTop();
                         isRemoteAction = false;
                         saveState();
                     });
+                }
+            });
+
+            // Синхронізація сітки
+            dbFirebase.ref(CONFIG.gameId + '/grid_state').on('value', (snapshot) => {
+                const val = snapshot.val();
+                if (val && val.senderId !== myName) {
+                    isRemoteAction = true;
+                    document.getElementById('g-width').value = val.settings.w;
+                    document.getElementById('g-height').value = val.settings.h;
+                    document.getElementById('g-skew').value = val.settings.skew;
+                    document.getElementById('g-line').value = val.settings.line;
+                    document.getElementById('g-color').value = val.settings.color;
+                    document.getElementById('g-opacity').value = val.settings.opacity;
+                    applyGrid(false);
+                    isRemoteAction = false;
                 }
             });
         }
