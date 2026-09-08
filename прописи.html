@@ -84,10 +84,11 @@
         .section-divider { margin: 20px 0; border: 0; border-top: 2px dashed #ccc; }
         
         /* Бібліотека зображень */
-        #library-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-height: 200px; overflow-y: auto; margin-top: 10px; background: #f9f9f9; padding: 5px; border-radius: 8px; }
-        .lib-item { position: relative; border: 2px solid transparent; cursor: pointer; }
-        .lib-item img { width: 100%; height: 80px; object-fit: cover; border-radius: 4px; }
-        .lib-item .delete-btn { position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; cursor: pointer; display: flex; justify-content: center; align-items: center; padding: 0;}
+        #library-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-height: 250px; overflow-y: auto; margin-top: 10px; background: #f9f9f9; padding: 5px; border-radius: 8px; }
+        .lib-item { position: relative; border: 2px solid transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; }
+        .lib-item img { width: 100%; height: 80px; object-fit: contain; border-radius: 4px; background: white; }
+        .lib-item .delete-btn { position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 10px; cursor: pointer; display: flex; justify-content: center; align-items: center; padding: 0; z-index: 2;}
+        .lib-item-name { font-size: 10px; text-align: center; margin-top: 4px; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #555; }
 
         /* Меню об'єкта */
         #object-menu { position: fixed; display: none; background: white; border: 1px solid #ccc; padding: 5px; border-radius: 4px; z-index: 101; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
@@ -820,24 +821,19 @@
         document.getElementById('image-upload').addEventListener('change', function(e) {
             let files = e.target.files;
             for(let i=0; i<files.length; i++) {
+                let file = files[i];
                 let reader = new FileReader();
                 reader.onload = function(event) {
-                    saveImageToDB(event.target.result);
+                    saveImageToDB(event.target.result, file.name);
                 };
-                reader.readAsDataURL(files[i]);
+                reader.readAsDataURL(file);
             }
             this.value = "";
         });
 
-        function saveImageToDB(dataUrl) {
+        function saveImageToDB(dataUrl, fileName) {
             let tx = dbIndexed.transaction('images', 'readwrite');
-            tx.objectStore('images').add({ data: dataUrl });
-            tx.oncomplete = loadLibraryUI;
-        }
-
-        function deleteImage(id) {
-            let tx = dbIndexed.transaction('images', 'readwrite');
-            tx.objectStore('images').delete(id);
+            tx.objectStore('images').add({ data: dataUrl, name: fileName });
             tx.oncomplete = loadLibraryUI;
         }
 
@@ -845,21 +841,40 @@
             let grid = document.getElementById('library-grid');
             grid.innerHTML = '';
             let tx = dbIndexed.transaction('images', 'readonly');
-            let request = tx.objectStore('images').openCursor();
+            let request = tx.objectStore('images').getAll(); // Використовуємо getAll для можливості сортування
             request.onsuccess = function(e) {
-                let cursor = e.target.result;
-                if (cursor) {
-                    let div = document.createElement('div');
-                    div.className = 'lib-item';
-                    let img = document.createElement('img');
-                    img.src = cursor.value.data;
-                    img.onclick = (function(data) { return function() { addImageToCanvas(data); closeModals(); } })(cursor.value.data);
-                    let delBtn = document.createElement('button');
-                    delBtn.className = 'delete-btn';
-                    delBtn.innerText = 'X';
-                    delBtn.onclick = (function(id) { return function(ev) { ev.stopPropagation(); deleteImage(id); } })(cursor.key);
-                    div.appendChild(img); div.appendChild(delBtn); grid.appendChild(div);
-                    cursor.continue();
+                let items = e.target.result;
+                if (items && items.length > 0) {
+                    // Сортуємо зображення за алфавітом по назві файлу
+                    items.sort((a, b) => {
+                        let nameA = (a.name || '').toLowerCase();
+                        let nameB = (b.name || '').toLowerCase();
+                        return nameA.localeCompare(nameB);
+                    });
+                    
+                    items.forEach(item => {
+                        let div = document.createElement('div');
+                        div.className = 'lib-item';
+                        
+                        let img = document.createElement('img');
+                        img.src = item.data;
+                        img.onclick = function() { addImageToCanvas(item.data); closeModals(); };
+                        
+                        let delBtn = document.createElement('button');
+                        delBtn.className = 'delete-btn';
+                        delBtn.innerText = 'X';
+                        delBtn.onclick = function(ev) { ev.stopPropagation(); deleteImage(item.id); };
+                        
+                        let nameDiv = document.createElement('div');
+                        nameDiv.className = 'lib-item-name';
+                        nameDiv.innerText = item.name || 'Без назви';
+                        nameDiv.title = item.name || 'Без назви';
+
+                        div.appendChild(img); 
+                        div.appendChild(nameDiv);
+                        div.appendChild(delBtn); 
+                        grid.appendChild(div);
+                    });
                 }
             };
         }
