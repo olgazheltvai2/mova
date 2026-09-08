@@ -36,7 +36,7 @@
         .panel { position: fixed; background: rgba(255, 255, 255, 0.9); padding: 10px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 100; }
         
         /* Кнопка вчителя */
-        .teacher-btn-container { top: 10px; left: 10px; display: none; } 
+        .teacher-btn-container { top: 10px; left: 10px; display: none; } /* За замовчуванням прихована, покажеться якщо вільна або ми вчитель */
         .teacher-btn { background: #34495e; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
         
         /* Зум */
@@ -227,7 +227,6 @@
         firebase.initializeApp(firebaseConfig);
         const dbFirebase = firebase.database();
 
-        // Ініціалізація змінних Canvas
         let canvas, gridCanvas, gridCtx;
         let currentZoom = 1;
         let mode = 'select'; 
@@ -239,14 +238,15 @@
         let isPanning = false;
         let lastClientX, lastClientY;
         
-        // Змінні для справжньої векторної затирачки
+        // Змінні для Векторної Затирачки
         let isErasing = false;
         let lastEraseX = undefined;
         let lastEraseY = undefined;
         let wasModifiedDuringErase = false;
-        
+
         let printFrame = null;
 
+        // Ідентифікація користувача
         let myName = sessionStorage.getItem('userName');
         if (!myName) {
             const urlParams = new URLSearchParams(window.location.search);
@@ -299,7 +299,7 @@
             gridCanvas = document.getElementById('grid-canvas');
             gridCtx = gridCanvas.getContext('2d');
             
-            // Відключаємо кешування, щоб векторна затирачка працювала миттєво
+            // Відключаємо кешування об'єктів для ідеально плавної роботи векторної затирачки
             fabric.Object.prototype.objectCaching = false;
             
             canvas = new fabric.Canvas('c', {
@@ -343,12 +343,13 @@
                 syncAction('moving', false); 
             });
 
+            // Малюнки створюються як стандартні шляхи (нічого не перекривають)
             canvas.on('path:created', function(e) {
                 e.path.set({
                     id: 'draw',
                     hasControls: false, hasBorders: false,
                     hoverCursor: 'default', moveCursor: 'default',
-                    fill: 'transparent' // Блокуємо заливку замкнутих контурів
+                    fill: 'transparent'
                 });
                 keepCirclesOnTop();
                 saveState();
@@ -389,6 +390,7 @@
             canvas.on('selection:cleared', function(e) { hideControls(e.deselected); canvas.requestRenderAll(); });
             canvas.on('selection:updated', function(e) { hideControls(e.deselected); canvas.requestRenderAll(); });
 
+            // --- МИША DOWN ---
             canvas.on('mouse:down', function(e) {
                 document.getElementById('object-menu').style.display = 'none';
                 let point = getEventPoint(e);
@@ -405,7 +407,7 @@
                     let logicalPoint = canvas.getPointer(e.e);
                     lastEraseX = logicalPoint.x;
                     lastEraseY = logicalPoint.y;
-                    eraseVector(logicalPoint); // Миттєве затирання по кліку
+                    eraseVector(logicalPoint); // Запускаємо затирання одразу по кліку
                 }
                 
                 if (e.button === 3 && e.target && e.target.type === 'image') {
@@ -418,6 +420,7 @@
                 }
             });
 
+            // --- МИША MOVE ---
             canvas.on('mouse:move', function(e) {
                 let point = getEventPoint(e);
 
@@ -441,7 +444,7 @@
                     
                     if (isErasing) {
                         let logicalPoint = canvas.getPointer(e.e);
-                        // Інтерполяція для ідеально плавного стирання
+                        // Інтерполяція: стирає всі сегменти навіть при швидкому русі мишкою
                         if (lastEraseX !== undefined && lastEraseY !== undefined) {
                             let dist = Math.hypot(logicalPoint.x - lastEraseX, logicalPoint.y - lastEraseY);
                             let steps = Math.max(1, Math.floor(dist / 5)); 
@@ -461,6 +464,7 @@
                 }
             });
 
+            // --- МИША UP ---
             canvas.on('mouse:up', function(e) {
                 if (mode === 'pan') {
                     isPanning = false;
@@ -469,7 +473,7 @@
                     isErasing = false;
                     lastEraseX = undefined;
                     lastEraseY = undefined;
-                    // Синхронізуємо змінений стан ліній після завершення руху
+                    // Якщо лінія була розрізана, відправляємо оновлення на інші пристрої
                     if (wasModifiedDuringErase) {
                         saveState();
                         syncAction('modify');
@@ -485,7 +489,23 @@
             setupFirebaseSync();
         }
 
-        // --- СПРАВЖНЯ ВЕКТОРНА ЗАТИРАЧКА (Розрізає намальовані шляхи) ---
+        // --- ЛОГІКА ВЕКТОРНОЇ ЗАТИРАЧКИ ---
+        // Ця функція знаходить відстань від центру гумки до намальованого відрізка (лінії)
+        function pointToSegmentDist(px, py, x1, y1, x2, y2) {
+            let A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
+            let dot = A * C + B * D;
+            let len_sq = C * C + D * D;
+            let param = -1;
+            if (len_sq !== 0) param = dot / len_sq;
+            let xx, yy;
+            if (param < 0) { xx = x1; yy = y1; }
+            else if (param > 1) { xx = x2; yy = y2; }
+            else { xx = x1 + param * C; yy = y1 + param * D; }
+            let dx = px - xx, dy = py - yy;
+            return Math.hypot(dx, dy);
+        }
+
+        // Перевіряє всі лінії на екрані і розрізає ті, по яким пройшла гумка
         function eraseVector(pointer) {
             let eRadius = (parseInt(document.getElementById('erase-width').value) / currentZoom) / 2;
             let canvasObjects = canvas.getObjects();
@@ -493,38 +513,53 @@
             
             for (let j = 0; j < canvasObjects.length; j++) {
                 let obj = canvasObjects[j];
-                // Затираємо лише малюнки від олівця
+                // Обробляємо лише малюнки олівцем
                 if (obj.id === 'draw' && obj.type === 'path') {
                     let br = obj.getBoundingRect();
-                    // Швидка перевірка, чи мишка взагалі біля цього малюнку
+                    
+                    // Відкидаємо лінії, які далеко від гумки (оптимізація)
                     if (pointer.x < br.left - eRadius || pointer.x > br.left + br.width + eRadius ||
                         pointer.y < br.top - eRadius || pointer.y > br.top + br.height + eRadius) {
                         continue;
                     }
 
-                    // Переводимо координати мишки у внутрішні координати об'єкта
+                    // Переводимо координати гумки у простір об'єкта
                     let invertedMatrix = fabric.util.invertTransform(obj.calcTransformMatrix());
                     let localP = fabric.util.transformPoint(pointer, invertedMatrix);
                     let localRadius = eRadius / Math.max(obj.scaleX || 1, obj.scaleY || 1);
 
                     let modified = false;
                     let pArray = obj.path;
+                    if (!pArray || pArray.length === 0) continue;
                     
-                    // Перевіряємо кожну точку малюнку. Якщо вона потрапила під гумку - розриваємо лінію
-                    for (let i = 0; i < pArray.length; i++) {
+                    let lastX = pArray[0][1], lastY = pArray[0][2]; 
+                    
+                    for (let i = 1; i < pArray.length; i++) {
                         let cmd = pArray[i];
-                        let px, py;
-                        if (cmd[0] === 'M' || cmd[0] === 'L') { px = cmd[1]; py = cmd[2]; }
-                        else if (cmd[0] === 'Q') { px = cmd[3]; py = cmd[4]; }
-                        else if (cmd[0] === 'C') { px = cmd[5]; py = cmd[6]; }
-                        else continue;
+                        let currentX, currentY;
+                        
+                        if (cmd[0] === 'L' || cmd[0] === 'M') {
+                            currentX = cmd[1]; currentY = cmd[2];
+                        } else if (cmd[0] === 'Q') {
+                            currentX = cmd[3]; currentY = cmd[4];
+                        } else if (cmd[0] === 'C') {
+                            currentX = cmd[5]; currentY = cmd[6];
+                        } else {
+                            continue;
+                        }
 
-                        if (Math.hypot(px - localP.x, py - localP.y) < localRadius) {
+                        let dist = pointToSegmentDist(localP.x, localP.y, lastX, lastY, currentX, currentY);
+                        
+                        // Якщо відрізок потрапляє в зону гумки — розриваємо його
+                        if (dist < localRadius) {
                             if (cmd[0] !== 'M') {
-                                pArray[i] = ['M', px, py]; // Перетворюємо точку на пустий "Стрибок"
+                                pArray[i] = ['M', currentX, currentY];
                                 modified = true;
                             }
                         }
+                        
+                        lastX = currentX;
+                        lastY = currentY;
                     }
                     if (modified) {
                         obj._calcDimensions();
@@ -536,7 +571,7 @@
                 }
             }
             if (hasChanges) {
-                canvas.requestRenderAll(); // Рендеримо миттєво під час руху
+                canvas.requestRenderAll(); 
             }
         }
 
@@ -621,7 +656,7 @@
                 document.getElementById('btn-erase').classList.add('active');
                 document.getElementById('erase-settings').style.display = 'flex';
                 
-                // Вимикаємо стандартне малювання, бо ми використовуємо власну векторну функцію eraseVector
+                // Для векторної гумки ми повністю вимикаємо стандартне малювання
                 canvas.isDrawingMode = false; 
                 canvas.selection = false;
                 canvas.forEachObject(o => o.selectable = false);
@@ -659,7 +694,7 @@
             document.getElementById('zoom-wrapper').style.transform = `scale(1)`;
         }
 
-        // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ ---
+        // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ (Виправлено похилі лінії) ---
         function applyGrid(emit = true) {
             let wVal = parseInt(document.getElementById('g-width').value);
             let w = isNaN(wVal) ? 50 : wVal;
@@ -685,6 +720,7 @@
             }
             
             let totalShift = (h > 0) ? (gridCanvas.height / h) * skew : 0;
+            // Малюємо від -30000 до 30000, щоб гарантовано покрити екран при будь-якому нахилі
             for (let x = -30000; x <= 30000; x += w) {
                 gridCtx.moveTo(x, 0);
                 gridCtx.lineTo(x + totalShift, gridCanvas.height);
@@ -897,6 +933,7 @@
             const now = Date.now();
             if (!force && now - lastSyncTime < 50) return; 
             lastSyncTime = now;
+            // Завдяки Векторній затирачці, ми просто відправляємо змінені координати, і вони ідеально відображаються всюди
             dbFirebase.ref(CONFIG.gameId + '/canvas_state').set({ senderId: myName, timestamp: now, type: actionType, data: canvas.toJSON(FABRIC_PROPS) });
         }
 
@@ -911,7 +948,6 @@
                 const val = snapshot.val();
                 if (val && val.senderId !== myName) {
                     isRemoteAction = true;
-                    // При векторній затирачці ми отримуємо вже оновлені координати ліній, жодних масок чи кешу не потрібно
                     canvas.loadFromJSON(val.data, function() {
                         canvas.renderAll();
                         pulsingCircles = []; printFrame = null;
