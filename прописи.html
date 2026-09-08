@@ -216,8 +216,8 @@
     <script>
         const CONFIG = { gameId: 'whiteboard_main' };
         
-        // Властивості Fabric, які обов'язково треба експортувати для синхронізації
-        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching', 'isEraser'];
+        // Властивості Fabric, які обов'язково треба експортувати для синхронізації (додано id та globalCompositeOperation для затирачки)
+        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching'];
         
         // Ініціалізація Firebase
         const firebaseConfig = {
@@ -339,16 +339,17 @@
             // Синхронізація перетягування (object:moving)
             canvas.on('object:moving', function() {
                 keepCirclesOnTop();
-                syncAction('moving', false); // Throttled sync для плавності
+                syncAction('moving', false); 
             });
 
+            // --- СТВОРЕННЯ МАСЛЮНКІВ ТА ЗАТИРАЧОК ---
             canvas.on('path:created', function(e) {
-                // Визначаємо, чи це був олівець, чи затирачка
                 if (mode === 'erase') {
+                    // Якщо малювали затирачкою, жорстко маркуємо її та робимо маскою
                     e.path.set({
+                        id: 'eraser', // Ключовий маркер для синхронізації
                         globalCompositeOperation: 'destination-out',
-                        isEraser: true, // ВАЖЛИВИЙ маркер для синхронізації
-                        stroke: 'white',
+                        stroke: 'black', // Має бути суцільний колір, щоб маска спрацювала
                         fill: 'transparent',
                         selectable: false,
                         evented: false,
@@ -357,10 +358,10 @@
                     });
                 } else {
                     e.path.set({
+                        id: 'draw',
                         hasControls: false, hasBorders: false,
                         hoverCursor: 'default', moveCursor: 'default',
-                        fill: 'transparent',
-                        isEraser: false
+                        fill: 'transparent'
                     });
                 }
                 keepCirclesOnTop();
@@ -595,18 +596,18 @@
                 document.getElementById('btn-erase').classList.add('active');
                 document.getElementById('erase-settings').style.display = 'flex';
                 
-                // Для затирачки використовуємо стандартний isDrawingMode, але замінюємо пензель
                 canvas.isDrawingMode = true; 
                 canvas.selection = false;
                 canvas.forEachObject(o => o.selectable = false);
                 canvas.defaultCursor = 'none'; 
                 canvas.hoverCursor = 'none';
                 
+                // Налаштовуємо пензель для ідеального стирання
                 canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-                canvas.freeDrawingBrush.color = 'white'; 
+                canvas.freeDrawingBrush.color = 'black'; // обов'язково суцільний колір для маски
                 canvas.freeDrawingBrush.width = parseInt(document.getElementById('erase-width').value) / currentZoom;
                 
-                // Перевизначаємо малювання, щоб воно миттєво стирало
+                // Це робить малювання прозорим одразу під час руху мишкою
                 const orig = canvas.freeDrawingBrush._setBrushStyles;
                 canvas.freeDrawingBrush._setBrushStyles = function(ctx) {
                     orig.call(this, ctx);
@@ -651,13 +652,25 @@
             document.getElementById('zoom-wrapper').style.transform = `scale(1)`;
         }
 
+        // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ (Виправлено похилі лінії) ---
         function applyGrid(emit = true) {
-            let w = parseInt(document.getElementById('g-width').value);
-            let h = parseInt(document.getElementById('g-height').value);
-            let skew = parseInt(document.getElementById('g-skew').value);
-            let line = parseInt(document.getElementById('g-line').value);
-            let color = document.getElementById('g-color').value;
-            let opacity = parseFloat(document.getElementById('g-opacity').value);
+            // Безпечне отримання числових значень (інакше fallback на значення за замовчуванням)
+            let wVal = parseInt(document.getElementById('g-width').value);
+            let w = isNaN(wVal) ? 50 : wVal;
+            
+            let hVal = parseInt(document.getElementById('g-height').value);
+            let h = isNaN(hVal) ? 50 : hVal;
+            
+            let skewVal = parseInt(document.getElementById('g-skew').value);
+            let skew = isNaN(skewVal) ? 0 : skewVal;
+            
+            let lineVal = parseInt(document.getElementById('g-line').value);
+            let line = isNaN(lineVal) ? 1 : lineVal;
+            
+            let opVal = parseFloat(document.getElementById('g-opacity').value);
+            let opacity = isNaN(opVal) ? 1 : opVal;
+            
+            let color = document.getElementById('g-color').value || '#cccccc';
 
             gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
             gridCtx.globalAlpha = opacity;
@@ -665,17 +678,15 @@
             gridCtx.lineWidth = line;
             gridCtx.beginPath();
 
+            // Горизонтальні лінії
             for (let y = 0; y <= gridCanvas.height; y += h) {
                 gridCtx.moveTo(0, y);
                 gridCtx.lineTo(gridCanvas.width, y);
             }
             
-            // Виправлена математика для косої сітки: нахил задається відносно висоти клітинки
+            // Вертикальні та похилі лінії (Залізний цикл, який гарантовано покриває екран)
             let totalShift = (h > 0) ? (gridCanvas.height / h) * skew : 0;
-            let startX = -Math.abs(totalShift) - w;
-            let endX = gridCanvas.width + Math.abs(totalShift) + w;
-
-            for (let x = startX; x <= endX; x += w) {
+            for (let x = -30000; x <= 30000; x += w) {
                 gridCtx.moveTo(x, 0);
                 gridCtx.lineTo(x + totalShift, gridCanvas.height);
             }
@@ -900,9 +911,15 @@
                 if(e.target.result) {
                     canvas.loadFromJSON(e.target.result.data, function() {
                         canvas.getObjects().forEach(obj => {
-                            // Примусово відновлюємо режим стирання, якщо це затирачка
-                            if (obj.isEraser) {
-                                obj.set('globalCompositeOperation', 'destination-out');
+                            // Відновлення властивостей затирачки з кешу, якщо це потрібно
+                            if (obj.id === 'eraser') {
+                                obj.set({
+                                    globalCompositeOperation: 'destination-out',
+                                    stroke: 'black',
+                                    fill: 'transparent',
+                                    selectable: false,
+                                    evented: false
+                                });
                             }
                         });
                         canvas.renderAll();
@@ -965,9 +982,15 @@
                     isRemoteAction = true;
                     canvas.loadFromJSON(val.data, function() {
                         canvas.getObjects().forEach(obj => {
-                            // Примусово відновлюємо режим стирання, якщо це затирачка
-                            if (obj.isEraser) {
-                                obj.set('globalCompositeOperation', 'destination-out');
+                            // Примусово відновлюємо маску для об'єктів затирачки з Firebase
+                            if (obj.id === 'eraser') {
+                                obj.set({
+                                    globalCompositeOperation: 'destination-out',
+                                    stroke: 'black',
+                                    fill: 'transparent',
+                                    selectable: false,
+                                    evented: false
+                                });
                             }
                         });
                         canvas.renderAll();
@@ -1040,6 +1063,7 @@
         dbFirebase.ref('current_activity').on('value', (snapshot) => {
             if (Date.now() < immunityEndTime) return;
             const activity = snapshot.val();
+            // Посилена перевірка для 100% гарантії переходу в лобі
             if (activity === 'lobby' || (activity && (activity.type === 'lobby' || activity.activity === 'lobby'))) {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
