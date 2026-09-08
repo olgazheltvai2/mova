@@ -218,7 +218,7 @@
         const CONFIG = { gameId: 'whiteboard_main' };
         
         // Властивості Fabric, які експортуються для синхронізації
-        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id'];
+        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'lockUniScaling', 'lockRotation'];
         
         // Ініціалізація Firebase
         const firebaseConfig = {
@@ -637,8 +637,18 @@
                 width: w, height: h, fill: 'transparent', stroke: '#e74c3c',
                 strokeWidth: 2 / currentZoom, strokeDashArray: [10, 5],
                 selectable: true, hasControls: true, hasBorders: true,
-                hoverCursor: 'move', moveCursor: 'move'
+                hoverCursor: 'move', moveCursor: 'move',
+                lockUniScaling: true, // Зберігаємо пропорції А4 при зміні розміру
+                lockRotation: true,
+                scaleX: 1 / currentZoom, // Одразу компенсуємо поточний зум екрану
+                scaleY: 1 / currentZoom
             });
+            
+            // Залишаємо тільки кутові маркери (щоб не розтягнули непропорційно)
+            printFrame.setControlsVisibility({
+                mt: false, mb: false, ml: false, mr: false, mtr: false
+            });
+
             canvas.add(printFrame);
             canvas.setActiveObject(printFrame);
             keepCirclesOnTop();
@@ -799,15 +809,42 @@
         }
 
         function zoom(amount) {
+            let oldZoom = currentZoom;
             currentZoom += amount;
             if(currentZoom < 0.2) currentZoom = 0.2;
             if(currentZoom > 3) currentZoom = 3;
             document.getElementById('zoom-wrapper').style.transform = `scale(${currentZoom})`;
+
+            if (printFrame) {
+                // Компенсуємо зум, щоб рамка візуально залишалась нерухомою на екрані
+                let newScaleX = printFrame.scaleX * (oldZoom / currentZoom);
+                let newScaleY = printFrame.scaleY * (oldZoom / currentZoom);
+                printFrame.set({
+                    scaleX: newScaleX,
+                    scaleY: newScaleY,
+                    strokeWidth: 2 / (newScaleX * currentZoom)
+                });
+                canvas.requestRenderAll();
+                saveState();
+            }
         }
         
         function resetZoom() {
+            let oldZoom = currentZoom;
             currentZoom = 1;
             document.getElementById('zoom-wrapper').style.transform = `scale(1)`;
+            
+            if (printFrame) {
+                let newScaleX = printFrame.scaleX * (oldZoom / currentZoom);
+                let newScaleY = printFrame.scaleY * (oldZoom / currentZoom);
+                printFrame.set({
+                    scaleX: newScaleX,
+                    scaleY: newScaleY,
+                    strokeWidth: 2 / (newScaleX * currentZoom)
+                });
+                canvas.requestRenderAll();
+                saveState();
+            }
         }
 
         // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ (Виправлено похилі лінії) ---
