@@ -658,18 +658,56 @@
             if (!printFrame) { alert('Спочатку увімкніть рамку А4!'); return; }
             printFrame.set('strokeWidth', 0);
             canvas.renderAll();
+            
             let rect = printFrame.getBoundingRect();
-            let dataURL = canvas.toDataURL({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, format: 'jpeg', quality: 1 });
+            
+            // 1. Отримуємо малюнки та об'єкти з Fabric у PNG (щоб зберегти прозорість)
+            let fabricDataURL = canvas.toDataURL({ 
+                left: rect.left, 
+                top: rect.top, 
+                width: rect.width, 
+                height: rect.height, 
+                format: 'png' 
+            });
+            
             printFrame.set('strokeWidth', 2 / currentZoom);
             canvas.renderAll();
-            let printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <html><head><title>Друк А4</title>
-                <style>@media print { @page { margin: 0; size: A4 portrait; } body { margin: 0; display: flex; justify-content: center; align-items: center; } img { width: 100%; max-height: 100vh; object-fit: contain; } } body { margin: 0; text-align: center; background: #555; font-family: Arial; } img { max-width: 100%; box-shadow: 0 0 10px rgba(0,0,0,0.5); margin: 20px auto; background: white; } .instruction { color: white; padding: 10px; }</style>
-                </head><body><div class="instruction">Натисніть Ctrl+P (або Cmd+P на Mac)</div><img src="${dataURL}" onload="window.print();"></body></html>
-            `);
-            printWindow.document.close();
-            closeModals();
+
+            // 2. Створюємо тимчасовий canvas для об'єднання фону, сітки та малюнків
+            let tempCanvas = document.createElement('canvas');
+            tempCanvas.width = rect.width;
+            tempCanvas.height = rect.height;
+            let tempCtx = tempCanvas.getContext('2d');
+
+            // 3. Заливаємо білим фоном (щоб не було чорного кольору при конвертації в JPEG)
+            tempCtx.fillStyle = '#ffffff';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // 4. Малюємо частину сітки
+            tempCtx.drawImage(
+                gridCanvas,
+                rect.left, rect.top, rect.width, rect.height,
+                0, 0, rect.width, rect.height
+            );
+
+            // 5. Малюємо об'єкти Fabric поверх сітки
+            let fabricImg = new Image();
+            fabricImg.onload = function() {
+                tempCtx.drawImage(fabricImg, 0, 0, rect.width, rect.height);
+                
+                // 6. Генеруємо фінальний JPEG у максимальній якості
+                let finalDataURL = tempCanvas.toDataURL('image/jpeg', 1.0);
+                
+                let printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                    <html><head><title>Друк А4</title>
+                    <style>@media print { @page { margin: 0; size: A4 portrait; } body { margin: 0; display: flex; justify-content: center; align-items: center; } img { width: 100%; max-height: 100vh; object-fit: contain; } } body { margin: 0; text-align: center; background: #555; font-family: Arial; } img { max-width: 100%; box-shadow: 0 0 10px rgba(0,0,0,0.5); margin: 20px auto; background: white; } .instruction { color: white; padding: 10px; font-size: 18px; }</style>
+                    </head><body><div class="instruction">Натисніть Ctrl+P (або Cmd+P на Mac) щоб зберегти у PDF або роздрукувати</div><img src="${finalDataURL}" onload="setTimeout(() => window.print(), 500);"></body></html>
+                `);
+                printWindow.document.close();
+                closeModals();
+            };
+            fabricImg.src = fabricDataURL;
         }
 
         // --- УПРАВЛІННЯ ІНСТРУМЕНТАМИ ---
