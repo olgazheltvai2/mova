@@ -22,7 +22,7 @@
             transition: background-image 0.5s ease;
         }
 
-        /* Керування шрифтом */
+        /* Керування шрифтом та масштабом */
         #font-controls {
             position: fixed; top: 15px; left: 15px; z-index: 1000;
             display: flex; gap: 10px;
@@ -36,7 +36,7 @@
 
         /* Секретне поле та панель вчителя */
         #admin-panel {
-            position: fixed; top: 15px; left: 130px; z-index: 1000;
+            position: fixed; top: 15px; left: 240px; z-index: 1000;
             display: flex; gap: 5px; align-items: center;
             background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 8px; border: 1px solid #555;
         }
@@ -195,6 +195,8 @@
     <div id="font-controls">
         <button class="font-btn" onclick="adjustFontSize(2)">А+</button>
         <button class="font-btn" onclick="adjustFontSize(-2)">А-</button>
+        <button class="font-btn" onclick="setZoom(0.1)">🔍+</button>
+        <button class="font-btn" onclick="setZoom(-0.1)">🔍-</button>
     </div>
 
     <!-- Секретна панель вчителя -->
@@ -274,15 +276,18 @@
                 let parts = block.split(';').map(s => s.trim()).filter(s => s.length > 0);
                 if(parts.length >= 2) {
                     let qText = parts[0];
-                    let correctAns = parts[1];
-                    let options = parts.slice(1); 
+                    // Створюємо масив об'єктів для точного відстеження правильної відповіді (першої)
+                    let optionsObjs = parts.slice(1).map((opt, idx) => ({ text: opt, isCorrect: idx === 0 }));
                     
                     // Перемішування варіантів відповідей
-                    for (let i = options.length - 1; i > 0; i--) {
+                    for (let i = optionsObjs.length - 1; i > 0; i--) {
                         const j = Math.floor(Math.random() * (i + 1));
-                        [options[i], options[j]] = [options[j], options[i]];
+                        [optionsObjs[i], optionsObjs[j]] = [optionsObjs[j], optionsObjs[i]];
                     }
-                    let correctIdx = options.indexOf(correctAns);
+                    
+                    let options = optionsObjs.map(o => o.text);
+                    let correctIdx = optionsObjs.findIndex(o => o.isCorrect);
+                    
                     parsed.push({ text: qText, options: options, correct: correctIdx });
                 }
             }
@@ -422,8 +427,17 @@
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d', { alpha: true }); 
+        
+        let globalZoom = 1.0;
+        function setZoom(delta) {
+            globalZoom += delta;
+            if (globalZoom < 0.4) globalZoom = 0.4;
+            if (globalZoom > 2.5) globalZoom = 2.5;
+            resize();
+        }
+
         let width, height;
-        function resize() { width = canvas.width = window.innerWidth; height = canvas.height = window.innerHeight; }
+        function resize() { width = canvas.width = window.innerWidth / globalZoom; height = canvas.height = window.innerHeight / globalZoom; }
         window.addEventListener('resize', resize); resize();
 
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -530,7 +544,7 @@
                 this.x += this.vx + this.windForce; this.y += this.vy;
                 if (this.grounded && this.currentPlatform && this.currentPlatform.type === 'moving') this.x += this.currentPlatform.vx;
                 
-                if(this.y > cameraY + 1200 || this.y > 3000) this.respawn();
+                if(this.y > cameraY + Math.max(1200, height + 200) || this.y > 3000) this.respawn();
                 if(this.glowTimer > 0) this.glowTimer--;
             },
             jump() {
