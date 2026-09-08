@@ -238,11 +238,15 @@
         let isPanning = false;
         let lastClientX, lastClientY;
         
-        // Змінні для Векторної Затирачки
+        // Змінні для малювання і затирання у реальному часі
         let isErasing = false;
         let lastEraseX = undefined;
         let lastEraseY = undefined;
         let wasModifiedDuringErase = false;
+        let isLocalDrawing = false;
+        let remoteDrawPaths = {};
+        let remoteEraseState = {};
+        let lastRealtimeSync = 0;
 
         let printFrame = null;
 
@@ -407,7 +411,19 @@
                     let logicalPoint = canvas.getPointer(e.e);
                     lastEraseX = logicalPoint.x;
                     lastEraseY = logicalPoint.y;
+                    let eRadius = (parseInt(document.getElementById('erase-width').value) / currentZoom) / 2;
+                    syncRealtime('erase_start', { x: logicalPoint.x, y: logicalPoint.y, r: eRadius });
                     eraseVector(logicalPoint); // Запускаємо затирання одразу по кліку
+                }
+                else if (mode === 'draw') {
+                    isLocalDrawing = true;
+                    let logicalPoint = canvas.getPointer(e.e);
+                    syncRealtime('draw_start', {
+                        x: logicalPoint.x, 
+                        y: logicalPoint.y,
+                        color: document.getElementById('draw-color').value,
+                        width: parseInt(document.getElementById('draw-width').value)
+                    });
                 }
                 
                 if (e.button === 3 && e.target && e.target.type === 'image') {
@@ -432,11 +448,17 @@
                     lastClientY = point.y;
                 }
 
+                if (isLocalDrawing && mode === 'draw') {
+                    let logicalPoint = canvas.getPointer(e.e);
+                    syncRealtime('draw_move', { x: logicalPoint.x, y: logicalPoint.y });
+                }
+
                 // Візуальний курсор
                 let cursor = document.getElementById('eraser-cursor');
                 if (mode === 'erase') {
                     cursor.style.display = 'block';
                     let eSize = parseInt(document.getElementById('erase-width').value);
+                    let eRadius = (eSize / currentZoom) / 2;
                     cursor.style.width = eSize + 'px';
                     cursor.style.height = eSize + 'px';
                     cursor.style.left = point.x + 'px';
@@ -444,6 +466,8 @@
                     
                     if (isErasing) {
                         let logicalPoint = canvas.getPointer(e.e);
+                        syncRealtime('erase_move', { x: logicalPoint.x, y: logicalPoint.y, r: eRadius });
+                        
                         // Інтерполяція: стирає всі сегменти навіть при швидкому русі мишкою
                         if (lastEraseX !== undefined && lastEraseY !== undefined) {
                             let dist = Math.hypot(logicalPoint.x - lastEraseX, logicalPoint.y - lastEraseY);
@@ -473,12 +497,16 @@
                     isErasing = false;
                     lastEraseX = undefined;
                     lastEraseY = undefined;
+                    syncRealtime('erase_end', {});
                     // Якщо лінія була розрізана, відправляємо оновлення на інші пристрої
                     if (wasModifiedDuringErase) {
                         saveState();
                         syncAction('modify');
                         wasModifiedDuringErase = false;
                     }
+                } else if (mode === 'draw') {
+                    isLocalDrawing = false;
+                    syncRealtime('draw_end', {});
                 }
             });
 
@@ -506,8 +534,8 @@
         }
 
         // Перевіряє всі лінії на екрані і розрізає ті, по яким пройшла гумка
-        function eraseVector(pointer) {
-            let eRadius = (parseInt(document.getElementById('erase-width').value) / currentZoom) / 2;
+        function eraseVector(pointer, overrideRadius = null) {
+            let eRadius = overrideRadius !== null ? overrideRadius : (parseInt(document.getElementById('erase-width').value) / currentZoom) / 2;
             let canvasObjects = canvas.getObjects();
             let hasChanges = false;
             
@@ -578,6 +606,21 @@
                     }
                 }
             }
+            
+            // --- ПОВНЕ ВИДАЛЕННЯ ПОРОЖНІХ ЛІНІЙ (Вирішує баг невидимих об'єктів) ---
+            for (let j = canvasObjects.length - 1; j >= 0; j--) {
+                let obj = canvasObjects[j];
+                if (obj.id === 'draw' && obj.type === 'path' && obj.path) {
+                    // Якщо лінія складається тільки з 'M' (немає малюнку)
+                    let hasVisible = obj.path.some(cmd => cmd[0] !== 'M');
+                    if (!hasVisible) {
+                        canvas.remove(obj);
+                        hasChanges = true;
+                        wasModifiedDuringErase = true;
+                    }
+                }
+            }
+
             if (hasChanges) {
                 canvas.requestRenderAll(); 
             }
@@ -934,6 +977,16 @@
         }
 
         // --- FIREBASE СИНХРОНІЗАЦІЯ ДОШКИ ---
+        function syncRealtime(actionType, data) {
+            if (isRemoteAction) return;
+            const now = Date.now();
+            if ((actionType === 'draw_move' || actionType === 'erase_move') && now - lastRealtimeSync < 25) return; 
+            lastRealtimeSync = now;
+            dbFirebase.ref(CONFIG.gameId + '/realtime_action').set({
+                senderId: myName, timestamp: now, type: actionType, data: data
+            });
+        }
+
         let lastSyncTime = 0;
         
         function syncAction(actionType, force = true) {
@@ -957,6 +1010,7 @@
                 if (val && val.senderId !== myName) {
                     isRemoteAction = true;
                     canvas.loadFromJSON(val.data, function() {
+                        remoteDrawPaths = {}; // Очищаємо тимчасові лінії малювання
                         canvas.renderAll();
                         pulsingCircles = []; printFrame = null;
                         canvas.getObjects().forEach(obj => {
@@ -978,6 +1032,63 @@
                     document.getElementById('g-skew').value = val.settings.skew; document.getElementById('g-line').value = val.settings.line;
                     document.getElementById('g-color').value = val.settings.color; document.getElementById('g-opacity').value = val.settings.opacity;
                     applyGrid(false);
+                    isRemoteAction = false;
+                }
+            });
+
+            // Слухач для дій малювання та затирання у реальному часі
+            dbFirebase.ref(CONFIG.gameId + '/realtime_action').on('value', snap => {
+                const val = snap.val();
+                if (val && val.senderId !== myName) {
+                    isRemoteAction = true;
+                    const sender = val.senderId;
+
+                    if (val.type === 'draw_start') {
+                        let path = new fabric.Path(`M ${val.data.x} ${val.data.y}`, {
+                            fill: 'transparent',
+                            stroke: val.data.color,
+                            strokeWidth: val.data.width,
+                            strokeLineCap: 'round',
+                            strokeLineJoin: 'round',
+                            selectable: false,
+                            evented: false,
+                            id: 'remote_temp_draw'
+                        });
+                        remoteDrawPaths[sender] = path;
+                        canvas.add(path);
+                        canvas.requestRenderAll();
+                    }
+                    else if (val.type === 'draw_move') {
+                        let path = remoteDrawPaths[sender];
+                        if (path) {
+                            path.path.push(['L', val.data.x, val.data.y]);
+                            path.dirty = true;
+                            canvas.requestRenderAll();
+                        }
+                    }
+                    else if (val.type === 'erase_start') {
+                        remoteEraseState[sender] = { x: val.data.x, y: val.data.y };
+                        eraseVector({x: val.data.x, y: val.data.y}, val.data.r);
+                    }
+                    else if (val.type === 'erase_move') {
+                        let lastErase = remoteEraseState[sender];
+                        let logicalPoint = { x: val.data.x, y: val.data.y };
+                        if (lastErase) {
+                            let dist = Math.hypot(logicalPoint.x - lastErase.x, logicalPoint.y - lastErase.y);
+                            let steps = Math.max(1, Math.floor(dist / 5));
+                            for (let i = 0; i <= steps; i++) {
+                                let interpX = lastErase.x + (logicalPoint.x - lastErase.x) * (i / steps);
+                                let interpY = lastErase.y + (logicalPoint.y - lastErase.y) * (i / steps);
+                                eraseVector({x: interpX, y: interpY}, val.data.r);
+                            }
+                        } else {
+                            eraseVector(logicalPoint, val.data.r);
+                        }
+                        remoteEraseState[sender] = { x: val.data.x, y: val.data.y };
+                    }
+                    else if (val.type === 'erase_end') {
+                        delete remoteEraseState[sender];
+                    }
                     isRemoteAction = false;
                 }
             });
