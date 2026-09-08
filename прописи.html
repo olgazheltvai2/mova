@@ -36,7 +36,7 @@
         .panel { position: fixed; background: rgba(255, 255, 255, 0.9); padding: 10px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 100; }
         
         /* Кнопка вчителя */
-        .teacher-btn-container { top: 10px; left: 10px; display: none; } /* За замовчуванням прихована, покажеться якщо вільна або ми вчитель */
+        .teacher-btn-container { top: 10px; left: 10px; display: none; } 
         .teacher-btn { background: #34495e; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
         
         /* Зум */
@@ -216,8 +216,8 @@
     <script>
         const CONFIG = { gameId: 'whiteboard_main' };
         
-        // Властивості Fabric, які обов'язково треба експортувати для синхронізації (додано id та globalCompositeOperation для затирачки)
-        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching'];
+        // Властивості Fabric, які експортуються для синхронізації
+        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching', 'isEraser'];
         
         // Ініціалізація Firebase
         const firebaseConfig = {
@@ -345,23 +345,25 @@
             // --- СТВОРЕННЯ МАСЛЮНКІВ ТА ЗАТИРАЧОК ---
             canvas.on('path:created', function(e) {
                 if (mode === 'erase') {
-                    // Якщо малювали затирачкою, жорстко маркуємо її та робимо маскою
+                    // Зберігаємо параметри створеного шляху як ідеальної затирачки
                     e.path.set({
-                        id: 'eraser', // Ключовий маркер для синхронізації
+                        id: 'eraser', 
                         globalCompositeOperation: 'destination-out',
-                        stroke: 'black', // Має бути суцільний колір, щоб маска спрацювала
+                        stroke: 'black', 
                         fill: 'transparent',
                         selectable: false,
                         evented: false,
                         hasControls: false,
-                        hasBorders: false
+                        hasBorders: false,
+                        isEraser: true // ВАЖЛИВИЙ маркер для синхронізації!
                     });
                 } else {
                     e.path.set({
                         id: 'draw',
                         hasControls: false, hasBorders: false,
                         hoverCursor: 'default', moveCursor: 'default',
-                        fill: 'transparent'
+                        fill: 'transparent',
+                        isEraser: false
                     });
                 }
                 keepCirclesOnTop();
@@ -596,18 +598,18 @@
                 document.getElementById('btn-erase').classList.add('active');
                 document.getElementById('erase-settings').style.display = 'flex';
                 
+                // Вмикаємо нативний режим малювання, але підміняємо його на стирання
                 canvas.isDrawingMode = true; 
                 canvas.selection = false;
                 canvas.forEachObject(o => o.selectable = false);
                 canvas.defaultCursor = 'none'; 
                 canvas.hoverCursor = 'none';
                 
-                // Налаштовуємо пензель для ідеального стирання
                 canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-                canvas.freeDrawingBrush.color = 'black'; // обов'язково суцільний колір для маски
+                canvas.freeDrawingBrush.color = 'black'; 
                 canvas.freeDrawingBrush.width = parseInt(document.getElementById('erase-width').value) / currentZoom;
                 
-                // Це робить малювання прозорим одразу під час руху мишкою
+                // Плавне стирання в момент руху мишки
                 const orig = canvas.freeDrawingBrush._setBrushStyles;
                 canvas.freeDrawingBrush._setBrushStyles = function(ctx) {
                     orig.call(this, ctx);
@@ -654,7 +656,6 @@
 
         // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ (Виправлено похилі лінії) ---
         function applyGrid(emit = true) {
-            // Безпечне отримання числових значень (інакше fallback на значення за замовчуванням)
             let wVal = parseInt(document.getElementById('g-width').value);
             let w = isNaN(wVal) ? 50 : wVal;
             
@@ -684,7 +685,7 @@
                 gridCtx.lineTo(gridCanvas.width, y);
             }
             
-            // Вертикальні та похилі лінії (Залізний цикл, який гарантовано покриває екран)
+            // Вертикальні та похилі лінії (Широкий цикл, щоб нахил працював по всій дошці)
             let totalShift = (h > 0) ? (gridCanvas.height / h) * skew : 0;
             for (let x = -30000; x <= 30000; x += w) {
                 gridCtx.moveTo(x, 0);
@@ -911,15 +912,9 @@
                 if(e.target.result) {
                     canvas.loadFromJSON(e.target.result.data, function() {
                         canvas.getObjects().forEach(obj => {
-                            // Відновлення властивостей затирачки з кешу, якщо це потрібно
-                            if (obj.id === 'eraser') {
-                                obj.set({
-                                    globalCompositeOperation: 'destination-out',
-                                    stroke: 'black',
-                                    fill: 'transparent',
-                                    selectable: false,
-                                    evented: false
-                                });
+                            // Відновлюємо маску стирання з локальної бази
+                            if (obj.isEraser) {
+                                obj.set('globalCompositeOperation', 'destination-out');
                             }
                         });
                         canvas.renderAll();
@@ -964,14 +959,14 @@
         }
 
         function setupFirebaseSync() {
-            // Приховування кнопки Вчителя для інших користувачів
+            // Приховування кнопки Вчителя
             dbFirebase.ref(CONFIG.gameId + '/teacher_id').on('value', (snap) => {
                 const currentTeacher = snap.val();
                 const btn = document.querySelector('.teacher-btn-container');
                 if (currentTeacher && currentTeacher !== myName) {
-                    btn.style.display = 'none'; // Ми не вчитель, ховаємо кнопку
+                    btn.style.display = 'none'; 
                 } else {
-                    btn.style.display = 'block'; // Ми вчитель або місце вільне
+                    btn.style.display = 'block'; 
                 }
             });
 
@@ -982,15 +977,9 @@
                     isRemoteAction = true;
                     canvas.loadFromJSON(val.data, function() {
                         canvas.getObjects().forEach(obj => {
-                            // Примусово відновлюємо маску для об'єктів затирачки з Firebase
-                            if (obj.id === 'eraser') {
-                                obj.set({
-                                    globalCompositeOperation: 'destination-out',
-                                    stroke: 'black',
-                                    fill: 'transparent',
-                                    selectable: false,
-                                    evented: false
-                                });
+                            // Примусово відновлюємо маску для затирачки, яку прислали з Firebase!
+                            if (obj.isEraser) {
+                                obj.set('globalCompositeOperation', 'destination-out');
                             }
                         });
                         canvas.renderAll();
@@ -1063,7 +1052,6 @@
         dbFirebase.ref('current_activity').on('value', (snapshot) => {
             if (Date.now() < immunityEndTime) return;
             const activity = snapshot.val();
-            // Посилена перевірка для 100% гарантії переходу в лобі
             if (activity === 'lobby' || (activity && (activity.type === 'lobby' || activity.activity === 'lobby'))) {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
