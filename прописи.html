@@ -217,7 +217,6 @@
         const CONFIG = { gameId: 'whiteboard_main' };
         
         // Властивості Fabric, які обов'язково треба експортувати для синхронізації
-        // Додано 'isEraser', щоб затирачка коректно визначалася після передачі
         const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching', 'isEraser'];
         
         // Ініціалізація Firebase
@@ -240,11 +239,6 @@
         // Змінні для інструменту "Рука"
         let isPanning = false;
         let lastClientX, lastClientY;
-
-        // Змінні для затирачки
-        let isErasing = false;
-        let erasePoints = [];
-        let currentErasePath = null;
         
         // Змінна для рамки друку
         let printFrame = null;
@@ -349,11 +343,26 @@
             });
 
             canvas.on('path:created', function(e) {
-                e.path.set({
-                    hasControls: false, hasBorders: false,
-                    hoverCursor: 'default', moveCursor: 'default',
-                    fill: 'transparent'
-                });
+                // Визначаємо, чи це був олівець, чи затирачка
+                if (mode === 'erase') {
+                    e.path.set({
+                        globalCompositeOperation: 'destination-out',
+                        isEraser: true, // ВАЖЛИВИЙ маркер для синхронізації
+                        stroke: 'white',
+                        fill: 'transparent',
+                        selectable: false,
+                        evented: false,
+                        hasControls: false,
+                        hasBorders: false
+                    });
+                } else {
+                    e.path.set({
+                        hasControls: false, hasBorders: false,
+                        hoverCursor: 'default', moveCursor: 'default',
+                        fill: 'transparent',
+                        isEraser: false
+                    });
+                }
                 keepCirclesOnTop();
                 saveState();
                 syncAction('path_created');
@@ -405,29 +414,6 @@
                     lastClientY = point.y;
                     canvas.defaultCursor = 'grabbing';
                 } 
-                else if (mode === 'erase') {
-                    isErasing = true;
-                    let fabricPointer = canvas.getPointer(e.e);
-                    let eSize = parseInt(document.getElementById('erase-width').value) / currentZoom;
-                    
-                    erasePoints = [{x: fabricPointer.x, y: fabricPointer.y}, {x: fabricPointer.x, y: fabricPointer.y}];
-                    
-                    currentErasePath = new fabric.Polyline(erasePoints, {
-                        strokeWidth: eSize,
-                        fill: 'transparent',
-                        stroke: 'black',
-                        strokeLineCap: 'round',
-                        strokeLineJoin: 'round',
-                        globalCompositeOperation: 'destination-out', // Робить лінію прозорою
-                        selectable: false,
-                        evented: false,
-                        objectCaching: false,
-                        isEraser: true // ВАЖЛИВО: маркер для збереження властивостей при синхронізації
-                    });
-                    
-                    canvas.add(currentErasePath);
-                    canvas.renderAll(); 
-                }
                 
                 if (e.button === 3 && e.target && e.target.type === 'image') {
                     canvas.setActiveObject(e.target);
@@ -460,16 +446,6 @@
                     cursor.style.height = eSize + 'px';
                     cursor.style.left = point.x + 'px';
                     cursor.style.top = point.y + 'px';
-                    
-                    if (isErasing && currentErasePath) {
-                        let fabricPointer = canvas.getPointer(e.e);
-                        erasePoints.push({x: fabricPointer.x, y: fabricPointer.y});
-                        
-                        currentErasePath.set({ points: erasePoints });
-                        currentErasePath._calcDimensions();
-                        currentErasePath.dirty = true;
-                        canvas.renderAll(); 
-                    }
                 } else {
                     cursor.style.display = 'none';
                 }
@@ -480,16 +456,6 @@
                 if (mode === 'pan') {
                     isPanning = false;
                     canvas.defaultCursor = 'grab';
-                } else if (mode === 'erase') {
-                    isErasing = false;
-                    if (currentErasePath) {
-                        currentErasePath.set({ objectCaching: true }); 
-                        currentErasePath.setCoords();
-                        keepCirclesOnTop();
-                        saveState();
-                        syncAction('path_created');
-                        currentErasePath = null;
-                    }
                 }
             });
 
@@ -595,6 +561,11 @@
             document.getElementById('draw-settings').style.display = 'none';
             document.getElementById('erase-settings').style.display = 'none';
 
+            // Очищаємо можливі модифікації пензля
+            if (canvas.freeDrawingBrush) {
+                canvas.freeDrawingBrush._setBrushStyles = fabric.PencilBrush.prototype._setBrushStyles;
+            }
+
             if (mode === 'select') {
                 document.getElementById('btn-select').classList.add('active');
                 canvas.isDrawingMode = false;
@@ -612,24 +583,47 @@
             } else if (mode === 'draw') {
                 document.getElementById('btn-draw').classList.add('active');
                 document.getElementById('draw-settings').style.display = 'flex';
+                
                 canvas.isDrawingMode = true;
                 canvas.selection = false;
                 canvas.defaultCursor = 'crosshair';
                 canvas.hoverCursor = 'crosshair';
+                
+                canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
                 updateBrush();
             } else if (mode === 'erase') {
                 document.getElementById('btn-erase').classList.add('active');
                 document.getElementById('erase-settings').style.display = 'flex';
-                canvas.isDrawingMode = false; 
+                
+                // Для затирачки використовуємо стандартний isDrawingMode, але замінюємо пензель
+                canvas.isDrawingMode = true; 
                 canvas.selection = false;
                 canvas.forEachObject(o => o.selectable = false);
                 canvas.defaultCursor = 'none'; 
                 canvas.hoverCursor = 'none';
+                
+                canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+                canvas.freeDrawingBrush.color = 'white'; 
+                canvas.freeDrawingBrush.width = parseInt(document.getElementById('erase-width').value) / currentZoom;
+                
+                // Перевизначаємо малювання, щоб воно миттєво стирало
+                const orig = canvas.freeDrawingBrush._setBrushStyles;
+                canvas.freeDrawingBrush._setBrushStyles = function(ctx) {
+                    orig.call(this, ctx);
+                    ctx.globalCompositeOperation = 'destination-out';
+                };
             }
         }
 
         document.getElementById('draw-color').addEventListener('input', updateBrush);
         document.getElementById('draw-width').addEventListener('input', updateBrush);
+        
+        // Синхронізація повзунка затирачки "на льоту"
+        document.getElementById('erase-width').addEventListener('input', function() {
+            if (mode === 'erase' && canvas.freeDrawingBrush) {
+                canvas.freeDrawingBrush.width = parseInt(this.value) / currentZoom;
+            }
+        });
         
         function updateBrush() {
             if(mode !== 'draw') return;
@@ -676,9 +670,14 @@
                 gridCtx.lineTo(gridCanvas.width, y);
             }
             
-            for (let x = -gridCanvas.height; x <= gridCanvas.width + gridCanvas.height; x += w) {
+            // Виправлена математика для косої сітки: нахил задається відносно висоти клітинки
+            let totalShift = (h > 0) ? (gridCanvas.height / h) * skew : 0;
+            let startX = -Math.abs(totalShift) - w;
+            let endX = gridCanvas.width + Math.abs(totalShift) + w;
+
+            for (let x = startX; x <= endX; x += w) {
                 gridCtx.moveTo(x, 0);
-                gridCtx.lineTo(x + skew, gridCanvas.height);
+                gridCtx.lineTo(x + totalShift, gridCanvas.height);
             }
             
             gridCtx.stroke();
@@ -936,7 +935,6 @@
             if (isRemoteAction) return;
             
             const now = Date.now();
-            // Обмежувач запитів (throttle) для плавності під час переміщення об'єктів
             if (!force && now - lastSyncTime < 50) return; 
             lastSyncTime = now;
             
@@ -1042,7 +1040,6 @@
         dbFirebase.ref('current_activity').on('value', (snapshot) => {
             if (Date.now() < immunityEndTime) return;
             const activity = snapshot.val();
-            // Посилена перевірка для 100% гарантії переходу в лобі
             if (activity === 'lobby' || (activity && (activity.type === 'lobby' || activity.activity === 'lobby'))) {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
