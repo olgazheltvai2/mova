@@ -217,7 +217,7 @@
         const CONFIG = { gameId: 'whiteboard_main' };
         
         // Властивості Fabric, які експортуються для синхронізації
-        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching', 'isEraser'];
+        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id'];
         
         // Ініціалізація Firebase
         const firebaseConfig = {
@@ -236,14 +236,17 @@
         let lastImageScaleY = null;
         let pulsingCircles = [];
         
-        // Змінні для інструменту "Рука"
         let isPanning = false;
         let lastClientX, lastClientY;
         
-        // Змінна для рамки друку
+        // Змінні для справжньої векторної затирачки
+        let isErasing = false;
+        let lastEraseX = undefined;
+        let lastEraseY = undefined;
+        let wasModifiedDuringErase = false;
+        
         let printFrame = null;
 
-        // Ідентифікація користувача
         let myName = sessionStorage.getItem('userName');
         if (!myName) {
             const urlParams = new URLSearchParams(window.location.search);
@@ -275,7 +278,6 @@
             });
         }
 
-        // Ексклюзивна панель вчителя
         function tryOpenTeacherPanel() {
             const ref = dbFirebase.ref(CONFIG.gameId + '/teacher_id');
             ref.transaction((currentTeacher) => {
@@ -297,6 +299,9 @@
             gridCanvas = document.getElementById('grid-canvas');
             gridCtx = gridCanvas.getContext('2d');
             
+            // Відключаємо кешування, щоб векторна затирачка працювала миттєво
+            fabric.Object.prototype.objectCaching = false;
+            
             canvas = new fabric.Canvas('c', {
                 width: 3000,
                 height: 3000,
@@ -304,12 +309,10 @@
                 preserveObjectStacking: true
             });
 
-            // Налаштування олівця
             canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
             canvas.freeDrawingBrush.color = document.getElementById('draw-color').value;
             canvas.freeDrawingBrush.width = parseInt(document.getElementById('draw-width').value);
 
-            // Видалення об'єктів
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Delete' || e.key === 'Backspace') {
                     let activeObjects = canvas.getActiveObjects();
@@ -324,7 +327,6 @@
                 }
             });
 
-            // Події Fabric.js
             canvas.on('object:scaling', function(e) {
                 if (e.target && e.target.type === 'image') {
                     lastImageScaleX = e.target.scaleX;
@@ -336,36 +338,18 @@
                 }
             });
 
-            // Синхронізація перетягування (object:moving)
             canvas.on('object:moving', function() {
                 keepCirclesOnTop();
                 syncAction('moving', false); 
             });
 
-            // --- СТВОРЕННЯ МАСЛЮНКІВ ТА ЗАТИРАЧОК ---
             canvas.on('path:created', function(e) {
-                if (mode === 'erase') {
-                    // Зберігаємо параметри створеного шляху як ідеальної затирачки
-                    e.path.set({
-                        id: 'eraser', 
-                        globalCompositeOperation: 'destination-out',
-                        stroke: 'black', 
-                        fill: 'transparent',
-                        selectable: false,
-                        evented: false,
-                        hasControls: false,
-                        hasBorders: false,
-                        isEraser: true // ВАЖЛИВИЙ маркер для синхронізації!
-                    });
-                } else {
-                    e.path.set({
-                        id: 'draw',
-                        hasControls: false, hasBorders: false,
-                        hoverCursor: 'default', moveCursor: 'default',
-                        fill: 'transparent',
-                        isEraser: false
-                    });
-                }
+                e.path.set({
+                    id: 'draw',
+                    hasControls: false, hasBorders: false,
+                    hoverCursor: 'default', moveCursor: 'default',
+                    fill: 'transparent' // Блокуємо заливку замкнутих контурів
+                });
                 keepCirclesOnTop();
                 saveState();
                 syncAction('path_created');
@@ -377,7 +361,6 @@
                 syncAction('modify'); 
             });
 
-            // --- ПОДВІЙНИЙ КЛІК ДЛЯ РАМОК ---
             canvas.on('mouse:dblclick', function(e) {
                 if (e.target && mode === 'select' && e.target.id !== 'print-frame') {
                     e.target.set({
@@ -406,7 +389,6 @@
             canvas.on('selection:cleared', function(e) { hideControls(e.deselected); canvas.requestRenderAll(); });
             canvas.on('selection:updated', function(e) { hideControls(e.deselected); canvas.requestRenderAll(); });
 
-            // --- МИША DOWN ---
             canvas.on('mouse:down', function(e) {
                 document.getElementById('object-menu').style.display = 'none';
                 let point = getEventPoint(e);
@@ -417,6 +399,14 @@
                     lastClientY = point.y;
                     canvas.defaultCursor = 'grabbing';
                 } 
+                else if (mode === 'erase') {
+                    isErasing = true;
+                    wasModifiedDuringErase = false;
+                    let logicalPoint = canvas.getPointer(e.e);
+                    lastEraseX = logicalPoint.x;
+                    lastEraseY = logicalPoint.y;
+                    eraseVector(logicalPoint); // Миттєве затирання по кліку
+                }
                 
                 if (e.button === 3 && e.target && e.target.type === 'image') {
                     canvas.setActiveObject(e.target);
@@ -428,7 +418,6 @@
                 }
             });
 
-            // --- МИША MOVE ---
             canvas.on('mouse:move', function(e) {
                 let point = getEventPoint(e);
 
@@ -440,7 +429,7 @@
                     lastClientY = point.y;
                 }
 
-                // Візуальний курсор затирачки
+                // Візуальний курсор
                 let cursor = document.getElementById('eraser-cursor');
                 if (mode === 'erase') {
                     cursor.style.display = 'block';
@@ -449,16 +438,43 @@
                     cursor.style.height = eSize + 'px';
                     cursor.style.left = point.x + 'px';
                     cursor.style.top = point.y + 'px';
+                    
+                    if (isErasing) {
+                        let logicalPoint = canvas.getPointer(e.e);
+                        // Інтерполяція для ідеально плавного стирання
+                        if (lastEraseX !== undefined && lastEraseY !== undefined) {
+                            let dist = Math.hypot(logicalPoint.x - lastEraseX, logicalPoint.y - lastEraseY);
+                            let steps = Math.max(1, Math.floor(dist / 5)); 
+                            for (let i = 0; i <= steps; i++) {
+                                let interpX = lastEraseX + (logicalPoint.x - lastEraseX) * (i / steps);
+                                let interpY = lastEraseY + (logicalPoint.y - lastEraseY) * (i / steps);
+                                eraseVector({x: interpX, y: interpY});
+                            }
+                        } else {
+                            eraseVector(logicalPoint);
+                        }
+                        lastEraseX = logicalPoint.x;
+                        lastEraseY = logicalPoint.y;
+                    }
                 } else {
                     cursor.style.display = 'none';
                 }
             });
 
-            // --- МИША UP ---
             canvas.on('mouse:up', function(e) {
                 if (mode === 'pan') {
                     isPanning = false;
                     canvas.defaultCursor = 'grab';
+                } else if (mode === 'erase') {
+                    isErasing = false;
+                    lastEraseX = undefined;
+                    lastEraseY = undefined;
+                    // Синхронізуємо змінений стан ліній після завершення руху
+                    if (wasModifiedDuringErase) {
+                        saveState();
+                        syncAction('modify');
+                        wasModifiedDuringErase = false;
+                    }
                 }
             });
 
@@ -469,30 +485,73 @@
             setupFirebaseSync();
         }
 
+        // --- СПРАВЖНЯ ВЕКТОРНА ЗАТИРАЧКА (Розрізає намальовані шляхи) ---
+        function eraseVector(pointer) {
+            let eRadius = (parseInt(document.getElementById('erase-width').value) / currentZoom) / 2;
+            let canvasObjects = canvas.getObjects();
+            let hasChanges = false;
+            
+            for (let j = 0; j < canvasObjects.length; j++) {
+                let obj = canvasObjects[j];
+                // Затираємо лише малюнки від олівця
+                if (obj.id === 'draw' && obj.type === 'path') {
+                    let br = obj.getBoundingRect();
+                    // Швидка перевірка, чи мишка взагалі біля цього малюнку
+                    if (pointer.x < br.left - eRadius || pointer.x > br.left + br.width + eRadius ||
+                        pointer.y < br.top - eRadius || pointer.y > br.top + br.height + eRadius) {
+                        continue;
+                    }
+
+                    // Переводимо координати мишки у внутрішні координати об'єкта
+                    let invertedMatrix = fabric.util.invertTransform(obj.calcTransformMatrix());
+                    let localP = fabric.util.transformPoint(pointer, invertedMatrix);
+                    let localRadius = eRadius / Math.max(obj.scaleX || 1, obj.scaleY || 1);
+
+                    let modified = false;
+                    let pArray = obj.path;
+                    
+                    // Перевіряємо кожну точку малюнку. Якщо вона потрапила під гумку - розриваємо лінію
+                    for (let i = 0; i < pArray.length; i++) {
+                        let cmd = pArray[i];
+                        let px, py;
+                        if (cmd[0] === 'M' || cmd[0] === 'L') { px = cmd[1]; py = cmd[2]; }
+                        else if (cmd[0] === 'Q') { px = cmd[3]; py = cmd[4]; }
+                        else if (cmd[0] === 'C') { px = cmd[5]; py = cmd[6]; }
+                        else continue;
+
+                        if (Math.hypot(px - localP.x, py - localP.y) < localRadius) {
+                            if (cmd[0] !== 'M') {
+                                pArray[i] = ['M', px, py]; // Перетворюємо точку на пустий "Стрибок"
+                                modified = true;
+                            }
+                        }
+                    }
+                    if (modified) {
+                        obj._calcDimensions();
+                        obj.setCoords();
+                        obj.dirty = true;
+                        hasChanges = true;
+                        wasModifiedDuringErase = true;
+                    }
+                }
+            }
+            if (hasChanges) {
+                canvas.requestRenderAll(); // Рендеримо миттєво під час руху
+            }
+        }
+
         // --- ЛОГІКА ДЛЯ РАМКИ ТА ДРУКУ А4 ---
         function showPrintFrame() {
             if (printFrame) return;
-            
-            let w = 800;
-            let h = 1131;
-            
+            let w = 800; let h = 1131;
             printFrame = new fabric.Rect({
                 id: 'print-frame',
-                left: window.scrollX / currentZoom + 100,
-                top: window.scrollY / currentZoom + 100,
-                width: w,
-                height: h,
-                fill: 'transparent',
-                stroke: '#e74c3c',
-                strokeWidth: 2 / currentZoom,
-                strokeDashArray: [10, 5],
-                selectable: true,
-                hasControls: true,
-                hasBorders: true,
-                hoverCursor: 'move',
-                moveCursor: 'move'
+                left: window.scrollX / currentZoom + 100, top: window.scrollY / currentZoom + 100,
+                width: w, height: h, fill: 'transparent', stroke: '#e74c3c',
+                strokeWidth: 2 / currentZoom, strokeDashArray: [10, 5],
+                selectable: true, hasControls: true, hasBorders: true,
+                hoverCursor: 'move', moveCursor: 'move'
             });
-
             canvas.add(printFrame);
             canvas.setActiveObject(printFrame);
             keepCirclesOnTop();
@@ -509,49 +568,18 @@
         }
 
         function printA4Area() {
-            if (!printFrame) {
-                alert('Спочатку увімкніть рамку А4 (кнопка вище) і встановіть її на потрібну зону!');
-                return;
-            }
-
+            if (!printFrame) { alert('Спочатку увімкніть рамку А4!'); return; }
             printFrame.set('strokeWidth', 0);
             canvas.renderAll();
-
             let rect = printFrame.getBoundingRect();
-
-            let dataURL = canvas.toDataURL({
-                left: rect.left,
-                top: rect.top,
-                width: rect.width,
-                height: rect.height,
-                format: 'jpeg',
-                quality: 1
-            });
-
+            let dataURL = canvas.toDataURL({ left: rect.left, top: rect.top, width: rect.width, height: rect.height, format: 'jpeg', quality: 1 });
             printFrame.set('strokeWidth', 2 / currentZoom);
             canvas.renderAll();
-
             let printWindow = window.open('', '_blank');
             printWindow.document.write(`
-                <html>
-                    <head>
-                        <title>Друк А4</title>
-                        <style>
-                            @media print {
-                                @page { margin: 0; size: A4 portrait; }
-                                body { margin: 0; display: flex; justify-content: center; align-items: center; }
-                                img { width: 100%; max-height: 100vh; object-fit: contain; }
-                            }
-                            body { margin: 0; text-align: center; background: #555; font-family: Arial; }
-                            img { max-width: 100%; box-shadow: 0 0 10px rgba(0,0,0,0.5); margin: 20px auto; background: white; }
-                            .instruction { color: white; padding: 10px; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="instruction">Якщо друк не розпочався автоматично, натисніть Ctrl+P (або Cmd+P на Mac)</div>
-                        <img src="${dataURL}" onload="window.print();">
-                    </body>
-                </html>
+                <html><head><title>Друк А4</title>
+                <style>@media print { @page { margin: 0; size: A4 portrait; } body { margin: 0; display: flex; justify-content: center; align-items: center; } img { width: 100%; max-height: 100vh; object-fit: contain; } } body { margin: 0; text-align: center; background: #555; font-family: Arial; } img { max-width: 100%; box-shadow: 0 0 10px rgba(0,0,0,0.5); margin: 20px auto; background: white; } .instruction { color: white; padding: 10px; }</style>
+                </head><body><div class="instruction">Натисніть Ctrl+P (або Cmd+P на Mac)</div><img src="${dataURL}" onload="window.print();"></body></html>
             `);
             printWindow.document.close();
             closeModals();
@@ -563,11 +591,6 @@
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('draw-settings').style.display = 'none';
             document.getElementById('erase-settings').style.display = 'none';
-
-            // Очищаємо можливі модифікації пензля
-            if (canvas.freeDrawingBrush) {
-                canvas.freeDrawingBrush._setBrushStyles = fabric.PencilBrush.prototype._setBrushStyles;
-            }
 
             if (mode === 'select') {
                 document.getElementById('btn-select').classList.add('active');
@@ -598,35 +621,17 @@
                 document.getElementById('btn-erase').classList.add('active');
                 document.getElementById('erase-settings').style.display = 'flex';
                 
-                // Вмикаємо нативний режим малювання, але підміняємо його на стирання
-                canvas.isDrawingMode = true; 
+                // Вимикаємо стандартне малювання, бо ми використовуємо власну векторну функцію eraseVector
+                canvas.isDrawingMode = false; 
                 canvas.selection = false;
                 canvas.forEachObject(o => o.selectable = false);
                 canvas.defaultCursor = 'none'; 
                 canvas.hoverCursor = 'none';
-                
-                canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
-                canvas.freeDrawingBrush.color = 'black'; 
-                canvas.freeDrawingBrush.width = parseInt(document.getElementById('erase-width').value) / currentZoom;
-                
-                // Плавне стирання в момент руху мишки
-                const orig = canvas.freeDrawingBrush._setBrushStyles;
-                canvas.freeDrawingBrush._setBrushStyles = function(ctx) {
-                    orig.call(this, ctx);
-                    ctx.globalCompositeOperation = 'destination-out';
-                };
             }
         }
 
         document.getElementById('draw-color').addEventListener('input', updateBrush);
         document.getElementById('draw-width').addEventListener('input', updateBrush);
-        
-        // Синхронізація повзунка затирачки "на льоту"
-        document.getElementById('erase-width').addEventListener('input', function() {
-            if (mode === 'erase' && canvas.freeDrawingBrush) {
-                canvas.freeDrawingBrush.width = parseInt(this.value) / currentZoom;
-            }
-        });
         
         function updateBrush() {
             if(mode !== 'draw') return;
@@ -654,23 +659,18 @@
             document.getElementById('zoom-wrapper').style.transform = `scale(1)`;
         }
 
-        // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ (Виправлено похилі лінії) ---
+        // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ ---
         function applyGrid(emit = true) {
             let wVal = parseInt(document.getElementById('g-width').value);
             let w = isNaN(wVal) ? 50 : wVal;
-            
             let hVal = parseInt(document.getElementById('g-height').value);
             let h = isNaN(hVal) ? 50 : hVal;
-            
             let skewVal = parseInt(document.getElementById('g-skew').value);
             let skew = isNaN(skewVal) ? 0 : skewVal;
-            
             let lineVal = parseInt(document.getElementById('g-line').value);
             let line = isNaN(lineVal) ? 1 : lineVal;
-            
             let opVal = parseFloat(document.getElementById('g-opacity').value);
             let opacity = isNaN(opVal) ? 1 : opVal;
-            
             let color = document.getElementById('g-color').value || '#cccccc';
 
             gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
@@ -679,13 +679,11 @@
             gridCtx.lineWidth = line;
             gridCtx.beginPath();
 
-            // Горизонтальні лінії
             for (let y = 0; y <= gridCanvas.height; y += h) {
                 gridCtx.moveTo(0, y);
                 gridCtx.lineTo(gridCanvas.width, y);
             }
             
-            // Вертикальні та похилі лінії (Широкий цикл, щоб нахил працював по всій дошці)
             let totalShift = (h > 0) ? (gridCanvas.height / h) * skew : 0;
             for (let x = -30000; x <= 30000; x += w) {
                 gridCtx.moveTo(x, 0);
@@ -697,8 +695,7 @@
             
             if (emit && !isRemoteAction) {
                 dbFirebase.ref(CONFIG.gameId + '/grid_state').set({
-                    senderId: myName,
-                    timestamp: Date.now(),
+                    senderId: myName, timestamp: Date.now(),
                     settings: { w, h, skew, line, color, opacity }
                 });
             }
@@ -760,28 +757,21 @@
         function loadLibraryUI() {
             let grid = document.getElementById('library-grid');
             grid.innerHTML = '';
-            
             let tx = dbIndexed.transaction('images', 'readonly');
             let request = tx.objectStore('images').openCursor();
-            
             request.onsuccess = function(e) {
                 let cursor = e.target.result;
                 if (cursor) {
                     let div = document.createElement('div');
                     div.className = 'lib-item';
-                    
                     let img = document.createElement('img');
                     img.src = cursor.value.data;
                     img.onclick = (function(data) { return function() { addImageToCanvas(data); closeModals(); } })(cursor.value.data);
-                    
                     let delBtn = document.createElement('button');
                     delBtn.className = 'delete-btn';
                     delBtn.innerText = 'X';
                     delBtn.onclick = (function(id) { return function(ev) { ev.stopPropagation(); deleteImage(id); } })(cursor.key);
-                    
-                    div.appendChild(img);
-                    div.appendChild(delBtn);
-                    grid.appendChild(div);
+                    div.appendChild(img); div.appendChild(delBtn); grid.appendChild(div);
                     cursor.continue();
                 }
             };
@@ -793,20 +783,8 @@
                     x: (window.scrollX + window.innerWidth / 2) / currentZoom,
                     y: (window.scrollY + window.innerHeight / 2) / currentZoom
                 };
-                
-                img.set({ 
-                    left: viewportCenter.x - 50, 
-                    top: viewportCenter.y - 50,
-                    hasControls: false, hasBorders: false,
-                    hoverCursor: 'default', moveCursor: 'default'
-                });
-                
-                if (lastImageScaleX !== null && lastImageScaleY !== null) {
-                    img.set({ scaleX: lastImageScaleX, scaleY: lastImageScaleY });
-                } else {
-                    img.scaleToWidth(200); 
-                }
-                
+                img.set({ left: viewportCenter.x - 50, top: viewportCenter.y - 50, hasControls: false, hasBorders: false, hoverCursor: 'default', moveCursor: 'default' });
+                if (lastImageScaleX !== null && lastImageScaleY !== null) { img.set({ scaleX: lastImageScaleX, scaleY: lastImageScaleY }); } else { img.scaleToWidth(200); }
                 canvas.add(img);
                 canvas.setActiveObject(img);
                 keepCirclesOnTop();
@@ -819,8 +797,7 @@
             let active = canvas.getActiveObject();
             if (active && active.type === 'image') {
                 active.set({ scaleX: 1, scaleY: 1 });
-                lastImageScaleX = 1; 
-                lastImageScaleY = 1;
+                lastImageScaleX = 1; lastImageScaleY = 1;
                 canvas.requestRenderAll();
                 saveState();
                 syncAction('modify');
@@ -834,26 +811,15 @@
             let isPulsing = document.getElementById('circle-pulse').checked;
 
             let circle = new fabric.Circle({
-                radius: size,
-                fill: color,
-                left: window.scrollX / currentZoom + 100,
-                top: window.scrollY / currentZoom + 100,
+                radius: size, fill: color,
+                left: window.scrollX / currentZoom + 100, top: window.scrollY / currentZoom + 100,
                 originX: 'center', originY: 'center',
-                
-                hasControls: false,
-                hasBorders: false,
-                hoverCursor: 'default',
-                moveCursor: 'default',
-                selectable: true,
-
-                customPulse: isPulsing,
-                baseRadius: size
+                hasControls: false, hasBorders: false, hoverCursor: 'default', moveCursor: 'default', selectable: true,
+                customPulse: isPulsing, baseRadius: size
             });
 
             canvas.add(circle);
-            if (isPulsing) {
-                pulsingCircles.push({ obj: circle, direction: 1 });
-            }
+            if (isPulsing) { pulsingCircles.push({ obj: circle, direction: 1 }); }
             keepCirclesOnTop();
             canvas.requestRenderAll();
             saveState();
@@ -878,12 +844,9 @@
             let store = tx.objectStore('settings');
             
             let gridSettings = {
-                w: document.getElementById('g-width').value,
-                h: document.getElementById('g-height').value,
-                skew: document.getElementById('g-skew').value,
-                line: document.getElementById('g-line').value,
-                color: document.getElementById('g-color').value,
-                opacity: document.getElementById('g-opacity').value
+                w: document.getElementById('g-width').value, h: document.getElementById('g-height').value,
+                skew: document.getElementById('g-skew').value, line: document.getElementById('g-line').value,
+                color: document.getElementById('g-color').value, opacity: document.getElementById('g-opacity').value
             };
 
             store.put({ id: 'grid', data: gridSettings });
@@ -898,12 +861,9 @@
             store.get('grid').onsuccess = function(e) {
                 if(e.target.result) {
                     let d = e.target.result.data;
-                    document.getElementById('g-width').value = d.w;
-                    document.getElementById('g-height').value = d.h;
-                    document.getElementById('g-skew').value = d.skew;
-                    document.getElementById('g-line').value = d.line;
-                    document.getElementById('g-color').value = d.color;
-                    document.getElementById('g-opacity').value = d.opacity;
+                    document.getElementById('g-width').value = d.w; document.getElementById('g-height').value = d.h;
+                    document.getElementById('g-skew').value = d.skew; document.getElementById('g-line').value = d.line;
+                    document.getElementById('g-color').value = d.color; document.getElementById('g-opacity').value = d.opacity;
                     applyGrid(false); 
                 }
             };
@@ -911,21 +871,11 @@
             store.get('canvas').onsuccess = function(e) {
                 if(e.target.result) {
                     canvas.loadFromJSON(e.target.result.data, function() {
-                        canvas.getObjects().forEach(obj => {
-                            // Відновлюємо маску стирання з локальної бази
-                            if (obj.isEraser) {
-                                obj.set('globalCompositeOperation', 'destination-out');
-                            }
-                        });
                         canvas.renderAll();
                         pulsingCircles = [];
                         canvas.getObjects().forEach(obj => {
-                            if(obj.type === 'circle' && obj.customPulse) {
-                                pulsingCircles.push({ obj: obj, direction: 1 });
-                            }
-                            if(obj.id === 'print-frame') {
-                                printFrame = obj;
-                            }
+                            if(obj.type === 'circle' && obj.customPulse) { pulsingCircles.push({ obj: obj, direction: 1 }); }
+                            if(obj.id === 'print-frame') { printFrame = obj; }
                         });
                         keepCirclesOnTop();
                     });
@@ -934,8 +884,7 @@
 
             store.get('imageScale').onsuccess = function(e) {
                 if(e.target.result) {
-                    lastImageScaleX = e.target.result.data.x;
-                    lastImageScaleY = e.target.result.data.y;
+                    lastImageScaleX = e.target.result.data.x; lastImageScaleY = e.target.result.data.y;
                 }
             };
         }
@@ -945,53 +894,30 @@
         
         function syncAction(actionType, force = true) {
             if (isRemoteAction) return;
-            
             const now = Date.now();
             if (!force && now - lastSyncTime < 50) return; 
             lastSyncTime = now;
-            
-            dbFirebase.ref(CONFIG.gameId + '/canvas_state').set({
-                senderId: myName,
-                timestamp: now,
-                type: actionType,
-                data: canvas.toJSON(FABRIC_PROPS)
-            });
+            dbFirebase.ref(CONFIG.gameId + '/canvas_state').set({ senderId: myName, timestamp: now, type: actionType, data: canvas.toJSON(FABRIC_PROPS) });
         }
 
         function setupFirebaseSync() {
-            // Приховування кнопки Вчителя
             dbFirebase.ref(CONFIG.gameId + '/teacher_id').on('value', (snap) => {
                 const currentTeacher = snap.val();
                 const btn = document.querySelector('.teacher-btn-container');
-                if (currentTeacher && currentTeacher !== myName) {
-                    btn.style.display = 'none'; 
-                } else {
-                    btn.style.display = 'block'; 
-                }
+                if (currentTeacher && currentTeacher !== myName) { btn.style.display = 'none'; } else { btn.style.display = 'block'; }
             });
 
-            // Синхронізація полотна
             dbFirebase.ref(CONFIG.gameId + '/canvas_state').on('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val && val.senderId !== myName) {
                     isRemoteAction = true;
+                    // При векторній затирачці ми отримуємо вже оновлені координати ліній, жодних масок чи кешу не потрібно
                     canvas.loadFromJSON(val.data, function() {
-                        canvas.getObjects().forEach(obj => {
-                            // Примусово відновлюємо маску для затирачки, яку прислали з Firebase!
-                            if (obj.isEraser) {
-                                obj.set('globalCompositeOperation', 'destination-out');
-                            }
-                        });
                         canvas.renderAll();
-                        pulsingCircles = [];
-                        printFrame = null;
+                        pulsingCircles = []; printFrame = null;
                         canvas.getObjects().forEach(obj => {
-                            if(obj.type === 'circle' && obj.customPulse) {
-                                pulsingCircles.push({ obj: obj, direction: 1 });
-                            }
-                            if(obj.id === 'print-frame') {
-                                printFrame = obj;
-                            }
+                            if(obj.type === 'circle' && obj.customPulse) { pulsingCircles.push({ obj: obj, direction: 1 }); }
+                            if(obj.id === 'print-frame') { printFrame = obj; }
                         });
                         keepCirclesOnTop();
                         isRemoteAction = false;
@@ -1000,17 +926,13 @@
                 }
             });
 
-            // Синхронізація сітки
             dbFirebase.ref(CONFIG.gameId + '/grid_state').on('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val && val.senderId !== myName) {
                     isRemoteAction = true;
-                    document.getElementById('g-width').value = val.settings.w;
-                    document.getElementById('g-height').value = val.settings.h;
-                    document.getElementById('g-skew').value = val.settings.skew;
-                    document.getElementById('g-line').value = val.settings.line;
-                    document.getElementById('g-color').value = val.settings.color;
-                    document.getElementById('g-opacity').value = val.settings.opacity;
+                    document.getElementById('g-width').value = val.settings.w; document.getElementById('g-height').value = val.settings.h;
+                    document.getElementById('g-skew').value = val.settings.skew; document.getElementById('g-line').value = val.settings.line;
+                    document.getElementById('g-color').value = val.settings.color; document.getElementById('g-opacity').value = val.settings.opacity;
                     applyGrid(false);
                     isRemoteAction = false;
                 }
@@ -1027,10 +949,7 @@
         
         dbFirebase.ref('.info/connected').on('value', (snap) => {
             if (snap.val() === true) {
-                userRef.set({
-                    game: CONFIG.gameId,
-                    connectedAt: firebase.database.ServerValue.TIMESTAMP
-                });
+                userRef.set({ game: CONFIG.gameId, connectedAt: firebase.database.ServerValue.TIMESTAMP });
                 userRef.onDisconnect().remove();
             }
         });
