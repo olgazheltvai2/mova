@@ -36,7 +36,7 @@
         .panel { position: fixed; background: rgba(255, 255, 255, 0.9); padding: 10px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 100; }
         
         /* Кнопка вчителя */
-        .teacher-btn-container { top: 10px; left: 10px; }
+        .teacher-btn-container { top: 10px; left: 10px; display: none; } /* За замовчуванням прихована, покажеться якщо вільна або ми вчитель */
         .teacher-btn { background: #34495e; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
         
         /* Зум */
@@ -216,6 +216,9 @@
     <script>
         const CONFIG = { gameId: 'whiteboard_main' };
         
+        // Властивості Fabric, які обов'язково треба експортувати для синхронізації
+        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching'];
+        
         // Ініціалізація Firebase
         const firebaseConfig = {
             databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
@@ -237,7 +240,7 @@
         let isPanning = false;
         let lastClientX, lastClientY;
 
-        // Змінні для затирачки (оновлено для миттєвого плавного стирання)
+        // Змінні для затирачки
         let isErasing = false;
         let erasePoints = [];
         let currentErasePath = null;
@@ -259,7 +262,6 @@
         }
         let isRemoteAction = false;
 
-        // Хелпер для коректного зчитування координат з тачскрінів та мишки
         function getEventPoint(e) {
             if (e.e.touches && e.e.touches.length > 0) {
                 return { x: e.e.touches[0].clientX, y: e.e.touches[0].clientY };
@@ -269,7 +271,6 @@
             return { x: e.e.clientX || 0, y: e.e.clientY || 0 };
         }
 
-        // Функція для підтримання кружечків завжди зверху
         function keepCirclesOnTop() {
             if (!canvas) return;
             canvas.getObjects().forEach(obj => {
@@ -283,14 +284,12 @@
         function tryOpenTeacherPanel() {
             const ref = dbFirebase.ref(CONFIG.gameId + '/teacher_id');
             ref.transaction((currentTeacher) => {
-                // Якщо порожньо або це ми - займаємо місце
                 if (currentTeacher === null || currentTeacher === myName) {
                     return myName;
                 }
-                return; // Інакше перериваємо
-            }, (error, committed, snapshot) => {
+                return; 
+            }, (error, committed) => {
                 if (committed) {
-                    // Звільняємо місце при відключенні
                     ref.onDisconnect().remove();
                     openModal('teacher-modal');
                 } else {
@@ -342,12 +341,17 @@
                 }
             });
 
-            // Новостворені малюнки від олівця ховають рамки та робляться прозорими всередині (захист від заливки)
+            // Синхронізація перетягування (object:moving)
+            canvas.on('object:moving', function() {
+                keepCirclesOnTop();
+                syncAction('moving', false); // Throttled sync для плавності
+            });
+
             canvas.on('path:created', function(e) {
                 e.path.set({
                     hasControls: false, hasBorders: false,
                     hoverCursor: 'default', moveCursor: 'default',
-                    fill: 'transparent' // Виправлення помилки з літерою "о"
+                    fill: 'transparent'
                 });
                 keepCirclesOnTop();
                 saveState();
@@ -401,7 +405,6 @@
                     canvas.defaultCursor = 'grabbing';
                 } 
                 else if (mode === 'erase') {
-                    // Початок миттєвої затирачки
                     isErasing = true;
                     let fabricPointer = canvas.getPointer(e.e);
                     let eSize = parseInt(document.getElementById('erase-width').value) / currentZoom;
@@ -414,10 +417,10 @@
                         stroke: 'black',
                         strokeLineCap: 'round',
                         strokeLineJoin: 'round',
-                        globalCompositeOperation: 'destination-out',
+                        globalCompositeOperation: 'destination-out', // ВАЖЛИВО: саме це робить її затирачкою
                         selectable: false,
                         evented: false,
-                        objectCaching: false // ВАЖЛИВО: вимикає кешування рамки для миттєвого оновлення
+                        objectCaching: false
                     });
                     
                     canvas.add(currentErasePath);
@@ -460,7 +463,6 @@
                         let fabricPointer = canvas.getPointer(e.e);
                         erasePoints.push({x: fabricPointer.x, y: fabricPointer.y});
                         
-                        // Додаємо координати на льоту і одразу відмальовуємо
                         currentErasePath.set({ points: erasePoints });
                         currentErasePath._calcDimensions();
                         currentErasePath.dirty = true;
@@ -483,7 +485,7 @@
                         currentErasePath.setCoords();
                         keepCirclesOnTop();
                         saveState();
-                        syncAction('path_created'); 
+                        syncAction('path_created'); // Синхронізується шлях з globalCompositeOperation
                         currentErasePath = null;
                     }
                 }
@@ -500,7 +502,6 @@
         function showPrintFrame() {
             if (printFrame) return;
             
-            // Пропорція А4: 1 до 1.414 (наприклад, 800 на 1131 пікселів)
             let w = 800;
             let h = 1131;
             
@@ -542,14 +543,11 @@
                 return;
             }
 
-            // Тимчасово ховаємо саму рамку, щоб вона не потрапила на друк
             printFrame.set('strokeWidth', 0);
             canvas.renderAll();
 
-            // Отримуємо координати та розміри виділеної зони
             let rect = printFrame.getBoundingRect();
 
-            // Вирізаємо картинку з Canvas саме по цих координатах
             let dataURL = canvas.toDataURL({
                 left: rect.left,
                 top: rect.top,
@@ -559,11 +557,9 @@
                 quality: 1
             });
 
-            // Повертаємо рамку назад на екран
             printFrame.set('strokeWidth', 2 / currentZoom);
             canvas.renderAll();
 
-            // Відкриваємо нове вікно для друку
             let printWindow = window.open('', '_blank');
             printWindow.document.write(`
                 <html>
@@ -630,7 +626,6 @@
             }
         }
 
-        // Оновлення пензля
         document.getElementById('draw-color').addEventListener('input', updateBrush);
         document.getElementById('draw-width').addEventListener('input', updateBrush);
         
@@ -648,7 +643,6 @@
             }
         }
 
-        // --- МАСШТАБУВАННЯ (ЗУМ) ---
         function zoom(amount) {
             currentZoom += amount;
             if(currentZoom < 0.2) currentZoom = 0.2;
@@ -661,7 +655,6 @@
             document.getElementById('zoom-wrapper').style.transform = `scale(1)`;
         }
 
-        // --- МАЛЮВАННЯ ТА СИНХРОНІЗАЦІЯ СІТКИ ---
         function applyGrid(emit = true) {
             let w = parseInt(document.getElementById('g-width').value);
             let h = parseInt(document.getElementById('g-height').value);
@@ -698,7 +691,6 @@
             }
         }
 
-        // --- МОДАЛКИ ---
         function openModal(id) {
             document.getElementById('overlay').classList.add('active');
             document.getElementById(id).classList.add('active');
@@ -710,7 +702,6 @@
             document.getElementById('object-menu').style.display = 'none';
         }
 
-        // --- БАЗА ДАНИХ (IndexedDB) ТА БІБЛІОТЕКА ЗОБРАЖЕНЬ ---
         function initDB() {
             let request = indexedDB.open('TutorAppDB', 1);
             request.onupgradeneeded = function(e) {
@@ -783,7 +774,6 @@
             };
         }
 
-        // --- РОБОТА З КАРТИНКАМИ НА ПОЛОТНІ ---
         function addImageToCanvas(dataUrl) {
             fabric.Image.fromURL(dataUrl, function(img) {
                 let viewportCenter = {
@@ -825,7 +815,6 @@
             document.getElementById('object-menu').style.display = 'none';
         }
 
-        // --- ІНТЕРАКТИВНИЙ КРУЖОК ---
         function addCircle() {
             let color = document.getElementById('circle-color').value;
             let size = parseInt(document.getElementById('circle-size').value);
@@ -870,7 +859,6 @@
             canvas.requestRenderAll();
         }, 30);
 
-        // --- ЗБЕРЕЖЕННЯ ТА ВІДНОВЛЕННЯ СТАНУ (IndexedDB) ---
         function saveState() {
             if(!dbIndexed) return;
             let tx = dbIndexed.transaction('settings', 'readwrite');
@@ -886,8 +874,7 @@
             };
 
             store.put({ id: 'grid', data: gridSettings });
-            
-            store.put({ id: 'canvas', data: canvas.toJSON(['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id']) });
+            store.put({ id: 'canvas', data: canvas.toJSON(FABRIC_PROPS) });
             store.put({ id: 'imageScale', data: {x: lastImageScaleX, y: lastImageScaleY} });
         }
 
@@ -904,7 +891,7 @@
                     document.getElementById('g-line').value = d.line;
                     document.getElementById('g-color').value = d.color;
                     document.getElementById('g-opacity').value = d.opacity;
-                    applyGrid(false); // Завантажуємо локально, не спамимо в Firebase
+                    applyGrid(false); 
                 }
             };
 
@@ -935,17 +922,36 @@
         }
 
         // --- FIREBASE СИНХРОНІЗАЦІЯ ДОШКИ ---
-        function syncAction(actionType) {
+        let lastSyncTime = 0;
+        
+        function syncAction(actionType, force = true) {
             if (isRemoteAction) return;
+            
+            const now = Date.now();
+            // Обмежувач запитів (throttle) для плавності під час переміщення об'єктів
+            if (!force && now - lastSyncTime < 50) return; 
+            lastSyncTime = now;
+            
             dbFirebase.ref(CONFIG.gameId + '/canvas_state').set({
                 senderId: myName,
-                timestamp: Date.now(),
+                timestamp: now,
                 type: actionType,
-                data: canvas.toJSON(['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill'])
+                data: canvas.toJSON(FABRIC_PROPS)
             });
         }
 
         function setupFirebaseSync() {
+            // Приховування кнопки Вчителя для інших користувачів
+            dbFirebase.ref(CONFIG.gameId + '/teacher_id').on('value', (snap) => {
+                const currentTeacher = snap.val();
+                const btn = document.querySelector('.teacher-btn-container');
+                if (currentTeacher && currentTeacher !== myName) {
+                    btn.style.display = 'none'; // Ми не вчитель, ховаємо кнопку
+                } else {
+                    btn.style.display = 'block'; // Ми вчитель або місце вільне
+                }
+            });
+
             // Синхронізація полотна
             dbFirebase.ref(CONFIG.gameId + '/canvas_state').on('value', (snapshot) => {
                 const val = snapshot.val();
@@ -1022,7 +1028,8 @@
         dbFirebase.ref('current_activity').on('value', (snapshot) => {
             if (Date.now() < immunityEndTime) return;
             const activity = snapshot.val();
-            if (activity && activity.type === 'lobby') {
+            // Посилена перевірка для 100% гарантії переходу в лобі
+            if (activity === 'lobby' || (activity && (activity.type === 'lobby' || activity.activity === 'lobby'))) {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
         });
