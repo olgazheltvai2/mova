@@ -217,7 +217,8 @@
         const CONFIG = { gameId: 'whiteboard_main' };
         
         // Властивості Fabric, які обов'язково треба експортувати для синхронізації
-        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching'];
+        // Додано 'isEraser', щоб затирачка коректно визначалася після передачі
+        const FABRIC_PROPS = ['customPulse', 'baseRadius', 'hasControls', 'hasBorders', 'hoverCursor', 'moveCursor', 'id', 'fill', 'globalCompositeOperation', 'objectCaching', 'isEraser'];
         
         // Ініціалізація Firebase
         const firebaseConfig = {
@@ -417,10 +418,11 @@
                         stroke: 'black',
                         strokeLineCap: 'round',
                         strokeLineJoin: 'round',
-                        globalCompositeOperation: 'destination-out', // ВАЖЛИВО: саме це робить її затирачкою
+                        globalCompositeOperation: 'destination-out', // Робить лінію прозорою
                         selectable: false,
                         evented: false,
-                        objectCaching: false
+                        objectCaching: false,
+                        isEraser: true // ВАЖЛИВО: маркер для збереження властивостей при синхронізації
                     });
                     
                     canvas.add(currentErasePath);
@@ -485,7 +487,7 @@
                         currentErasePath.setCoords();
                         keepCirclesOnTop();
                         saveState();
-                        syncAction('path_created'); // Синхронізується шлях з globalCompositeOperation
+                        syncAction('path_created');
                         currentErasePath = null;
                     }
                 }
@@ -898,6 +900,12 @@
             store.get('canvas').onsuccess = function(e) {
                 if(e.target.result) {
                     canvas.loadFromJSON(e.target.result.data, function() {
+                        canvas.getObjects().forEach(obj => {
+                            // Примусово відновлюємо режим стирання, якщо це затирачка
+                            if (obj.isEraser) {
+                                obj.set('globalCompositeOperation', 'destination-out');
+                            }
+                        });
                         canvas.renderAll();
                         pulsingCircles = [];
                         canvas.getObjects().forEach(obj => {
@@ -958,6 +966,12 @@
                 if (val && val.senderId !== myName) {
                     isRemoteAction = true;
                     canvas.loadFromJSON(val.data, function() {
+                        canvas.getObjects().forEach(obj => {
+                            // Примусово відновлюємо режим стирання, якщо це затирачка
+                            if (obj.isEraser) {
+                                obj.set('globalCompositeOperation', 'destination-out');
+                            }
+                        });
                         canvas.renderAll();
                         pulsingCircles = [];
                         printFrame = null;
