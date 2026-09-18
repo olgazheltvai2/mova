@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block World</title>
+    <!-- Підключення Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        :root {
+            --sky: #78A7FF;
+            --dirt: #866043;
+            --grass: #599039;
+            --grass-side: #477A2C;
+            --cloud: #FFFFFF;
+            --game-zoom: 1; /* Змінна для лупи */
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        body, html {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: var(--sky);
+            image-rendering: pixelated;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* Обгортка для масштабування */
+        #zoom-wrapper {
+            width: 100%;
+            height: 100%;
+            transform: scale(var(--game-zoom));
+            transform-origin: center center;
+            transition: transform 0.2s;
+        }
+
+        /* Живий фон: Сонце та небо */
+        .sun {
+            position: absolute;
+            top: 10vh;
+            left: 10vw;
+            width: 8vmin;
+            height: 8vmin;
+            background-color: #FFDF00;
+            box-shadow: 0 0 0 2vmin rgba(255, 223, 0, 0.4), 0 0 0 4vmin rgba(255, 223, 0, 0.2);
+            animation: sunSpin 20s linear infinite;
+        }
+
+        @keyframes sunSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(90deg); }
+        }
+
+        /* Живий фон: Квадратні хмари */
+        .clouds-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 50vh;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .block-cloud {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 20px 20px 0 rgba(255, 255, 255, 0.6), -20px 20px 0 rgba(255, 255, 255, 0.9), 0px 40px 0 rgba(255, 255, 255, 0.7);
+            animation: cloudMove linear infinite;
+        }
+
+        @keyframes cloudMove {
+            0% { transform: translateX(-200px); }
+            100% { transform: translateX(120vw); }
+        }
+
+        /* Живий фон: Блокова земля */
+        .ground-layer {
+            position: absolute;
+            bottom: 0;
+            width: 100vw;
+            height: 35vh;
+            background-color: var(--dirt);
+            z-index: 2;
+            background-image: 
+                linear-gradient(rgba(0,0,0,0.1) 2px, transparent 2px),
+                linear-gradient(90deg, rgba(0,0,0,0.1) 2px, transparent 2px);
+            background-size: 40px 40px;
+            opacity: 0.9; 
+        }
+
+        .grass-top {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            height: 40px;
+            background-color: var(--grass);
+            border-bottom: 8px dashed var(--grass-side);
+            box-shadow: inset 0 10px 0 rgba(255,255,255,0.2);
+        }
+
+        /* Ігрова зона */
+        #game-board {
+            position: relative;
+            width: 90vw;
+            height: 80vh;
+            margin: 5vh auto 0;
+            z-index: 10;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 2vmin;
+            justify-items: center;
+            align-items: center;
+        }
+
+        @media (max-width: 900px) {
+            #game-board { grid-template-columns: repeat(5, 1fr); }
+        }
+
+        /* Персонажі */
+        .mob-wrapper {
+            position: relative;
+            width: 12vmin;
+            height: 12vmin;
+            min-width: 70px;
+            min-height: 70px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.2s;
+            animation: hoverBlock 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes hoverBlock {
+            0% { transform: translateY(-5px); }
+            100% { transform: translateY(5px); }
+        }
+
+        .mob-svg {
+            width: 100%;
+            height: 100%;
+            transition: transform 0.1s, filter 0.1s;
+            filter: drop-shadow(0 15px 10px rgba(0,0,0,0.4));
+        }
+
+        .clicked .mob-svg {
+            transform: scale(0.85) translateY(10px);
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) brightness(1.3);
+        }
+
+        #btn-next {
+            position: absolute;
+            bottom: 4vh;
+            right: 4vw;
+            width: 60px;
+            height: 60px;
+            background-color: #A0A0A0;
+            border: 4px solid #555;
+            border-radius: 4px;
+            z-index: 100;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset -4px -4px 0 rgba(0,0,0,0.3), inset 4px 4px 0 rgba(255,255,255,0.4), 0 10px 10px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+
+        #btn-next:active {
+            transform: translateY(4px);
+            box-shadow: inset -2px -2px 0 rgba(0,0,0,0.3), inset 2px 2px 0 rgba(255,255,255,0.4), 0 5px 5px rgba(0,0,0,0.3);
+        }
+
+        #btn-next svg {
+            width: 60%;
+            height: 60%;
+            fill: #333;
+        }
+
+        .block-particle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            pointer-events: none;
+            z-index: 50;
+            box-shadow: inset -2px -2px 0 rgba(0,0,0,0.3), inset 2px 2px 0 rgba(255,255,255,0.3);
+        }
+        
+        /* Блокування екрану */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 999999;
+            color: red;
+            font-size: 3rem;
+            font-weight: bold;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        /* Лупа (Zoom) */
+        .zoom-controls {
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100000;
+        }
+        .zoom-btn {
+            width: 45px; height: 45px;
+            border-radius: 50%;
+            background: #3498db;
+            color: white;
+            border: 2px solid white;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* Theme Manager */
+        #theme-settings-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #2c3e50;
+            color: white;
+            font-size: 24px;
+            border: 2px solid white;
+            cursor: pointer;
+            z-index: 100000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex; justify-content: center; align-items: center;
+        }
+        #theme-modal {
+            display: none;
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            width: 320px;
+            max-height: 60vh;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            z-index: 100001;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #theme-modal-header {
+            padding: 10px;
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            font-weight: bold;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding: 10px;
+            overflow-y: auto;
+            max-height: calc(60vh - 40px);
+        }
+        .theme-card {
+            position: relative;
+            width: 100%;
+            height: 80px;
+            border-radius: 5px;
+            cursor: pointer;
+            overflow: hidden;
+            border: 2px solid transparent;
+            background-color: #ddd;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .theme-card:hover { border-color: #3498db; }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; }
+        .theme-card span {
+            position: absolute;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        /* Малювання (Global) */
+        #global-draw-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 90000;
+            pointer-events: none; 
+        }
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #8e44ad;
+            color: white;
+            font-size: 20px;
+            border: 2px solid white;
+            cursor: pointer;
+            z-index: 100000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex; justify-content: center; align-items: center;
+        }
+        #draw-panel-global {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: white;
+            border: 2px solid #8e44ad;
+            border-radius: 8px;
+            z-index: 100001;
+            padding: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            flex-direction: column;
+            gap: 10px;
+        }
+        #draw-panel-handle {
+            width: 100%; height: 20px;
+            background: #ddd; border-radius: 4px;
+            cursor: grab;
+            display: flex; justify-content: flex-end; align-items: center;
+            padding-right: 5px; margin-bottom: 5px;
+        }
+        #draw-panel-close { cursor: pointer; font-weight: bold; color: red; }
+        .draw-controls-row { display: flex; gap: 5px; align-items: center; }
+        .draw-btn {
+            padding: 5px 10px; border: 1px solid #ccc; background: #eee; cursor: pointer; border-radius: 4px;
+        }
+        .draw-btn.active { background: #8e44ad; color: white; border-color: #8e44ad; }
+    </style>
+</head>
+<body>
+
+    <div id="zoom-wrapper">
+        <!-- Живий фон -->
+        <div class="sun"></div>
+        <div class="clouds-layer" id="clouds"></div>
+        
+        <div class="ground-layer">
+            <div class="grass-top"></div>
+        </div>
+
+        <!-- Ігрове поле -->
+        <div id="game-board"></div>
+
+        <!-- Кнопка Далі -->
+        <div id="btn-next" onclick="nextLevel()">
+            <svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg>
+        </div>
+    </div>
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <!-- Лупа -->
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="changeZoom(0.1)">+</button>
+        <button class="zoom-btn" onclick="changeZoom(-0.1)">-</button>
+    </div>
+
+    <!-- Theme Manager -->
+    <button id="theme-settings-btn" onclick="toggleThemeModal()">⚙️</button>
+    <div id="theme-modal">
+        <div id="theme-modal-header">Оберіть фон</div>
+        <div id="theme-gallery">
+            <div class="theme-card" onclick="selectTheme('none')" style="background: #34495e;">
+                <span>Без фону</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Інструмент малювання -->
+    <canvas id="global-draw-canvas"></canvas>
+    <button id="toggle-draw-btn-global" onclick="toggleDrawPanel()">✏️</button>
+    
+    <div id="draw-panel-global">
+        <div id="draw-panel-handle">
+            <span id="draw-panel-close" onclick="toggleDrawPanel()">✕</span>
+        </div>
+        <div class="draw-controls-row">
+            <button class="draw-btn active" id="draw-pencil-btn" onclick="setDrawMode('pencil')">✏️ Олівець</button>
+            <button class="draw-btn" id="draw-eraser-btn" onclick="setDrawMode('eraser')">🧽 Гумка</button>
+        </div>
+        <div class="draw-controls-row">
+            <input type="color" id="draw-color" value="#ff0000">
+            <input type="range" id="draw-size" min="1" max="50" value="5">
+        </div>
+        <button class="draw-btn" onclick="clearCanvasSync()">🗑️ Очистити</button>
+    </div>
+
+<script>
+    // --- КОНФІГ ТА FIREBASE ---
+    const CONFIG = {
+        gameId: 'block_world_1',
+        firebaseConfig: {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        }
+    };
+
+    let db;
+    let myName = "Guest";
+    let isFirebaseActive = false;
+
+    try {
+        firebase.initializeApp(CONFIG.firebaseConfig);
+        db = firebase.database();
+        isFirebaseActive = true;
+    } catch (e) {
+        console.warn("Firebase не ініціалізовано, гра працює в офлайн режимі.");
+    }
+
+    function initAccessControl() {
+        if (!isFirebaseActive) return;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let urlName = urlParams.get('user');
+        if (urlName) {
+            myName = urlName;
+            sessionStorage.setItem('userName', myName);
+        } else {
+            let sessionName = sessionStorage.getItem('userName');
+            if (sessionName) {
+                myName = sessionName;
+            } else {
+                myName = "Гість_" + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const connectedRef = db.ref('.info/connected');
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                userRef.set(true);
+                userRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // ВИПРАВЛЕНО: Захист від безкінечного перезавантаження сторінки
+        let isInitialRefresh = true;
+        db.ref('force_refresh').on('value', (snap) => {
+            if (isInitialRefresh) {
+                isInitialRefresh = false;
+                return;
+            }
+            if (snap.val()) window.location.reload();
+        });
+
+        let initTime = Date.now();
+        db.ref('current_activity').on('value', (snap) => {
+            if (Date.now() - initTime < 1000) return; 
+            if (snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+    }
+
+    function sendGameAction(type, data) {
+        if (!isFirebaseActive) return;
+        db.ref('game_action').set({
+            senderId: myName,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: type,
+            data: data
+        });
+    }
+
+    let lastActionTime = 0;
+    if (isFirebaseActive) {
+        db.ref('game_action').on('value', (snap) => {
+            const val = snap.val();
+            if (!val) return;
+            
+            const isRemoteAction = val.senderId !== myName;
+            if (val.timestamp <= lastActionTime) return;
+            lastActionTime = val.timestamp;
+
+            if (isRemoteAction) {
+                if (val.type === 'next_level') {
+                    generateLevel(true);
+                } else if (val.type === 'explode_mob') {
+                    const mob = document.getElementById(val.data.htmlId);
+                    if (mob) {
+                        let rect = mob.getBoundingClientRect();
+                        spawnBlockExplosion(rect.left + rect.width/2, rect.top + rect.height/2, val.data.color);
+                        mob.style.opacity = '0';
+                        mob.style.pointerEvents = 'none';
+                        setTimeout(() => {
+                            mob.remove();
+                            checkWin(true);
+                        }, 100);
+                    }
+                }
+            }
+        });
+    }
+
+    function toggleThemeModal() {
+        const modal = document.getElementById('theme-modal');
+        modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+    }
+
+    function checkImage(url) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+            img.src = url;
+        });
+    }
+
+    async function loadBackgroundsSequence() {
+        const gallery = document.getElementById('theme-gallery');
+        let i = 1;
+        while (i <= 1000) {
+            let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+            let exists = await checkImage(url);
+            if (exists) {
+                let card = document.createElement('div');
+                card.className = 'theme-card';
+                card.onclick = () => selectTheme(url);
+                card.innerHTML = `<img src="${url}" alt="Фон ${i}"><span>Фон ${i}</span>`;
+                gallery.appendChild(card);
+                i++;
+            } else {
+                break;
+            }
+        }
+    }
+
+    function selectTheme(url, isRemote = false) {
+        if (!isRemote) {
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            if (isFirebaseActive) {
+                db.ref('game_theme').set(url);
+            }
+        }
+        applyTheme(url);
+    }
+
+    function applyTheme(url) {
+        if (url === 'none' || !url) {
+            document.body.style.backgroundImage = 'none';
+        } else {
+            document.body.style.backgroundImage = `url('${url}')`;
+        }
+    }
+
+    function initTheme() {
+        loadBackgroundsSequence();
+        
+        let savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedBg) applyTheme(savedBg);
+
+        if (isFirebaseActive) {
+            db.ref('game_theme').on('value', (snap) => {
+                const url = snap.val();
+                if (url) selectTheme(url, true);
+            });
+        }
+    }
+
+    let currentZoomLevel = 1;
+    function changeZoom(delta) {
+        currentZoomLevel += delta;
+        if (currentZoomLevel < 0.5) currentZoomLevel = 0.5;
+        if (currentZoomLevel > 2.5) currentZoomLevel = 2.5;
+        document.documentElement.style.setProperty('--game-zoom', currentZoomLevel);
+        resizeCanvas();
+    }
+
+    const canvas = document.getElementById('global-draw-canvas');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    let drawMode = 'pencil'; 
+    let isDrawPanelOpen = false;
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function toggleDrawPanel() {
+        const panel = document.getElementById('draw-panel-global');
+        isDrawPanelOpen = !isDrawPanelOpen;
+        if (isDrawPanelOpen) {
+            panel.style.display = 'flex';
+            canvas.style.pointerEvents = 'auto'; 
+            setDrawMode('pencil');
+        } else {
+            panel.style.display = 'none';
+            canvas.style.pointerEvents = 'none'; 
+        }
+    }
+
+    function setDrawMode(mode) {
+        drawMode = mode;
+        document.getElementById('draw-pencil-btn').classList.toggle('active', mode === 'pencil');
+        document.getElementById('draw-eraser-btn').classList.toggle('active', mode === 'eraser');
+    }
+
+    const drawPanel = document.getElementById('draw-panel-global');
+    const drawHandle = document.getElementById('draw-panel-handle');
+    let isDraggingPanel = false, panelOffsetX, panelOffsetY;
+
+    drawHandle.addEventListener('mousedown', (e) => {
+        isDraggingPanel = true;
+        panelOffsetX = e.clientX - drawPanel.getBoundingClientRect().left;
+        panelOffsetY = e.clientY - drawPanel.getBoundingClientRect().top;
+    });
+    drawHandle.addEventListener('touchstart', (e) => {
+        isDraggingPanel = true;
+        panelOffsetX = e.touches[0].clientX - drawPanel.getBoundingClientRect().left;
+        panelOffsetY = e.touches[0].clientY - drawPanel.getBoundingClientRect().top;
+    }, {passive: true});
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDraggingPanel) return;
+        drawPanel.style.left = (e.clientX - panelOffsetX) + 'px';
+        drawPanel.style.top = (e.clientY - panelOffsetY) + 'px';
+    });
+    document.addEventListener('touchmove', (e) => {
+        if (!isDraggingPanel) return;
+        drawPanel.style.left = (e.touches[0].clientX - panelOffsetX) + 'px';
+        drawPanel.style.top = (e.touches[0].clientY - panelOffsetY) + 'px';
+    }, {passive: false});
+
+    document.addEventListener('mouseup', () => isDraggingPanel = false);
+    document.addEventListener('touchend', () => isDraggingPanel = false);
+
+    let lastX = 0, lastY = 0;
+
+    function getPointerPos(e) {
+        if (e.touches) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function startDraw(e) {
+        if (!isDrawPanelOpen) return;
+        isDrawing = true;
+        const pos = getPointerPos(e);
+        lastX = pos.x; lastY = pos.y;
+    }
+
+    function draw(e) {
+        if (!isDrawing || !isDrawPanelOpen) return;
+        e.preventDefault();
+        const pos = getPointerPos(e);
+        const color = document.getElementById('draw-color').value;
+        const size = document.getElementById('draw-size').value;
+
+        drawLine(lastX, lastY, pos.x, pos.y, color, size, drawMode);
+        
+        if (isFirebaseActive) {
+            sendGameAction('draw_line', {
+                x0: lastX / canvas.width, y0: lastY / canvas.height,
+                x1: pos.x / canvas.width, y1: pos.y / canvas.height,
+                color: color, size: size, mode: drawMode
+            });
+        }
+
+        lastX = pos.x; lastY = pos.y;
+    }
+
+    function stopDraw() { isDrawing = false; }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('mouseout', stopDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive: false});
+    canvas.addEventListener('touchmove', draw, {passive: false});
+    canvas.addEventListener('touchend', stopDraw);
+
+    function drawLine(x0, y0, x1, y1, color, size, mode) {
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = size;
+        if (mode === 'eraser') {
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.strokeStyle = 'rgba(0,0,0,1)';
+        } else {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = color;
+        }
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over'; 
+    }
+
+    function clearCanvasSync() {
+        clearCanvas();
+        sendGameAction('clear_canvas', {});
+    }
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (isFirebaseActive) {
+        db.ref('game_action').on('child_added', (snap) => {
+            const val = snap.val();
+            if (!val || val.senderId === myName) return;
+            
+            if (val.type === 'draw_line') {
+                drawLine(
+                    val.data.x0 * canvas.width, val.data.y0 * canvas.height,
+                    val.data.x1 * canvas.width, val.data.y1 * canvas.height,
+                    val.data.color, val.data.size, val.data.mode
+                );
+            } else if (val.type === 'clear_canvas') {
+                clearCanvas();
+            }
+        });
+    }
+
+    initAccessControl();
+    initTheme();
+
+    const cloudsContainer = document.getElementById('clouds');
+    for(let i = 0; i < 8; i++) {
+        let cloud = document.createElement('div');
+        cloud.className = 'block-cloud';
+        let size = Math.random() * 40 + 40;
+        cloud.style.width = size + 'px';
+        cloud.style.height = (size * 0.5) + 'px';
+        cloud.style.top = (Math.random() * 30) + 'vh';
+        cloud.style.animationDuration = (Math.random() * 40 + 30) + 's';
+        cloud.style.animationDelay = '-' + (Math.random() * 40) + 's';
+        cloudsContainer.appendChild(cloud);
+    }
+
+    const mobData = [
+        { name: 'Steve', head: '#F5CBA7', body: '#00FFFF', arm: '#F5CBA7', leg: '#2874A6', eye: '#1B4F72', type: 'biped' },
+        { name: 'Creeper', head: '#2ECC71', body: '#27AE60', arm: 'none', leg: '#229954', eye: '#000', type: 'creeper' },
+        { name: 'Zombie', head: '#27AE60', body: '#00FFFF', arm: '#27AE60', leg: '#2874A6', eye: '#000', type: 'biped' },
+        { name: 'Enderman', head: '#17202A', body: '#17202A', arm: '#17202A', leg: '#17202A', eye: '#D2B4DE', type: 'tall' },
+        { name: 'Pig', head: '#FADBD8', body: '#F1948A', arm: 'none', leg: '#E6B0AA', eye: '#000', type: 'quad' },
+        { name: 'Cow', head: '#784212', body: '#512E5F', arm: 'none', leg: '#784212', eye: '#000', type: 'quad' },
+        { name: 'Sheep', head: '#EAECEE', body: '#F2F3F4', arm: 'none', leg: '#D5D8DC', eye: '#000', type: 'quad' },
+        { name: 'Chicken', head: '#FDFEFE', body: '#FDFEFE', arm: 'none', leg: '#F39C12', eye: '#000', type: 'bird' },
+        { name: 'Villager', head: '#F5CBA7', body: '#873600', arm: '#873600', leg: '#6E2C00', eye: '#1E8449', type: 'biped' },
+        { name: 'Slime', head: '#58D68D', body: '#2ECC71', arm: 'none', leg: 'none', eye: '#196F3D', type: 'cube' },
+        { name: 'Spider', head: '#2C3E50', body: '#1C2833', arm: 'none', leg: '#2C3E50', eye: '#E74C3C', type: 'wide' },
+        { name: 'Skeleton', head: '#F8F9F9', body: '#D0D3D4', arm: '#F8F9F9', leg: '#F8F9F9', eye: '#000', type: 'biped' },
+        { name: 'Ghast', head: '#F4F6F7', body: '#F4F6F7', arm: 'none', leg: '#BDC3C7', eye: '#E74C3C', type: 'float' },
+        { name: 'MagmaCube', head: '#E67E22', body: '#D35400', arm: 'none', leg: 'none', eye: '#F1C40F', type: 'cube' },
+        { name: 'Mooshroom', head: '#C0392B', body: '#A93226', arm: 'none', leg: '#922B21', eye: '#000', type: 'quad' },
+        { name: 'IronGolem', head: '#B2BABB', body: '#99A3A4', arm: '#B2BABB', leg: '#7F8C8D', eye: '#E74C3C', type: 'big' },
+        { name: 'SnowGolem', head: '#F8C471', body: '#FDFEFE', arm: '#5D4037', leg: 'none', eye: '#000', type: 'snowman' },
+        { name: 'Blaze', head: '#F1C40F', body: '#F39C12', arm: 'none', leg: '#D4AC0D', eye: '#000', type: 'float' }
+    ];
+
+    function generateBlockySVG(m) {
+        let svg = `<svg viewBox="0 0 32 32" shape-rendering="crispEdges">`;
+        const shadow = `opacity="0.3" fill="#000"`;
+
+        if (m.type === 'biped') {
+            svg += `
+                <rect x="11" y="20" width="4" height="10" fill="${m.leg}" />
+                <rect x="17" y="20" width="4" height="10" fill="${m.leg}" />
+                <rect x="10" y="10" width="12" height="10" fill="${m.body}" />
+                <rect x="10" y="10" width="12" height="3" ${shadow} />
+                <rect x="6" y="10" width="4" height="10" fill="${m.arm}" />
+                <rect x="22" y="10" width="4" height="10" fill="${m.arm}" />
+                <rect x="12" y="2" width="8" height="8" fill="${m.head}" />
+                <rect x="13" y="5" width="2" height="2" fill="${m.eye}" />
+                <rect x="17" y="5" width="2" height="2" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'creeper') {
+            svg += `
+                <rect x="11" y="22" width="4" height="6" fill="${m.leg}" />
+                <rect x="17" y="22" width="4" height="6" fill="${m.leg}" />
+                <rect x="12" y="10" width="8" height="12" fill="${m.body}" />
+                <rect x="10" y="2" width="12" height="8" fill="${m.head}" />
+                <rect x="12" y="4" width="2" height="2" fill="${m.eye}" />
+                <rect x="18" y="4" width="2" height="2" fill="${m.eye}" />
+                <rect x="14" y="6" width="4" height="2" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'tall') {
+            svg += `
+                <rect x="14" y="18" width="2" height="14" fill="${m.leg}" />
+                <rect x="16" y="18" width="2" height="14" fill="${m.leg}" />
+                <rect x="13" y="8" width="6" height="10" fill="${m.body}" />
+                <rect x="11" y="8" width="2" height="14" fill="${m.arm}" />
+                <rect x="19" y="8" width="2" height="14" fill="${m.arm}" />
+                <rect x="13" y="2" width="6" height="6" fill="${m.head}" />
+                <rect x="13" y="4" width="2" height="1" fill="${m.eye}" />
+                <rect x="17" y="4" width="2" height="1" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'quad') {
+            svg += `
+                <rect x="8" y="22" width="4" height="6" fill="${m.leg}" />
+                <rect x="20" y="22" width="4" height="6" fill="${m.leg}" />
+                <rect x="6" y="12" width="20" height="10" fill="${m.body}" />
+                <rect x="4" y="6" width="10" height="8" fill="${m.head}" />
+                <rect x="5" y="9" width="2" height="2" fill="${m.eye}" />
+                <rect x="11" y="9" width="2" height="2" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'cube') {
+            svg += `
+                <rect x="8" y="16" width="16" height="14" fill="${m.body}" />
+                <rect x="10" y="18" width="12" height="10" fill="${m.head}" />
+                <rect x="12" y="20" width="2" height="2" fill="${m.eye}" />
+                <rect x="18" y="20" width="2" height="2" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'bird') {
+            svg += `
+                <rect x="14" y="24" width="2" height="6" fill="${m.leg}" />
+                <rect x="18" y="24" width="2" height="6" fill="${m.leg}" />
+                <rect x="10" y="14" width="12" height="10" fill="${m.body}" />
+                <rect x="12" y="8" width="6" height="6" fill="${m.head}" />
+                <rect x="18" y="11" width="4" height="2" fill="#E67E22" />
+                <rect x="13" y="10" width="1" height="1" fill="${m.eye}" />
+                <rect x="16" y="10" width="1" height="1" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'wide') {
+            svg += `
+                <rect x="2" y="20" width="8" height="4" fill="${m.leg}" />
+                <rect x="22" y="20" width="8" height="4" fill="${m.leg}" />
+                <rect x="8" y="16" width="16" height="8" fill="${m.body}" />
+                <rect x="12" y="12" width="8" height="6" fill="${m.head}" />
+                <rect x="13" y="14" width="2" height="2" fill="${m.eye}" />
+                <rect x="17" y="14" width="2" height="2" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'big') {
+            svg += `
+                <rect x="10" y="22" width="6" height="10" fill="${m.leg}" />
+                <rect x="16" y="22" width="6" height="10" fill="${m.leg}" />
+                <rect x="8" y="8" width="16" height="14" fill="${m.body}" />
+                <rect x="4" y="8" width="4" height="18" fill="${m.arm}" />
+                <rect x="24" y="8" width="4" height="18" fill="${m.arm}" />
+                <rect x="12" y="2" width="8" height="8" fill="${m.head}" />
+                <rect x="13" y="5" width="2" height="2" fill="${m.eye}" />
+                <rect x="17" y="5" width="2" height="2" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'snowman') {
+            svg += `
+                <rect x="12" y="18" width="8" height="10" fill="${m.body}" />
+                <rect x="13" y="10" width="6" height="8" fill="${m.body}" />
+                <rect x="4" y="14" width="9" height="2" fill="${m.arm}" />
+                <rect x="19" y="14" width="9" height="2" fill="${m.arm}" />
+                <rect x="12" y="2" width="8" height="8" fill="${m.head}" />
+                <rect x="13" y="5" width="2" height="2" fill="${m.eye}" />
+                <rect x="17" y="5" width="2" height="2" fill="${m.eye}" />
+            `;
+        } else if (m.type === 'float') {
+            svg += `
+                <rect x="10" y="20" width="2" height="8" fill="${m.leg}" />
+                <rect x="14" y="20" width="2" height="6" fill="${m.leg}" />
+                <rect x="18" y="20" width="2" height="10" fill="${m.leg}" />
+                <rect x="8" y="6" width="16" height="14" fill="${m.body}" />
+                <rect x="11" y="10" width="4" height="2" fill="${m.eye}" />
+                <rect x="17" y="10" width="4" height="2" fill="${m.eye}" />
+            `;
+        }
+        
+        svg += `</svg>`;
+        return svg;
+    }
+
+    const gameBoard = document.getElementById('game-board');
+
+    function spawnBlockExplosion(x, y, color) {
+        x = x / currentZoomLevel;
+        y = y / currentZoomLevel;
+
+        for(let i = 0; i < 20; i++) {
+            let block = document.createElement('div');
+            block.className = 'block-particle';
+            block.style.background = color;
+            
+            block.style.left = x + 'px';
+            block.style.top = y + 'px';
+            document.getElementById('zoom-wrapper').appendChild(block);
+
+            let angle = Math.random() * Math.PI * 2;
+            let force = Math.random() * 100 + 40;
+            let tx = Math.cos(angle) * force;
+            let ty = Math.sin(angle) * force - 50; 
+
+            block.animate([
+                { transform: `translate(-50%, -50%) rotate(0deg)`, opacity: 1 },
+                { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${Math.random()*360}deg)`, opacity: 1, offset: 0.5 },
+                { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty + 150}px)) rotate(${Math.random()*720}deg)`, opacity: 0 } 
+            ], {
+                duration: 600 + Math.random() * 200,
+                easing: 'cubic-bezier(.25, .8, .25, 1)'
+            }).onfinish = () => block.remove();
+        }
+    }
+
+    function checkWin(isRemote = false) {
+        if (gameBoard.children.length === 0) {
+            setTimeout(() => generateLevel(isRemote), 600);
+        }
+    }
+
+    function generateLevel(isRemote = false) {
+        gameBoard.innerHTML = '';
+        
+        let pool = [];
+        for(let i = 0; i < 18; i++) {
+            pool.push({
+                id: i + 1,
+                data: mobData[i]
+            });
+        }
+
+        pool.sort(() => Math.random() - 0.5);
+
+        pool.forEach((item, index) => {
+            let wrap = document.createElement('div');
+            wrap.className = 'mob-wrapper';
+            wrap.id = 'mob_' + index; 
+            wrap.style.animationDelay = `-${Math.random() * 3}s`; 
+
+            let svgDiv = document.createElement('div');
+            svgDiv.className = 'mob-svg';
+            svgDiv.innerHTML = generateBlockySVG(item.data);
+            wrap.appendChild(svgDiv);
+
+            let audioFile = new Audio(`${item.id}.wav`);
+            let clickTimeout = null;
+
+            wrap.addEventListener('click', (e) => {
+                if (clickTimeout !== null) return; 
+
+                clickTimeout = setTimeout(() => {
+                    audioFile.currentTime = 0;
+                    audioFile.play().catch(() => console.log(`Не знайдено ${item.id}.wav`));
+                    
+                    wrap.classList.remove('clicked');
+                    void wrap.offsetWidth; 
+                    wrap.classList.add('clicked');
+                    setTimeout(() => wrap.classList.remove('clicked'), 150);
+                    
+                    clickTimeout = null;
+                }, 250); 
+            });
+
+            wrap.addEventListener('dblclick', (e) => {
+                if (clickTimeout !== null) {
+                    clearTimeout(clickTimeout); 
+                    clickTimeout = null;
+                }
+
+                let color = item.data.body === 'none' ? item.data.head : item.data.body;
+                let rect = wrap.getBoundingClientRect();
+                spawnBlockExplosion(rect.left + rect.width/2, rect.top + rect.height/2, color);
+                
+                wrap.style.opacity = '0';
+                wrap.style.pointerEvents = 'none';
+                
+                sendGameAction('explode_mob', { htmlId: wrap.id, color: color });
+
+                setTimeout(() => {
+                    wrap.remove();
+                    checkWin();
+                }, 100);
+            });
+
+            gameBoard.appendChild(wrap);
+        });
+    }
+
+    function nextLevel() {
+        const btn = document.getElementById('btn-next');
+        btn.animate([
+            { transform: 'translateY(4px) scale(0.9)' },
+            { transform: 'translateY(0) scale(1)' }
+        ], { duration: 200 });
+        
+        sendGameAction('next_level', {});
+        generateLevel();
+    }
+
+    generateLevel();
+
+</script>
+</body>
+</html>
