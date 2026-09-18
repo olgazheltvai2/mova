@@ -366,6 +366,15 @@
             padding: 5px 10px; border: 1px solid #ccc; background: #eee; cursor: pointer; border-radius: 4px;
         }
         .draw-btn.active { background: #8e44ad; color: white; border-color: #8e44ad; }
+        
+        /* Клас для секретних полів (за умовами промпту) */
+        .secret-input {
+            color: transparent;
+        }
+        .secret-input::selection {
+            color: transparent;
+            background: rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -430,7 +439,7 @@
 <script>
     // --- КОНФІГ ТА FIREBASE ---
     const CONFIG = {
-        gameId: 'block_world_1',
+        gameId: 'block_world_1', // Унікальний ідентифікатор гри
         firebaseConfig: {
             databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
             projectId: "lesson-13c44"
@@ -532,6 +541,7 @@
         });
     }
 
+    // --- THEME MANAGER ---
     function toggleThemeModal() {
         const modal = document.getElementById('theme-modal');
         modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
@@ -586,6 +596,7 @@
     function initTheme() {
         loadBackgroundsSequence();
         
+        // Зчитування збереженого фону саме для цієї гри за унікальним ключем
         let savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
         if (savedBg) applyTheme(savedBg);
 
@@ -597,6 +608,7 @@
         }
     }
 
+    // --- ЛУПА (ZOOM) ---
     let currentZoomLevel = 1;
     function changeZoom(delta) {
         currentZoomLevel += delta;
@@ -606,6 +618,7 @@
         resizeCanvas();
     }
 
+    // --- МАЛЮВАННЯ (GLOBAL) ---
     const canvas = document.getElementById('global-draw-canvas');
     const ctx = canvas.getContext('2d');
     let isDrawing = false;
@@ -711,7 +724,7 @@
     canvas.addEventListener('mouseout', stopDraw);
     canvas.addEventListener('touchstart', startDraw, {passive: false});
     canvas.addEventListener('touchmove', draw, {passive: false});
-    canvas.addEventListener('触控end', stopDraw);
+    canvas.addEventListener('touchend', stopDraw);
 
     function drawLine(x0, y0, x1, y1, color, size, mode) {
         ctx.beginPath();
@@ -758,6 +771,7 @@
     initAccessControl();
     initTheme();
 
+    // --- ОРИГІНАЛЬНА ЛОГІКА ГРИ ---
     const cloudsContainer = document.getElementById('clouds');
     for(let i = 0; i < 8; i++) {
         let cloud = document.createElement('div');
@@ -1028,25 +1042,21 @@
     }
 
     function initGameLogic() {
+        // ВИПРАВЛЕНО: Збереження та перевірка єдиної розстановки (layout) в Firebase для конкретної гри
         if (isFirebaseActive) {
-            // Зчитуємо початковий стан або генеруємо новий, якщо пусто
-            db.ref('block_world_layout').once('value', snap => {
-                if (snap.exists()) {
-                    renderBoard(snap.val());
-                } else {
-                    let newLayout = generateRandomLayout();
-                    db.ref('block_world_layout').set(newLayout);
-                    // Після set() спрацює 'on' і відрендерить
-                }
-            });
-
-            // Слухаємо зміни макету (наприклад, коли вчитель тисне "Далі")
-            db.ref('block_world_layout').on('value', snap => {
+            const layoutRef = db.ref('games_states/' + CONFIG.gameId + '/layout');
+            
+            layoutRef.on('value', snap => {
                 if (snap.exists()) {
                     let newLayout = snap.val();
+                    // Рендеримо тільки якщо масив порядку змінився
                     if (JSON.stringify(newLayout) !== JSON.stringify(currentLayoutIds)) {
                         renderBoard(newLayout);
                     }
+                } else {
+                    // Якщо порядку ще немає в базі - генеруємо його і записуємо для всіх
+                    let newLayout = generateRandomLayout();
+                    layoutRef.set(newLayout);
                 }
             });
         } else {
@@ -1062,8 +1072,9 @@
         ], { duration: 200 });
         
         if (isFirebaseActive) {
-            let newLayout = generateRandomLayout();
-            db.ref('block_world_layout').set(newLayout); // Згенерує on('value') на всіх екранах
+            // Генеруємо новий порядок і оновлюємо базу (це тригерне on('value') у всіх підключених користувачів)
+            const layoutRef = db.ref('games_states/' + CONFIG.gameId + '/layout');
+            layoutRef.set(generateRandomLayout());
         } else {
             renderBoard(generateRandomLayout());
         }
