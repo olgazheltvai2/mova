@@ -155,13 +155,18 @@
         .mob-svg {
             width: 100%;
             height: 100%;
-            transition: transform 0.1s, filter 0.1s;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.2s;
             filter: drop-shadow(0 15px 10px rgba(0,0,0,0.4));
         }
 
         .clicked .mob-svg {
             transform: scale(0.85) translateY(10px);
-            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) brightness(1.3);
+        }
+
+        /* ПІДСВІЧУВАННЯ ПРИ КЛІКУ */
+        .highlighted .mob-svg {
+            transform: scale(1.15) translateY(-10px);
+            filter: drop-shadow(0 0 25px #FFDF00) brightness(1.3) !important;
         }
 
         #btn-next {
@@ -435,6 +440,7 @@
     let db;
     let myName = "Guest";
     let isFirebaseActive = false;
+    let currentLayoutIds = []; // Зберігає поточний порядок фігурок
 
     try {
         firebase.initializeApp(CONFIG.firebaseConfig);
@@ -478,7 +484,6 @@
             document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
         });
 
-        // ВИПРАВЛЕНО: Захист від безкінечного перезавантаження сторінки
         let isInitialRefresh = true;
         db.ref('force_refresh').on('value', (snap) => {
             if (isInitialRefresh) {
@@ -518,20 +523,10 @@
             lastActionTime = val.timestamp;
 
             if (isRemoteAction) {
-                if (val.type === 'next_level') {
-                    generateLevel(true);
+                if (val.type === 'play_audio') {
+                    playAudioAndHighlight(val.data.mobId);
                 } else if (val.type === 'explode_mob') {
-                    const mob = document.getElementById(val.data.htmlId);
-                    if (mob) {
-                        let rect = mob.getBoundingClientRect();
-                        spawnBlockExplosion(rect.left + rect.width/2, rect.top + rect.height/2, val.data.color);
-                        mob.style.opacity = '0';
-                        mob.style.pointerEvents = 'none';
-                        setTimeout(() => {
-                            mob.remove();
-                            checkWin(true);
-                        }, 100);
-                    }
+                    explodeMob(val.data.mobId, val.data.color, true);
                 }
             }
         });
@@ -716,7 +711,7 @@
     canvas.addEventListener('mouseout', stopDraw);
     canvas.addEventListener('touchstart', startDraw, {passive: false});
     canvas.addEventListener('touchmove', draw, {passive: false});
-    canvas.addEventListener('touchend', stopDraw);
+    canvas.addEventListener('触控end', stopDraw);
 
     function drawLine(x0, y0, x1, y1, color, size, mode) {
         ctx.beginPath();
@@ -936,51 +931,83 @@
         }
     }
 
+    // --- ЛОГІКА СИНХРОНІЗОВАНИХ ДІЙ (Звук, Підсвічування, Видалення) ---
+    function playAudioAndHighlight(mobId) {
+        const wrap = document.getElementById('mob_' + mobId);
+        if (!wrap) return;
+
+        // Підсвічування
+        wrap.classList.add('highlighted');
+        
+        // Звук
+        let audioFile = new Audio(`${mobId}.wav`);
+        audioFile.currentTime = 0;
+        audioFile.play().catch(() => console.log(`Не знайдено ${mobId}.wav`));
+        
+        // Зняття підсвічування через 3 секунди
+        setTimeout(() => {
+            if (wrap) wrap.classList.remove('highlighted');
+        }, 3000);
+    }
+
+    function explodeMob(mobId, color, isRemote = false) {
+        const wrap = document.getElementById('mob_' + mobId);
+        if (!wrap) return;
+
+        let rect = wrap.getBoundingClientRect();
+        spawnBlockExplosion(rect.left + rect.width/2, rect.top + rect.height/2, color);
+        
+        wrap.style.opacity = '0';
+        wrap.style.pointerEvents = 'none';
+
+        setTimeout(() => {
+            if(wrap.parentNode) wrap.remove();
+            checkWin(isRemote);
+        }, 100);
+    }
+
     function checkWin(isRemote = false) {
         if (gameBoard.children.length === 0) {
-            setTimeout(() => generateLevel(isRemote), 600);
+            setTimeout(() => {
+                if(!isRemote) nextLevel();
+            }, 600);
         }
     }
 
-    function generateLevel(isRemote = false) {
-        gameBoard.innerHTML = '';
-        
-        let pool = [];
-        for(let i = 0; i < 18; i++) {
-            pool.push({
-                id: i + 1,
-                data: mobData[i]
-            });
+    // --- ГЕНЕРАЦІЯ ТА СИНХРОНІЗАЦІЯ ПОРЯДКУ ---
+    function generateRandomLayout() {
+        let layout = [];
+        for (let i = 1; i <= 18; i++) {
+            layout.push(i);
         }
+        layout.sort(() => Math.random() - 0.5);
+        return layout;
+    }
 
-        pool.sort(() => Math.random() - 0.5);
+    function renderBoard(layoutIds) {
+        currentLayoutIds = layoutIds;
+        gameBoard.innerHTML = '';
 
-        pool.forEach((item, index) => {
+        layoutIds.forEach((id) => {
+            let mobItem = mobData[id - 1]; // id is 1-18, index is 0-17
             let wrap = document.createElement('div');
             wrap.className = 'mob-wrapper';
-            wrap.id = 'mob_' + index; 
+            wrap.id = 'mob_' + id; 
             wrap.style.animationDelay = `-${Math.random() * 3}s`; 
 
             let svgDiv = document.createElement('div');
             svgDiv.className = 'mob-svg';
-            svgDiv.innerHTML = generateBlockySVG(item.data);
+            svgDiv.innerHTML = generateBlockySVG(mobItem);
             wrap.appendChild(svgDiv);
 
-            let audioFile = new Audio(`${item.id}.wav`);
             let clickTimeout = null;
 
             wrap.addEventListener('click', (e) => {
                 if (clickTimeout !== null) return; 
 
                 clickTimeout = setTimeout(() => {
-                    audioFile.currentTime = 0;
-                    audioFile.play().catch(() => console.log(`Не знайдено ${item.id}.wav`));
-                    
-                    wrap.classList.remove('clicked');
-                    void wrap.offsetWidth; 
-                    wrap.classList.add('clicked');
-                    setTimeout(() => wrap.classList.remove('clicked'), 150);
-                    
+                    playAudioAndHighlight(id);
+                    sendGameAction('play_audio', { mobId: id });
                     clickTimeout = null;
                 }, 250); 
             });
@@ -991,23 +1018,40 @@
                     clickTimeout = null;
                 }
 
-                let color = item.data.body === 'none' ? item.data.head : item.data.body;
-                let rect = wrap.getBoundingClientRect();
-                spawnBlockExplosion(rect.left + rect.width/2, rect.top + rect.height/2, color);
-                
-                wrap.style.opacity = '0';
-                wrap.style.pointerEvents = 'none';
-                
-                sendGameAction('explode_mob', { htmlId: wrap.id, color: color });
-
-                setTimeout(() => {
-                    wrap.remove();
-                    checkWin();
-                }, 100);
+                let color = mobItem.body === 'none' ? mobItem.head : mobItem.body;
+                explodeMob(id, color, false);
+                sendGameAction('explode_mob', { mobId: id, color: color });
             });
 
             gameBoard.appendChild(wrap);
         });
+    }
+
+    function initGameLogic() {
+        if (isFirebaseActive) {
+            // Зчитуємо початковий стан або генеруємо новий, якщо пусто
+            db.ref('block_world_layout').once('value', snap => {
+                if (snap.exists()) {
+                    renderBoard(snap.val());
+                } else {
+                    let newLayout = generateRandomLayout();
+                    db.ref('block_world_layout').set(newLayout);
+                    // Після set() спрацює 'on' і відрендерить
+                }
+            });
+
+            // Слухаємо зміни макету (наприклад, коли вчитель тисне "Далі")
+            db.ref('block_world_layout').on('value', snap => {
+                if (snap.exists()) {
+                    let newLayout = snap.val();
+                    if (JSON.stringify(newLayout) !== JSON.stringify(currentLayoutIds)) {
+                        renderBoard(newLayout);
+                    }
+                }
+            });
+        } else {
+            renderBoard(generateRandomLayout());
+        }
     }
 
     function nextLevel() {
@@ -1017,11 +1061,16 @@
             { transform: 'translateY(0) scale(1)' }
         ], { duration: 200 });
         
-        sendGameAction('next_level', {});
-        generateLevel();
+        if (isFirebaseActive) {
+            let newLayout = generateRandomLayout();
+            db.ref('block_world_layout').set(newLayout); // Згенерує on('value') на всіх екранах
+        } else {
+            renderBoard(generateRandomLayout());
+        }
     }
 
-    generateLevel();
+    // Запуск гри
+    initGameLogic();
 
 </script>
 </body>
