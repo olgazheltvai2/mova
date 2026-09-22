@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+    }
+
+    body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background-color: #1a1a1a; 
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        font-family: system-ui, -apple-system, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Головний ігровий контейнер 16:9 */
+    .game-screen {
+        position: relative;
+        width: 100%;
+        max-width: 177.78vh; /* Збереження пропорції 16:9 відносно висоти екрану */
+        aspect-ratio: 16 / 9;
+        background: transparent; /* Жодних фонових прямокутників */
+        overflow: hidden;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        transition: transform 0.3s ease; /* Для зуму */
+    }
+
+    /* Фоновий шар (з розмиттям для глибини) */
+    .bg-elements {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .grass {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        height: 40%;
+        background: linear-gradient(to bottom, #a8b836 0%, #7a8a22 40%, #526011 100%);
+        z-index: 2;
+        box-shadow: inset 0 20px 30px rgba(0,0,0,0.1);
+    }
+
+    .cloud {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 50px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+        animation: drift linear infinite;
+        z-index: 1;
+        filter: blur(2px); /* Ефект розмиття фону */
+    }
+
+    .cloud::before, .cloud::after {
+        content: '';
+        position: absolute;
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 50%;
+    }
+
+    .cloud1 { width: 140px; height: 50px; top: 12%; left: -150px; animation-duration: 45s; }
+    .cloud1::before { width: 70px; height: 70px; top: -35px; left: 20px; }
+    .cloud1::after { width: 50px; height: 50px; top: -20px; left: 75px; }
+
+    .cloud2 { width: 180px; height: 60px; top: 25%; left: -200px; animation-duration: 60s; animation-delay: -25s; }
+    .cloud2::before { width: 80px; height: 80px; top: -40px; left: 30px; }
+    .cloud2::after { width: 70px; height: 70px; top: -30px; left: 90px; }
+
+    .sun {
+        position: absolute;
+        top: 8%;
+        right: 10%;
+        width: 10vw;
+        height: 10vw;
+        max-width: 120px;
+        max-height: 120px;
+        background: radial-gradient(circle, #FFF176 0%, #FFB74D 100%);
+        border-radius: 50%;
+        box-shadow: 0 0 60px #FFD54F, 0 0 100px #FFB300;
+        animation: pulse 5s ease-in-out infinite alternate;
+        z-index: 1;
+    }
+
+    /* Ліс з ефектом Depth of Field */
+    .forest {
+        position: absolute;
+        bottom: 38%; 
+        width: 100%;
+        height: 40%;
+        z-index: 1;
+        display: flex;
+        align-items: flex-end;
+        filter: blur(3px); /* Фокус на передньому плані */
+    }
+
+    .tree {
+        position: absolute;
+        bottom: 0;
+    }
+
+    .tree-trunk {
+        width: 40px;
+        height: 160px;
+        background: linear-gradient(to right, #5c3a21, #8b5a33, #5c3a21);
+        border-radius: 5px 5px 0 0;
+        margin: 0 auto;
+        position: relative;
+        z-index: 1;
+        box-shadow: inset -10px 0 20px rgba(0,0,0,0.4);
+    }
+
+    .tree-top {
+        width: 180px;
+        height: 220px;
+        background: #d35400;
+        border-radius: 100px;
+        position: absolute;
+        bottom: 90px;
+        left: 50%;
+        transform: translateX(-50%);
+        box-shadow: inset -20px -20px 40px rgba(0,0,0,0.4);
+        z-index: 2;
+    }
+    
+    .tree-top.red { background: radial-gradient(circle at 30% 30%, #e74c3c, #c0392b); }
+    .tree-top.yellow { background: radial-gradient(circle at 30% 30%, #f1c40f, #f39c12); }
+    .tree-top.orange { background: radial-gradient(circle at 30% 30%, #e67e22, #d35400); }
+
+    .tree-top::before, .tree-top::after {
+        content: '';
+        position: absolute;
+        border-radius: 50%;
+    }
+
+    .tree-top.red::before, .tree-top.red::after { background: #c0392b; }
+    .tree-top.yellow::before, .tree-top.yellow::after { background: #f39c12; }
+    .tree-top.orange::before, .tree-top.orange::after { background: #d35400; }
+
+    .tree-top::before {
+        width: 140px; height: 140px; bottom: 20px; left: -40px;
+        box-shadow: inset -10px -10px 20px rgba(0,0,0,0.2);
+    }
+    .tree-top::after {
+        width: 150px; height: 150px; bottom: 40px; right: -50px;
+        box-shadow: inset -10px -10px 20px rgba(0,0,0,0.2);
+    }
+
+    .falling-leaf {
+        position: absolute;
+        width: 15px;
+        height: 15px;
+        background: #e67e22;
+        border-radius: 2px 10px 2px 10px;
+        opacity: 0.8;
+        z-index: 3;
+        animation: fall linear infinite;
+        filter: blur(1px);
+    }
+
+    @keyframes fall {
+        0% { transform: translateY(-10vh) rotate(0deg) translateX(0); opacity: 1; }
+        50% { transform: translateY(40vh) rotate(180deg) translateX(50px); }
+        100% { transform: translateY(100vh) rotate(360deg) translateX(-20px); opacity: 0; }
+    }
+
+    @keyframes drift {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(100vw); }
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); opacity: 0.9; }
+        100% { transform: scale(1.05); opacity: 1; }
+    }
+
+    /* Controls (Top Left) */
+    .controls-top-left {
+        position: absolute;
+        left: 4%;
+        top: 6%;
+        display: flex;
+        gap: 20px;
+        z-index: 20;
+    }
+
+    .next-btn, .reaction-btn {
+        width: 75px;
+        height: 75px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #ffffff, #f0f0f0);
+        border: 4px solid #fff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2), inset 0 -4px 10px rgba(0,0,0,0.1);
+        transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .next-btn:hover, .reaction-btn:hover {
+        transform: scale(1.1) translateY(-5px);
+        box-shadow: 0 15px 35px rgba(0,0,0,0.3), inset 0 -4px 10px rgba(0,0,0,0.1);
+    }
+
+    .next-btn:active, .reaction-btn:active {
+        transform: scale(0.95);
+    }
+
+    .next-btn svg, .reaction-btn svg {
+        width: 38px;
+        height: 38px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+
+    .next-btn svg {
+        fill: none;
+        stroke: #f39c12;
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    /* Layout Wrapper */
+    .game-wrapper {
+        position: relative;
+        z-index: 10;
+        display: flex;
+        width: 90%;
+        height: 100%;
+        align-items: flex-end;
+        justify-content: space-around;
+        padding-bottom: 5%;
+    }
+
+    /* Сцена з Їжачком */
+    .left-scene {
+        position: relative;
+        width: 40%;
+        max-width: 500px;
+        height: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+    }
+
+    .burrow-container {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 80%;
+        z-index: 2;
+    }
+
+    .hedgehog-container {
+        position: absolute;
+        bottom: -5%; /* Опущено нижче */
+        left: 55%; 
+        width: 60%;
+        height: 60%;
+        z-index: 4;
+        transform-origin: bottom center;
+        animation: breathe 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes breathe {
+        0% { transform: scaleY(1) scaleX(1); }
+        100% { transform: scaleY(1.02) scaleX(0.99); }
+    }
+
+    @keyframes lookAround {
+        0%, 100% { transform: translate(0, 0); }
+        25% { transform: translate(3px, -1px); }
+        50% { transform: translate(-2px, 1px); }
+        75% { transform: translate(1px, 0); }
+    }
+
+    /* Акуратне сопіння носиком (не відриваючись) */
+    @keyframes sniff {
+        0%, 100% { transform: rotate(0deg); }
+        25% { transform: rotate(-2deg); }
+        50% { transform: rotate(1deg); }
+        75% { transform: rotate(-1deg); }
+    }
+
+    @keyframes snappyJump {
+        0% { transform: translateY(0) scale(1, 1); }
+        15% { transform: translateY(15px) scale(1.15, 0.85); }
+        45% { transform: translateY(-120px) scale(0.9, 1.15) rotate(10deg); }
+        70% { transform: translateY(-50px) scale(0.95, 1.05) rotate(-5deg); }
+        85% { transform: translateY(0) scale(1, 1) rotate(0deg); }
+        92% { transform: translateY(10px) scale(1.1, 0.9); }
+        100% { transform: translateY(0) scale(1, 1); }
+    }
+
+    .hedgehog-container.win { 
+        animation: snappyJump 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94); 
+    }
+    
+    .hedgehog-container.win .hh-mouth {
+        d: path("M190,195 Q210,215 230,190"); /* Широка посмішка перемоги */
+    }
+
+    .hh-pupil { animation: lookAround 6s infinite; }
+    
+    /* Трансформ-оріджин встановлено точно біля основи носика, щоб він не відривався */
+    .hh-nose-group { 
+        transform-origin: 245px 180px; 
+        animation: sniff 2.5s ease-in-out infinite; 
+    }
+
+    /* Ігрова дошка */
+    .right-board {
+        display: flex;
+        gap: 25px;
+        background: linear-gradient(135deg, #deb887 0%, #c19a6b 100%);
+        padding: 40px 60px;
+        border-radius: 30px;
+        border: 8px solid #8b5a2b;
+        box-shadow: 
+            0 30px 60px rgba(0,0,0,0.3), 
+            inset 0 0 20px rgba(255,255,255,0.4),
+            inset 0 0 0 4px #5c3a21;
+        margin-bottom: 5%;
+        position: relative;
+        transform: scale(0.95);
+    }
+    
+    .right-board::after {
+        content: '';
+        position: absolute;
+        top: 10px; right: 10px;
+        width: 30px; height: 30px;
+        background: radial-gradient(circle, #5c3a21 30%, transparent 40%);
+        border-radius: 50%;
+        opacity: 0.5;
+        box-shadow: -10px 10px 0 rgba(255,255,255,0.2);
+    }
+    .right-board::before {
+        content: '';
+        position: absolute;
+        bottom: 10px; left: 10px;
+        width: 30px; height: 30px;
+        background: radial-gradient(circle, #5c3a21 30%, transparent 40%);
+        border-radius: 50%;
+        opacity: 0.5;
+        box-shadow: 10px -10px 0 rgba(255,255,255,0.2);
+    }
+
+    .letter-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        z-index: 2;
+    }
+
+    .char {
+        font-size: 5rem;
+        font-weight: 900;
+        color: #fff;
+        text-shadow: 3px 3px 0 #5c3a21, 6px 6px 15px rgba(0,0,0,0.4);
+        line-height: 1;
+        font-family: 'Comic Sans MS', cursive, sans-serif;
+    }
+
+    .slot {
+        width: 90px;
+        height: 90px;
+        background: rgba(255, 248, 220, 0.6);
+        border-radius: 15px;
+        cursor: pointer;
+        border: 4px dashed #8b5a2b;
+        transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: inset 0 5px 15px rgba(0,0,0,0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+
+    .slot:hover {
+        background: rgba(255, 248, 220, 0.9);
+        transform: scale(1.08) rotate(2deg);
+        border-color: #d35400;
+    }
+
+    .slot:active {
+        transform: scale(0.95);
+    }
+
+    .slot.filled {
+        border-style: solid;
+        border-color: #5c3a21;
+        background: #fff8dc;
+        box-shadow: 0 15px 25px rgba(0,0,0,0.3), inset 0 0 15px rgba(211, 84, 0, 0.2);
+    }
+
+    .symbol {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+
+    .vowel {
+        width: 36px;
+        height: 36px;
+        background: radial-gradient(circle at 30% 30%, #ff7675, #d63031);
+        border-radius: 50%;
+        box-shadow: 0 6px 12px rgba(214, 48, 49, 0.5), inset -4px -4px 10px rgba(0,0,0,0.2);
+        animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .hard {
+        width: 55px;
+        height: 14px;
+        background: linear-gradient(to bottom, #74b9ff, #0984e3);
+        border-radius: 7px;
+        box-shadow: 0 6px 12px rgba(9, 132, 227, 0.4), inset -2px -2px 6px rgba(0,0,0,0.2);
+        animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .soft {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .soft .line {
+        width: 55px;
+        height: 12px;
+        background: linear-gradient(to bottom, #74b9ff, #0984e3);
+        border-radius: 6px;
+        box-shadow: 0 4px 8px rgba(9, 132, 227, 0.4);
+    }
+
+    .d-hard {
+        display: flex;
+        gap: 8px;
+        animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .d-hard .line {
+        width: 22px;
+        height: 14px;
+        background: linear-gradient(to bottom, #74b9ff, #0984e3);
+        border-radius: 7px;
+        box-shadow: 0 4px 8px rgba(9, 132, 227, 0.4);
+    }
+
+    .none {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .none::before, .none::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        width: 100%;
+        height: 8px;
+        background: linear-gradient(to bottom, #b2bec3, #636e72);
+        border-radius: 4px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .none::before { transform: translateY(-50%) rotate(45deg); }
+    .none::after { transform: translateY(-50%) rotate(-45deg); }
+
+    @keyframes pop {
+        0% { transform: scale(0) rotate(-10deg); }
+        80% { transform: scale(1.2) rotate(5deg); }
+        100% { transform: scale(1) rotate(0); }
+    }
+
+    .particle {
+        position: absolute;
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 40;
+        box-shadow: 0 0 10px rgba(255,255,255,0.8);
+    }
+
+    /* =========================================
+       Стилі для Глобальних Інструментів
+       ========================================= */
+
+    /* Екран-заглушка */
+    #block-overlay {
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 999999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        color: #ff4757;
+        font-family: Arial, sans-serif;
+    }
+    #block-overlay h1 { font-size: 50px; font-weight: bold; text-align: center; }
+
+    /* Theme Manager */
+    .settings-btn {
+        position: fixed;
+        bottom: 20px; right: 20px;
+        width: 50px; height: 50px;
+        background: #34495e; color: #fff;
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-size: 24px; cursor: pointer; z-index: 90001;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #fff;
+    }
+    
+    .theme-modal {
+        position: fixed;
+        top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: #fff; padding: 20px; border-radius: 15px;
+        z-index: 90002; display: none; width: 80%; max-width: 600px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        font-family: Arial, sans-serif;
+    }
+    
+    .theme-header {
+        display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
+    }
+    
+    .theme-header h2 { margin: 0; font-size: 20px; color: #333; }
+    
+    .theme-close {
+        cursor: pointer; font-size: 24px; color: #e74c3c; font-weight: bold;
+    }
+    
+    .theme-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 15px; max-height: 60vh; overflow-y: auto; padding-right: 10px;
+    }
+    
+    .theme-card {
+        position: relative; width: 100%; aspect-ratio: 16/9;
+        background: #ddd; border-radius: 8px; cursor: pointer;
+        overflow: hidden; border: 2px solid transparent;
+        transition: transform 0.2s;
+    }
+    
+    .theme-card:hover { transform: scale(1.05); border-color: #3498db; }
+    .theme-card img { width: 100%; height: 100%; object-fit: cover; }
+    .theme-card span {
+        position: absolute; bottom: 0; left: 0; width: 100%;
+        background: rgba(0,0,0,0.6); color: #fff; text-align: center;
+        font-size: 12px; padding: 4px 0;
+    }
+
+    /* Зумування */
+    .zoom-controls {
+        position: fixed;
+        top: 20px; right: 20px;
+        display: flex; gap: 10px; z-index: 90001;
+    }
+    .zoom-btn {
+        width: 45px; height: 45px; background: #fff; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; font-weight: bold; cursor: pointer; color: #333;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #ddd;
+    }
+
+    /* Інструмент малювання */
+    #draw-canvas-global {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        z-index: 90000; pointer-events: none; /* Активується при відкритті панелі */
+    }
+
+    .toggle-draw-btn {
+        position: fixed; bottom: 85px; right: 20px;
+        background: #8e44ad; color: #fff; padding: 10px 15px;
+        border-radius: 20px; cursor: pointer; z-index: 90001;
+        font-weight: bold; font-family: Arial, sans-serif;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #fff;
+    }
+
+    .draw-panel {
+        position: fixed; top: 20px; left: 20px;
+        background: #fff; border-radius: 12px; padding: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 90002;
+        display: none; flex-direction: column; gap: 10px; font-family: Arial, sans-serif;
+        cursor: grab;
+    }
+    
+    .draw-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 5px; font-weight: bold; color: #333;
+    }
+    
+    .draw-close {
+        cursor: pointer; color: #e74c3c; font-size: 18px;
+    }
+
+    .draw-tools {
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+
+    .draw-btn {
+        padding: 8px 12px; border: none; border-radius: 6px; cursor: pointer;
+        background: #f1f2f6; font-weight: bold; color: #333;
+    }
+    .draw-btn.active { background: #3498db; color: #fff; }
+    .draw-btn.clear { background: #e74c3c; color: #fff; }
+
+    /* Адаптивність (Mobile Friendly) */
+    @media (max-width: 768px) {
+        .controls-top-left { top: 2%; left: 2%; gap: 10px; }
+        .next-btn, .reaction-btn { width: 55px; height: 55px; }
+        .char { font-size: 3rem; }
+        .slot { width: 60px; height: 60px; }
+        .right-board { padding: 20px; gap: 10px; }
+        .zoom-controls { top: 10px; right: 10px; }
+        .zoom-btn { width: 35px; height: 35px; font-size: 16px; }
+        .settings-btn { bottom: 10px; right: 10px; width: 40px; height: 40px; font-size: 18px; }
+        .toggle-draw-btn { bottom: 60px; right: 10px; padding: 8px 12px; font-size: 14px; }
+    }
+</style>
+</head>
