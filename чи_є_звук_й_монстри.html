@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ЧБ Мультик: Танцюючі Монстри (Я, Ю, Є)</title>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* Базові налаштування екрану та полотна */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            transition: background-image 0.5s ease;
+        }
+
+        #game-wrapper {
+            position: relative;
+            width: 100vw;
+            max-width: 1280px;
+            max-height: 100vh;
+            aspect-ratio: 16 / 9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.3s ease;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            background-color: transparent; 
+        }
+
+        /* Ігровий інтерфейс (Слова та кнопки) */
+        #game-ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        #word-display {
+            pointer-events: auto;
+            font-size: 6vw;
+            font-weight: bold;
+            color: white;
+            text-shadow: 3px 3px 0 #000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000;
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 80%;
+            letter-spacing: 2px;
+            font-family: Arial, sans-serif;
+            user-select: none;
+        }
+
+        @media (min-width: 1280px) {
+            #word-display { font-size: 5rem; }
+        }
+
+        .nav-buttons {
+            pointer-events: auto;
+            display: flex;
+            gap: 20px;
+            margin-top: auto;
+            margin-bottom: 30px;
+        }
+
+        .nav-btn {
+            padding: 10px 20px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            background: #f1c40f;
+            border: 3px solid #000;
+            border-radius: 15px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            box-shadow: 4px 4px 0 #000;
+            transition: transform 0.1s;
+        }
+
+        .nav-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #000;
+        }
+
+        /* Стилі ліній */
+        .line { fill: #ffffff; stroke: #000000; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+        .bg-line { fill: none; stroke: #000000; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+        .solid { fill: #000000; }
+        .thick { stroke-width: 8; }
+
+        /* АНІМАЦІЇ СПОКОЮ (IDLE) */
+        .breathe-thin { transform-origin: 350px 500px; animation: breatheThin 2.5s ease-in-out infinite alternate; }
+        @keyframes breatheThin { 0% { transform: scaleY(1) scaleX(1); } 100% { transform: scaleY(1.03) scaleX(0.97) translateY(-5px); } }
+        .breathe-fat { transform-origin: 900px 550px; animation: breatheFat 3s ease-in-out infinite alternate; }
+        @keyframes breatheFat { 0% { transform: scaleY(1) scaleX(1); } 100% { transform: scaleY(0.96) scaleX(1.04) translateY(2px); } }
+        .pupil { animation: lookAround 4s ease-in-out infinite alternate; }
+        @keyframes lookAround { 0%, 15% { transform: translateX(-6px); } 45%, 55% { transform: translateX(0px); } 85%, 100% { transform: translateX(6px); } }
+        .antenna { transform-origin: 350px 170px; animation: wiggle 3s ease-in-out infinite alternate; }
+        @keyframes wiggle { 0% { transform: rotate(-10deg); } 100% { transform: rotate(10deg); } }
+
+        /* АНІМАЦІЇ ТАНЦЮ */
+        #monster1.dance .m1-dance-wrapper { transform-origin: 350px 500px; animation: sway 0.5s ease-in-out infinite alternate; }
+        @keyframes sway { 0% { transform: rotate(-15deg); } 100% { transform: rotate(15deg); } }
+        #monster1.dance .m1-arm-l { transform-origin: 310px 280px; animation: waveL 0.3s ease-in-out infinite alternate; }
+        #monster1.dance .m1-arm-r { transform-origin: 390px 280px; animation: waveR 0.3s ease-in-out infinite alternate; }
+        @keyframes waveL { 0% { transform: rotate(20deg); } 100% { transform: rotate(-80deg); } }
+        @keyframes waveR { 0% { transform: rotate(-20deg); } 100% { transform: rotate(80deg); } }
+        #monster1.dance .m1-leg-l { transform-origin: 330px 500px; animation: legLiftL 0.5s ease-in-out infinite alternate; }
+        @keyframes legLiftL { 0% { transform: translateY(0) rotate(0); } 100% { transform: translateY(-20px) rotate(15deg); } }
+
+        #monster2.dance .m2-dance-wrapper { transform-origin: 900px 550px; animation: bounce 0.3s ease-in-out infinite alternate; }
+        @keyframes bounce { 0% { transform: translateY(0); } 100% { transform: translateY(-40px); } }
+        #monster2.dance .m2-arm-l { transform-origin: 790px 450px; animation: flapL 0.15s ease-in-out infinite alternate; }
+        #monster2.dance .m2-arm-r { transform-origin: 1010px 450px; animation: flapR 0.15s ease-in-out infinite alternate; }
+        @keyframes flapL { 0% { transform: rotate(-20deg); } 100% { transform: rotate(50deg); } }
+        @keyframes flapR { 0% { transform: rotate(20deg); } 100% { transform: rotate(-50deg); } }
+        #monster2.dance .m2-head1 { transform-origin: 830px 380px; animation: headBop1 0.3s ease-in-out infinite alternate; }
+        #monster2.dance .m2-head2 { transform-origin: 970px 380px; animation: headBop2 0.3s ease-in-out infinite alternate; }
+        @keyframes headBop1 { 0% { transform: rotate(-15deg); } 100% { transform: rotate(5deg); } }
+        @keyframes headBop2 { 0% { transform: rotate(15deg); } 100% { transform: rotate(-5deg); } }
+
+        /* НЕГАТИВНИЙ ФІДБЕК (ПОМИЛКА) */
+        .wrong-shake {
+            animation: wrongShake 0.4s ease-in-out;
+        }
+        @keyframes wrongShake {
+            0%, 100% { transform: translateX(0); filter: none; }
+            20% { transform: translateX(-15px); filter: drop-shadow(0 0 10px red); }
+            40% { transform: translateX(15px); filter: drop-shadow(0 0 10px red); }
+            60% { transform: translateX(-15px); filter: drop-shadow(0 0 10px red); }
+            80% { transform: translateX(15px); filter: drop-shadow(0 0 10px red); }
+        }
+
+        #monster1, #monster2 { cursor: pointer; pointer-events: auto; outline: none; -webkit-tap-highlight-color: transparent; }
+        
+        #monster1:hover, #monster2:hover {
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.8));
+        }
+
+        /* БЛОКУВАННЯ (РАДАР) */
+        #block-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 999999;
+            justify-content: center; align-items: center; flex-direction: column;
+            color: red; font-size: 3rem; font-weight: bold; font-family: Arial, sans-serif; text-align: center;
+        }
+
+        /* МАЛЮВАННЯ */
+        #global-drawing-canvas {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 90000;
+        }
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px;
+            background-color: #8e44ad; color: white;
+            border: 2px solid #fff; border-radius: 50px;
+            padding: 10px 20px; font-size: 16px; font-weight: bold;
+            cursor: pointer; z-index: 90002; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-family: Arial, sans-serif;
+        }
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; left: 20px;
+            background: rgba(255, 255, 255, 0.95); border: 2px solid #8e44ad;
+            border-radius: 10px; padding: 15px; z-index: 90003;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5); font-family: Arial, sans-serif; width: 220px;
+        }
+        .draw-panel-header {
+            cursor: grab; background: #8e44ad; color: white;
+            padding: 5px; text-align: center; font-weight: bold;
+            border-radius: 5px; margin-bottom: 10px; user-select: none;
+        }
+        .draw-panel-header:active { cursor: grabbing; }
+        .draw-tools { display: flex; flex-direction: column; gap: 10px; }
+        .draw-tool-row { display: flex; justify-content: space-between; gap: 5px; }
+        .draw-btn {
+            flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 5px;
+            cursor: pointer; background: #f9f9f9; font-weight: bold; transition: 0.2s;
+        }
+        .draw-btn.active { background: #8e44ad; color: white; border-color: #5e3370; }
+        .draw-close {
+            position: absolute; top: -10px; right: -10px; background: red; color: white;
+            border: 2px solid white; border-radius: 50%; width: 25px; height: 25px;
+            display: flex; justify-content: center; align-items: center; cursor: pointer; font-weight: bold; font-size: 14px;
+        }
+
+        /* ФОНИ (Theme Manager) */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px;
+            background: #34495e; color: white; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; cursor: pointer; z-index: 90002;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 2px solid #fff;
+        }
+        #theme-modal {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 20px; border-radius: 15px;
+            z-index: 90005; width: 90%; max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-family: Arial, sans-serif;
+        }
+        .theme-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .theme-header h3 { margin: 0; }
+        .theme-close { cursor: pointer; background: red; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; font-weight: bold; }
+        #theme-gallery {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px; max-height: 60vh; overflow-y: auto; padding: 5px;
+        }
+        .theme-card {
+            position: relative; border-radius: 8px; overflow: hidden; cursor: pointer;
+            border: 2px solid transparent; transition: 0.2s; aspect-ratio: 16/9; background: #eee;
+        }
+        .theme-card:hover { border-color: #3498db; transform: scale(1.05); }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .theme-card .theme-name {
+            position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6);
+            color: white; font-size: 12px; text-align: center; padding: 4px; pointer-events: none;
+        }
+
+        /* ЗУМ (Лупа) */
+        #zoom-controls {
+            position: fixed; bottom: 20px; left: 20px; display: flex; gap: 10px; z-index: 90002;
+        }
+        .zoom-btn {
+            width: 40px; height: 40px; border-radius: 50%; background: #2980b9; color: white;
+            border: 2px solid #fff; font-size: 20px; font-weight: bold; display: flex;
+            justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <svg id="stage" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
+            <!-- ================= ФОН (Внутрішній SVG) ================= -->
+            <g id="background" style="pointer-events: none;">
+                <circle cx="1050" cy="150" r="80" class="line" />
+                <path d="M920,170 Q1050,70 1180,130 Q1050,230 920,170 Z" class="line" />
+                <circle cx="1080" cy="120" r="10" class="bg-line" />
+                <circle cx="1010" cy="160" r="15" class="bg-line" />
+
+                <path d="M200,100 L210,120 L230,125 L210,130 L200,150 L190,130 L170,125 L190,120 Z" class="line" />
+                <path d="M600,200 L605,210 L615,212 L605,215 L600,225 L595,215 L585,212 L595,210 Z" class="line" transform="scale(0.7) translate(300, -100)" />
+                <circle cx="400" cy="80" r="4" class="solid" />
+                <circle cx="800" cy="250" r="5" class="solid" />
+                <circle cx="100" cy="300" r="3" class="solid" />
+
+                <path d="M150,600 Q100,450 180,350" class="bg-line thick" />
+                <circle cx="180" cy="350" r="20" class="line" />
+                <path d="M120,500 Q80,480 70,450" class="bg-line" />
+                
+                <path d="M1150,600 L1130,450 L1170,450 Z" class="line" />
+                <path d="M1100,450 Q1150,380 1200,450 Z" class="line" />
+                <circle cx="1130" cy="420" r="5" class="bg-line" />
+                <circle cx="1170" cy="430" r="7" class="bg-line" />
+
+                <!-- Земля / Рельєф планети піднято на 30 пікселів -->
+                <path d="M-20,570 Q150,540 300,580 T650,560 T1000,590 T1300,560 L1300,750 L-20,750 Z" class="line" />
+                
+                <ellipse cx="250" cy="610" rx="60" ry="15" class="bg-line" />
+                <ellipse cx="240" cy="613" rx="40" ry="8" class="bg-line" />
+                <ellipse cx="700" cy="590" rx="40" ry="10" class="bg-line" />
+                <ellipse cx="1100" cy="620" rx="70" ry="18" class="bg-line" />
+                <ellipse cx="1110" cy="625" rx="50" ry="10" class="bg-line" />
+            </g>
+
+            <!-- ================= ХУДИЙ МОНСТР (Зліва) ================= -->
+            <g id="monster1">
+                <g class="m1-dance-wrapper">
+                    <path class="line thick m1-leg-l" d="M330,500 L310,610 L280,610" />
+                    <path class="line thick m1-leg-r" d="M370,500 L390,605 L420,605" />
+                    <g class="breathe-thin m1-body">
+                        <g class="antenna">
+                            <path class="line" d="M350,170 Q320,100 370,70" />
+                            <circle class="solid" cx="370" cy="70" r="12" />
+                        </g>
+                        <path class="line thick m1-arm-l" d="M310,280 Q230,230 180,320" />
+                        <path class="line thick m1-arm-r" d="M390,280 Q470,230 520,320" />
+                        <path class="line" d="M310,220 Q290,350 310,500 Q350,520 390,500 Q410,350 390,220 Q350,180 310,220 Z" />
+                        <circle class="line" cx="350" cy="250" r="35" />
+                        <circle class="solid pupil" cx="350" cy="250" r="12" />
+                        <path class="bg-line" d="M335,310 Q350,330 365,310" />
+                        <path class="line" d="M345,318 L350,330 L355,318 Z" />
+                    </g>
+                </g>
+            </g>
+
+            <!-- ================= ТОВСТИЙ МОНСТР (Справа) ================= -->
+            <g id="monster2">
+                <g class="m2-dance-wrapper">
+                    <path class="line thick m2-leg-l" d="M850,550 L830,620 L800,620" />
+                    <path class="line thick m2-leg-r" d="M950,550 L970,620 L1000,620" />
+                    <g class="breathe-fat m2-body">
+                        <path class="line" d="M790,460 Q780,340 900,340 Q1020,340 1010,460 Q1000,570 900,570 Q800,570 790,460 Z" />
+                        <path class="line thick m2-arm-l" d="M790,450 Q730,430 700,490" />
+                        <path class="line thick m2-arm-r" d="M1010,450 Q1070,430 1100,490" />
+                        <g class="m2-head1">
+                            <path class="line" d="M830,360 C780,360 770,270 830,270 C890,270 880,360 830,360 Z" />
+                            <circle class="line" cx="830" cy="305" r="18" />
+                            <circle class="solid pupil" cx="830" cy="305" r="7" />
+                            <path class="bg-line" d="M815,335 Q830,350 845,335" />
+                        </g>
+                        <g class="m2-head2">
+                            <path class="line" d="M970,360 C920,360 910,270 970,270 C1030,270 1020,360 970,360 Z" />
+                            <circle class="line" cx="970" cy="305" r="18" />
+                            <circle class="solid pupil" cx="970" cy="305" r="7" />
+                            <!-- Виправлено рот на посмішку як в лівого ока -->
+                            <path class="bg-line" d="M955,335 Q970,350 985,335" />
+                        </g>
+                        <circle class="bg-line" cx="880" cy="480" r="15" />
+                        <circle class="bg-line" cx="930" cy="450" r="10" />
+                        <circle class="bg-line" cx="910" cy="520" r="20" />
+                    </g>
+                </g>
+            </g>
+        </svg>
+
+        <!-- Ігровий шар: Слово та Кнопки навігації -->
+        <div id="game-ui-layer">
+            <div id="word-display">Завантаження...</div>
+            <div class="nav-buttons">
+                <button class="nav-btn" id="prev-btn">◀ Назад</button>
+                <button class="nav-btn" id="next-btn">Далі ▶</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Кнопки ЗУМ -->
+    <div id="zoom-controls">
+        <div class="zoom-btn" id="zoom-in">+</div>
+        <div class="zoom-btn" id="zoom-out">-</div>
+    </div>
+
+    <!-- Theme Manager UI -->
+    <div id="theme-btn">⚙️</div>
+    <div id="theme-modal">
+        <div class="theme-header">
+            <h3>Обери фон</h3>
+            <button class="theme-close" id="theme-close-btn">X</button>
+        </div>
+        <div id="theme-gallery">
+            <div class="theme-card" onclick="selectTheme('none')">
+                <div style="width:100%; height:100%; background:#222;"></div>
+                <div class="theme-name">Без фону</div>
+            </div>
+            <!-- Галерея генерується динамічно -->
+        </div>
+    </div>
+
+    <!-- Екран-заглушка блокування -->
+    <div id="block-overlay">
+        Зачекай!<br>Зараз не твій урок.
+    </div>
+
+    <!-- Малювання -->
+    <canvas id="global-drawing-canvas"></canvas>
+    <button id="toggle-draw-btn-global">✏ Малювати</button>
+    <div id="draw-panel-global">
+        <div class="draw-close" id="close-draw-panel">✕</div>
+        <div class="draw-panel-header" id="draw-panel-header">Панель малювання</div>
+        <div class="draw-tools">
+            <div class="draw-tool-row">
+                <button class="draw-btn active" id="draw-pencil">✏ Олівець</button>
+                <button class="draw-btn" id="draw-eraser">🧽 Гумка</button>
+            </div>
+            <input type="range" id="draw-size" min="1" max="50" value="5" style="width: 100%;">
+            <input type="color" id="draw-color" value="#ff0000" style="width: 100%; height: 30px; cursor: pointer;">
+            <button class="draw-btn" id="draw-clear" style="background: #ff7675; color: white;">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <script>
+        // ================= КОНФІГУРАЦІЯ =================
+        const CONFIG = {
+            gameId: 'dancing_monsters_ya_yu_ye',
+            firebaseUrl: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+
+        // ================= ІДЕНТИФІКАЦІЯ =================
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+        const tabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+        const senderId = myName + '_' + tabId;
+
+        // ================= FIREBASE ІНІЦІАЛІЗАЦІЯ =================
+        let db = null;
+        let isFirebaseActive = false;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp({
+                    databaseURL: CONFIG.firebaseUrl,
+                    projectId: CONFIG.projectId
+                });
+            }
+            db = firebase.database();
+            isFirebaseActive = true;
+        } catch (e) {
+            console.error("Firebase відключено. Гра працюватиме локально.", e);
+        }
+
+        // Функція синхронізації дій
+        function sendAction(type, data) {
+            if (isFirebaseActive) {
+                db.ref(CONFIG.gameId + '/game_action').set({
+                    senderId: senderId,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    type: type,
+                    data: data
+                });
+            }
+        }
+
+        // ================= РАДАР І БЛОКУВАННЯ =================
+        if (isFirebaseActive) {
+            const connectedRef = db.ref('.info/connected');
+            const userRadarRef = db.ref('online_users/' + myName + '/' + tabId);
+            
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    userRadarRef.set(true);
+                    userRadarRef.onDisconnect().remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                userRadarRef.remove();
+            });
+
+            db.ref('force_refresh').on('value', (s) => {
+                const val = s.val();
+                if (val && val.timestamp > Date.now() - 5000) window.location.reload();
+            });
+
+            db.ref('blocked_users/' + myName).on('value', (s) => {
+                document.getElementById('block-overlay').style.display = s.val() ? 'flex' : 'none';
+            });
+
+            let immunity = true;
+            setTimeout(() => { immunity = false; }, 1000);
+            db.ref('current_activity').on('value', (s) => {
+                if (!immunity && s.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }
+
+        // ================= THEME MANAGER =================
+        const themeBgURL = "https://olgazheltvai2.github.io/images/backgrounds/";
+        
+        function applyTheme(url) {
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+            } else {
+                document.body.style.backgroundImage = `url('${url}')`;
+            }
+        }
+
+        function loadSavedTheme() {
+            const saved = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+            if (saved) applyTheme(saved);
+        }
+        loadSavedTheme();
+
+        function selectTheme(url) {
+            applyTheme(url);
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            if (isFirebaseActive) {
+                db.ref(CONFIG.gameId + '/game_theme').set(url);
+            }
+        }
+
+        if (isFirebaseActive) {
+            db.ref(CONFIG.gameId + '/game_theme').on('value', (s) => {
+                const url = s.val();
+                if (url) {
+                    applyTheme(url);
+                    localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+                }
+            });
+        }
+
+        // Послідовне завантаження мініатюр
+        async function loadThemes() {
+            const gallery = document.getElementById('theme-gallery');
+            for (let i = 1; i <= 1000; i++) {
+                const url = `${themeBgURL}background_${i}.webp`;
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    if (!response.ok) break; // Зупиняємо перевірку при помилці 404
+                    
+                    const div = document.createElement('div');
+                    div.className = 'theme-card';
+                    div.onclick = () => selectTheme(url);
+                    div.innerHTML = `<img src="${url}" alt="Фон ${i}"><div class="theme-name">Фон ${i}</div>`;
+                    gallery.appendChild(div);
+                } catch (e) {
+                    break; // Зупиняємо при мережевій помилці
+                }
+            }
+        }
+        loadThemes();
+
+        document.getElementById('theme-btn').onclick = () => document.getElementById('theme-modal').style.display = 'block';
+        document.getElementById('theme-close-btn').onclick = () => document.getElementById('theme-modal').style.display = 'none';
+
+
+        // ================= ЛОГІКА ГРИ =================
+        const m1Words = ["Земля","Пісня","Зоря","Людина","Синє","Тюльпан","Рядок","Свято","Рюкзак","Ключ","Лялька","Капелюх","Малюнок","Буряк","Дятел","Нюх","Пюре","Любов","Клятва","Грядка","Клюква","Колючка","Шляпа"];
+        const m2Words = ["Яблуко","Єнот","Маяк","Каюта","М'ята","Сім'я","Бур'ян","Пір'я","Ялинка","Мрія","Надія","Заєць","Ящірка","Рояль","Читає","Дев'ять","П'ять","Ягода"];
+        
+        let gameQueue = [];
+        let currentIndex = 0;
+        
+        function initGame() {
+            let combined = [];
+            m1Words.forEach(w => combined.push({ word: w, monster: 1 }));
+            m2Words.forEach(w => combined.push({ word: w, monster: 2 }));
+            // Shuffle
+            combined.sort(() => Math.random() - 0.5);
+            gameQueue = combined;
+            currentIndex = 0;
+            renderCurrentWord();
+        }
+
+        function highlightWord(word) {
+            return word.replace(/([яює])/gi, '<span style="color: #ff3366;">$1</span>');
+        }
+
+        function renderCurrentWord() {
+            const display = document.getElementById('word-display');
+            if (currentIndex >= gameQueue.length) {
+                display.innerHTML = "Слова закінчились!";
+                return;
+            }
+            display.innerHTML = highlightWord(gameQueue[currentIndex].word);
+        }
+
+        const m1 = document.getElementById('monster1');
+        const m2 = document.getElementById('monster2');
+        let isAnimating = false;
+
+        function triggerDance(monsterNum) {
+            const m = monsterNum === 1 ? m1 : m2;
+            m.classList.add('dance');
+            setTimeout(() => m.classList.remove('dance'), 2000);
+        }
+
+        function triggerWrong(monsterNum) {
+            const m = monsterNum === 1 ? m1 : m2;
+            m.classList.add('wrong-shake');
+            setTimeout(() => m.classList.remove('wrong-shake'), 400);
+        }
+
+        // Обробка подій для гарантованої синхронізації
+        function processMonsterClick(monsterNum) {
+            if (currentIndex >= gameQueue.length || isAnimating) return;
+            const correctMonster = gameQueue[currentIndex].monster;
+
+            if (monsterNum === correctMonster) {
+                isAnimating = true;
+                triggerDance(monsterNum);
+                setTimeout(() => {
+                    currentIndex++;
+                    renderCurrentWord();
+                    isAnimating = false;
+                }, 2000);
+            } else {
+                triggerWrong(monsterNum);
+            }
+        }
+
+        function processNav(dir) {
+            if (dir > 0 && currentIndex < gameQueue.length - 1) {
+                currentIndex++;
+                renderCurrentWord();
+            } else if (dir < 0 && currentIndex > 0) {
+                currentIndex--;
+                renderCurrentWord();
+            }
+        }
+
+        // Локальні кліки
+        m1.onclick = () => { sendAction('monster_click', { m: 1 }); processMonsterClick(1); };
+        m2.onclick = () => { sendAction('monster_click', { m: 2 }); processMonsterClick(2); };
+
+        document.getElementById('next-btn').onclick = () => {
+            if (currentIndex < gameQueue.length - 1) {
+                sendAction('nav', { dir: 1 });
+                processNav(1);
+            }
+        };
+        document.getElementById('prev-btn').onclick = () => {
+            if (currentIndex > 0) {
+                sendAction('nav', { dir: -1 });
+                processNav(-1);
+            }
+        };
+
+        // Слухач для синхронізації дій з інших клієнтів
+        if (isFirebaseActive) {
+            let lastProcessedTime = 0;
+            db.ref(CONFIG.gameId + '/game_action').on('value', (s) => {
+                const val = s.val();
+                if (!val || val.senderId === senderId || val.timestamp <= lastProcessedTime) return;
+                lastProcessedTime = val.timestamp;
+
+                if (val.type === 'monster_click') {
+                    processMonsterClick(val.data.m);
+                } else if (val.type === 'nav') {
+                    processNav(val.data.dir);
+                }
+            });
+        }
+
+        initGame(); // Запуск
+
+        // ================= ЗУМ =================
+        let currentZoom = 1;
+        const gameWrapper = document.getElementById('game-wrapper');
+        document.getElementById('zoom-in').onclick = () => { currentZoom += 0.1; gameWrapper.style.transform = `scale(${currentZoom})`; };
+        document.getElementById('zoom-out').onclick = () => { currentZoom = Math.max(0.5, currentZoom - 0.1); gameWrapper.style.transform = `scale(${currentZoom})`; };
+
+        // ================= МАЛЮВАННЯ (Глобальний інструмент) =================
+        const canvas = document.getElementById('global-drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        const drawPanel = document.getElementById('draw-panel-global');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let lastX = 0, lastY = 0;
+        let tool = 'pencil';
+        let drawColor = '#ff0000';
+        let drawSize = 5;
+
+        toggleDrawBtn.onclick = () => {
+            isDrawingMode = true;
+            drawPanel.style.display = 'block';
+            canvas.style.pointerEvents = 'auto';
+        };
+
+        document.getElementById('close-draw-panel').onclick = () => {
+            isDrawingMode = false;
+            drawPanel.style.display = 'none';
+            canvas.style.pointerEvents = 'none';
+        };
+
+        document.getElementById('draw-pencil').onclick = (e) => { tool = 'pencil'; e.target.classList.add('active'); document.getElementById('draw-eraser').classList.remove('active'); };
+        document.getElementById('draw-eraser').onclick = (e) => { tool = 'eraser'; e.target.classList.add('active'); document.getElementById('draw-pencil').classList.remove('active'); };
+        document.getElementById('draw-size').oninput = (e) => drawSize = e.target.value;
+        document.getElementById('draw-color').oninput = (e) => drawColor = e.target.value;
+        document.getElementById('draw-clear').onclick = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            sendAction('clear_canvas', {});
+        };
+
+        function drawLine(x0, y0, x1, y1, color, size, isEraser, emit) {
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : color;
+            ctx.lineWidth = size;
+            ctx.lineCap = 'round';
+            if (isEraser) {
+                ctx.globalCompositeOperation = 'destination-out';
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+            }
+            ctx.stroke();
+            ctx.globalCompositeOperation = 'source-over';
+
+            if (!emit) return;
+            const w = canvas.width, h = canvas.height;
+            sendAction('draw_line', {
+                x0: x0/w, y0: y0/h, x1: x1/w, y1: y1/h, color, size, isEraser
+            });
+        }
+
+        function getPos(e) {
+            if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        canvas.addEventListener('mousedown', (e) => { if(!isDrawingMode) return; isDrawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; });
+        canvas.addEventListener('mousemove', (e) => {
+            if(!isDrawing || !isDrawingMode) return;
+            const p = getPos(e);
+            drawLine(lastX, lastY, p.x, p.y, drawColor, drawSize, tool === 'eraser', true);
+            lastX = p.x; lastY = p.y;
+        });
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseout', () => isDrawing = false);
+        
+        canvas.addEventListener('touchstart', (e) => { if(!isDrawingMode) return; e.preventDefault(); isDrawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; }, {passive: false});
+        canvas.addEventListener('touchmove', (e) => {
+            if(!isDrawing || !isDrawingMode) return; e.preventDefault();
+            const p = getPos(e);
+            drawLine(lastX, lastY, p.x, p.y, drawColor, drawSize, tool === 'eraser', true);
+            lastX = p.x; lastY = p.y;
+        }, {passive: false});
+        canvas.addEventListener('touchend', () => isDrawing = false);
+
+        // Драг панелі малювання
+        const panelHeader = document.getElementById('draw-panel-header');
+        let isDraggingPanel = false;
+        let panelOffset = {x: 0, y: 0};
+        
+        panelHeader.addEventListener('mousedown', (e) => {
+            isDraggingPanel = true;
+            panelOffset.x = e.clientX - drawPanel.getBoundingClientRect().left;
+            panelOffset.y = e.clientY - drawPanel.getBoundingClientRect().top;
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isDraggingPanel) return;
+            drawPanel.style.left = (e.clientX - panelOffset.x) + 'px';
+            drawPanel.style.top = (e.clientY - panelOffset.y) + 'px';
+        });
+        window.addEventListener('mouseup', () => isDraggingPanel = false);
+
+        panelHeader.addEventListener('touchstart', (e) => {
+            isDraggingPanel = true;
+            panelOffset.x = e.touches[0].clientX - drawPanel.getBoundingClientRect().left;
+            panelOffset.y = e.touches[0].clientY - drawPanel.getBoundingClientRect().top;
+        }, {passive:true});
+        window.addEventListener('touchmove', (e) => {
+            if (!isDraggingPanel) return;
+            drawPanel.style.left = (e.touches[0].clientX - panelOffset.x) + 'px';
+            drawPanel.style.top = (e.touches[0].clientY - panelOffset.y) + 'px';
+        }, {passive:true});
+        window.addEventListener('touchend', () => isDraggingPanel = false);
+
+        if (isFirebaseActive) {
+            let lastDrawTime = 0;
+            db.ref(CONFIG.gameId + '/game_action').on('value', (s) => {
+                const val = s.val();
+                if (!val || val.senderId === senderId || val.timestamp <= lastDrawTime) return;
+                lastDrawTime = val.timestamp;
+
+                if (val.type === 'draw_line') {
+                    const w = canvas.width, h = canvas.height;
+                    const d = val.data;
+                    drawLine(d.x0*w, d.y0*h, d.x1*w, d.y1*h, d.color, d.size, d.isEraser, false);
+                } else if (val.type === 'clear_canvas') {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
