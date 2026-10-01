@@ -215,14 +215,16 @@
             display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: white; padding: 20px; border-radius: 15px;
             z-index: 90005; width: 90%; max-width: 600px;
+            max-height: 60vh; overflow-y: hidden;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-family: Arial, sans-serif;
+            display: flex; flex-direction: column;
         }
-        .theme-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .theme-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0;}
         .theme-header h3 { margin: 0; }
         .theme-close { cursor: pointer; background: red; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; font-weight: bold; }
         #theme-gallery {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 15px; max-height: 60vh; overflow-y: auto; padding: 5px;
+            gap: 15px; overflow-y: auto; padding: 5px; flex-grow: 1;
         }
         .theme-card {
             position: relative; border-radius: 8px; overflow: hidden; cursor: pointer;
@@ -246,7 +248,7 @@
         }
     </style>
 </head>
-<body>
+<body style="display: none;"> <!-- Приховано до ініціалізації -->
 
     <div id="game-wrapper">
         <svg id="stage" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg">
@@ -272,7 +274,7 @@
                 <circle cx="1130" cy="420" r="5" class="bg-line" />
                 <circle cx="1170" cy="430" r="7" class="bg-line" />
 
-                <!-- Земля / Рельєф планети піднято на 30 пікселів -->
+                <!-- Земля -->
                 <path d="M-20,570 Q150,540 300,580 T650,560 T1000,590 T1300,560 L1300,750 L-20,750 Z" class="line" />
                 
                 <ellipse cx="250" cy="610" rx="60" ry="15" class="bg-line" />
@@ -322,7 +324,6 @@
                             <path class="line" d="M970,360 C920,360 910,270 970,270 C1030,270 1020,360 970,360 Z" />
                             <circle class="line" cx="970" cy="305" r="18" />
                             <circle class="solid pupil" cx="970" cy="305" r="7" />
-                            <!-- Виправлено рот на посмішку як в лівого ока -->
                             <path class="bg-line" d="M955,335 Q970,350 985,335" />
                         </g>
                         <circle class="bg-line" cx="880" cy="480" r="15" />
@@ -388,6 +389,8 @@
     </div>
 
     <script>
+        document.body.style.display = 'flex'; // Відкриваємо боді після завантаження стилів
+
         // ================= КОНФІГУРАЦІЯ =================
         const CONFIG = {
             gameId: 'dancing_monsters_ya_yu_ye',
@@ -426,7 +429,7 @@
             console.error("Firebase відключено. Гра працюватиме локально.", e);
         }
 
-        // Функція синхронізації дій
+        // Універсальна функція для швидких transient-дій
         function sendAction(type, data) {
             if (isFirebaseActive) {
                 db.ref(CONFIG.gameId + '/game_action').set({
@@ -514,7 +517,7 @@
                 const url = `${themeBgURL}background_${i}.webp`;
                 try {
                     const response = await fetch(url, { method: 'HEAD' });
-                    if (!response.ok) break; // Зупиняємо перевірку при помилці 404
+                    if (!response.ok) break; 
                     
                     const div = document.createElement('div');
                     div.className = 'theme-card';
@@ -522,32 +525,34 @@
                     div.innerHTML = `<img src="${url}" alt="Фон ${i}"><div class="theme-name">Фон ${i}</div>`;
                     gallery.appendChild(div);
                 } catch (e) {
-                    break; // Зупиняємо при мережевій помилці
+                    break;
                 }
             }
         }
         loadThemes();
 
-        document.getElementById('theme-btn').onclick = () => document.getElementById('theme-modal').style.display = 'block';
-        document.getElementById('theme-close-btn').onclick = () => document.getElementById('theme-modal').style.display = 'none';
+        document.getElementById('theme-btn').onclick = () => {
+            document.getElementById('theme-modal').style.display = 'flex';
+        };
+        document.getElementById('theme-close-btn').onclick = () => {
+            document.getElementById('theme-modal').style.display = 'none';
+        };
 
 
-        // ================= ЛОГІКА ГРИ =================
+        // ================= ЛОГІКА ГРИ ТА СИНХРОНІЗАЦІЯ СЛІВ =================
         const m1Words = ["Земля","Пісня","Зоря","Людина","Синє","Тюльпан","Рядок","Свято","Рюкзак","Ключ","Лялька","Капелюх","Малюнок","Буряк","Дятел","Нюх","Пюре","Любов","Клятва","Грядка","Клюква","Колючка","Шляпа"];
         const m2Words = ["Яблуко","Єнот","Маяк","Каюта","М'ята","Сім'я","Бур'ян","Пір'я","Ялинка","Мрія","Надія","Заєць","Ящірка","Рояль","Читає","Дев'ять","П'ять","Ягода"];
         
         let gameQueue = [];
         let currentIndex = 0;
-        
-        function initGame() {
+        let isAnimating = false;
+
+        function generateShuffledQueue() {
             let combined = [];
             m1Words.forEach(w => combined.push({ word: w, monster: 1 }));
             m2Words.forEach(w => combined.push({ word: w, monster: 2 }));
-            // Shuffle
             combined.sort(() => Math.random() - 0.5);
-            gameQueue = combined;
-            currentIndex = 0;
-            renderCurrentWord();
+            return combined;
         }
 
         function highlightWord(word) {
@@ -556,6 +561,10 @@
 
         function renderCurrentWord() {
             const display = document.getElementById('word-display');
+            if (gameQueue.length === 0) {
+                display.innerHTML = "Завантаження...";
+                return;
+            }
             if (currentIndex >= gameQueue.length) {
                 display.innerHTML = "Слова закінчились!";
                 return;
@@ -563,9 +572,39 @@
             display.innerHTML = highlightWord(gameQueue[currentIndex].word);
         }
 
+        // Синхронізація загального масиву та індексу (Щоб слова і порядок були ідентичними у всіх)
+        if (isFirebaseActive) {
+            const queueRef = db.ref(CONFIG.gameId + '/shared_queue');
+            const indexRef = db.ref(CONFIG.gameId + '/shared_index');
+
+            queueRef.once('value', (snap) => {
+                if (!snap.exists()) {
+                    queueRef.set(generateShuffledQueue());
+                    indexRef.set(0);
+                }
+            });
+
+            queueRef.on('value', (snap) => {
+                if (snap.val()) {
+                    gameQueue = snap.val();
+                    renderCurrentWord();
+                }
+            });
+
+            indexRef.on('value', (snap) => {
+                if (snap.val() !== null) {
+                    currentIndex = snap.val();
+                    renderCurrentWord();
+                }
+            });
+        } else {
+            gameQueue = generateShuffledQueue();
+            currentIndex = 0;
+            renderCurrentWord();
+        }
+
         const m1 = document.getElementById('monster1');
         const m2 = document.getElementById('monster2');
-        let isAnimating = false;
 
         function triggerDance(monsterNum) {
             const m = monsterNum === 1 ? m1 : m2;
@@ -579,7 +618,6 @@
             setTimeout(() => m.classList.remove('wrong-shake'), 400);
         }
 
-        // Обробка подій для гарантованої синхронізації
         function processMonsterClick(monsterNum) {
             if (currentIndex >= gameQueue.length || isAnimating) return;
             const correctMonster = gameQueue[currentIndex].monster;
@@ -587,44 +625,43 @@
             if (monsterNum === correctMonster) {
                 isAnimating = true;
                 triggerDance(monsterNum);
+                sendAction('monster_dance', { m: monsterNum });
+                
                 setTimeout(() => {
-                    currentIndex++;
-                    renderCurrentWord();
                     isAnimating = false;
+                    const nextIndex = currentIndex + 1;
+                    if (isFirebaseActive) {
+                        db.ref(CONFIG.gameId + '/shared_index').set(nextIndex);
+                    } else {
+                        currentIndex = nextIndex;
+                        renderCurrentWord();
+                    }
                 }, 2000);
             } else {
                 triggerWrong(monsterNum);
+                sendAction('monster_wrong', { m: monsterNum });
             }
         }
 
-        function processNav(dir) {
-            if (dir > 0 && currentIndex < gameQueue.length - 1) {
-                currentIndex++;
-                renderCurrentWord();
-            } else if (dir < 0 && currentIndex > 0) {
-                currentIndex--;
-                renderCurrentWord();
-            }
-        }
-
-        // Локальні кліки
-        m1.onclick = () => { sendAction('monster_click', { m: 1 }); processMonsterClick(1); };
-        m2.onclick = () => { sendAction('monster_click', { m: 2 }); processMonsterClick(2); };
+        m1.onclick = () => processMonsterClick(1);
+        m2.onclick = () => processMonsterClick(2);
 
         document.getElementById('next-btn').onclick = () => {
-            if (currentIndex < gameQueue.length - 1) {
-                sendAction('nav', { dir: 1 });
-                processNav(1);
+            if (currentIndex < gameQueue.length - 1 && !isAnimating) {
+                const nextIndex = currentIndex + 1;
+                if (isFirebaseActive) db.ref(CONFIG.gameId + '/shared_index').set(nextIndex);
+                else { currentIndex = nextIndex; renderCurrentWord(); }
             }
         };
         document.getElementById('prev-btn').onclick = () => {
-            if (currentIndex > 0) {
-                sendAction('nav', { dir: -1 });
-                processNav(-1);
+            if (currentIndex > 0 && !isAnimating) {
+                const prevIndex = currentIndex - 1;
+                if (isFirebaseActive) db.ref(CONFIG.gameId + '/shared_index').set(prevIndex);
+                else { currentIndex = prevIndex; renderCurrentWord(); }
             }
         };
 
-        // Слухач для синхронізації дій з інших клієнтів
+        // Слухач для анімацій від інших клієнтів
         if (isFirebaseActive) {
             let lastProcessedTime = 0;
             db.ref(CONFIG.gameId + '/game_action').on('value', (s) => {
@@ -632,15 +669,16 @@
                 if (!val || val.senderId === senderId || val.timestamp <= lastProcessedTime) return;
                 lastProcessedTime = val.timestamp;
 
-                if (val.type === 'monster_click') {
-                    processMonsterClick(val.data.m);
-                } else if (val.type === 'nav') {
-                    processNav(val.data.dir);
+                if (val.type === 'monster_dance') {
+                    isAnimating = true;
+                    triggerDance(val.data.m);
+                    setTimeout(() => isAnimating = false, 2000);
+                } else if (val.type === 'monster_wrong') {
+                    triggerWrong(val.data.m);
                 }
             });
         }
 
-        initGame(); // Запуск
 
         // ================= ЗУМ =================
         let currentZoom = 1;
@@ -764,6 +802,7 @@
         }, {passive:true});
         window.addEventListener('touchend', () => isDraggingPanel = false);
 
+        // Малювання з інших клієнтів
         if (isFirebaseActive) {
             let lastDrawTime = 0;
             db.ref(CONFIG.gameId + '/game_action').on('value', (s) => {
