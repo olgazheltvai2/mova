@@ -16,7 +16,7 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Arial', 'Nunito', sans-serif; /* Arial як основний за вимогою */
             background: linear-gradient(180deg, #2D142C 0%, #510A32 40%, #801336 80%, #C72C41 100%);
             background-size: cover;
             background-position: center;
@@ -52,6 +52,11 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            pointer-events: none; /* Пропускаємо кліки до полотна, де треба - вмикаємо */
+        }
+
+        #game-layer > * {
+            pointer-events: auto;
         }
 
         /* 1. Зона для листочків зверху */
@@ -70,13 +75,14 @@
             display: flex;
             align-items: flex-end;
             z-index: 4;
+            pointer-events: none;
         }
 
         /* 3. Зона збору слова знизу */
         #target-area {
             width: 100%;
             height: 25%;
-            background: rgba(62, 39, 35, 0.85); /* Трохи прозорості для фону */
+            background: rgba(62, 39, 35, 0.85); /* Прозорий контейнер гри */
             border-top: 15px solid #558b2f; 
             display: flex;
             justify-content: center;
@@ -85,7 +91,7 @@
             box-shadow: inset 0 30px 40px -20px rgba(0,0,0,0.9);
             position: relative;
             z-index: 6;
-            flex-wrap: wrap; /* Для мобільних */
+            flex-wrap: wrap; 
         }
 
         #target-area::before {
@@ -97,10 +103,10 @@
             pointer-events: none;
         }
 
-        /* Опущена лисиця */
+        /* Лисиця опущена на зелену лінію */
         #predator-walk-wrapper {
             position: absolute;
-            bottom: -15px; /* Опущено на зелену лінію */
+            bottom: -15px; 
             left: 0;
             will-change: transform;
         }
@@ -179,6 +185,7 @@
             transform: rotate(-45deg); 
             font-size: 3.2rem;
             color: #370617;
+            font-family: 'Nunito', sans-serif;
             text-shadow: 1px 1px 0px rgba(255,255,255,0.8);
         }
 
@@ -223,6 +230,7 @@
         .placed-syllable {
             font-size: 4rem;
             color: #FFB703;
+            font-family: 'Nunito', sans-serif;
             text-shadow: 0 0 25px #E85D04, 3px 3px 0px #370617;
             animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
@@ -235,7 +243,7 @@
         #next-btn {
             position: absolute;
             bottom: 30px;
-            left: 30px; /* Перемістив вліво, щоб не заважав малюванню і темам */
+            left: 30px; /* Зліва, щоб не заважав малюванню і темам */
             width: 75px;
             height: 75px;
             border-radius: 50%;
@@ -294,6 +302,7 @@
             align-items: center;
             cursor: pointer;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            user-select: none;
         }
         .zoom-btn:active { transform: scale(0.95); }
 
@@ -399,7 +408,7 @@
         #close-draw-panel {
             cursor: pointer; font-weight: bold; color: #d32f2f; margin-right: 5px; line-height: 20px;
         }
-        .draw-controls-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .draw-controls-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
         .draw-btn {
             padding: 5px 10px; border: 2px solid #ccc; border-radius: 6px;
             background: #fff; cursor: pointer; font-size: 14px;
@@ -418,7 +427,7 @@
             color: red; font-size: 40px; font-weight: bold; font-family: Arial, sans-serif; text-align: center;
         }
 
-        /* Секретні поля (для майбутнього, якщо потрібно) */
+        /* Секретні поля (для вчителя, якщо будуть інпути) */
         .secret-input { color: transparent; text-shadow: 0 0 0 transparent; }
         .secret-input::selection { background: transparent; color: transparent; }
 
@@ -507,7 +516,7 @@
 
             <div id="target-area"></div>
 
-            <div id="next-btn" onclick="handleNextClick()">
+            <div id="next-btn" onclick="handleNextClick(false)">
                 <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             </div>
         </div>
@@ -549,7 +558,7 @@
     <script>
         // --- 1. Конфігурація та Firebase ---
         const CONFIG = {
-            gameId: 'autumn_words_sync',
+            gameId: 'autumn_words_sync_v2', // Оновлений ID
             firebase: {
                 databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
                 projectId: "lesson-13c44"
@@ -578,7 +587,7 @@
             db = firebase.database();
             isFirebaseActive = true;
         } catch (e) {
-            console.error("Firebase init failed, running offline", e);
+            console.error("Firebase init failed", e);
         }
 
         // --- 2. Радар, Блокування, Лобі ---
@@ -620,7 +629,7 @@
             if (currentZoom < 0.5) currentZoom = 0.5;
             if (currentZoom > 2) currentZoom = 2;
             document.getElementById('game-wrapper').style.transform = `scale(${currentZoom})`;
-            resize(); // Оновити canvas
+            resize(); // Оновити фон
         }
 
         // --- 4. Синхронізація Дій ---
@@ -631,29 +640,6 @@
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 type: type,
                 data: data
-            });
-        }
-
-        if (isFirebaseActive) {
-            db.ref(`games/${CONFIG.gameId}/game_action`).on('value', snap => {
-                const action = snap.val();
-                if (!action) return;
-                const isRemote = action.senderId !== senderId;
-                
-                if (action.type === 'init_word') {
-                    applyInitWord(action.data, isRemote);
-                } else if (action.type === 'click_syllable') {
-                    processClickSyllable(action.data.index, action.data.expectedIndex, isRemote);
-                } else if (action.type === 'fox_sync') {
-                    if (isRemote) {
-                        predatorX = action.data.x;
-                        predatorDir = action.data.dir;
-                    }
-                } else if (action.type === 'draw_line' && isRemote) {
-                    remoteDrawLine(action.data);
-                } else if (action.type === 'clear_canvas' && isRemote) {
-                    dCtx.clearRect(0, 0, dCanvas.width, dCanvas.height);
-                }
             });
         }
 
@@ -801,14 +787,10 @@
         function endDraw() { isDrawing = false; }
 
         function drawLineLocally(x0, y0, x1, y1, tool, color, width) {
-            dCtx.beginPath();
-            dCtx.moveTo(x0, y0);
-            dCtx.lineTo(x1, y1);
+            dCtx.beginPath(); dCtx.moveTo(x0, y0); dCtx.lineTo(x1, y1);
             dCtx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
             dCtx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-            dCtx.lineWidth = width;
-            dCtx.lineCap = 'round';
-            dCtx.lineJoin = 'round';
+            dCtx.lineWidth = width; dCtx.lineCap = 'round'; dCtx.lineJoin = 'round';
             dCtx.stroke();
         }
 
@@ -830,23 +812,21 @@
         const header = document.getElementById('draw-panel-header');
         let isDraggingPanel = false, panelOffset = {x:0, y:0};
         header.addEventListener('mousedown', e => {
-            isDraggingPanel = true;
-            panelOffset = { x: e.clientX - panel.offsetLeft, y: e.clientY - panel.offsetTop };
+            isDraggingPanel = true; panelOffset = { x: e.clientX - panel.offsetLeft, y: e.clientY - panel.offsetTop };
         });
         window.addEventListener('mousemove', e => {
             if(isDraggingPanel) { panel.style.left = (e.clientX - panelOffset.x) + 'px'; panel.style.top = (e.clientY - panelOffset.y) + 'px'; }
         });
         window.addEventListener('mouseup', () => isDraggingPanel = false);
         header.addEventListener('touchstart', e => {
-            isDraggingPanel = true;
-            panelOffset = { x: e.touches[0].clientX - panel.offsetLeft, y: e.touches[0].clientY - panel.offsetTop };
+            isDraggingPanel = true; panelOffset = { x: e.touches[0].clientX - panel.offsetLeft, y: e.touches[0].clientY - panel.offsetTop };
         }, {passive:true});
         window.addEventListener('touchmove', e => {
             if(isDraggingPanel) { panel.style.left = (e.touches[0].clientX - panelOffset.x) + 'px'; panel.style.top = (e.touches[0].clientY - panelOffset.y) + 'px'; }
         }, {passive:true});
         window.addEventListener('touchend', () => isDraggingPanel = false);
 
-        // --- 7. Логіка Гри та Синхронізація ---
+        // --- 7. Логіка Гри та Синхронізація Станів ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         function playSound(type) {
@@ -854,8 +834,7 @@
             const now = audioCtx.currentTime;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
+            osc.connect(gain); gain.connect(audioCtx.destination);
 
             if (type === 'bite') { 
                 osc.type = 'triangle'; osc.frequency.setValueAtTime(800, now);
@@ -911,14 +890,12 @@
         }
         walkLoop();
 
-        // Синхронізація лисиці кожні 1.5 секунди
         setInterval(() => {
             if (isFirebaseActive && (document.hasFocus() || window.name === 'host')) {
                 sendAction('fox_sync', { x: predatorX, dir: predatorDir });
             }
         }, 1500);
 
-        // Словник (рівно 20 слів)
         const words = [
             ["ли", "си", "ця"], ["о", "сінь"], ["де", "ре", "во"], ["гри", "бо", "чок"],
             ["лі", "сок"], ["гіл", "ка"], ["лис", "тя"], ["сос", "на"], ["со", "ва"],
@@ -930,7 +907,7 @@
         let wordQueue = [];
         let currentWord = [];
         let expectedIndex = 0;
-        let currentSyllablesData = [];
+        let hasInitialized = false;
         
         const playArea = document.getElementById('play-area');
         const targetArea = document.getElementById('target-area');
@@ -957,8 +934,7 @@
                 const p = document.createElement('div');
                 p.className = 'particle';
                 p.style.left = x + 'px'; p.style.top = y + 'px';
-                p.style.width = Math.random() * 15 + 8 + 'px';
-                p.style.height = p.style.width;
+                p.style.width = Math.random() * 15 + 8 + 'px'; p.style.height = p.style.width;
                 p.style.background = colors[Math.floor(Math.random()*colors.length)];
                 p.style.borderRadius = '0 50% 50% 50%';
                 const angle = Math.random() * Math.PI * 2;
@@ -970,7 +946,41 @@
             }
         }
 
-        function handleNextClick() {
+        // --- Firebase Listeners (для слова і кліків) ---
+        if (isFirebaseActive) {
+            // Слухач глобального стану слова
+            db.ref(`games/${CONFIG.gameId}/current_word`).on('value', snap => {
+                const data = snap.val();
+                if (data && (!window.currentWordData || window.currentWordData.timestamp !== data.timestamp)) {
+                    hasInitialized = true;
+                    applyInitWord(data, true);
+                }
+            });
+
+            // Слухач подій натискань
+            db.ref(`games/${CONFIG.gameId}/game_action`).on('value', snap => {
+                const action = snap.val();
+                if (!action) return;
+                const isRemote = action.senderId !== senderId;
+                
+                if (isRemote) {
+                    if (action.type === 'click_correct') {
+                        processClickCorrect(action.data.index, action.data.expectedIndex, true);
+                    } else if (action.type === 'click_wrong') {
+                        processClickWrong(action.data.index, true);
+                    } else if (action.type === 'fox_sync') {
+                        predatorX = action.data.x;
+                        predatorDir = action.data.dir;
+                    } else if (action.type === 'draw_line') {
+                        remoteDrawLine(action.data);
+                    } else if (action.type === 'clear_canvas') {
+                        dCtx.clearRect(0, 0, dCanvas.width, dCanvas.height);
+                    }
+                }
+            });
+        }
+
+        function handleNextClick(isAutoLaunch) {
             const wIdx = getNextWordIndex();
             const wData = words[wIdx];
             
@@ -996,16 +1006,19 @@
                 s.animDelay = Math.random();
             });
 
-            const data = { wordIndex: wIdx, syllables: syllData };
+            const data = { wordIndex: wIdx, syllables: syllData, timestamp: Date.now() };
             applyInitWord(data, false);
-            sendAction('init_word', data);
+            
+            if (isFirebaseActive) {
+                db.ref(`games/${CONFIG.gameId}/current_word`).set(data);
+            }
         }
 
         function applyInitWord(data, isRemote) {
             playArea.innerHTML = ''; targetArea.innerHTML = '';
             expectedIndex = 0;
+            window.currentWordData = data;
             currentWord = words[data.wordIndex];
-            currentSyllablesData = data.syllables;
 
             currentWord.forEach(() => {
                 const slot = document.createElement('div');
@@ -1016,64 +1029,78 @@
             const areaWidth = playArea.clientWidth - 160;
             const areaHeight = playArea.clientHeight - 160;
 
-            currentSyllablesData.forEach((syll, renderIdx) => {
+            data.syllables.forEach((syll, renderIdx) => {
                 const bubble = document.createElement('div');
                 bubble.className = 'leaf-bubble';
                 bubble.id = 'bubble_' + renderIdx;
                 bubble.innerHTML = `<div class="leaf-inner">${syll.text}</div>`;
                 
+                // Координати відносно ширини екрану для ідеальної синхронізації
                 bubble.style.left = `${syll.x * areaWidth}px`;
                 bubble.style.top = `${syll.y * areaHeight}px`;
                 bubble.style.animationDelay = `${syll.animDelay}s`;
 
                 bubble.onclick = () => {
-                    processClickSyllable(renderIdx, expectedIndex, false);
-                    sendAction('click_syllable', { index: renderIdx, expectedIndex: expectedIndex });
+                    if (bubble.style.opacity === '0') return;
+                    const currentExpected = expectedIndex;
+                    
+                    if (syll.correctIndex === currentExpected) {
+                        processClickCorrect(renderIdx, currentExpected, false);
+                        sendAction('click_correct', { index: renderIdx, expectedIndex: currentExpected });
+                    } else {
+                        processClickWrong(renderIdx, false);
+                        sendAction('click_wrong', { index: renderIdx });
+                    }
                 };
 
                 playArea.appendChild(bubble);
             });
         }
 
-        function processClickSyllable(renderIdx, syncExpectedIndex, isRemote) {
-            // Захист від розсинхрону
-            if (expectedIndex !== syncExpectedIndex) return; 
-
-            const syll = currentSyllablesData[renderIdx];
+        function processClickCorrect(renderIdx, syncExpectedIndex, isRemote) {
+            if (expectedIndex !== syncExpectedIndex) return; // Захист від розсинхрону
+            
+            const syll = window.currentWordData.syllables[renderIdx];
             const bubble = document.getElementById('bubble_' + renderIdx);
             if (!bubble || bubble.style.opacity === '0') return;
 
-            if (syll.correctIndex === expectedIndex) {
-                predatorBite();
-                const rect = bubble.getBoundingClientRect();
-                createParticles(rect.left + (rect.width/2), rect.top + (rect.height/2));
-                
-                bubble.style.opacity = '0';
-                bubble.style.pointerEvents = 'none';
-                bubble.style.transform = 'scale(0) rotate(90deg)';
+            predatorBite();
+            const rect = bubble.getBoundingClientRect();
+            createParticles(rect.left + (rect.width/2), rect.top + (rect.height/2));
+            
+            bubble.style.opacity = '0';
+            bubble.style.pointerEvents = 'none';
+            bubble.style.transform = 'scale(0) rotate(90deg)';
 
-                const slot = targetArea.children[expectedIndex];
-                slot.style.border = 'none';
-                slot.style.background = 'transparent';
-                slot.style.boxShadow = 'none';
-                slot.innerHTML = `<span class="placed-syllable">${syll.text}</span>`;
-                
-                expectedIndex++;
+            const slot = targetArea.children[expectedIndex];
+            slot.style.border = 'none';
+            slot.style.background = 'transparent';
+            slot.style.boxShadow = 'none';
+            slot.innerHTML = `<span class="placed-syllable">${syll.text}</span>`;
+            
+            expectedIndex++;
 
-                if (expectedIndex === currentWord.length) {
-                    setTimeout(() => {
-                        playSound('success');
-                        const targetRect = targetArea.getBoundingClientRect();
-                        createParticles(targetRect.left + targetRect.width/2, targetRect.top + targetRect.height/2, true);
-                        if (!isRemote) setTimeout(handleNextClick, 2000);
-                    }, 400);
-                }
-            } else {
-                predatorShake();
-                bubble.classList.remove('wrong');
-                void bubble.offsetWidth; 
-                bubble.classList.add('wrong');
+            if (expectedIndex === currentWord.length) {
+                setTimeout(() => {
+                    playSound('success');
+                    const targetRect = targetArea.getBoundingClientRect();
+                    createParticles(targetRect.left + targetRect.width/2, targetRect.top + targetRect.height/2, true);
+                    
+                    // Тільки той, хто натискав останнім (або вчитель), запускає нове слово
+                    if (!isRemote) {
+                        setTimeout(() => handleNextClick(false), 2000);
+                    }
+                }, 400);
             }
+        }
+
+        function processClickWrong(renderIdx, isRemote) {
+            const bubble = document.getElementById('bubble_' + renderIdx);
+            if (!bubble) return;
+            predatorShake();
+            bubble.classList.remove('wrong');
+            void bubble.offsetWidth; 
+            bubble.classList.add('wrong');
         }
 
         // --- 8. Canvas Фон: Деталізований Осінній Ліс ---
@@ -1160,7 +1187,13 @@
         // Запуск
         resize();
         animate(0);
-        setTimeout(() => handleNextClick(), 500); // Автозапуск першого слова
+
+        // Якщо за секунду гра не завантажилася з Firebase, генеруємо слово самі
+        setTimeout(() => {
+            if (!hasInitialized) {
+                handleNextClick(true);
+            }
+        }, 1000);
 
     </script>
 </body>
