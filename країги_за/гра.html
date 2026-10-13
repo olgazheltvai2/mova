@@ -680,7 +680,7 @@
     <script>
         // === КОНФІГУРАЦІЯ ===
         const CONFIG = {
-            gameId: 'sound_schemes_journey_003', // Унікальний ID гри
+            gameId: 'sound_schemes_journey_004', // Унікальний ID гри
             firebaseProjectId: 'lesson-13c44'
         };
 
@@ -725,7 +725,6 @@
             document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
         });
 
-        // Виправлення нескінченного оновлення сторінки (Force Refresh)
         let isFirstRefreshLoad = true;
         db.ref('force_refresh').on('value', (snap) => {
             if (isFirstRefreshLoad) {
@@ -810,7 +809,6 @@
             }
         }
 
-        // Збереження та завантаження індивідуального фону саме для цієї гри
         const localSavedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
         if (localSavedTheme) {
             applyTheme(localSavedTheme);
@@ -1079,6 +1077,8 @@
         const modalVideo = document.getElementById('modalVideo');
         const closeBtn = document.getElementById('closeBtn');
         const autoplayOverlay = document.getElementById('video-autoplay-overlay');
+        
+        let suppressVideoEvents = false; // Блокувальник зворотних подій для уникнення гальмування/циклів
 
         thumbnails.forEach(thumb => {
             thumb.addEventListener('click', () => {
@@ -1088,7 +1088,6 @@
             });
         });
 
-        // Клік по оверлею (якщо браузер заблокував автоплей на іншому пристрої)
         autoplayOverlay.addEventListener('click', () => {
             autoplayOverlay.style.display = 'none';
             modalVideo.play().catch(e => console.log("Все ще заблоковано", e));
@@ -1102,7 +1101,6 @@
             let playPromise = modalVideo.play();
             if (playPromise !== undefined) {
                 playPromise.catch(error => {
-                    // Якщо заблоковано (зазвичай у віддалених користувачів) - показуємо оверлей
                     autoplayOverlay.style.display = 'flex';
                 });
             }
@@ -1123,23 +1121,25 @@
             sendGameAction('video_close', {});
         });
 
-        // Відстеження подій відео ініціатора
+        // Слухаємо системні події плеєра, АЛЕ блокуємо відправку, якщо ми самі їх щойно ініціювали
         modalVideo.addEventListener('play', () => {
-            autoplayOverlay.style.display = 'none'; // про всяк випадок ховаємо
-            if(!isRemoteAction) sendGameAction('video_sync', { state: 'play', time: modalVideo.currentTime });
+            autoplayOverlay.style.display = 'none';
+            if(!suppressVideoEvents) sendGameAction('video_sync', { state: 'play', time: modalVideo.currentTime });
         });
         modalVideo.addEventListener('pause', () => {
-            if(!isRemoteAction) sendGameAction('video_sync', { state: 'pause', time: modalVideo.currentTime });
+            if(!suppressVideoEvents) sendGameAction('video_sync', { state: 'pause', time: modalVideo.currentTime });
         });
         modalVideo.addEventListener('seeked', () => {
-            if(!isRemoteAction) sendGameAction('video_sync', { state: 'seeked', time: modalVideo.currentTime });
+            if(!suppressVideoEvents) sendGameAction('video_sync', { state: 'seeked', time: modalVideo.currentTime });
         });
 
         function remoteVideoOpen(data) { openVideoModal(data.src); }
         function remoteVideoClose() { closeVideoModal(); }
         
         function remoteVideoSync(data) {
-            // Синхронізація часу, якщо різниця більше ніж півсекунди
+            // Вмикаємо блокування, щоб браузер не відправив 'seeked' назад і не створив цикл
+            suppressVideoEvents = true; 
+
             if (Math.abs(modalVideo.currentTime - data.time) > 0.5) {
                 modalVideo.currentTime = data.time;
             }
@@ -1155,6 +1155,9 @@
             if (data.state === 'pause') {
                 modalVideo.pause();
             }
+
+            // Знімаємо блокування через 500мс (достатньо часу, щоб браузер "перетравив" подію)
+            setTimeout(() => { suppressVideoEvents = false; }, 500);
         }
 
         // === ГЛОБАЛЬНЕ МАЛЮВАННЯ ===
