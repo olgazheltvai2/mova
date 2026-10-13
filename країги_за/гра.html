@@ -109,7 +109,7 @@
             transform: translateY(-10px);
         }
 
-        /* Мініатюри відео (з показом першого кадру) */
+        /* Мініатюри відео */
         .video-thumbnail {
             width: 100%;
             height: 180px;
@@ -120,6 +120,8 @@
             cursor: pointer;
             box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
             margin-bottom: 20px;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
         }
         .video-thumbnail video.preview-video {
             width: 100%;
@@ -157,6 +159,40 @@
             border-width: 12px 0 12px 20px;
             border-color: transparent transparent transparent #fff;
             margin-left: 5px;
+        }
+
+        /* Анімація та індикатор перегляду відео іншим користувачем */
+        @keyframes watchingPulse {
+            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.8); }
+            70% { box-shadow: 0 0 0 15px rgba(231, 76, 60, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+        }
+        .video-thumbnail.is-watching {
+            border: 4px solid #e74c3c;
+            animation: watchingPulse 2s infinite;
+        }
+        /* Додатковий бейдж для мініатюри */
+        .video-thumbnail::before {
+            content: '👁️ Перегляд...';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(231, 76, 60, 0.95);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 10;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        .video-thumbnail.is-watching::before {
+            opacity: 1;
+            transform: translateY(0);
         }
 
         /* Текст завдання та зона скидання */
@@ -299,27 +335,6 @@
             border-radius: 20px;
             box-shadow: 0 0 50px rgba(255,255,255,0.2);
             background: #000;
-        }
-        
-        /* Оверлей для розблокування автоплею */
-        #video-autoplay-overlay {
-            display: none;
-            position: absolute;
-            top: 8px; left: 8px; right: 8px; bottom: 8px; /* враховуємо border відео */
-            background: rgba(0, 0, 0, 0.75);
-            border-radius: 12px;
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            cursor: pointer;
-            flex-direction: column;
-            backdrop-filter: blur(5px);
-        }
-        #video-autoplay-overlay:hover {
-            background: rgba(0, 0, 0, 0.65);
         }
 
         .close-btn {
@@ -668,11 +683,6 @@
     <div class="video-modal" id="videoModal">
         <div class="video-modal-content">
             <video id="modalVideo" controls playsinline></video>
-            <!-- Оверлей для обходу блокування автоплею -->
-            <div id="video-autoplay-overlay">
-                <span style="font-size: 60px; margin-bottom: 15px;">▶️</span>
-                <span style="font-size: 20px; font-weight: bold;">Натисніть для синхронізації відео</span>
-            </div>
             <button class="close-btn" id="closeBtn">Згорнути відео</button>
         </div>
     </div>
@@ -680,7 +690,7 @@
     <script>
         // === КОНФІГУРАЦІЯ ===
         const CONFIG = {
-            gameId: 'sound_schemes_journey_004', // Унікальний ID гри
+            gameId: 'sound_schemes_journey_007', // Унікальний ID гри для localStorage
             firebaseProjectId: 'lesson-13c44'
         };
 
@@ -718,6 +728,10 @@
 
         window.addEventListener('beforeunload', () => {
             myPresenceRef.remove();
+            // Якщо вкладка закривається, примусово знімаємо статус "дивиться відео"
+            if(currentPlayingVideoSrc) {
+                sendGameAction('video_watching_stop', { src: currentPlayingVideoSrc });
+            }
         });
 
         // Блокування (Екран-заглушка)
@@ -725,6 +739,7 @@
             document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
         });
 
+        // Ігнорування першого завантаження для force_refresh
         let isFirstRefreshLoad = true;
         db.ref('force_refresh').on('value', (snap) => {
             if (isFirstRefreshLoad) {
@@ -736,11 +751,13 @@
             }
         });
 
-        // Повернення в Лобі (з імунітетом)
-        let hasImmunity = true;
-        setTimeout(() => { hasImmunity = false; }, 1000);
+        // Повернення в Лобі (з імунітетом першого завантаження незалежно від швидкості інтернету)
+        let isFirstActivityLoad = true;
         db.ref('current_activity').on('value', (snap) => {
-            if (hasImmunity) return;
+            if (isFirstActivityLoad) {
+                isFirstActivityLoad = false;
+                return; // Ігноруємо найперший статус бази при завантаженні сторінки
+            }
             if (snap.val() === 'lobby') {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
@@ -768,11 +785,12 @@
                 if (val.type === 'drag_move') remoteDragMove(val.data);
                 if (val.type === 'drag_fail') remoteDragFail(val.data);
                 if (val.type === 'drop_success') remoteDropSuccess(val.data);
-                if (val.type === 'video_open') remoteVideoOpen(val.data);
-                if (val.type === 'video_close') remoteVideoClose();
-                if (val.type === 'video_sync') remoteVideoSync(val.data);
                 if (val.type === 'draw_line') drawLineOnCanvas(val.data);
                 if (val.type === 'clear_canvas') clearCanvasLocal();
+                
+                // Індикація перегляду відео іншим користувачем
+                if (val.type === 'video_watching_start') remoteVideoWatchingStart(val.data);
+                if (val.type === 'video_watching_stop') remoteVideoWatchingStop(val.data);
             } finally {
                 isRemoteAction = false;
             }
@@ -1071,44 +1089,39 @@
             }
         }
 
-        // === ЛОГІКА ВІДЕОПЛЕЄРА ТА ОБХІД БЛОКУВАННЯ АВТОПЛЕЮ ===
+        // === ЛОГІКА ВІДЕОПЛЕЄРА (ЛЕГКА ІНДИКАЦІЯ ЗАМІСТЬ СИНХРОНІЗАЦІЇ) ===
         const thumbnails = document.querySelectorAll('.video-thumbnail');
         const modal = document.getElementById('videoModal');
         const modalVideo = document.getElementById('modalVideo');
         const closeBtn = document.getElementById('closeBtn');
-        const autoplayOverlay = document.getElementById('video-autoplay-overlay');
-        
-        let suppressVideoEvents = false; // Блокувальник зворотних подій для уникнення гальмування/циклів
+        let currentPlayingVideoSrc = null;
 
         thumbnails.forEach(thumb => {
             thumb.addEventListener('click', () => {
                 const videoSrc = thumb.getAttribute('data-video');
                 openVideoModal(videoSrc);
-                sendGameAction('video_open', { src: videoSrc });
+                // Відправляємо сигнал, що ми почали дивитись саме це відео
+                sendGameAction('video_watching_start', { src: videoSrc });
             });
         });
 
-        autoplayOverlay.addEventListener('click', () => {
-            autoplayOverlay.style.display = 'none';
-            modalVideo.play().catch(e => console.log("Все ще заблоковано", e));
-        });
-
         function openVideoModal(src) {
+            currentPlayingVideoSrc = src;
             modalVideo.src = src;
             modal.style.display = 'flex';
             setTimeout(() => modal.classList.add('active'), 10);
-            
-            let playPromise = modalVideo.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(error => {
-                    autoplayOverlay.style.display = 'flex';
-                });
-            }
+            modalVideo.play().catch(e => console.log("Відтворення вимагає дії", e));
         }
 
         function closeVideoModal() {
             modal.classList.remove('active');
-            autoplayOverlay.style.display = 'none';
+            
+            // Відправляємо сигнал, що ми припинили дивитись відео
+            if(currentPlayingVideoSrc) {
+                sendGameAction('video_watching_stop', { src: currentPlayingVideoSrc });
+                currentPlayingVideoSrc = null;
+            }
+
             setTimeout(() => {
                 modalVideo.pause();
                 modalVideo.src = "";
@@ -1116,48 +1129,23 @@
             }, 300);
         }
 
-        closeBtn.addEventListener('click', () => {
-            closeVideoModal();
-            sendGameAction('video_close', {});
-        });
+        closeBtn.addEventListener('click', closeVideoModal);
 
-        // Слухаємо системні події плеєра, АЛЕ блокуємо відправку, якщо ми самі їх щойно ініціювали
-        modalVideo.addEventListener('play', () => {
-            autoplayOverlay.style.display = 'none';
-            if(!suppressVideoEvents) sendGameAction('video_sync', { state: 'play', time: modalVideo.currentTime });
-        });
-        modalVideo.addEventListener('pause', () => {
-            if(!suppressVideoEvents) sendGameAction('video_sync', { state: 'pause', time: modalVideo.currentTime });
-        });
-        modalVideo.addEventListener('seeked', () => {
-            if(!suppressVideoEvents) sendGameAction('video_sync', { state: 'seeked', time: modalVideo.currentTime });
-        });
-
-        function remoteVideoOpen(data) { openVideoModal(data.src); }
-        function remoteVideoClose() { closeVideoModal(); }
-        
-        function remoteVideoSync(data) {
-            // Вмикаємо блокування, щоб браузер не відправив 'seeked' назад і не створив цикл
-            suppressVideoEvents = true; 
-
-            if (Math.abs(modalVideo.currentTime - data.time) > 0.5) {
-                modalVideo.currentTime = data.time;
-            }
-            
-            if (data.state === 'play' || data.state === 'seeked') {
-                let playPromise = modalVideo.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(error => {
-                        autoplayOverlay.style.display = 'flex';
-                    });
+        // Функції для обробки сигналів від іншого користувача
+        function remoteVideoWatchingStart(data) {
+            thumbnails.forEach(thumb => {
+                if(thumb.getAttribute('data-video') === data.src) {
+                    thumb.classList.add('is-watching');
                 }
-            }
-            if (data.state === 'pause') {
-                modalVideo.pause();
-            }
+            });
+        }
 
-            // Знімаємо блокування через 500мс (достатньо часу, щоб браузер "перетравив" подію)
-            setTimeout(() => { suppressVideoEvents = false; }, 500);
+        function remoteVideoWatchingStop(data) {
+            thumbnails.forEach(thumb => {
+                if(thumb.getAttribute('data-video') === data.src) {
+                    thumb.classList.remove('is-watching');
+                }
+            });
         }
 
         // === ГЛОБАЛЬНЕ МАЛЮВАННЯ ===
