@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подорож: Звукові схеми</title>
+    <!-- Firebase Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    
+    <style>
+        /* Складний сюжетний фон */
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+            background: 
+                url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="none"><path d="M0,500 C200,400 400,600 600,450 C800,300 1000,550 1200,400 L1200,800 L0,800 Z" fill="%238fd165" opacity="0.8"/><path d="M0,600 C300,500 500,700 800,550 C1000,450 1100,600 1200,500 L1200,800 L0,800 Z" fill="%2368b040" opacity="0.9"/></svg>'),
+                linear-gradient(to bottom, #87CEEB 0%, #e0f6ff 60%, #fff6d9 100%);
+            background-size: cover;
+            background-attachment: fixed;
+            background-position: center;
+            background-repeat: no-repeat;
+            overflow: hidden;
+            user-select: none;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Декоративні хмари на фоні */
+        .cloud {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 50px;
+            z-index: -1;
+        }
+        .cloud::before, .cloud::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+        }
+        .cloud1 { width: 120px; height: 40px; top: 10%; left: 15%; animation: float 25s linear infinite; }
+        .cloud1::before { width: 60px; height: 60px; top: -30px; left: 15px; }
+        .cloud1::after { width: 45px; height: 45px; top: -20px; left: 60px; }
+        
+        .cloud2 { width: 160px; height: 50px; top: 20%; right: 10%; animation: float 35s linear infinite reverse; }
+        .cloud2::before { width: 70px; height: 70px; top: -40px; left: 25px; }
+        .cloud2::after { width: 60px; height: 60px; top: -30px; left: 80px; }
+
+        @keyframes float {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(100px); }
+            100% { transform: translateX(0); }
+        }
+
+        #game-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transform-origin: center center;
+            transition: transform 0.2s ease;
+        }
+
+        /* Контейнер для завдань */
+        .game-container {
+            display: flex;
+            justify-content: space-around;
+            width: 95%;
+            max-width: 1400px;
+            z-index: 10;
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        /* Адаптивність (Mobile Friendly) */
+        @media (max-width: 900px) {
+            body { overflow-y: auto; overflow-x: hidden; justify-content: flex-start; padding-top: 50px; }
+            .game-container { flex-direction: column; align-items: center; gap: 40px; }
+            .task-card { width: 90%; max-width: 400px; }
+            .words-container { flex-wrap: wrap; justify-content: center; }
+            #game-wrapper { height: auto; padding-bottom: 100px; }
+        }
+
+        /* Картка окремого завдання (максимально прозорі) */
+        .task-card {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            text-align: center;
+            border: 4px solid rgba(255, 179, 71, 0.7);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.3s;
+        }
+        .task-card:hover {
+            transform: translateY(-10px);
+        }
+
+        /* Мініатюри відео (з показом першого кадру) */
+        .video-thumbnail {
+            width: 100%;
+            height: 180px;
+            background-color: #333;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        .video-thumbnail video.preview-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            pointer-events: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .play-icon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 179, 71, 0.9);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            transition: transform 0.2s, background 0.2s;
+            z-index: 2;
+        }
+        .video-thumbnail:hover .play-icon {
+            transform: translate(-50%, -50%) scale(1.1);
+            background: #ff9d00;
+        }
+        .play-icon::after {
+            content: '';
+            border-style: solid;
+            border-width: 12px 0 12px 20px;
+            border-color: transparent transparent transparent #fff;
+            margin-left: 5px;
+        }
+
+        /* Текст завдання та зона скидання */
+        .task-text {
+            font-size: 22px;
+            color: #2c3e50;
+            font-weight: bold;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: auto;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+        }
+
+        .drop-zone {
+            min-width: 250px;
+            min-height: 70px;
+            background: rgba(255, 223, 186, 0.6);
+            border: 3px dashed #ffb347;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .drop-zone.active {
+            background: rgba(144, 238, 144, 0.6);
+            border-color: #2ecc71;
+            transform: scale(1.05);
+        }
+
+        /* Звукові схеми */
+        .sound-scheme {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .symbol {
+            width: 18px;
+            height: 18px;
+            display: inline-block;
+        }
+        .symbol.vowel {
+            background-color: #e74c3c;
+            border-radius: 50%;
+            border: 2px solid #c0392b;
+        }
+        .symbol.hard {
+            background-color: #2980b9;
+            height: 6px;
+            border-radius: 3px;
+            width: 22px;
+            margin: 6px 0;
+        }
+        .symbol.soft {
+            border-top: 5px solid #27ae60;
+            border-bottom: 5px solid #27ae60;
+            height: 14px;
+            width: 22px;
+            box-sizing: border-box;
+        }
+
+        /* Кнопки з назвами країн */
+        .words-container {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+            z-index: 10;
+        }
+        .draggable-word {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+            color: #d32f2f;
+            font-size: 26px;
+            font-weight: 900;
+            padding: 12px 35px;
+            border-radius: 30px;
+            cursor: grab;
+            box-shadow: 0 8px 20px rgba(211, 47, 47, 0.3);
+            border: 3px solid #ff758c;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            position: relative;
+            touch-action: none;
+            transition: transform 0.1s;
+        }
+        .draggable-word:active {
+            cursor: grabbing;
+        }
+        .draggable-word.dragging {
+            position: absolute !important;
+            z-index: 1000;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.4);
+            transform: scale(1.1) !important;
+            transition: none;
+        }
+        .draggable-word.remote-moving {
+            position: absolute !important;
+            z-index: 999;
+            pointer-events: none;
+            opacity: 0.8;
+            transition: left 0.1s linear, top 0.1s linear;
+        }
+
+        /* Повноекранне відео з анімацією збільшення */
+        .video-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 9999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .video-modal.active {
+            display: flex;
+            opacity: 1;
+        }
+        .video-modal-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transform: scale(0.5);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .video-modal.active .video-modal-content {
+            transform: scale(1);
+        }
+        .video-modal video {
+            max-width: 90vw;
+            max-height: 80vh;
+            border: 8px solid #fff;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(255,255,255,0.2);
+        }
+        .close-btn {
+            margin-top: 25px;
+            padding: 15px 40px;
+            background: #e74c3c;
+            color: #fff;
+            font-size: 22px;
+            font-weight: bold;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+            transition: all 0.2s;
+        }
+        .close-btn:hover {
+            background: #c0392b;
+            transform: scale(1.05);
+        }
+
+        /* Анімації успіху / помилки */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            50% { transform: translateX(10px); }
+            75% { transform: translateX(-10px); }
+        }
+        .shake { animation: shake 0.4s ease-in-out; }
+
+        /* Екран заглушка */
+        #block-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: #ff4d4d;
+            font-size: 40px;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Теми / Налаштування */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #34495e;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 10000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #theme-modal {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            z-index: 10001;
+            display: none;
+            width: 90%;
+            max-width: 600px;
+            max-height: 60vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        #theme-modal-close {
+            position: absolute;
+            top: 10px; right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .theme-item {
+            position: relative;
+            cursor: pointer;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 3px solid transparent;
+            height: 80px;
+            background-color: #eee;
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        .theme-item:hover { border-color: #3498db; }
+        .theme-item.active { border-color: #2ecc71; }
+        .theme-item-text {
+            background: rgba(0,0,0,0.6);
+            color: white;
+            width: 100%;
+            padding: 5px 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        /* Глобальне малювання */
+        #draw-canvas-global {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 90000;
+            pointer-events: none;
+        }
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px; right: 20px;
+            background: #8e44ad;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            padding: 12px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 90001;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #draw-panel-global {
+            position: fixed;
+            bottom: 140px; right: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            z-index: 90002;
+            display: none;
+            flex-direction: column;
+            width: 200px;
+            overflow: hidden;
+        }
+        #draw-panel-header {
+            background: #f1f2f6;
+            padding: 8px;
+            cursor: grab;
+            display: flex;
+            justify-content: flex-end;
+            border-bottom: 1px solid #dfe4ea;
+        }
+        #draw-panel-header:active { cursor: grabbing; }
+        #draw-close-btn {
+            background: none; border: none; font-size: 16px; cursor: pointer; color: #57606f;
+        }
+        .draw-controls {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .draw-btn {
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            background: #ecf0f1;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            font-family: Arial, sans-serif;
+        }
+        .draw-btn.active { background: #3498db; color: white; }
+        input[type="range"] { width: 100%; }
+        input[type="color"] { width: 100%; height: 30px; border: none; cursor: pointer; }
+        
+        /* Зум інструменти */
+        .zoom-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 10000;
+        }
+        .zoom-btn {
+            background: rgba(255, 255, 255, 0.8);
+            border: 2px solid #2c3e50;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            color: #2c3e50;
+            transition: background 0.2s;
+        }
+        .zoom-btn:hover { background: #fff; transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <!-- Canvas для глобального малювання -->
+    <canvas id="draw-canvas-global"></canvas>
+    
+    <!-- Інструменти масштабування -->
+    <div class="zoom-controls">
+        <button class="zoom-btn" id="btn-zoom-in" title="Наблизити">🔍+</button>
+        <button class="zoom-btn" id="btn-zoom-out" title="Віддалити">🔍-</button>
+    </div>
+
+    <!-- Кнопка та панель малювання -->
+    <button id="toggle-draw-btn-global">✏️ Малювати</button>
+    <div id="draw-panel-global">
+        <div id="draw-panel-header">
+            <button id="draw-close-btn">✕</button>
+        </div>
+        <div class="draw-controls">
+            <button class="draw-btn active" id="tool-pencil">✏️ Олівець</button>
+            <button class="draw-btn" id="tool-eraser">🧽 Гумка</button>
+            <input type="range" id="draw-thickness" min="1" max="50" value="5">
+            <input type="color" id="draw-color" value="#ff0000">
+            <button class="draw-btn" id="tool-clear">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <!-- Кнопка налаштувань фону -->
+    <button id="theme-btn" title="Налаштування фону">⚙️</button>
+    <div id="theme-modal">
+        <button id="theme-modal-close">✕</button>
+        <h3 style="margin-top:0; text-align:center;">Оберіть фон</h3>
+        <div class="theme-grid" id="theme-grid">
+            <!-- Картки генеруються скриптом -->
+        </div>
+    </div>
+
+    <!-- Декоративні хмари на фоні -->
+    <div class="cloud cloud1"></div>
+    <div class="cloud cloud2"></div>
+
+    <div id="game-wrapper">
+        <div class="game-container">
+            <!-- Завдання 1: Греція -->
+            <div class="task-card">
+                <div class="video-thumbnail" data-video="греція.mp4" id="thumb-1">
+                    <video class="preview-video" src="греція.mp4#t=0.1" preload="metadata" muted playsinline></video>
+                    <div class="play-icon"></div>
+                </div>
+                <div class="task-text">
+                    <span>Маша мріє відвідати</span>
+                    <div class="drop-zone" data-country="Греція" id="zone-greece">
+                        <!-- г(-), р(-), е(о), ц'(=), і(о), й(=), а(о) -->
+                        <div class="sound-scheme">
+                            <span class="symbol hard"></span>
+                            <span class="symbol hard"></span>
+                            <span class="symbol vowel"></span>
+                            <span class="symbol soft"></span>
+                            <span class="symbol vowel"></span>
+                            <span class="symbol soft"></span>
+                            <span class="symbol vowel"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Завдання 2: Єгипет -->
+            <div class="task-card">
+                <div class="video-thumbnail" data-video="єгипет.mp4" id="thumb-2">
+                    <video class="preview-video" src="єгипет.mp4#t=0.1" preload="metadata" muted playsinline></video>
+                    <div class="play-icon"></div>
+                </div>
+                <div class="task-text">
+                    <span>Тарас збирається в</span>
+                    <div class="drop-zone" data-country="Єгипет" id="zone-egypt">
+                        <!-- й(=), е(о), г(-), и(о), п(-), е(о), т(-) -->
+                        <div class="sound-scheme">
+                            <span class="symbol soft"></span>
+                            <span class="symbol vowel"></span>
+                            <span class="symbol hard"></span>
+                            <span class="symbol vowel"></span>
+                            <span class="symbol hard"></span>
+                            <span class="symbol vowel"></span>
+                            <span class="symbol hard"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Завдання 3: Франція -->
+            <div class="task-card">
+                <div class="video-thumbnail" data-video="франція.mp4" id="thumb-3">
+                    <video class="preview-video" src="франція.mp4#t=0.1" preload="metadata" muted playsinline></video>
+                    <div class="play-icon"></div>
+                </div>
+                <div class="task-text">
+                    <span>Петро планує подорож до</span>
+                    <div class="drop-zone" data-country="Франція" id="zone-france">
+                        <!-- ф(-), р(-), а(о), н(-), ц'(=), і(о), й(=), а(о) -->
+                        <div class="sound-scheme">
+                            <span class="symbol hard"></span>
+                            <span class="symbol hard"></span>
+                            <span class="symbol vowel"></span>
+                            <span class="symbol hard"></span>
+                            <span class="symbol soft"></span>
+                            <span class="symbol vowel"></span>
+                            <span class="symbol soft"></span>
+                            <span class="symbol vowel"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Слова для перетягування -->
+        <div class="words-container" id="words-bank">
+            <div class="draggable-word" id="word-france" data-country="Франція">Франція</div>
+            <div class="draggable-word" id="word-egypt" data-country="Єгипет">Єгипет</div>
+            <div class="draggable-word" id="word-greece" data-country="Греція">Греція</div>
+        </div>
+    </div>
+
+    <!-- Модальне вікно для відео -->
+    <div class="video-modal" id="videoModal">
+        <div class="video-modal-content">
+            <video id="modalVideo" controls playsinline></video>
+            <button class="close-btn" id="closeBtn">Згорнути відео</button>
+        </div>
+    </div>
+
+    <script>
+        // === КОНФІГУРАЦІЯ ===
+        const CONFIG = {
+            gameId: 'sound_schemes_journey_002', // Унікальний ID гри
+            firebaseProjectId: 'lesson-13c44'
+        };
+
+        // === FIREBASE ІНІЦІАЛІЗАЦІЯ ===
+        const firebaseConfig = {
+            databaseURL: `https://${CONFIG.firebaseProjectId}-default-rtdb.firebaseio.com/`,
+            projectId: CONFIG.firebaseProjectId
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // === ІДЕНТИФІКАЦІЯ, РАДАР ТА БЛОКУВАННЯ (Універсальний блок) ===
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const myPresenceRef = db.ref(`online_users/${myName}/${tabId}`);
+        const connectedRef = db.ref('.info/connected');
+
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                myPresenceRef.set(true);
+                myPresenceRef.onDisconnect().remove();
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            myPresenceRef.remove();
+        });
+
+        // Блокування (Екран-заглушка)
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // Виправлення нескінченного оновлення сторінки (Force Refresh)
+        let isFirstRefreshLoad = true;
+        db.ref('force_refresh').on('value', (snap) => {
+            if (isFirstRefreshLoad) {
+                isFirstRefreshLoad = false;
+                return; // Ігноруємо найперше спрацьовування при завантаженні
+            }
+            if (snap.val() === true) {
+                window.location.reload();
+            }
+        });
+
+        // Повернення в Лобі (з імунітетом)
+        let hasImmunity = true;
+        setTimeout(() => { hasImmunity = false; }, 1000);
+        db.ref('current_activity').on('value', (snap) => {
+            if (hasImmunity) return;
+            if (snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // Функція відправки дій (Firebase)
+        let isRemoteAction = false;
+        function sendGameAction(type, data) {
+            db.ref('game_action').set({
+                senderId: tabId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        // Обробка вхідних дій
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === tabId) return; // Ігноруємо власні дії
+            
+            isRemoteAction = true;
+            try {
+                if (val.type === 'drag_start') remoteDragStart(val.data);
+                if (val.type === 'drag_move') remoteDragMove(val.data);
+                if (val.type === 'drag_fail') remoteDragFail(val.data);
+                if (val.type === 'drop_success') remoteDropSuccess(val.data);
+                if (val.type === 'video_open') remoteVideoOpen(val.data);
+                if (val.type === 'video_close') remoteVideoClose();
+                if (val.type === 'video_sync') remoteVideoSync(val.data);
+                if (val.type === 'draw_line') drawLineOnCanvas(val.data);
+                if (val.type === 'clear_canvas') clearCanvasLocal();
+            } finally {
+                isRemoteAction = false;
+            }
+        });
+
+        // === ЗУМ (Масштабування гри) ===
+        let currentZoom = 1;
+        const gameWrapper = document.getElementById('game-wrapper');
+        document.getElementById('btn-zoom-in').addEventListener('click', () => {
+            if (currentZoom < 2) currentZoom += 0.1;
+            gameWrapper.style.transform = `scale(${currentZoom})`;
+        });
+        document.getElementById('btn-zoom-out').addEventListener('click', () => {
+            if (currentZoom > 0.5) currentZoom -= 0.1;
+            gameWrapper.style.transform = `scale(${currentZoom})`;
+        });
+
+        // === СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager) ===
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeClose = document.getElementById('theme-modal-close');
+        const themeGrid = document.getElementById('theme-grid');
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        
+        themeBtn.onclick = () => themeModal.style.display = 'block';
+        themeClose.onclick = () => themeModal.style.display = 'none';
+
+        function applyTheme(url) {
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+                document.body.style.backgroundColor = '#f0f0f0';
+            } else {
+                document.body.style.backgroundImage = `url('${url}')`;
+            }
+        }
+
+        // Збереження та завантаження індивідуального фону саме для цієї гри
+        const localSavedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (localSavedTheme) {
+            applyTheme(localSavedTheme);
+        } else {
+            // Якщо локального немає, застосовуємо з Firebase
+            db.ref('game_theme').on('value', snap => {
+                if (localStorage.getItem('mySavedBg_' + CONFIG.gameId)) return; 
+                const themeUrl = snap.val();
+                if (themeUrl) applyTheme(themeUrl);
+            });
+        }
+
+        function selectTheme(url) {
+            applyTheme(url);
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            db.ref('game_theme').set(url);
+            themeModal.style.display = 'none';
+        }
+
+        // Послідовне завантаження фонів (зупиняється при 404)
+        async function loadThemes() {
+            const noBg = document.createElement('div');
+            noBg.className = 'theme-item';
+            noBg.innerHTML = '<div class="theme-item-text">Без фону</div>';
+            noBg.onclick = () => selectTheme('none');
+            themeGrid.appendChild(noBg);
+
+            let i = 1;
+            while (i <= 1000) {
+                const url = `${baseUrl}background_${i}.webp`;
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    if (response.ok) {
+                        const item = document.createElement('div');
+                        item.className = 'theme-item';
+                        item.style.backgroundImage = `url('${url}')`;
+                        item.innerHTML = `<div class="theme-item-text">Фон ${i}</div>`;
+                        item.onclick = () => selectTheme(url);
+                        themeGrid.appendChild(item);
+                        i++;
+                    } else {
+                        break; 
+                    }
+                } catch (e) {
+                    break;
+                }
+            }
+        }
+        loadThemes();
+
+        // === АУДІО СИНТЕЗ ===
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+                osc.frequency.exponentialRampToValueAtTime(1100, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.1);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.5);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        // === ЛОГІКА ПЕРЕТЯГУВАННЯ ===
+        const words = document.querySelectorAll('.draggable-word');
+        const dropZones = document.querySelectorAll('.drop-zone');
+        let activeWord = null;
+        let startX = 0, startY = 0;
+        let initialX = 0, initialY = 0;
+        let originalParent = null;
+        let lastSyncTime = 0;
+
+        words.forEach(word => {
+            word.addEventListener('pointerdown', startDrag);
+        });
+
+        function startDrag(e) {
+            if (e.target.classList.contains('remote-moving')) return;
+            e.preventDefault();
+            activeWord = e.target;
+            originalParent = activeWord.parentNode;
+            
+            const rect = activeWord.getBoundingClientRect();
+            initialX = rect.left;
+            initialY = rect.top;
+            startX = e.clientX;
+            startY = e.clientY;
+
+            activeWord.classList.add('dragging');
+            activeWord.style.left = `${initialX}px`;
+            activeWord.style.top = `${initialY}px`;
+            document.body.appendChild(activeWord);
+
+            document.addEventListener('pointermove', onDrag);
+            document.addEventListener('pointerup', endDrag);
+
+            sendGameAction('drag_start', { id: activeWord.id, x: initialX / window.innerWidth, y: initialY / window.innerHeight });
+        }
+
+        function onDrag(e) {
+            if (!activeWord) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            const newX = initialX + dx;
+            const newY = initialY + dy;
+            activeWord.style.left = `${newX}px`;
+            activeWord.style.top = `${newY}px`;
+
+            const now = Date.now();
+            if (now - lastSyncTime > 50) {
+                sendGameAction('drag_move', { id: activeWord.id, x: newX / window.innerWidth, y: newY / window.innerHeight });
+                lastSyncTime = now;
+            }
+
+            activeWord.style.pointerEvents = 'none';
+            const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+            activeWord.style.pointerEvents = 'auto';
+
+            dropZones.forEach(zone => zone.classList.remove('active'));
+            if (elemBelow) {
+                const targetZone = elemBelow.closest('.drop-zone');
+                if (targetZone && !targetZone.querySelector('.draggable-word')) {
+                    targetZone.classList.add('active');
+                }
+            }
+        }
+
+        function endDrag(e) {
+            if (!activeWord) return;
+            document.removeEventListener('pointermove', onDrag);
+            document.removeEventListener('pointerup', endDrag);
+            
+            activeWord.style.pointerEvents = 'none';
+            const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+            activeWord.style.pointerEvents = 'auto';
+            
+            let targetZone = elemBelow ? elemBelow.closest('.drop-zone') : null;
+            let success = false;
+
+            if (targetZone) {
+                const expectedCountry = targetZone.getAttribute('data-country');
+                const wordCountry = activeWord.getAttribute('data-country');
+                if (expectedCountry === wordCountry) success = true;
+            }
+
+            dropZones.forEach(zone => zone.classList.remove('active'));
+
+            if (success) {
+                handleDropSuccess(activeWord, targetZone);
+                sendGameAction('drop_success', { wordId: activeWord.id, zoneId: targetZone.id });
+            } else {
+                handleDropFail(activeWord, originalParent);
+                sendGameAction('drag_fail', { wordId: activeWord.id });
+            }
+            activeWord = null;
+        }
+
+        function handleDropSuccess(word, zone) {
+            playSound('success');
+            zone.innerHTML = ''; 
+            word.classList.remove('dragging');
+            word.classList.remove('remote-moving');
+            
+            word.style.position = '';
+            word.style.left = '';
+            word.style.top = '';
+            word.style.boxShadow = '';
+            word.style.transform = '';
+            word.removeEventListener('pointerdown', startDrag); 
+            
+            zone.appendChild(word);
+            createConfetti(zone);
+        }
+
+        function handleDropFail(word, parentElement) {
+            playSound('error');
+            word.classList.add('shake');
+            setTimeout(() => word.classList.remove('shake'), 400);
+            
+            word.classList.remove('dragging');
+            word.classList.remove('remote-moving');
+            
+            word.style.position = '';
+            word.style.left = '';
+            word.style.top = '';
+            word.style.zIndex = '';
+            
+            parentElement.appendChild(word);
+        }
+
+        // Обробка Firebase-подій перетягування
+        function remoteDragStart(data) {
+            const word = document.getElementById(data.id);
+            if(word) {
+                word.classList.add('remote-moving');
+                document.body.appendChild(word);
+                word.style.left = (data.x * window.innerWidth) + 'px';
+                word.style.top = (data.y * window.innerHeight) + 'px';
+            }
+        }
+        function remoteDragMove(data) {
+            const word = document.getElementById(data.id);
+            if(word && word.classList.contains('remote-moving')) {
+                word.style.left = (data.x * window.innerWidth) + 'px';
+                word.style.top = (data.y * window.innerHeight) + 'px';
+            }
+        }
+        function remoteDragFail(data) {
+            const word = document.getElementById(data.wordId);
+            if(word) handleDropFail(word, document.getElementById('words-bank'));
+        }
+        function remoteDropSuccess(data) {
+            const word = document.getElementById(data.wordId);
+            const zone = document.getElementById(data.zoneId);
+            if(word && zone) handleDropSuccess(word, zone);
+        }
+
+        function createConfetti(element) {
+            const colors = ['#f1c40f', '#e74c3c', '#3498db', '#2ecc71', '#9b59b6'];
+            const rect = element.getBoundingClientRect();
+            for (let i = 0; i < 30; i++) {
+                const confetti = document.createElement('div');
+                confetti.style.position = 'absolute';
+                confetti.style.width = '10px';
+                confetti.style.height = '10px';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.left = `${rect.left + rect.width / 2}px`;
+                confetti.style.top = `${rect.top + rect.height / 2}px`;
+                confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+                confetti.style.zIndex = '999';
+                document.body.appendChild(confetti);
+
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = 50 + Math.random() * 100;
+                const tx = Math.cos(angle) * velocity;
+                const ty = Math.sin(angle) * velocity - 50;
+
+                confetti.animate([
+                    { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
+                    { transform: `translate(${tx}px, ${ty}px) rotate(${Math.random()*360}deg)`, opacity: 0 }
+                ], {
+                    duration: 800 + Math.random() * 400,
+                    easing: 'cubic-bezier(0, .9, .57, 1)'
+                }).onfinish = () => confetti.remove();
+            }
+        }
+
+        // === ЛОГІКА ВІДЕОПЛЕЄРА ===
+        const thumbnails = document.querySelectorAll('.video-thumbnail');
+        const modal = document.getElementById('videoModal');
+        const modalVideo = document.getElementById('modalVideo');
+        const closeBtn = document.getElementById('closeBtn');
+
+        thumbnails.forEach(thumb => {
+            thumb.addEventListener('click', () => {
+                const videoSrc = thumb.getAttribute('data-video');
+                openVideoModal(videoSrc);
+                sendGameAction('video_open', { src: videoSrc });
+            });
+        });
+
+        function openVideoModal(src) {
+            modalVideo.src = src;
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('active'), 10);
+            modalVideo.play().catch(e => console.log("Автовідтворення заблоковано", e));
+        }
+
+        function closeVideoModal() {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modalVideo.pause();
+                modalVideo.src = "";
+                modal.style.display = 'none';
+            }, 300);
+        }
+
+        closeBtn.addEventListener('click', () => {
+            closeVideoModal();
+            sendGameAction('video_close', {});
+        });
+
+        modalVideo.addEventListener('play', () => {
+            if(!isRemoteAction) sendGameAction('video_sync', { state: 'play', time: modalVideo.currentTime });
+        });
+        modalVideo.addEventListener('pause', () => {
+            if(!isRemoteAction) sendGameAction('video_sync', { state: 'pause', time: modalVideo.currentTime });
+        });
+
+        function remoteVideoOpen(data) { openVideoModal(data.src); }
+        function remoteVideoClose() { closeVideoModal(); }
+        function remoteVideoSync(data) {
+            if (Math.abs(modalVideo.currentTime - data.time) > 1) {
+                modalVideo.currentTime = data.time;
+            }
+            if (data.state === 'play') modalVideo.play().catch(()=>{});
+            if (data.state === 'pause') modalVideo.pause();
+        }
+
+        // === ГЛОБАЛЬНЕ МАЛЮВАННЯ ===
+        const drawCanvas = document.getElementById('draw-canvas-global');
+        const drawCtx = drawCanvas.getContext('2d');
+        const drawBtn = document.getElementById('toggle-draw-btn-global');
+        const drawPanel = document.getElementById('draw-panel-global');
+        const drawClose = document.getElementById('draw-close-btn');
+        const drawHeader = document.getElementById('draw-panel-header');
+        
+        let drawingMode = false;
+        let isDrawing = false;
+        let lastX = 0, lastY = 0;
+        let tool = 'pencil';
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        drawBtn.onclick = () => {
+            drawPanel.style.display = 'flex';
+            drawingMode = true;
+            drawCanvas.style.pointerEvents = 'auto'; 
+        };
+
+        drawClose.onclick = () => {
+            drawPanel.style.display = 'none';
+            drawingMode = false;
+            drawCanvas.style.pointerEvents = 'none'; 
+        };
+
+        document.getElementById('tool-pencil').onclick = function() {
+            tool = 'pencil';
+            this.classList.add('active');
+            document.getElementById('tool-eraser').classList.remove('active');
+        };
+        document.getElementById('tool-eraser').onclick = function() {
+            tool = 'eraser';
+            this.classList.add('active');
+            document.getElementById('tool-pencil').classList.remove('active');
+        };
+        document.getElementById('tool-clear').onclick = () => {
+            clearCanvasLocal();
+            sendGameAction('clear_canvas', {});
+        };
+
+        function getPointerPos(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            return {
+                x: (e.clientX || e.touches?.[0].clientX) - rect.left,
+                y: (e.clientY || e.touches?.[0].clientY) - rect.top
+            };
+        }
+
+        function startDraw(e) {
+            if (!drawingMode) return;
+            isDrawing = true;
+            const pos = getPointerPos(e);
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            const pos = getPointerPos(e);
+            const color = document.getElementById('draw-color').value;
+            const size = document.getElementById('draw-thickness').value;
+
+            drawLineOnCanvas({ x0: lastX, y0: lastY, x1: pos.x, y1: pos.y, color: color, size: size, tool: tool });
+            
+            sendGameAction('draw_line', {
+                x0: lastX / drawCanvas.width, y0: lastY / drawCanvas.height,
+                x1: pos.x / drawCanvas.width, y1: pos.y / drawCanvas.height,
+                color: color, size: size, tool: tool
+            });
+
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function stopDraw() { isDrawing = false; }
+
+        drawCanvas.addEventListener('mousedown', startDraw);
+        drawCanvas.addEventListener('mousemove', draw);
+        window.addEventListener('mouseup', stopDraw);
+        drawCanvas.addEventListener('touchstart', startDraw, {passive: false});
+        drawCanvas.addEventListener('touchmove', draw, {passive: false});
+        window.addEventListener('touchend', stopDraw);
+
+        function drawLineOnCanvas(data) {
+            let x0 = data.x0 <= 1 ? data.x0 * drawCanvas.width : data.x0;
+            let y0 = data.y0 <= 1 ? data.y0 * drawCanvas.height : data.y0;
+            let x1 = data.x1 <= 1 ? data.x1 * drawCanvas.width : data.x1;
+            let y1 = data.y1 <= 1 ? data.y1 * drawCanvas.height : data.y1;
+
+            drawCtx.beginPath();
+            drawCtx.moveTo(x0, y0);
+            drawCtx.lineTo(x1, y1);
+            drawCtx.lineCap = 'round';
+            drawCtx.lineWidth = data.size;
+            
+            if (data.tool === 'eraser') {
+                drawCtx.globalCompositeOperation = 'destination-out';
+                drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+            } else {
+                drawCtx.globalCompositeOperation = 'source-over';
+                drawCtx.strokeStyle = data.color;
+            }
+            drawCtx.stroke();
+            drawCtx.globalCompositeOperation = 'source-over';
+        }
+
+        function clearCanvasLocal() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        }
+
+        let isPanelDragging = false, pStartX, pStartY, pStartLeft, pStartTop;
+        drawHeader.addEventListener('mousedown', (e) => {
+            isPanelDragging = true;
+            pStartX = e.clientX; pStartY = e.clientY;
+            const rect = drawPanel.getBoundingClientRect();
+            pStartLeft = rect.left; pStartTop = rect.top;
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isPanelDragging) return;
+            const dx = e.clientX - pStartX;
+            const dy = e.clientY - pStartY;
+            drawPanel.style.left = pStartLeft + dx + 'px';
+            drawPanel.style.top = pStartTop + dy + 'px';
+            drawPanel.style.bottom = 'auto';
+            drawPanel.style.right = 'auto';
+        });
+        window.addEventListener('mouseup', () => isPanelDragging = false);
+        
+        drawHeader.addEventListener('touchstart', (e) => {
+            isPanelDragging = true;
+            pStartX = e.touches[0].clientX; pStartY = e.touches[0].clientY;
+            const rect = drawPanel.getBoundingClientRect();
+            pStartLeft = rect.left; pStartTop = rect.top;
+        }, {passive:true});
+        window.addEventListener('touchmove', (e) => {
+            if (!isPanelDragging) return;
+            const dx = e.touches[0].clientX - pStartX;
+            const dy = e.touches[0].clientY - pStartY;
+            drawPanel.style.left = pStartLeft + dx + 'px';
+            drawPanel.style.top = pStartTop + dy + 'px';
+            drawPanel.style.bottom = 'auto';
+            drawPanel.style.right = 'auto';
+        }, {passive:true});
+        window.addEventListener('touchend', () => isPanelDragging = false);
+
+    </script>
+</body>
+</html>
