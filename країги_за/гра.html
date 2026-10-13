@@ -282,6 +282,7 @@
             opacity: 1;
         }
         .video-modal-content {
+            position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -297,7 +298,30 @@
             border: 8px solid #fff;
             border-radius: 20px;
             box-shadow: 0 0 50px rgba(255,255,255,0.2);
+            background: #000;
         }
+        
+        /* Оверлей для розблокування автоплею */
+        #video-autoplay-overlay {
+            display: none;
+            position: absolute;
+            top: 8px; left: 8px; right: 8px; bottom: 8px; /* враховуємо border відео */
+            background: rgba(0, 0, 0, 0.75);
+            border-radius: 12px;
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            cursor: pointer;
+            flex-direction: column;
+            backdrop-filter: blur(5px);
+        }
+        #video-autoplay-overlay:hover {
+            background: rgba(0, 0, 0, 0.65);
+        }
+
         .close-btn {
             margin-top: 25px;
             padding: 15px 40px;
@@ -310,6 +334,7 @@
             cursor: pointer;
             box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
             transition: all 0.2s;
+            z-index: 101;
         }
         .close-btn:hover {
             background: #c0392b;
@@ -643,6 +668,11 @@
     <div class="video-modal" id="videoModal">
         <div class="video-modal-content">
             <video id="modalVideo" controls playsinline></video>
+            <!-- Оверлей для обходу блокування автоплею -->
+            <div id="video-autoplay-overlay">
+                <span style="font-size: 60px; margin-bottom: 15px;">▶️</span>
+                <span style="font-size: 20px; font-weight: bold;">Натисніть для синхронізації відео</span>
+            </div>
             <button class="close-btn" id="closeBtn">Згорнути відео</button>
         </div>
     </div>
@@ -650,7 +680,7 @@
     <script>
         // === КОНФІГУРАЦІЯ ===
         const CONFIG = {
-            gameId: 'sound_schemes_journey_002', // Унікальний ID гри
+            gameId: 'sound_schemes_journey_003', // Унікальний ID гри
             firebaseProjectId: 'lesson-13c44'
         };
 
@@ -662,7 +692,7 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // === ІДЕНТИФІКАЦІЯ, РАДАР ТА БЛОКУВАННЯ (Універсальний блок) ===
+        // === ІДЕНТИФІКАЦІЯ, РАДАР ТА БЛОКУВАННЯ ===
         const urlParams = new URLSearchParams(window.location.search);
         let myName = urlParams.get('user');
         if (myName) {
@@ -700,7 +730,7 @@
         db.ref('force_refresh').on('value', (snap) => {
             if (isFirstRefreshLoad) {
                 isFirstRefreshLoad = false;
-                return; // Ігноруємо найперше спрацьовування при завантаженні
+                return;
             }
             if (snap.val() === true) {
                 window.location.reload();
@@ -731,7 +761,7 @@
         // Обробка вхідних дій
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
-            if (!val || val.senderId === tabId) return; // Ігноруємо власні дії
+            if (!val || val.senderId === tabId) return; 
             
             isRemoteAction = true;
             try {
@@ -785,7 +815,6 @@
         if (localSavedTheme) {
             applyTheme(localSavedTheme);
         } else {
-            // Якщо локального немає, застосовуємо з Firebase
             db.ref('game_theme').on('value', snap => {
                 if (localStorage.getItem('mySavedBg_' + CONFIG.gameId)) return; 
                 const themeUrl = snap.val();
@@ -800,7 +829,6 @@
             themeModal.style.display = 'none';
         }
 
-        // Послідовне завантаження фонів (зупиняється при 404)
         async function loadThemes() {
             const noBg = document.createElement('div');
             noBg.className = 'theme-item';
@@ -989,7 +1017,6 @@
             parentElement.appendChild(word);
         }
 
-        // Обробка Firebase-подій перетягування
         function remoteDragStart(data) {
             const word = document.getElementById(data.id);
             if(word) {
@@ -1046,11 +1073,12 @@
             }
         }
 
-        // === ЛОГІКА ВІДЕОПЛЕЄРА ===
+        // === ЛОГІКА ВІДЕОПЛЕЄРА ТА ОБХІД БЛОКУВАННЯ АВТОПЛЕЮ ===
         const thumbnails = document.querySelectorAll('.video-thumbnail');
         const modal = document.getElementById('videoModal');
         const modalVideo = document.getElementById('modalVideo');
         const closeBtn = document.getElementById('closeBtn');
+        const autoplayOverlay = document.getElementById('video-autoplay-overlay');
 
         thumbnails.forEach(thumb => {
             thumb.addEventListener('click', () => {
@@ -1060,15 +1088,29 @@
             });
         });
 
+        // Клік по оверлею (якщо браузер заблокував автоплей на іншому пристрої)
+        autoplayOverlay.addEventListener('click', () => {
+            autoplayOverlay.style.display = 'none';
+            modalVideo.play().catch(e => console.log("Все ще заблоковано", e));
+        });
+
         function openVideoModal(src) {
             modalVideo.src = src;
             modal.style.display = 'flex';
             setTimeout(() => modal.classList.add('active'), 10);
-            modalVideo.play().catch(e => console.log("Автовідтворення заблоковано", e));
+            
+            let playPromise = modalVideo.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    // Якщо заблоковано (зазвичай у віддалених користувачів) - показуємо оверлей
+                    autoplayOverlay.style.display = 'flex';
+                });
+            }
         }
 
         function closeVideoModal() {
             modal.classList.remove('active');
+            autoplayOverlay.style.display = 'none';
             setTimeout(() => {
                 modalVideo.pause();
                 modalVideo.src = "";
@@ -1081,21 +1123,38 @@
             sendGameAction('video_close', {});
         });
 
+        // Відстеження подій відео ініціатора
         modalVideo.addEventListener('play', () => {
+            autoplayOverlay.style.display = 'none'; // про всяк випадок ховаємо
             if(!isRemoteAction) sendGameAction('video_sync', { state: 'play', time: modalVideo.currentTime });
         });
         modalVideo.addEventListener('pause', () => {
             if(!isRemoteAction) sendGameAction('video_sync', { state: 'pause', time: modalVideo.currentTime });
         });
+        modalVideo.addEventListener('seeked', () => {
+            if(!isRemoteAction) sendGameAction('video_sync', { state: 'seeked', time: modalVideo.currentTime });
+        });
 
         function remoteVideoOpen(data) { openVideoModal(data.src); }
         function remoteVideoClose() { closeVideoModal(); }
+        
         function remoteVideoSync(data) {
-            if (Math.abs(modalVideo.currentTime - data.time) > 1) {
+            // Синхронізація часу, якщо різниця більше ніж півсекунди
+            if (Math.abs(modalVideo.currentTime - data.time) > 0.5) {
                 modalVideo.currentTime = data.time;
             }
-            if (data.state === 'play') modalVideo.play().catch(()=>{});
-            if (data.state === 'pause') modalVideo.pause();
+            
+            if (data.state === 'play' || data.state === 'seeked') {
+                let playPromise = modalVideo.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        autoplayOverlay.style.display = 'flex';
+                    });
+                }
+            }
+            if (data.state === 'pause') {
+                modalVideo.pause();
+            }
         }
 
         // === ГЛОБАЛЬНЕ МАЛЮВАННЯ ===
