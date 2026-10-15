@@ -4,15 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Сортування: Ознака чи Дія</title>
+    <!-- Firebase Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    
     <style>
         body, html {
             margin: 0;
             padding: 0;
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             overflow: hidden;
-            background-color: #0b0f19;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0b0f19; /* Fallback */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, Arial;
             user-select: none;
         }
 
@@ -23,7 +30,15 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            background: linear-gradient(to bottom, #1a0b2e 0%, #0b0f19 100%);
+            background: transparent; /* Зроблено прозорим за вимогою */
+        }
+
+        #game-scale-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            transform-origin: center center;
+            transition: transform 0.2s ease;
         }
 
         #game-svg {
@@ -47,7 +62,7 @@
 
         .neon-board {
             position: absolute;
-            background: linear-gradient(135deg, #16162e, #0d0d1a);
+            background: linear-gradient(135deg, rgba(22, 22, 46, 0.9), rgba(13, 13, 26, 0.9));
             border: 3px solid #1f4068;
             border-radius: 15px;
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.2), inset 0 0 10px rgba(0, 0, 0, 0.8);
@@ -75,13 +90,14 @@
             left: 50%;
             transform: translateX(-50%);
             width: 500px;
+            max-width: 80vw;
             height: 100px;
             font-size: 48px;
             border-color: #f39c12;
             color: #f1c40f;
             box-shadow: 0 0 30px rgba(243, 156, 18, 0.3);
             pointer-events: none;
-            background: repeating-linear-gradient(45deg, #111, #111 10px, #1a1a1a 10px, #1a1a1a 20px);
+            background: repeating-linear-gradient(45deg, rgba(17,17,17,0.9), rgba(17,17,17,0.9) 10px, rgba(26,26,26,0.9) 10px, rgba(26,26,26,0.9) 20px);
         }
 
         #left-btn {
@@ -135,42 +151,14 @@
         #back-btn { left: 40px; }
         #next-btn { right: 40px; }
 
-        /* --- АНІМАЦІЇ МАШИНИ (Піднято вище та зменшено масштаб для кращої видимості) --- */
-        
-        .car-front-start {
-            transform: translate(500px, 250px) scale(0);
-            opacity: 0;
-        }
-
-        .car-front-drive-in {
-            animation: driveIn 2s cubic-bezier(0.3, 0.1, 0.3, 1) forwards;
-        }
-
-        .car-front-idle {
-            transform: translate(500px, 440px) scale(1.6);
-            animation: idleVibrate 0.1s infinite alternate;
-            opacity: 1;
-        }
-
-        .car-front-wrong {
-            animation: wrongShake 0.6s ease-in-out;
-            transform: translate(500px, 440px) scale(1.6);
-            opacity: 1;
-        }
-
-        .car-side-hidden {
-            display: none;
-        }
-
-        .car-side-drive-left {
-            display: block;
-            animation: driveLeft 1.5s cubic-bezier(0.5, 0, 0.1, 1) forwards;
-        }
-
-        .car-side-drive-right {
-            display: block;
-            animation: driveRight 1.5s cubic-bezier(0.5, 0, 0.1, 1) forwards;
-        }
+        /* --- АНІМАЦІЇ МАШИНИ --- */
+        .car-front-start { transform: translate(500px, 250px) scale(0); opacity: 0; }
+        .car-front-drive-in { animation: driveIn 2s cubic-bezier(0.3, 0.1, 0.3, 1) forwards; }
+        .car-front-idle { transform: translate(500px, 440px) scale(1.6); animation: idleVibrate 0.1s infinite alternate; opacity: 1; }
+        .car-front-wrong { animation: wrongShake 0.6s ease-in-out; transform: translate(500px, 440px) scale(1.6); opacity: 1; }
+        .car-side-hidden { display: none; }
+        .car-side-drive-left { display: block; animation: driveLeft 1.5s cubic-bezier(0.5, 0, 0.1, 1) forwards; }
+        .car-side-drive-right { display: block; animation: driveRight 1.5s cubic-bezier(0.5, 0, 0.1, 1) forwards; }
 
         @keyframes driveIn {
             0% { transform: translate(500px, 250px) scale(0); opacity: 0; }
@@ -215,159 +203,433 @@
             30% { filter: hue-rotate(-90deg) brightness(0.7) sepia(1) saturate(500%) hue-rotate(-50deg); }
             100% { filter: hue-rotate(0deg) brightness(1); }
         }
+
+        /* --- UI Modules --- */
+        #zoom-controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 99999;
+            display: flex;
+            gap: 10px;
+        }
+        .zoom-btn {
+            background: rgba(255,255,255,0.9);
+            border: 2px solid #000;
+            width: 40px;
+            height: 40px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #3498db;
+            color: white;
+            font-size: 24px;
+            border: 2px solid #000;
+            cursor: pointer;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 600px;
+            max-height: 60vh;
+            background: #fff;
+            border: 4px solid #000;
+            box-shadow: 10px 10px 0px rgba(0,0,0,0.5);
+            z-index: 100000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .theme-modal-close {
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: bold;
+            background: #ff5252;
+            color: #fff;
+            border: 2px solid #000;
+            width: 30px; height: 30px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+        }
+        .theme-card {
+            position: relative;
+            cursor: pointer;
+            border: 2px solid #000;
+            border-radius: 5px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            background: #ccc;
+        }
+        .theme-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .theme-card span {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            text-align: center;
+            padding: 5px 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85);
+            color: #ff5252;
+            font-size: 5vw;
+            font-weight: bold;
+            z-index: 999999;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px;
+            right: 20px;
+            background: #8e44ad;
+            color: white;
+            border: 2px solid #000;
+            border-radius: 5px;
+            padding: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 99999;
+        }
+
+        #draw-panel-global {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border: 3px solid #000;
+            box-shadow: 5px 5px 0px #000;
+            z-index: 100000;
+            padding: 10px;
+            width: 200px;
+            user-select: none;
+        }
+        .draw-handle {
+            background: #ccc;
+            cursor: grab;
+            padding: 5px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border: 1px solid #000;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .draw-close { cursor: pointer; color: red; font-weight: bold; }
+        .draw-tools { display: flex; flex-direction: column; gap: 10px; }
+        .draw-btn {
+            background: #eee; border: 2px solid #000; padding: 5px; cursor: pointer; font-weight: bold;
+        }
+        .draw-btn.active { background: #50fa7b; }
+        #draw-canvas-global {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 90000;
+        }
+
+        @media (max-width: 800px) {
+            #word-display { font-size: 32px; height: 70px; }
+            #left-btn, #right-btn { width: 150px; height: 70px; font-size: 20px; }
+        }
     </style>
 </head>
 <body>
 
+<div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+<div id="zoom-controls">
+    <button class="zoom-btn" onclick="adjustZoom(0.1)">+</button>
+    <button class="zoom-btn" onclick="adjustZoom(-0.1)">-</button>
+</div>
+
 <div id="game-container">
-    <svg id="game-svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice">
-        <defs>
-            <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#0f0c29" />
-                <stop offset="50%" stop-color="#302b63" />
-                <stop offset="100%" stop-color="#24243e" />
-            </linearGradient>
-            
-            <linearGradient id="grassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#0a1a1f" />
-                <stop offset="100%" stop-color="#050d10" />
-            </linearGradient>
+    <div id="game-scale-wrapper">
+        <svg id="game-svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#0f0c29" />
+                    <stop offset="50%" stop-color="#302b63" />
+                    <stop offset="100%" stop-color="#24243e" />
+                </linearGradient>
+                
+                <linearGradient id="grassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#0a1a1f" />
+                    <stop offset="100%" stop-color="#050d10" />
+                </linearGradient>
 
-            <linearGradient id="roadGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#111" />
-                <stop offset="100%" stop-color="#222" />
-            </linearGradient>
+                <linearGradient id="roadGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#111" />
+                    <stop offset="100%" stop-color="#222" />
+                </linearGradient>
 
-            <linearGradient id="carBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#00f2fe" />
-                <stop offset="100%" stop-color="#4facfe" />
-            </linearGradient>
+                <linearGradient id="carBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#00f2fe" />
+                    <stop offset="100%" stop-color="#4facfe" />
+                </linearGradient>
 
-            <linearGradient id="glassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#2c3e50" />
-                <stop offset="100%" stop-color="#000000" />
-            </linearGradient>
-            
-            <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1f4068" stroke-width="1" opacity="0.3"/>
-            </pattern>
-        </defs>
+                <linearGradient id="glassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#2c3e50" />
+                    <stop offset="100%" stop-color="#000000" />
+                </linearGradient>
+                
+                <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1f4068" stroke-width="1" opacity="0.3"/>
+                </pattern>
+            </defs>
 
-        <rect x="0" y="0" width="1000" height="250" fill="url(#skyGrad)" />
-        
-        <g fill="#1a1a2e" opacity="0.8">
-            <rect x="50" y="150" width="40" height="100" />
-            <rect x="110" y="100" width="60" height="150" />
-            <rect x="200" y="180" width="30" height="70" />
-            <rect x="250" y="80" width="80" height="170" />
-            <rect x="350" y="130" width="50" height="120" />
-            <rect x="600" y="110" width="70" height="140" />
-            <rect x="700" y="160" width="40" height="90" />
-            <rect x="780" y="90" width="90" height="160" />
-            <rect x="900" y="140" width="50" height="110" />
-        </g>
-        
-        <g fill="#00d2ff" opacity="0.6">
-            <rect x="120" y="120" width="5" height="5" />
-            <rect x="140" y="120" width="5" height="5" />
-            <rect x="120" y="140" width="5" height="5" />
-            <rect x="270" y="100" width="5" height="15" />
-            <rect x="300" y="130" width="10" height="5" fill="#ff007f"/>
-            <rect x="620" y="130" width="5" height="5" />
-            <rect x="640" y="150" width="5" height="5" />
-            <rect x="800" y="110" width="5" height="20" fill="#ff007f"/>
-            <rect x="830" y="140" width="20" height="5" />
-        </g>
-
-        <rect x="0" y="250" width="1000" height="350" fill="url(#grassGrad)" />
-        <rect x="0" y="250" width="1000" height="350" fill="url(#gridPattern)" />
-
-        <path d="M 480,250 L 520,250 L 580,420 L 420,420 Z" fill="url(#roadGrad)" />
-        <rect x="0" y="420" width="1000" height="180" fill="url(#roadGrad)" />
-        
-        <path d="M 500,250 L 500,420" stroke="#f1c40f" stroke-width="3" stroke-dasharray="15 15" opacity="0.8" filter="drop-shadow(0 0 5px #f1c40f)" />
-        <line x1="0" y1="490" x2="1000" y2="490" stroke="#f1c40f" stroke-width="4" stroke-dasharray="30 20" opacity="0.8" filter="drop-shadow(0 0 5px #f1c40f)" />
-        
-        <path d="M 480,250 L 420,420" stroke="#00d2ff" stroke-width="3" filter="drop-shadow(0 0 8px #00d2ff)" />
-        <path d="M 520,250 L 580,420" stroke="#ff007f" stroke-width="3" filter="drop-shadow(0 0 8px #ff007f)" />
-        <line x1="0" y1="420" x2="420" y2="420" stroke="#00d2ff" stroke-width="4" filter="drop-shadow(0 0 8px #00d2ff)" />
-        <line x1="580" y1="420" x2="1000" y2="420" stroke="#ff007f" stroke-width="4" filter="drop-shadow(0 0 8px #ff007f)" />
-        <line x1="0" y1="570" x2="1000" y2="570" stroke="#fff" stroke-width="5" opacity="0.2" />
-
-        <g id="car-front" class="car-front-start">
-            <ellipse cx="0" cy="30" rx="60" ry="10" fill="#000" opacity="0.8" filter="drop-shadow(0 5px 10px #000)"/>
+            <!-- Фон SVG зроблено напівпрозорим, щоб динамічний фон було видно -->
+            <rect x="0" y="0" width="1000" height="250" fill="url(#skyGrad)" opacity="0.5" />
             
-            <path d="M -50,-25 L 50,-25 L 45,-10 L -45,-10 Z" fill="#111" stroke="#333" stroke-width="1"/>
-            <rect x="-25" y="-10" width="50" height="15" fill="url(#carBodyGrad)"/>
-            
-            <path d="M -25,-15 L 25,-15 L 35,25 L -35,25 Z" fill="url(#carBodyGrad)" />
-            
-            <path d="M -15, -5 C -15,-15 15,-15 15,-5 L 20,10 L -20,10 Z" fill="url(#glassGrad)" stroke="#111" stroke-width="2"/>
-            <polygon points="-15,-2 0,-2 -5,8 -18,8" fill="#fff" opacity="0.1" />
-
-            <rect x="-40" y="-2" width="10" height="5" rx="2" fill="#000" />
-            <rect x="30" y="-2" width="10" height="5" rx="2" fill="#000" />
-
-            <rect x="-60" y="-10" width="20" height="30" rx="4" fill="#050505" />
-            <rect x="40" y="-10" width="20" height="30" rx="4" fill="#050505" />
-            <rect x="-65" y="15" width="22" height="35" rx="5" fill="#000" />
-            <rect x="43" y="15" width="22" height="35" rx="5" fill="#000" />
-            <ellipse cx="-54" cy="32" rx="5" ry="10" fill="#333" />
-            <ellipse cx="54" cy="32" rx="5" ry="10" fill="#333" />
-
-            <path d="M -60,30 L 60,30 L 65,45 L -65,45 Z" fill="#111" />
-            <polygon points="-15,25 15,25 0,40" fill="#fff" opacity="0.8" />
-            
-            <ellipse cx="-45" cy="38" rx="8" ry="3" fill="#fff" filter="drop-shadow(0 0 15px #00d2ff)" />
-            <ellipse cx="45" cy="38" rx="8" ry="3" fill="#fff" filter="drop-shadow(0 0 15px #00d2ff)" />
-        </g>
-
-        <g id="car-side" class="car-side-hidden">
-            <ellipse cx="0" cy="32" rx="75" ry="8" fill="#000" opacity="0.8" filter="drop-shadow(0 5px 10px #000)" />
-            
-            <path d="M 45,-15 L 65,-25 L 75,-25 L 65,-10 Z" fill="#111" />
-            <rect x="60" y="-25" width="15" height="5" fill="#00d2ff" />
-            
-            <path d="M 65,10 C 65,-10 40,-15 15,-15 C -10,-15 -30,-5 -70,15 L -75,25 L -70,30 L 70,30 L 75,20 Z" fill="url(#carBodyGrad)" />
-            
-            <path d="M 30,-5 C 30,-12 10,-12 -15,0 L -5,10 L 35,10 Z" fill="url(#glassGrad)" />
-            <polygon points="10,-2 25,-2 28,6 12,6" fill="#fff" opacity="0.1" />
-            
-            <path d="M 60,15 L -50,20 L -60,25 L 65,25 Z" fill="#fff" opacity="0.2" />
-            
-            <g transform="translate(-40, 25)">
-                <circle cx="0" cy="0" r="16" fill="#000" />
-                <circle cx="0" cy="0" r="10" fill="#222" stroke="#444" stroke-width="2"/>
-                <circle cx="0" cy="0" r="4" fill="#00d2ff" />
-            </g>
-            <g transform="translate(45, 25)">
-                <circle cx="0" cy="0" r="18" fill="#000" />
-                <circle cx="0" cy="0" r="12" fill="#222" stroke="#444" stroke-width="2"/>
-                <circle cx="0" cy="0" r="5" fill="#00d2ff" />
+            <g fill="#1a1a2e" opacity="0.8">
+                <rect x="50" y="150" width="40" height="100" />
+                <rect x="110" y="100" width="60" height="150" />
+                <rect x="200" y="180" width="30" height="70" />
+                <rect x="250" y="80" width="80" height="170" />
+                <rect x="350" y="130" width="50" height="120" />
+                <rect x="600" y="110" width="70" height="140" />
+                <rect x="700" y="160" width="40" height="90" />
+                <rect x="780" y="90" width="90" height="160" />
+                <rect x="900" y="140" width="50" height="110" />
             </g>
             
-            <polygon points="-72,20 -65,17 -65,23" fill="#fff" filter="drop-shadow(-10px 0 15px #00d2ff)" />
-            <rect x="70" y="15" width="5" height="8" rx="2" fill="#ff0000" filter="drop-shadow(5px 0 10px #ff0000)" />
-        </g>
-    </svg>
+            <g fill="#00d2ff" opacity="0.6">
+                <rect x="120" y="120" width="5" height="5" />
+                <rect x="140" y="120" width="5" height="5" />
+                <rect x="120" y="140" width="5" height="5" />
+                <rect x="270" y="100" width="5" height="15" />
+                <rect x="300" y="130" width="10" height="5" fill="#ff007f"/>
+                <rect x="620" y="130" width="5" height="5" />
+                <rect x="640" y="150" width="5" height="5" />
+                <rect x="800" y="110" width="5" height="20" fill="#ff007f"/>
+                <rect x="830" y="140" width="20" height="5" />
+            </g>
 
-    <div id="ui-layer">
-        <div id="word-display" class="neon-board">СЛОВО</div>
-        
-        <div id="left-btn" class="neon-board interactive-board" onclick="handleChoice('ознака')">
-            ⬅ ОЗНАКА
+            <rect x="0" y="250" width="1000" height="350" fill="url(#grassGrad)" opacity="0.6" />
+            <rect x="0" y="250" width="1000" height="350" fill="url(#gridPattern)" />
+
+            <path d="M 480,250 L 520,250 L 580,420 L 420,420 Z" fill="url(#roadGrad)" />
+            <rect x="0" y="420" width="1000" height="180" fill="url(#roadGrad)" />
+            
+            <path d="M 500,250 L 500,420" stroke="#f1c40f" stroke-width="3" stroke-dasharray="15 15" opacity="0.8" filter="drop-shadow(0 0 5px #f1c40f)" />
+            <line x1="0" y1="490" x2="1000" y2="490" stroke="#f1c40f" stroke-width="4" stroke-dasharray="30 20" opacity="0.8" filter="drop-shadow(0 0 5px #f1c40f)" />
+            
+            <path d="M 480,250 L 420,420" stroke="#00d2ff" stroke-width="3" filter="drop-shadow(0 0 8px #00d2ff)" />
+            <path d="M 520,250 L 580,420" stroke="#ff007f" stroke-width="3" filter="drop-shadow(0 0 8px #ff007f)" />
+            <line x1="0" y1="420" x2="420" y2="420" stroke="#00d2ff" stroke-width="4" filter="drop-shadow(0 0 8px #00d2ff)" />
+            <line x1="580" y1="420" x2="1000" y2="420" stroke="#ff007f" stroke-width="4" filter="drop-shadow(0 0 8px #ff007f)" />
+            <line x1="0" y1="570" x2="1000" y2="570" stroke="#fff" stroke-width="5" opacity="0.2" />
+
+            <g id="car-front" class="car-front-start">
+                <ellipse cx="0" cy="30" rx="60" ry="10" fill="#000" opacity="0.8" filter="drop-shadow(0 5px 10px #000)"/>
+                
+                <path d="M -50,-25 L 50,-25 L 45,-10 L -45,-10 Z" fill="#111" stroke="#333" stroke-width="1"/>
+                <rect x="-25" y="-10" width="50" height="15" fill="url(#carBodyGrad)"/>
+                
+                <path d="M -25,-15 L 25,-15 L 35,25 L -35,25 Z" fill="url(#carBodyGrad)" />
+                
+                <path d="M -15, -5 C -15,-15 15,-15 15,-5 L 20,10 L -20,10 Z" fill="url(#glassGrad)" stroke="#111" stroke-width="2"/>
+                <polygon points="-15,-2 0,-2 -5,8 -18,8" fill="#fff" opacity="0.1" />
+
+                <rect x="-40" y="-2" width="10" height="5" rx="2" fill="#000" />
+                <rect x="30" y="-2" width="10" height="5" rx="2" fill="#000" />
+
+                <rect x="-60" y="-10" width="20" height="30" rx="4" fill="#050505" />
+                <rect x="40" y="-10" width="20" height="30" rx="4" fill="#050505" />
+                <rect x="-65" y="15" width="22" height="35" rx="5" fill="#000" />
+                <rect x="43" y="15" width="22" height="35" rx="5" fill="#000" />
+                <ellipse cx="-54" cy="32" rx="5" ry="10" fill="#333" />
+                <ellipse cx="54" cy="32" rx="5" ry="10" fill="#333" />
+
+                <path d="M -60,30 L 60,30 L 65,45 L -65,45 Z" fill="#111" />
+                <polygon points="-15,25 15,25 0,40" fill="#fff" opacity="0.8" />
+                
+                <ellipse cx="-45" cy="38" rx="8" ry="3" fill="#fff" filter="drop-shadow(0 0 15px #00d2ff)" />
+                <ellipse cx="45" cy="38" rx="8" ry="3" fill="#fff" filter="drop-shadow(0 0 15px #00d2ff)" />
+            </g>
+
+            <g id="car-side" class="car-side-hidden">
+                <ellipse cx="0" cy="32" rx="75" ry="8" fill="#000" opacity="0.8" filter="drop-shadow(0 5px 10px #000)" />
+                
+                <path d="M 45,-15 L 65,-25 L 75,-25 L 65,-10 Z" fill="#111" />
+                <rect x="60" y="-25" width="15" height="5" fill="#00d2ff" />
+                
+                <path d="M 65,10 C 65,-10 40,-15 15,-15 C -10,-15 -30,-5 -70,15 L -75,25 L -70,30 L 70,30 L 75,20 Z" fill="url(#carBodyGrad)" />
+                
+                <path d="M 30,-5 C 30,-12 10,-12 -15,0 L -5,10 L 35,10 Z" fill="url(#glassGrad)" />
+                <polygon points="10,-2 25,-2 28,6 12,6" fill="#fff" opacity="0.1" />
+                
+                <path d="M 60,15 L -50,20 L -60,25 L 65,25 Z" fill="#fff" opacity="0.2" />
+                
+                <g transform="translate(-40, 25)">
+                    <circle cx="0" cy="0" r="16" fill="#000" />
+                    <circle cx="0" cy="0" r="10" fill="#222" stroke="#444" stroke-width="2"/>
+                    <circle cx="0" cy="0" r="4" fill="#00d2ff" />
+                </g>
+                <g transform="translate(45, 25)">
+                    <circle cx="0" cy="0" r="18" fill="#000" />
+                    <circle cx="0" cy="0" r="12" fill="#222" stroke="#444" stroke-width="2"/>
+                    <circle cx="0" cy="0" r="5" fill="#00d2ff" />
+                </g>
+                
+                <polygon points="-72,20 -65,17 -65,23" fill="#fff" filter="drop-shadow(-10px 0 15px #00d2ff)" />
+                <rect x="70" y="15" width="5" height="8" rx="2" fill="#ff0000" filter="drop-shadow(5px 0 10px #ff0000)" />
+            </g>
+        </svg>
+
+        <div id="ui-layer">
+            <div id="word-display" class="neon-board">СЛОВО</div>
+            
+            <div id="left-btn" class="neon-board interactive-board" onclick="handleChoice('ознака', false)">
+                ⬅ ОЗНАКА
+            </div>
+            
+            <div id="right-btn" class="neon-board interactive-board" onclick="handleChoice('дія', false)">
+                ДІЯ ➡
+            </div>
+            
+            <div id="back-btn" class="nav-btn" onclick="changeWord(-1, false)">&#10094;</div>
+            <div id="next-btn" class="nav-btn" onclick="changeWord(1, false)">&#10095;</div>
         </div>
-        
-        <div id="right-btn" class="neon-board interactive-board" onclick="handleChoice('дія')">
-            ДІЯ ➡
-        </div>
-        
-        <div id="back-btn" class="nav-btn" onclick="changeWord(-1)">&#10094;</div>
-        <div id="next-btn" class="nav-btn" onclick="changeWord(1)">&#10095;</div>
     </div>
 </div>
 
+<button id="theme-btn">⚙️</button>
+<div id="theme-modal">
+    <div class="theme-modal-header">
+        <h2>Вибір фону</h2>
+        <div class="theme-modal-close" onclick="document.getElementById('theme-modal').style.display='none'">✕</div>
+    </div>
+    <div id="theme-gallery">
+        <div class="theme-card" onclick="setTheme('none')">
+            <div style="width:100%; height:100%; background:#0b0f19;"></div>
+            <span>Без фону</span>
+        </div>
+    </div>
+</div>
+
+<button id="toggle-draw-btn-global">✏️ Малювати</button>
+<div id="draw-panel-global">
+    <div class="draw-handle" id="draw-handle-global">
+        <span>Панель</span>
+        <span class="draw-close" id="close-draw-global">✕</span>
+    </div>
+    <div class="draw-tools">
+        <button class="draw-btn active" id="tool-pencil-global">✏️ Олівець</button>
+        <button class="draw-btn" id="tool-eraser-global">🧽 Гумка</button>
+        <input type="range" id="draw-size-global" min="1" max="50" value="5">
+        <input type="color" id="draw-color-global" value="#ff0000">
+        <button class="draw-btn" id="tool-clear-global">🗑️ Очистити</button>
+    </div>
+</div>
+<canvas id="draw-canvas-global"></canvas>
+
 <script>
+    // CONFIG & FIREBASE SETUP
+    const CONFIG = {
+        gameId: 'oznaka_chy_diya',
+        firebaseUrl: 'https://lesson-13c44-default-rtdb.firebaseio.com/',
+        projectId: 'lesson-13c44'
+    };
+
+    let app, db;
+    let isConnected = false;
+    try {
+        app = firebase.initializeApp({ databaseURL: CONFIG.firebaseUrl, projectId: CONFIG.projectId });
+        db = firebase.database();
+        isConnected = true;
+    } catch (e) {
+        console.warn("Firebase не підключено, гра працює локально.", e);
+    }
+
+    function getQueryParam(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+    }
+    let myName = getQueryParam('user') || sessionStorage.getItem('username');
+    if (!myName) {
+        myName = 'Гість_' + Math.floor(Math.random() * 1000);
+    }
+    sessionStorage.setItem('username', myName);
+    const mySenderId = myName + '_' + Math.random().toString(36).substr(2, 9);
+    const tabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+
+    function syncAction(type, data) {
+        if (!isConnected) return;
+        db.ref('game_action').set({
+            senderId: mySenderId,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: type,
+            data: data
+        });
+    }
+
+    // ZOOM CONTROL
+    let currentZoom = 1;
+    function adjustZoom(delta) {
+        currentZoom += delta;
+        if(currentZoom < 0.2) currentZoom = 0.2;
+        if(currentZoom > 3) currentZoom = 3;
+        document.getElementById('game-scale-wrapper').style.transform = `scale(${currentZoom})`;
+    }
+
+    // PRNG СИСТЕМА ДЛЯ ОДНАКОВОГО РАНДОМУ СЛІВ НА ВСІХ ПРИСТРОЯХ
+    function mulberry32(a) {
+        return function() {
+          var t = a += 0x6D2B79F5;
+          t = Math.imul(t ^ t >>> 15, t | 1);
+          t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+          return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        }
+    }
+    const seed = Math.floor(Date.now() / (1000 * 60 * 60)); // Змінюється щогодини
+    const randomFunc = mulberry32(seed);
+
     const wordsData = [
         { word: 'швидкий', type: 'ознака' }, { word: 'яскравий', type: 'ознака' }, { word: 'великий', type: 'ознака' },
         { word: 'червоний', type: 'ознака' }, { word: 'сміливий', type: 'ознака' }, { word: 'гучний', type: 'ознака' },
@@ -381,7 +643,7 @@
         { word: 'стартувати', type: 'дія' }, { word: 'співати', type: 'дія' }, { word: 'дивитися', type: 'дія' }
     ];
 
-    let gameWords = [...wordsData].sort(() => Math.random() - 0.5);
+    let gameWords = [...wordsData].sort(() => randomFunc() - 0.5);
     let currentIndex = 0;
     let gameState = 'loading'; 
 
@@ -469,10 +731,14 @@
         }, 2050);
     }
 
-    function handleChoice(selectedType) {
+    function handleChoice(selectedType, isRemote = false) {
         if (gameState !== 'waiting') return;
         getAudioCtx();
         gameState = 'animating_out';
+
+        if (!isRemote) {
+            syncAction('make_choice', { type: selectedType });
+        }
 
         const currentWordType = gameWords[currentIndex].type;
 
@@ -508,15 +774,271 @@
         }
     }
 
-    function changeWord(direction) {
+    function changeWord(direction, isRemote = false) {
         if (gameState === 'animating_out') return;
+        
+        if (!isRemote) {
+            syncAction('change_word', { dir: direction });
+        }
+        
         currentIndex += direction;
         initWordSequence();
+    }
+
+    // FIREBASE ACTION LISTENER (SYNC LOGIC)
+    if (isConnected) {
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === mySenderId) return;
+
+            if (val.type === 'make_choice') {
+                handleChoice(val.data.type, true);
+            } else if (val.type === 'change_word') {
+                changeWord(val.data.dir, true);
+            }
+        });
     }
 
     window.onload = () => {
         document.body.addEventListener('click', getAudioCtx, { once: true });
         initWordSequence();
     };
+
+
+    // ==========================================
+    // THEME MANAGER (DYNAMIC BACKGROUNDS)
+    // ==========================================
+    const themeBtn = document.getElementById('theme-btn');
+    const themeModal = document.getElementById('theme-modal');
+    const themeGallery = document.getElementById('theme-gallery');
+    
+    themeBtn.onclick = () => {
+        themeModal.style.display = 'block';
+        loadThemes();
+    };
+
+    function setTheme(url, isRemote = false) {
+        if(url === 'none') {
+            document.body.style.backgroundImage = 'none';
+        } else {
+            document.body.style.backgroundImage = `url('${url}')`;
+        }
+        
+        if(!isRemote) {
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            if(isConnected) {
+                db.ref('game_theme').set({ url: url, senderId: mySenderId });
+            }
+        }
+        themeModal.style.display = 'none';
+    }
+
+    let themesLoaded = false;
+    async function loadThemes() {
+        if(themesLoaded) return;
+        themesLoaded = true;
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        
+        for(let i = 1; i <= 1000; i++) {
+            const url = `${baseUrl}background_${i}.webp`;
+            try {
+                const res = await fetch(url, { method: 'HEAD' });
+                if(!res.ok) break; 
+                
+                const card = document.createElement('div');
+                card.className = 'theme-card';
+                card.onclick = () => setTheme(url);
+                card.innerHTML = `<img src="${url}" loading="lazy"><span>Фон ${i}</span>`;
+                themeGallery.appendChild(card);
+            } catch(e) {
+                break;
+            }
+        }
+    }
+
+    // INIT THEME
+    const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+    if(savedBg) setTheme(savedBg, true);
+
+    if(isConnected) {
+        db.ref('game_theme').on('value', snap => {
+            const val = snap.val();
+            if(val && val.senderId !== mySenderId) {
+                setTheme(val.url, true);
+            }
+        });
+    }
+
+    // ==========================================
+    // RADAR & BLOCKER LOGIC
+    // ==========================================
+    if(isConnected) {
+        const myRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                myRef.onDisconnect().remove();
+                myRef.set({ timestamp: firebase.database.ServerValue.TIMESTAMP });
+            }
+        });
+
+        window.addEventListener('beforeunload', () => { myRef.remove(); });
+
+        db.ref('force_refresh').on('value', snap => {
+            if(snap.val() && snap.val() > Date.now() - 5000) {
+                window.location.reload();
+            }
+        });
+
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        let startImmunity = true;
+        setTimeout(() => startImmunity = false, 1000);
+        
+        db.ref('current_activity').on('value', snap => {
+            if(startImmunity) return;
+            const act = snap.val();
+            if(act === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+    }
+
+    // ==========================================
+    // GLOBAL DRAWING TOOL
+    // ==========================================
+    const canvas = document.getElementById('draw-canvas-global');
+    const ctx = canvas.getContext('2d');
+    const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+    const drawPanel = document.getElementById('draw-panel-global');
+    const closeDrawBtn = document.getElementById('close-draw-global');
+    const drawHandle = document.getElementById('draw-handle-global');
+
+    let isDrawingEnabled = false;
+    let isDrawing = false;
+    let currentTool = 'pencil'; 
+    
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    toggleDrawBtn.onclick = () => {
+        drawPanel.style.display = 'block';
+        isDrawingEnabled = true;
+        canvas.style.pointerEvents = 'auto';
+    };
+
+    closeDrawBtn.onclick = () => {
+        drawPanel.style.display = 'none';
+        isDrawingEnabled = false;
+        canvas.style.pointerEvents = 'none';
+    };
+
+    document.getElementById('tool-pencil-global').onclick = (e) => {
+        currentTool = 'pencil';
+        document.querySelectorAll('.draw-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+    };
+    document.getElementById('tool-eraser-global').onclick = (e) => {
+        currentTool = 'eraser';
+        document.querySelectorAll('.draw-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+    };
+    document.getElementById('tool-clear-global').onclick = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if(isConnected) syncAction('clear_canvas', {});
+    };
+
+    // Make Panel Draggable
+    let isDraggingPanel = false, panelX = 0, panelY = 0;
+    drawHandle.onmousedown = (e) => { isDraggingPanel = true; panelX = e.clientX - drawPanel.offsetLeft; panelY = e.clientY - drawPanel.offsetTop; };
+    drawHandle.ontouchstart = (e) => { isDraggingPanel = true; panelX = e.touches[0].clientX - drawPanel.offsetLeft; panelY = e.touches[0].clientY - drawPanel.offsetTop; };
+    window.addEventListener('mousemove', (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.clientX - panelX) + 'px'; drawPanel.style.top = (e.clientY - panelY) + 'px'; } });
+    window.addEventListener('touchmove', (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.touches[0].clientX - panelX) + 'px'; drawPanel.style.top = (e.touches[0].clientY - panelY) + 'px'; } });
+    window.addEventListener('mouseup', () => isDraggingPanel = false);
+    window.addEventListener('touchend', () => isDraggingPanel = false);
+
+    // Drawing Logic
+    let lastX = 0, lastY = 0;
+    function getPos(e) {
+        if(e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function startDraw(e) {
+        if(!isDrawingEnabled) return;
+        isDrawing = true;
+        const pos = getPos(e);
+        lastX = pos.x; lastY = pos.y;
+    }
+
+    function draw(e) {
+        if(!isDrawing || !isDrawingEnabled) return;
+        e.preventDefault();
+        const pos = getPos(e);
+        const color = currentTool === 'eraser' ? null : document.getElementById('draw-color-global').value;
+        const size = document.getElementById('draw-size-global').value;
+        
+        drawLineLocal(lastX, lastY, pos.x, pos.y, color, size, window.innerWidth, window.innerHeight);
+        
+        if(isConnected) {
+            syncAction('draw_line', {
+                x0: lastX / window.innerWidth, y0: lastY / window.innerHeight,
+                x1: pos.x / window.innerWidth, y1: pos.y / window.innerHeight,
+                color: color, size: size
+            });
+        }
+        
+        lastX = pos.x; lastY = pos.y;
+    }
+
+    function stopDraw() { isDrawing = false; }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('mouseout', stopDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive: false});
+    canvas.addEventListener('touchmove', draw, {passive: false});
+    canvas.addEventListener('touchend', stopDraw);
+
+    function drawLineLocal(x0, y0, x1, y1, color, size, w, h) {
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        if(color === null) {
+            ctx.globalCompositeOperation = "destination-out";
+            ctx.lineWidth = size * 2;
+            ctx.strokeStyle = "rgba(0,0,0,1)";
+        } else {
+            ctx.globalCompositeOperation = "source-over";
+            ctx.lineWidth = size;
+            ctx.strokeStyle = color;
+        }
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.globalCompositeOperation = "source-over";
+    }
+
+    // Sync Draw
+    if(isConnected) {
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if(!val || val.senderId === mySenderId) return;
+            
+            if(val.type === 'draw_line') {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                drawLineLocal(val.data.x0 * w, val.data.y0 * h, val.data.x1 * w, val.data.y1 * h, val.data.color, val.data.size, w, h);
+            } else if(val.type === 'clear_canvas') {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        });
+    }
 </script>
+</body>
 </html>
