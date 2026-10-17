@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Гра з жабкою: Склади</title>
+    
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        /* Скидання стилів та налаштування повноекранного режиму */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1976d2; 
+            font-family: 'Arial', sans-serif;
+            user-select: none;
+            touch-action: none;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* Контейнер для масштабування (Лупа) */
+        #game-zoom-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: center center;
+            transition: transform 0.3s ease;
+        }
+
+        /* Анімований фон (хвилі на воді) */
+        .water-ripples {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(255,255,255,0.1) 0%, transparent 5%),
+                radial-gradient(circle at 80% 70%, rgba(255,255,255,0.15) 0%, transparent 8%);
+            background-size: 200% 200%;
+            animation: waterMove 15s infinite alternate ease-in-out;
+            z-index: 1;
+        }
+
+        @keyframes waterMove {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 100% 100%; }
+        }
+
+        /* Тіні рибок */
+        #fish-shadows-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .fish-shadow {
+            position: absolute;
+            width: 60px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 50%;
+            filter: blur(4px);
+            opacity: 0.6;
+            animation: swimFish linear infinite;
+        }
+
+        @keyframes swimFish {
+            0% { transform: translateX(-100px) translateY(0) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.6; }
+            90% { opacity: 0.6; }
+            100% { transform: translateX(120vw) translateY(50px) rotate(15deg); opacity: 0; }
+        }
+
+        /* Контейнер для листочків латаття */
+        #leaves-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+
+        .leaf {
+            position: absolute;
+            width: 130px; 
+            height: 130px;
+            cursor: pointer;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.4));
+        }
+
+        .leaf:hover {
+            filter: drop-shadow(0px 15px 15px rgba(0,0,0,0.6)) brightness(1.1);
+        }
+
+        .leaf-svg-wrapper {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Текст складів */
+        .syllable-text {
+            position: absolute;
+            font-size: 48px;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 
+                3px 3px 0 #000, 
+                -1px -1px 0 #000, 
+                1px -1px 0 #000, 
+                -1px 1px 0 #000, 
+                1px 1px 0 #000,
+                0px 5px 15px rgba(0,0,0,0.7);
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        /* Жабка */
+        #frog-wrapper {
+            position: absolute;
+            width: 110px;
+            height: 110px;
+            z-index: 5;
+            transition: top 0.6s linear, left 0.6s linear;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+        }
+
+        #frog {
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            animation: breathe 2s infinite ease-in-out;
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05, 0.95); }
+        }
+
+        .jumping {
+            animation: jumpArc 0.6s ease-in-out !important;
+        }
+
+        @keyframes jumpArc {
+            0% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-150px) scale(1.1) rotate(-10deg); }
+            100% { transform: translateY(0) scale(1); }
+        }
+
+        /* Декоративні елементи фону (комиші) */
+        .cattails {
+            position: absolute;
+            bottom: -20px;
+            left: -20px;
+            width: 250px;
+            height: 250px;
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        /* ---------------- УНІВЕРСАЛЬНІ UI КОМПОНЕНТИ ---------------- */
+        
+        /* Секретне вікно для введення літери */
+        #secret-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.2);
+            padding: 5px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+        }
+
+        #secret-input {
+            width: 40px;
+            height: 40px;
+            background: transparent;
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 5px;
+            font-size: 24px;
+            text-align: center;
+            outline: none;
+            font-family: inherit;
+            font-weight: bold;
+            transition: all 0.3s;
+            color: transparent;
+            text-shadow: 0 0 0 transparent;
+        }
+        
+        #secret-input::selection {
+            color: transparent;
+            background: transparent;
+        }
+
+        #secret-input.visible-text {
+            color: #333;
+            text-shadow: none;
+            background: rgba(255,255,255,0.9);
+        }
+
+        #toggle-secret-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            opacity: 0.7;
+        }
+        #toggle-secret-btn:hover { opacity: 1; }
+
+        /* МІНІМАЛІСТИЧНІ КНОПКИ РІВНІВ - ВЕРТИКАЛЬНО СПРАВА */
+        #level-controls {
+            position: absolute;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 12px;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .game-btn {
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 8px;
+            background: rgba(0,0,0,0.4);
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.2s;
+            text-align: center;
+            min-width: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .game-btn.active, .game-btn:hover {
+            background: #4caf50;
+            border-color: white;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+        .game-btn.icon-btn {
+            font-size: 18px;
+            padding: 10px;
+        }
+
+        /* Кнопки налаштувань та малювання (зліва внизу, щоб не заважати рівням) */
+        .circle-btn {
+            position: absolute;
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            transition: transform 0.2s, background 0.2s;
+            font-size: 24px;
+            color: white;
+            user-select: none;
+            z-index: 90001; /* Поверх канвасу */
+        }
+        .circle-btn:active { transform: scale(0.9); }
+
+        #settings-btn {
+            bottom: 20px;
+            right: 20px;
+            background: #2c3e50;
+        }
+
+        #toggle-draw-btn-global {
+            bottom: 85px; 
+            right: 20px;
+            background: #8e44ad; /* Фіолетовий фон */
+        }
+
+        /* Лупа (Зум) */
+        #zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        .zoom-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.7);
+            border: 2px solid #333;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* ---------------- THEME MANAGER (Галерея фонів) ---------------- */
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 100000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .theme-modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .theme-close {
+            position: absolute;
+            top: 10px; right: 15px;
+            font-size: 28px;
+            cursor: pointer;
+            color: #333;
+        }
+
+        .theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-top: 10px;
+        }
+
+        .theme-card {
+            position: relative;
+            height: 100px;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: transform 0.2s;
+            background: #ccc;
+        }
+        .theme-card:hover { transform: scale(1.05); }
+        .theme-card.active { border-color: #e74c3c; }
+
+        .theme-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .theme-title {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            text-align: center;
+            font-size: 14px;
+            padding: 4px 0;
+            font-weight: bold;
+        }
+
+        .theme-card-none {
+            background: #1976d2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* ---------------- БЛОК МАЛЮВАННЯ ---------------- */
+        #global-drawing-canvas {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 90000;
+            pointer-events: none; 
+        }
+
+        #draw-panel-global {
+            display: none;
+            position: absolute;
+            top: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 250px;
+            z-index: 90002;
+            border: 1px solid #ccc;
+        }
+
+        .draw-header {
+            background: #f1f1f1;
+            padding: 10px;
+            border-radius: 12px 12px 0 0;
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .draw-close {
+            cursor: pointer;
+            color: #e74c3c;
+            font-size: 18px;
+        }
+
+        .draw-body {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .draw-tools {
+            display: flex;
+            gap: 10px;
+        }
+
+        .draw-btn {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .draw-btn.active { background: #3498db; color: white; }
+        .draw-btn.inactive { background: #e0e0e0; color: #333; }
+
+        .draw-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .draw-row input[type="range"] { flex: 1; }
+
+        .draw-clear {
+            background: #e74c3c;
+            color: white;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* ---------------- ЕКРАН БЛОКУВАННЯ ---------------- */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 999999;
+            justify-content: center;
+            align-items: center;
+            color: red;
+            font-size: 40px;
+            font-weight: bold;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        /* Адаптивність */
+        @media (max-width: 768px) {
+            .syllable-text { font-size: 36px; }
+            .leaf { width: 90px; height: 90px; }
+            #frog-wrapper { width: 80px; height: 80px; }
+            .circle-btn { width: 45px; height: 45px; font-size: 20px; }
+            #secret-input { width: 30px; height: 30px; font-size: 18px; }
+            .zoom-btn { width: 40px; height: 40px; }
+            
+            #level-controls { padding: 8px; gap: 8px; right: 10px; }
+            .game-btn { padding: 8px; min-width: 40px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Глобальний екран блокування -->
+    <div id="block-overlay">Зачекай!<br>Зараз не твій урок.</div>
+
+    <!-- Полотно для малювання -->
+    <canvas id="global-drawing-canvas"></canvas>
+
+    <!-- Інтерфейс -->
+    <div id="secret-container">
+        <input type="text" id="secret-input" maxlength="1" value="с" title="Введіть літеру">
+        <button id="toggle-secret-btn" title="Показати/Сховати">👁️</button>
+    </div>
+
+    <!-- Мінімалістичні вертикальні кнопки рівнів -->
+    <div id="level-controls">
+        <button class="game-btn active" id="btn-lvl-1" title="Рівень 1 (АС)">АС</button>
+        <button class="game-btn" id="btn-lvl-2" title="Рівень 2 (СА)">СА</button>
+        <button class="game-btn" id="btn-lvl-3" title="Рівень 3 (Мікс)">Мікс</button>
+        <button class="game-btn icon-btn" id="btn-regen" title="Перегенерувати розташування">🔀</button>
+    </div>
+
+    <div id="zoom-controls">
+        <button class="zoom-btn" id="zoom-in" title="Наблизити">🔍+</button>
+        <button class="zoom-btn" id="zoom-out" title="Віддалити">🔍-</button>
+    </div>
+
+    <div class="circle-btn" id="toggle-draw-btn-global" title="Малювати">✏️</div>
+    <div class="circle-btn" id="settings-btn" title="Налаштування фону">⚙️</div>
+
+    <!-- Theme Modal -->
+    <div id="theme-modal">
+        <div class="theme-modal-content">
+            <div class="theme-close" id="theme-close-btn">&times;</div>
+            <h2 style="margin-top:0; text-align:center;">Обери фон</h2>
+            <div class="theme-gallery" id="theme-gallery">
+                <div class="theme-card theme-card-none active" id="theme-none">Без фону</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Draw Panel -->
+    <div id="draw-panel-global">
+        <div class="draw-header" id="draw-header-drag">
+            <span>Інструменти</span>
+            <span class="draw-close" id="draw-close-btn">&times;</span>
+        </div>
+        <div class="draw-body">
+            <div class="draw-tools">
+                <button class="draw-btn active" id="tool-pencil">✏️ Олівець</button>
+                <button class="draw-btn inactive" id="tool-eraser">🧽 Гумка</button>
+            </div>
+            <div class="draw-row">
+                <span>Товщина:</span>
+                <input type="range" id="draw-width" min="1" max="50" value="5">
+            </div>
+            <div class="draw-row">
+                <span>Колір:</span>
+                <input type="color" id="draw-color" value="#ff0000">
+            </div>
+            <button class="draw-clear" id="draw-clear-btn">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <!-- Ігрова зона з зумом -->
+    <div id="game-zoom-container">
+        <div class="water-ripples"></div>
+        <div id="fish-shadows-container"></div>
+
+        <svg class="cattails" viewBox="0 0 200 200">
+            <g stroke="#2e7d32" stroke-width="4" stroke-linecap="round">
+                <path d="M50,200 Q40,100 60,20" fill="none" />
+                <path d="M90,200 Q100,120 80,40" fill="none" />
+                <path d="M130,200 Q120,80 150,30" fill="none" />
+            </g>
+            <g fill="#5d4037">
+                <rect x="55" y="30" width="10" height="40" rx="5" transform="rotate(10 60 50)" />
+                <rect x="76" y="50" width="12" height="45" rx="6" transform="rotate(-15 82 72)" />
+                <rect x="142" y="40" width="10" height="35" rx="5" transform="rotate(25 147 57)" />
+            </g>
+            <g fill="#4caf50">
+                <path d="M50,200 Q20,150 10,120 Q30,160 50,200" />
+                <path d="M90,200 Q130,140 140,100 Q110,150 90,200" />
+            </g>
+        </svg>
+
+        <div id="leaves-container"></div>
+
+        <div id="frog-wrapper" style="left: 50%; top: 50%;">
+            <div id="frog">
+                <svg viewBox="0 0 100 100" id="frog-svg">
+                    <ellipse cx="50" cy="85" rx="40" ry="10" fill="rgba(0,0,0,0.3)" />
+                    <path d="M20,60 C5,50 5,80 15,90 C25,100 40,80 30,70 Z" fill="#388e3c"/>
+                    <path d="M80,60 C95,50 95,80 85,90 C75,100 60,80 70,70 Z" fill="#388e3c"/>
+                    <circle cx="10" cy="85" r="4" fill="#ffb300"/>
+                    <circle cx="5" cy="75" r="4" fill="#ffb300"/>
+                    <circle cx="90" cy="85" r="4" fill="#ffb300"/>
+                    <circle cx="95" cy="75" r="4" fill="#ffb300"/>
+                    
+                    <ellipse cx="50" cy="60" rx="35" ry="28" fill="#4caf50"/>
+                    <ellipse cx="50" cy="65" rx="25" ry="18" fill="#c8e6c9"/>
+
+                    <path d="M35,70 C30,90 20,90 25,95 C30,90 40,90 40,75 Z" fill="#4caf50"/>
+                    <path d="M65,70 C70,90 80,90 75,95 C70,90 60,90 60,75 Z" fill="#4caf50"/>
+
+                    <ellipse cx="50" cy="40" rx="40" ry="25" fill="#4caf50"/>
+                    
+                    <!-- Рот (Усміхнений) -->
+                    <path id="frog-mouth" d="M30,45 Q50,70 70,45" fill="none" stroke="#1b5e20" stroke-width="3" stroke-linecap="round"/>
+                    <path id="frog-tongue" d="M45,52 Q50,65 55,52" fill="#e57373" opacity="0"/>
+
+                    <circle cx="30" cy="25" r="14" fill="#4caf50"/>
+                    <circle cx="70" cy="25" r="14" fill="#4caf50"/>
+                    <circle cx="30" cy="25" r="10" fill="#fff"/>
+                    <circle cx="70" cy="25" r="10" fill="#fff"/>
+                    
+                    <g id="pupils">
+                        <circle id="pupil-left" cx="30" cy="25" r="4" fill="#000"/>
+                        <circle id="pupil-right" cx="70" cy="25" r="4" fill="#000"/>
+                    </g>
+                    
+                    <circle cx="28" cy="23" r="2" fill="#fff"/>
+                    <circle cx="68" cy="23" r="2" fill="#fff"/>
+                    <ellipse cx="20" cy="40" rx="5" ry="3" fill="#ef9a9a" opacity="0.6"/>
+                    <ellipse cx="80" cy="40" rx="5" ry="3" fill="#ef9a9a" opacity="0.6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= CONFIG & FIREBASE INIT =================
+        const CONFIG = {
+            gameId: 'frogSyllables_v2',
+            firebaseProjectId: 'lesson-13c44'
+        };
+
+        const firebaseConfig = {
+            databaseURL: `https://${CONFIG.firebaseProjectId}-default-rtdb.firebaseio.com/`
+        };
+
+        let isFirebaseActive = false;
+        let db = null;
+        let myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        let myTabId = Math.random().toString(36).substring(2, 15);
+        let actionRef, themeRef, drawRef;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('user')) {
+            myName = urlParams.get('user');
+            sessionStorage.setItem('userName', myName);
+        } else if (sessionStorage.getItem('userName')) {
+            myName = sessionStorage.getItem('userName');
+        } else {
+            sessionStorage.setItem('userName', myName);
+        }
+
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            isFirebaseActive = true;
+            console.log("Firebase initialized. User:", myName);
+
+            actionRef = db.ref('game_action');
+            themeRef = db.ref('game_theme');
+            drawRef = db.ref('draw_action');
+
+            const connectedRef = db.ref('.info/connected');
+            const myPresenceRef = db.ref(`online_users/${myName}/${myTabId}`);
+            const blockRef = db.ref(`blocked_users/${myName}`);
+            const currentActivityRef = db.ref('current_activity');
+            const forceRefreshRef = db.ref('force_refresh');
+
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    myPresenceRef.set(true);
+                    myPresenceRef.onDisconnect().remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => myPresenceRef.remove());
+
+            const blockOverlay = document.getElementById('block-overlay');
+            blockRef.on('value', (snap) => {
+                blockOverlay.style.display = snap.val() === true ? 'flex' : 'none';
+            });
+
+            forceRefreshRef.on('value', (snap) => {
+                if (snap.val() && snap.val() > Date.now() - 5000) window.location.reload();
+            });
+
+            let initTime = Date.now();
+            currentActivityRef.on('value', (snap) => {
+                if (snap.val() === 'lobby' && (Date.now() - initTime) > 1000) {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        } catch (e) {
+            console.warn("Firebase not available. Offline mode.");
+        }
+
+        // ================= ZOOM LOGIC =================
+        let currentScale = 1;
+        const zoomContainer = document.getElementById('game-zoom-container');
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            currentScale = Math.min(currentScale + 0.1, 2.5);
+            zoomContainer.style.transform = `scale(${currentScale})`;
+        });
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            currentScale = Math.max(currentScale - 0.1, 0.5);
+            zoomContainer.style.transform = `scale(${currentScale})`;
+        });
+
+        // ================= THEME MANAGER =================
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const themeNoneBtn = document.getElementById('theme-none');
+        
+        const savedThemeUrl = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        document.body.style.backgroundImage = (savedThemeUrl && savedThemeUrl !== 'none') ? `url('${savedThemeUrl}')` : 'none';
+
+        document.getElementById('settings-btn').addEventListener('click', () => {
+            themeModal.style.display = 'flex';
+            if(themeGallery.children.length === 1) loadThemes();
+        });
+
+        document.getElementById('theme-close-btn').addEventListener('click', () => themeModal.style.display = 'none');
+
+        async function loadThemes() {
+            const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+            let i = 1;
+            while(true) {
+                let url = `${baseUrl}background_${i}.webp`;
+                try {
+                    let response = await fetch(url, { method: 'HEAD' });
+                    if(response.ok) {
+                        createThemeCard(url, `Фон ${i}`);
+                        i++;
+                    } else break;
+                } catch(e) { break; }
+            }
+        }
+
+        function createThemeCard(url, title) {
+            const card = document.createElement('div');
+            card.className = 'theme-card';
+            card.innerHTML = `<img src="${url}" alt="${title}"><div class="theme-title">${title}</div>`;
+            card.addEventListener('click', () => {
+                applyTheme(url, true);
+                themeModal.style.display = 'none';
+            });
+            themeGallery.appendChild(card);
+        }
+
+        themeNoneBtn.addEventListener('click', () => {
+            applyTheme('none', true);
+            themeModal.style.display = 'none';
+        });
+
+        function applyTheme(url, isSender) {
+            document.body.style.backgroundImage = url === 'none' ? 'none' : `url('${url}')`;
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+
+            Array.from(themeGallery.children).forEach(c => c.classList.remove('active'));
+            if(url === 'none') {
+                themeNoneBtn.classList.add('active');
+            } else {
+                Array.from(themeGallery.children).forEach(c => {
+                    let img = c.querySelector('img');
+                    if(img && img.src === url) c.classList.add('active');
+                });
+            }
+
+            if (isSender && isFirebaseActive) {
+                themeRef.set({ url: url, timestamp: Date.now() });
+            }
+        }
+
+        if (isFirebaseActive) {
+            themeRef.on('value', snap => {
+                let data = snap.val();
+                if (data && data.url) applyTheme(data.url, false);
+            });
+        }
+
+        // ================= DRAWING SCRIPT =================
+        const drawPanel = document.getElementById('draw-panel-global');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        const closeDrawBtn = document.getElementById('draw-close-btn');
+        const drawCanvas = document.getElementById('global-drawing-canvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        const drawHeader = document.getElementById('draw-header-drag');
+        
+        let isDrawingMode = false, isDrawing = false;
+        let lastX = 0, lastY = 0;
+        let currentDrawMode = 'pencil';
+
+        function resizeDrawCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeDrawCanvas);
+        resizeDrawCanvas();
+
+        let isDraggingPanel = false, panelOffsetX, panelOffsetY;
+
+        const dragStart = (e) => {
+            isDraggingPanel = true;
+            let clientX = e.clientX || e.touches[0].clientX;
+            let clientY = e.clientY || e.touches[0].clientY;
+            panelOffsetX = clientX - drawPanel.getBoundingClientRect().left;
+            panelOffsetY = clientY - drawPanel.getBoundingClientRect().top;
+        };
+        drawHeader.addEventListener('mousedown', dragStart);
+        drawHeader.addEventListener('touchstart', dragStart);
+
+        const dragMove = (e) => {
+            if (!isDraggingPanel) return;
+            let clientX = e.clientX || e.touches[0].clientX;
+            let clientY = e.clientY || e.touches[0].clientY;
+            drawPanel.style.left = (clientX - panelOffsetX) + 'px';
+            drawPanel.style.top = (clientY - panelOffsetY) + 'px';
+            drawPanel.style.transform = 'none'; // скасовуємо translateX(-50%) при перетягуванні
+        };
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('touchmove', dragMove);
+        document.addEventListener('mouseup', () => isDraggingPanel = false);
+        document.addEventListener('touchend', () => isDraggingPanel = false);
+
+        toggleDrawBtn.addEventListener('click', () => {
+            drawPanel.style.display = 'block';
+            isDrawingMode = true;
+            drawCanvas.style.pointerEvents = 'auto';
+        });
+
+        closeDrawBtn.addEventListener('click', () => {
+            drawPanel.style.display = 'none';
+            isDrawingMode = false;
+            drawCanvas.style.pointerEvents = 'none';
+        });
+
+        document.getElementById('tool-pencil').addEventListener('click', (e) => {
+            currentDrawMode = 'pencil';
+            e.target.classList.replace('inactive', 'active');
+            document.getElementById('tool-eraser').classList.replace('active', 'inactive');
+        });
+        document.getElementById('tool-eraser').addEventListener('click', (e) => {
+            currentDrawMode = 'eraser';
+            e.target.classList.replace('inactive', 'active');
+            document.getElementById('tool-pencil').classList.replace('active', 'inactive');
+        });
+
+        document.getElementById('draw-clear-btn').addEventListener('click', () => {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            sendDrawAction({ type: 'clear_canvas' });
+        });
+
+        function getDrawPos(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            let clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            let clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function startDrawing(e) {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            let pos = getDrawPos(e);
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function draw(e) {
+            if (!isDrawing || !isDrawingMode) return;
+            e.preventDefault();
+            let pos = getDrawPos(e);
+            let width = document.getElementById('draw-width').value;
+            let color = currentDrawMode === 'eraser' ? 'eraser' : document.getElementById('draw-color').value;
+
+            drawLineLocal(lastX, lastY, pos.x, pos.y, color, width);
+            
+            sendDrawAction({
+                type: 'draw_line',
+                x0: lastX / drawCanvas.width,
+                y0: lastY / drawCanvas.height,
+                x1: pos.x / drawCanvas.width,
+                y1: pos.y / drawCanvas.height,
+                color: color, width: width
+            });
+
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function stopDrawing() { isDrawing = false; }
+
+        drawCanvas.addEventListener('mousedown', startDrawing);
+        drawCanvas.addEventListener('mousemove', draw);
+        drawCanvas.addEventListener('mouseup', stopDrawing);
+        drawCanvas.addEventListener('mouseout', stopDrawing);
+        drawCanvas.addEventListener('touchstart', startDrawing, {passive: false});
+        drawCanvas.addEventListener('touchmove', draw, {passive: false});
+        drawCanvas.addEventListener('touchend', stopDrawing);
+
+        function drawLineLocal(x0, y0, x1, y1, color, width) {
+            drawCtx.beginPath();
+            drawCtx.moveTo(x0, y0);
+            drawCtx.lineTo(x1, y1);
+            if (color === 'eraser') {
+                drawCtx.globalCompositeOperation = "destination-out";
+                drawCtx.lineWidth = width * 2;
+                drawCtx.strokeStyle = "rgba(0,0,0,1)";
+            } else {
+                drawCtx.globalCompositeOperation = "source-over";
+                drawCtx.lineWidth = width;
+                drawCtx.strokeStyle = color;
+            }
+            drawCtx.lineCap = 'round';
+            drawCtx.stroke();
+            drawCtx.globalCompositeOperation = "source-over";
+        }
+
+        function sendDrawAction(data) {
+            if (!isFirebaseActive) return;
+            drawRef.set({ senderId: myTabId, timestamp: Date.now(), ...data });
+        }
+
+        if (isFirebaseActive) {
+            drawRef.on('value', snap => {
+                let data = snap.val();
+                if (!data || data.senderId === myTabId) return;
+                if (data.type === 'clear_canvas') {
+                    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                } else if (data.type === 'draw_line') {
+                    drawLineLocal(data.x0 * drawCanvas.width, data.y0 * drawCanvas.height, data.x1 * drawCanvas.width, data.y1 * drawCanvas.height, data.color, data.width);
+                }
+            });
+        }
+
+
+        // ================= GAME LOGIC (Frog, Levels & Leaves) =================
+        const vowels = ['а', 'о', 'у', 'и', 'е', 'і'];
+        let currentConsonant = 'с';
+        let currentLevel = 1; // 1: АС, 2: СА, 3: Мікс
+        
+        const container = document.getElementById('leaves-container');
+        const frogWrapper = document.getElementById('frog-wrapper');
+        const frogInner = document.getElementById('frog');
+        const secretInput = document.getElementById('secret-input');
+        const mouth = document.getElementById('frog-mouth');
+        const tongue = document.getElementById('frog-tongue');
+        
+        let isJumping = false;
+        let leavesData = [];
+
+        const leafSVG = `
+            <div class="leaf-svg-wrapper">
+                <svg viewBox="0 0 100 100" style="width: 100%; height: 100%;">
+                    <defs>
+                        <radialGradient id="leafGrad" cx="30%" cy="30%" r="70%">
+                            <stop offset="0%" stop-color="#4caf50"/>
+                            <stop offset="100%" stop-color="#1b5e20"/>
+                        </radialGradient>
+                        <linearGradient id="veinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#81c784" stop-opacity="0.6"/>
+                            <stop offset="100%" stop-color="#2e7d32" stop-opacity="0.2"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M50,5 C75,5 95,25 95,50 C95,75 75,95 50,95 C25,95 5,75 5,50 C5,25 25,5 50,5 Z" fill="url(#leafGrad)" stroke="#144d18" stroke-width="2"/>
+                    <path d="M50,50 L50,95 A45,45 0 0,0 85,75 Z" fill="#000" opacity="0.2"/>
+                    <path d="M50,50 L50,95 A45,45 0 0,0 85,80 Z" fill="#0a3610"/>
+                    <path d="M50,50 L50,10 M50,50 L85,25 M50,50 L15,25 M50,50 L10,65 M50,50 L90,65" stroke="url(#veinGrad)" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </div>
+        `;
+
+        function playJumpSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(200, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.5, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                osc.start(); osc.stop(ctx.currentTime + 0.3);
+            } catch(e){}
+        }
+
+        function playLandSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(400, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                osc.start(); osc.stop(ctx.currentTime + 0.2);
+            } catch(e){}
+        }
+
+        document.getElementById('toggle-secret-btn').addEventListener('click', () => {
+            secretInput.classList.toggle('visible-text');
+        });
+
+        secretInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim().toLowerCase();
+            if (val.length === 1 && val.match(/[а-яієїґ]/i)) {
+                currentConsonant = val;
+                generateLeavesData();
+                sendGameAction({ type: 'update_game', consonant: val, level: currentLevel, layout: leavesData });
+            }
+        });
+
+        // Level Logic
+        document.getElementById('btn-lvl-1').addEventListener('click', () => changeLevel(1, true));
+        document.getElementById('btn-lvl-2').addEventListener('click', () => changeLevel(2, true));
+        document.getElementById('btn-lvl-3').addEventListener('click', () => changeLevel(3, true));
+        document.getElementById('btn-regen').addEventListener('click', () => {
+            generateLeavesData();
+            sendGameAction({ type: 'update_game', consonant: currentConsonant, level: currentLevel, layout: leavesData });
+        });
+
+        function changeLevel(lvl, isSender) {
+            currentLevel = lvl;
+            document.querySelectorAll('.game-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-lvl-' + lvl).classList.add('active');
+            generateLeavesData();
+            if (isSender) sendGameAction({ type: 'update_game', consonant: currentConsonant, level: currentLevel, layout: leavesData });
+        }
+
+        function getSyllables() {
+            let s1 = vowels.map(v => v + currentConsonant); // ас
+            let s2 = vowels.map(v => currentConsonant + v); // са
+            if (currentLevel === 1) return s1;
+            if (currentLevel === 2) return s2;
+            return [...s1, ...s2]; // Рівень 3 (Мікс)
+        }
+
+        function generateLeavesData() {
+            let syllables = getSyllables();
+            syllables.sort(() => Math.random() - 0.5);
+            leavesData = [];
+            
+            const padding = window.innerWidth < 768 ? 90 : 130; 
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+
+            for (let i = 0; i < syllables.length; i++) {
+                let attempts = 0, x, y, overlap;
+                let angle = Math.random() * 360;
+
+                do {
+                    overlap = false;
+                    x = padding/2 + Math.random() * (window.innerWidth - padding);
+                    y = padding/2 + Math.random() * (window.innerHeight - padding);
+
+                    let distToCenter = Math.hypot(x - cx, y - cy);
+                    if (distToCenter < 120) overlap = true; // Уникаємо центру (місця спавну жабки)
+
+                    // Уникаємо кнопок рівнів (права зона)
+                    if (x > window.innerWidth - 120) overlap = true;
+
+                    for (let j = 0; j < leavesData.length; j++) {
+                        let l = leavesData[j];
+                        let dist = Math.hypot(x - l.x, y - l.y);
+                        if (dist < padding) { overlap = true; break; }
+                    }
+                    attempts++;
+                } while (overlap && attempts < 150);
+
+                leavesData.push({ text: syllables[i], x: x, y: y, angle: angle });
+            }
+            renderLeavesFromData();
+        }
+
+        function renderLeavesFromData() {
+            container.innerHTML = '';
+            // Повертаємо жабку в центр
+            frogWrapper.style.left = '50%';
+            frogWrapper.style.top = '50%';
+
+            leavesData.forEach((leafData) => {
+                const leaf = document.createElement('div');
+                leaf.className = 'leaf';
+                // Центрування листка
+                const halfSize = window.innerWidth < 768 ? 45 : 65;
+                leaf.style.left = `${leafData.x - halfSize}px`; 
+                leaf.style.top = `${leafData.y - halfSize}px`;
+                
+                leaf.innerHTML = `
+                    <div style="transform: rotate(${leafData.angle}deg); width:100%; height:100%; position:absolute;">
+                        ${leafSVG}
+                    </div>
+                    <div class="syllable-text">${leafData.text}</div>
+                `;
+
+                leaf.addEventListener('click', () => executeJump(leafData.x, leafData.y, true));
+                container.appendChild(leaf);
+            });
+        }
+
+        function executeJump(targetX, targetY, isSender) {
+            if (isJumping) return;
+            isJumping = true;
+
+            mouth.setAttribute('d', 'M40,55 Q50,45 60,55'); // Здивований
+            playJumpSound();
+
+            frogInner.classList.add('jumping');
+            frogWrapper.style.left = `${targetX}px`;
+            frogWrapper.style.top = `${targetY}px`;
+
+            if (isSender) sendGameAction({ type: 'jump', x: targetX, y: targetY });
+
+            setTimeout(() => {
+                frogInner.classList.remove('jumping');
+                playLandSound();
+                
+                mouth.setAttribute('d', 'M30,40 Q50,70 70,40'); // Радісна усмішка
+                tongue.setAttribute('opacity', '1');
+                
+                setTimeout(() => {
+                    mouth.setAttribute('d', 'M30,45 Q50,70 70,45'); // Звичайна
+                    tongue.setAttribute('opacity', '0');
+                    isJumping = false;
+                }, 1000);
+            }, 600);
+        }
+
+        // Рибки анімація
+        function spawnFishes() {
+            const fishContainer = document.getElementById('fish-shadows-container');
+            for(let i=0; i<5; i++) {
+                let fish = document.createElement('div');
+                fish.className = 'fish-shadow';
+                fish.style.top = Math.random() * 80 + 10 + '%';
+                fish.style.animationDelay = (Math.random() * 10) + 's';
+                fish.style.animationDuration = (15 + Math.random() * 15) + 's';
+                fishContainer.appendChild(fish);
+            }
+        }
+        spawnFishes();
+
+        // Живі очі
+        const pupilLeft = document.getElementById('pupil-left');
+        const pupilRight = document.getElementById('pupil-right');
+        document.addEventListener('mousemove', (e) => {
+            if(isJumping) return;
+            const frogRect = frogWrapper.getBoundingClientRect();
+            const frogCenterX = frogRect.left + frogRect.width / 2;
+            const frogCenterY = frogRect.top + frogRect.height / 2;
+            const angle = Math.atan2(e.clientY - frogCenterY, e.clientX - frogCenterX);
+            const distance = 4; 
+            pupilLeft.setAttribute('cx', 30 + Math.cos(angle) * distance);
+            pupilLeft.setAttribute('cy', 25 + Math.sin(angle) * distance);
+            pupilRight.setAttribute('cx', 70 + Math.cos(angle) * distance);
+            pupilRight.setAttribute('cy', 25 + Math.sin(angle) * distance);
+        });
+
+        // Синхронізація Ігрової Логіки
+        function sendGameAction(data) {
+            if (!isFirebaseActive) return;
+            actionRef.set({ senderId: myTabId, timestamp: Date.now(), ...data });
+        }
+
+        if (isFirebaseActive) {
+            actionRef.on('value', snap => {
+                let data = snap.val();
+                if (!data || data.senderId === myTabId) return;
+                
+                if (data.type === 'jump') {
+                    executeJump(data.x, data.y, false);
+                } else if (data.type === 'update_game') {
+                    currentConsonant = data.consonant;
+                    secretInput.value = currentConsonant;
+                    
+                    currentLevel = data.level;
+                    document.querySelectorAll('.game-btn').forEach(btn => btn.classList.remove('active'));
+                    document.getElementById('btn-lvl-' + currentLevel).classList.add('active');
+                    
+                    leavesData = data.layout;
+                    renderLeavesFromData();
+                }
+            });
+        }
+
+        // Перший запуск
+        generateLeavesData();
+    </script>
+</body>
+</html>
