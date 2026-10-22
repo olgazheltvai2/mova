@@ -73,8 +73,12 @@
         .notebook-text.selected-text {
             background-color: rgba(0, 123, 255, 0.2); outline: 1px dashed #007bff; border-radius: 2px;
         }
+        
+        /* GHOST-TYPING (Синхронізація набору): тепер текст не стає тьмяним! */
         .ghost-typing {
-            opacity: 0.45; pointer-events: none; z-index: 15;
+            opacity: 1 !important; 
+            pointer-events: none; 
+            z-index: 15;
         }
         
         #active-input {
@@ -140,19 +144,25 @@
         }
         .tool-btn.active { background: #66afe9; color: #fff; border-color: #317ab9; }
         .tool-btn.danger { color: #d9534f; border-color: #d9534f; }
+        .tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         
-        /* СПЛИВАЮЧІ ВІКНА (Розміщення справа, щоб не перекривати тулбар) */
-        #split-panel {
-            display: none; position: fixed; top: 160px; right: 20px; left: auto; transform: none; background: rgba(255, 255, 255, 0.95);
-            padding: 10px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); z-index: 10000; font-size: 14px;
+        /* ПЕРЕТЯГУВАНІ СПЛИВАЮЧІ ВІКНА */
+        .draggable-panel {
+            position: fixed; background: rgba(255, 255, 255, 0.98); padding: 12px;
+            border-radius: 8px; border: 1px solid #ced4da; box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 10000; font-size: 14px; display: none; flex-direction: column;
         }
+        .panel-drag-handle {
+            cursor: move; width: 100%; user-select: none;
+        }
+        
+        #split-panel { top: 160px; left: 560px; }
         #split-panel label { display: block; margin: 5px 0; cursor: pointer; }
+        #split-panel .panel-drag-handle { color:red; font-size:12px; font-weight:bold; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 5px; }
 
-        #context-actions {
-            display: none; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.98);
-            padding: 15px 12px 12px 12px; border-radius: 8px; border: 1px solid #ced4da; box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            position: fixed; top: 20px; right: 20px; left: auto; transform: none; z-index: 10000;
-        }
+        #context-actions { top: 20px; left: 560px; gap: 5px; }
+        #context-actions .panel-drag-handle { height:15px; background:#e9ecef; border-radius:4px 4px 0 0; margin: -12px -12px 5px -12px; text-align:center; font-size:10px; color:#888; line-height:15px; }
+
         .ctx-close-btn {
             position: absolute; top: -10px; right: -10px; background: #d9534f; color: white; border: 2px solid white;
             border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-weight: bold; font-size: 14px;
@@ -227,17 +237,16 @@
         .draw-btn { padding: 5px 10px; border: 1px solid #ccc; background: #eee; cursor: pointer; border-radius: 5px; }
         .draw-btn.active { background: #8e44ad; color: #fff; border-color: #8e44ad; }
 
-        /* Ізольований контейнер вимірювання (поза екраном, щоб не створювати артефактів у лівому верхньому кутку) */
+        /* Ізольований контейнер вимірювання */
         #hidden-measure-box {
             position: fixed; top: -9999px; left: -9999px; visibility: hidden; pointer-events: none; white-space: pre; z-index: -1;
         }
 
-        /* Адаптація вікон на планшетах та мобільних */
+        /* Адаптація вікон на мобільних */
         @media (max-width: 1000px) {
             #context-actions { top: 80px; left: auto; right: 20px; }
             #split-panel { top: 220px; left: auto; right: 20px; }
         }
-
         @media (max-width: 768px) {
             #text-toolbar { flex-wrap: wrap; justify-content: center; width: 92%; left: 4%; }
             #context-actions { top: 150px; left: 50%; right: auto; transform: translateX(-50%); width: 92%; flex-wrap: wrap; }
@@ -285,7 +294,10 @@
         <label title="Показувати панель аналізу при виділенні"><input type="checkbox" id="toggle-parsing-ui"> <b>Аналіз</b></label>
         
         <div class="toolbar-separator"></div>
-        <button id="btn-save-project" class="tool-btn" title="Зберегти проєкт як HTML файлик">💾</button>
+        <!-- КНОПКА ВІДМІНИ (UNDO) -->
+        <button id="btn-undo" class="tool-btn" title="Відмінити (Ctrl+Z)" onclick="performUndo()" disabled>↩️</button>
+        
+        <button id="btn-save-project" class="tool-btn" title="Зберегти проєкт як HTML файлик" style="margin-left:5px;">💾</button>
         <button id="btn-load-project" class="tool-btn" title="Завантажити HTML проєкт" onclick="document.getElementById('project-upload-input').click()">📂</button>
         <input type="file" id="project-upload-input" accept=".html" style="display:none">
 
@@ -293,15 +305,17 @@
     </div>
 
     <!-- Прихована панель розбиття -->
-    <div id="split-panel">
-        <b style="color:red; font-size:12px;">Розбиває текст по кліку на ньому:</b>
+    <div id="split-panel" class="draggable-panel">
+        <button class="ctx-close-btn" onclick="document.getElementById('split-panel').style.display='none'" title="Закрити панель">✕</button>
+        <div class="panel-drag-handle">Розбити по:</div>
         <label><input type="radio" name="split-mode" value="full" checked> Цілий текст</label>
         <label><input type="radio" name="split-mode" value="word"> По словах</label>
         <label><input type="radio" name="split-mode" value="letter"> По буквах</label>
     </div>
 
     <!-- КОНТЕКСТНЕ МЕНЮ -->
-    <div id="context-actions">
+    <div id="context-actions" class="draggable-panel">
+        <div class="panel-drag-handle">⋮⋮⋮</div>
         <button class="ctx-close-btn" onclick="closeContextMenu()" title="Закрити панель">✕</button>
         
         <!-- Рядок 1: Базові дії -->
@@ -450,6 +464,42 @@
             });
         }
 
+        // --- СИСТЕМА UNDO (Відміна дій) ---
+        const undoStack = [];
+        window.currentUndoDiffs = []; // Тимчасовий масив для збору змін під час однієї дії
+        
+        function pushUndo(diffs) {
+            if(!diffs || diffs.length === 0) return;
+            undoStack.push(diffs);
+            if(undoStack.length > 10) undoStack.shift();
+            document.getElementById('btn-undo').disabled = false;
+        }
+
+        window.performUndo = function() {
+            if(undoStack.length === 0) return;
+            const action = undoStack.pop();
+            document.getElementById('btn-undo').disabled = undoStack.length === 0;
+            
+            const updates = {};
+            action.forEach(diff => {
+                updates[diff.id] = diff.oldData; // Якщо null, то Firebase видалить елемент
+            });
+            
+            if(!FIREBASE_DISABLED) {
+                elementsRef.update(updates);
+            } else {
+                for(let id in updates) {
+                    if(updates[id] === null) {
+                        if(domTexts[id]) { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; }
+                    } else {
+                        domTextsData[id] = updates[id];
+                        renderTextObject({val: () => updates[id], key: id});
+                    }
+                }
+            }
+            clearSelection();
+        };
+
         // --- 3. МАСШТАБУВАННЯ (ЛУПА) ---
         let currentScale = 1; 
         const wrapper = document.getElementById('main-wrapper'); 
@@ -460,6 +510,38 @@
             if(currentScale > 3) currentScale = 3; 
             container.style.transform = `scale(${currentScale})`; 
         }
+
+        // --- ЛОГІКА ПЕРЕТЯГУВАННЯ СПЛИВАЮЧИХ ПАНЕЛЕЙ ---
+        function makeDraggable(el) {
+            const handle = el.querySelector('.panel-drag-handle');
+            if(!handle) return;
+            let isDragging = false, startX, startY, initX, initY;
+            handle.addEventListener('mousedown', e => {
+                if(e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'LABEL') return;
+                isDragging = true; startX = e.clientX; startY = e.clientY;
+                const rect = el.getBoundingClientRect(); initX = rect.left; initY = rect.top;
+                el.style.left = initX + 'px'; el.style.top = initY + 'px'; el.style.transform = 'none'; el.style.right = 'auto';
+            });
+            document.addEventListener('mousemove', e => {
+                if(!isDragging) return;
+                el.style.left = (initX + e.clientX - startX) + 'px'; el.style.top = (initY + e.clientY - startY) + 'px';
+            });
+            document.addEventListener('mouseup', () => isDragging = false);
+            
+            handle.addEventListener('touchstart', e => {
+                if(e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'LABEL') return;
+                isDragging = true; startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+                const rect = el.getBoundingClientRect(); initX = rect.left; initY = rect.top;
+                el.style.left = initX + 'px'; el.style.top = initY + 'px'; el.style.transform = 'none'; el.style.right = 'auto';
+            }, {passive: false});
+            document.addEventListener('touchmove', e => {
+                if(!isDragging) return;
+                el.style.left = (initX + e.touches[0].clientX - startX) + 'px'; el.style.top = (initY + e.touches[0].clientY - startY) + 'px';
+            }, {passive: false});
+            document.addEventListener('touchend', () => isDragging = false);
+        }
+        makeDraggable(document.getElementById('split-panel'));
+        makeDraggable(document.getElementById('context-actions'));
 
         // --- 4. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager) ІЗ СИНХРОНІЗАЦІЄЮ ---
         const themeBtn = document.getElementById('theme-btn'); 
@@ -475,7 +557,6 @@
 
         themeBtn.onclick = () => { themeModal.style.display = themeModal.style.display === 'block' ? 'none' : 'block'; };
         
-        // Строго послідовне завантаження фонів до помилки 404
         async function loadThemes() {
             themeGrid.innerHTML = '';
             const noBgCard = document.createElement('div'); 
@@ -490,16 +571,14 @@
                 const url = `${baseUrl}background_${i}.webp`;
                 try {
                     const res = await fetch(url, {method: 'HEAD'}); 
-                    if (!res.ok) break; // При отриманні 404 негайно зупиняємо перевірку
+                    if (!res.ok) break; 
                     const card = document.createElement('div'); 
                     card.className = 'theme-card'; 
                     card.style.backgroundImage = `url('${url}')`;
                     card.innerHTML = `<div class="theme-card-title">Фон ${i}</div>`; 
                     card.onclick = () => selectTheme(url); 
                     themeGrid.appendChild(card);
-                } catch(e) { 
-                    break; 
-                }
+                } catch(e) { break; }
             }
         }
         loadThemes();
@@ -532,12 +611,60 @@
         let settingsRef = null;
         let isRemoteSetting = false;
 
+        function getCaretOffsets(el) {
+            let sel = window.getSelection();
+            if(!sel.rangeCount) return {start: 0, end: 0};
+            let range = sel.getRangeAt(0);
+            if(!el.contains(range.startContainer)) return {start: 0, end: 0};
+            let preCaretRange = range.cloneRange();
+            preCaretRange.selectNodeContents(el);
+            preCaretRange.setEnd(range.startContainer, range.startOffset);
+            let start = preCaretRange.toString().length;
+            preCaretRange.setEnd(range.endContainer, range.endOffset);
+            let end = preCaretRange.toString().length;
+            return {start, end};
+        }
+
+        function highlightTextNodes(el, start, end) {
+            let currentOffset = 0;
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+            let node;
+            const nodesToWrap = [];
+            while ((node = walker.nextNode())) {
+                let nodeStart = currentOffset;
+                let nodeEnd = currentOffset + node.length;
+                if (nodeEnd > start && nodeStart < end) {
+                    let overlapStart = Math.max(0, start - nodeStart);
+                    let overlapEnd = Math.min(node.length, end - nodeStart);
+                    nodesToWrap.push({node, start: overlapStart, end: overlapEnd});
+                }
+                currentOffset += node.length;
+            }
+            for (let i = nodesToWrap.length - 1; i >= 0; i--) {
+                let {node, start, end} = nodesToWrap[i];
+                let text = node.nodeValue;
+                let before = text.substring(0, start);
+                let middle = text.substring(start, end);
+                let after = text.substring(end);
+                
+                let frag = document.createDocumentFragment();
+                if(before) frag.appendChild(document.createTextNode(before));
+                let span = document.createElement('span');
+                span.style.backgroundColor = 'rgba(0, 123, 255, 0.4)';
+                span.style.borderRadius = '2px';
+                span.textContent = middle;
+                frag.appendChild(span);
+                if(after) frag.appendChild(document.createTextNode(after));
+                
+                node.parentNode.replaceChild(frag, node);
+            }
+        }
+
         if(!FIREBASE_DISABLED) {
             cursorsRef = db.ref(`cursors/${CONFIG.gameId}`); 
             typingRef = db.ref(`game_action/${CONFIG.gameId}/typing`);
             settingsRef = db.ref(`game_action/${CONFIG.gameId}/ui_settings`);
 
-            // Очищуємо завислі "привиди" вводу при свіжому старті, щоб не було артефактів у кутку
             typingRef.child(tabId).remove();
             typingRef.child(tabId).onDisconnect().remove();
             cursorsRef.child(tabId).onDisconnect().remove();
@@ -589,7 +716,6 @@
                 cursors[id].style.top = data.y + 'px';
             }
 
-            // Відображення кожної букви в реальному часі під час набору
             typingRef.on('value', snap => {
                 const data = snap.val() || {};
                 document.querySelectorAll('.ghost-typing').forEach(el => el.remove());
@@ -605,11 +731,15 @@
                     el.style.color = tData.color || '#0000aa'; 
                     el.style.fontFamily = tData.font || 'Propysy'; 
                     el.style.fontWeight = tData.weight || 'normal';
+                    
+                    // Відображення синього виділення в реальному часі
+                    if (tData.selStart !== undefined && tData.selEnd !== undefined && tData.selStart !== tData.selEnd) {
+                        highlightTextNodes(el, Math.min(tData.selStart, tData.selEnd), Math.max(tData.selStart, tData.selEnd));
+                    }
                     container.appendChild(el);
                 });
             });
 
-            // Синхронізація режимів (Розбиття, Аналіз, Шрифт, Колір, Жирність) між усіма учасниками
             settingsRef.on('value', snap => {
                 const s = snap.val();
                 if (!s || s.senderId === tabId) return;
@@ -646,7 +776,7 @@
         // --- МЕНЮ РОЗБИТТЯ, СЕКРЕТНИЙ ВВІД ТА АНАЛІЗ ---
         const btnSplit = document.getElementById('btn-split-settings'); 
         const splitPanel = document.getElementById('split-panel');
-        btnSplit.onclick = () => { splitPanel.style.display = splitPanel.style.display === 'block' ? 'none' : 'block'; };
+        btnSplit.onclick = () => { splitPanel.style.display = splitPanel.style.display === 'flex' ? 'none' : 'flex'; };
         
         document.querySelectorAll('input[name="split-mode"]').forEach(r => {
             r.addEventListener('change', broadcastSettings);
@@ -668,10 +798,7 @@
         });
 
         function closeContextMenu() {
-            document.getElementById('toggle-parsing-ui').checked = false;
-            document.getElementById('parsing-tools-container').style.display = 'none';
-            contextActions.style.display = 'none';
-            broadcastSettings();
+            document.getElementById('context-actions').style.display = 'none';
         }
 
         // --- РЕЖИМИ ТА МАСОВЕ ВИДІЛЕННЯ ---
@@ -745,25 +872,6 @@
         let isTyping = false; let isSelectingBox = false; let selStartX = 0, selStartY = 0; 
         let domTextsData = {}; 
         const domTexts = {};
-
-        // Запам'ятовування виділення всередині activeInput
-        let savedSelectionRange = null;
-        document.addEventListener('selectionchange', () => {
-            if (isTyping) {
-                const sel = window.getSelection();
-                if (sel.rangeCount > 0) {
-                    const range = sel.getRangeAt(0);
-                    if (activeInput.contains(range.commonAncestorContainer)) {
-                        savedSelectionRange = range.cloneRange();
-                    }
-                }
-            }
-        });
-        function restoreSelection() {
-            if (savedSelectionRange) {
-                const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedSelectionRange);
-            }
-        }
 
         document.getElementById('clear-all-text-btn').onclick = () => { 
             if(confirm('Точно очистити аркуш від усіх текстів та картинок?')) { 
@@ -859,62 +967,72 @@
             }, 20);
         }
 
-        // КЛЮЧОВЕ ВИПРАВЛЕННЯ: При натисканні Enter зберігаємо поточний рядок і переносимо курсор НА ПОЧАТОК наступного рядка (за червоне поле 115px)
         activeInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 const nextLineY = parseFloat(activeInput.style.top) + CONFIG.lineHeight;
                 finishTyping();
-                // Починаємо новий рядок чітко від червоного поля зошита (115px)
                 openActiveInput(CONFIG.defaultLeftMargin, nextLineY, '');
             }
         });
 
-        activeInput.addEventListener('input', () => {
+        function syncTypingState() {
             if(isTyping && !FIREBASE_DISABLED) {
                 const txt = activeInput.innerHTML;
                 if (!txt || txt.trim() === '') {
                     typingRef.child(tabId).remove();
                 } else {
+                    const offsets = getCaretOffsets(activeInput);
                     typingRef.child(tabId).set({ 
                         text: txt, 
                         x: parseFloat(activeInput.style.left), 
                         y: parseFloat(activeInput.style.top), 
                         color: activeInput.style.color, 
                         font: activeInput.style.fontFamily, 
-                        weight: activeInput.style.fontWeight 
+                        weight: activeInput.style.fontWeight,
+                        selStart: offsets.start,
+                        selEnd: offsets.end
                     });
                 }
             }
-        });
+        }
+        
+        activeInput.addEventListener('input', syncTypingState);
+        document.addEventListener('selectionchange', () => { if(isTyping) syncTypingState(); });
 
         // ФУНКЦІЯ МАСОВОГО ЗАСТОСУВАННЯ СТИЛІВ ДО ВИДІЛЕНИХ ЕЛЕМЕНТІВ
         function applyStyleToSelected(prop, val) {
             if (selectedElements.size > 0) {
+                window.currentUndoDiffs = [];
                 selectedElements.forEach(id => {
                     if (domTextsData[id] && domTextsData[id].type !== 'image') {
+                        window.currentUndoDiffs.push({id, oldData: {...domTextsData[id]}});
                         if (!FIREBASE_DISABLED) elementsRef.child(id).update({ [prop]: val, senderId: tabId });
                         else { domTextsData[id][prop] = val; renderTextObject({val: ()=>domTextsData[id], key: id}); }
                     }
                 });
+                if(window.currentUndoDiffs.length > 0) pushUndo(window.currentUndoDiffs);
             }
         }
 
-        document.getElementById('text-color-picker').addEventListener('input', (e) => { 
-            const val = e.target.value;
-            if (isTyping) { activeInput.style.color = val; activeInput.dispatchEvent(new Event('input')); } 
-            applyStyleToSelected('color', val);
+        // Для undo стилів краще ловити change, а не input
+        document.getElementById('text-color-picker').addEventListener('change', (e) => { 
+            applyStyleToSelected('color', e.target.value);
             broadcastSettings();
         });
+        document.getElementById('text-color-picker').addEventListener('input', (e) => { 
+            if (isTyping) { activeInput.style.color = e.target.value; syncTypingState(); }
+        });
+        
         document.getElementById('text-bold-checkbox').addEventListener('change', (e) => { 
             const val = e.target.checked ? 'bold' : 'normal';
-            if (isTyping) { activeInput.style.fontWeight = val; activeInput.dispatchEvent(new Event('input')); } 
+            if (isTyping) { activeInput.style.fontWeight = val; syncTypingState(); } 
             applyStyleToSelected('weight', val);
             broadcastSettings();
         });
         document.getElementById('text-font-selector').addEventListener('change', (e) => { 
             const val = e.target.value;
-            if (isTyping) { activeInput.style.fontFamily = val; activeInput.dispatchEvent(new Event('input')); } 
+            if (isTyping) { activeInput.style.fontFamily = val; syncTypingState(); } 
             applyStyleToSelected('font', val);
             broadcastSettings();
         });
@@ -934,6 +1052,11 @@
                 return; 
             }
             
+            window.currentUndoDiffs = [];
+            if (window.editingOriginal) {
+                window.currentUndoDiffs.push({id: window.editingOriginal.id, oldData: window.editingOriginal});
+            }
+
             let mode = document.querySelector('input[name="split-mode"]:checked').value;
             if (htmlContent.includes('<span')) mode = 'full'; 
             
@@ -956,12 +1079,14 @@
                     currentY += CONFIG.lineHeight;
                 });
             }
+            
+            if(window.currentUndoDiffs.length > 0) pushUndo(window.currentUndoDiffs);
+            window.editingOriginal = null;
             updateContextMenu();
         }
 
         function createSyncedTextObjects(htmlText, mode, startX, startY, color, weight, font) {
             if (!htmlText || isNaN(startX) || isNaN(startY)) return;
-            // Жорстка очистка всіх варіантів нерозривних пробілів
             htmlText = htmlText.replace(/&nbsp;/g, ' ').replace(/[\u00A0\u202F\u200B\n\r\t]/g, ' ');
             let pieces = [];
             if (mode === 'full') pieces = [{char: htmlText, margin: 0}];
@@ -993,6 +1118,9 @@
                     senderId: tabId, 
                     timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
                 };
+                
+                if (window.currentUndoDiffs) window.currentUndoDiffs.push({id: id, oldData: null});
+                
                 if(!FIREBASE_DISABLED) elementsRef.child(id).set(dataObj); 
                 else renderTextObject({val: ()=>dataObj, key: id});
                 currentX += measuredWidth + p.margin;
@@ -1030,6 +1158,7 @@
                         width: w, height: h, senderId: tabId, 
                         timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
                     };
+                    pushUndo([{id: id, oldData: null}]);
                     if(!FIREBASE_DISABLED) elementsRef.child(id).set(dataObj); 
                     else renderTextObject({val: ()=>dataObj, key: id});
                 }
@@ -1058,12 +1187,12 @@
 
         let isDraggingGroup = false; 
         let groupDragOffsets = {};
+        let groupDragOriginals = {};
 
         function renderTextObject(snap) {
             const data = snap.val(); 
             const key = snap.key || (data && data.id);
             
-            // ЗАХИСТ ВІД АРТЕФАКТІВ У КУТКУ: Ігноруємо та видаляємо порожні або биті записи
             if (!data || ! data.id || isNaN(data.x) || isNaN(data.y)) {
                 if (!FIREBASE_DISABLED && key && elementsRef) elementsRef.child(key).remove();
                 return;
@@ -1137,7 +1266,6 @@
             }
         }
 
-        // ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ, ЩОБ ГАРАНТОВАНО ЗНАХОДИТИ ПРОБІЛИ
         function elTextClean(html) {
             const d = document.createElement('div'); 
             d.innerHTML = html; 
@@ -1163,6 +1291,7 @@
             
             if (mainToolMode === 'erase_text') { 
                 e.preventDefault(); 
+                pushUndo([{id: id, oldData: {...domTextsData[id]}}]);
                 if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
                 else { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; if(selectedElements.has(id)){selectedElements.delete(id); updateContextMenu();} } 
                 return; 
@@ -1172,7 +1301,6 @@
             const data = domTextsData[id];
             if (!data) return;
 
-            // ЛОГІКА РОЗБИТТЯ
             if (data.type !== 'image') {
                 const mode = document.querySelector('input[name="split-mode"]:checked').value;
                 const plainTxt = elTextClean(data.text).trim();
@@ -1181,15 +1309,16 @@
 
                 if (!data.text.includes('syn-part') && !data.text.includes('mor-part') && ((mode === 'word' && isMultiWord) || (mode === 'letter' && isMultiLetter))) {
                     e.preventDefault(); 
+                    window.currentUndoDiffs = [{id: id, oldData: {...domTextsData[id]}}];
                     if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
                     else { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; if(selectedElements.has(id)){selectedElements.delete(id); updateContextMenu();} }
                     
                     createSyncedTextObjects(plainTxt, mode, data.x, data.y, data.color || '#0000aa', data.weight || 'normal', data.font || 'Propysy'); 
-                    return; // Текст розбито - дія завершується, щоб наступним кліком можна було брати окремі частинки
+                    pushUndo(window.currentUndoDiffs);
+                    return;
                 }
             }
 
-            // Додано підтримку Shift-кліку для зручного виділення багатьох елементів (наприклад, літер перед об'єднанням)
             if (!selectedElements.has(id)) { 
                 const isShift = e.touches ? false : e.shiftKey;
                 if (!isShift) clearSelection(); 
@@ -1203,9 +1332,13 @@
             const rawY = (touch.clientY - rect.top) / currentScale;
             isDraggingGroup = true; 
             groupDragOffsets = {};
+            groupDragOriginals = {};
             selectedElements.forEach(selId => {
                 const el = domTexts[selId]; 
-                if(el) groupDragOffsets[selId] = { offX: rawX - parseFloat(el.style.left), offY: rawY - parseFloat(el.style.top) };
+                if(el) {
+                    groupDragOffsets[selId] = { offX: rawX - parseFloat(el.style.left), offY: rawY - parseFloat(el.style.top) };
+                    groupDragOriginals[selId] = {...domTextsData[selId]};
+                }
             });
 
             document.addEventListener('mousemove', onGroupDrag); 
@@ -1239,12 +1372,20 @@
 
         function stopGroupDrag() {
             if (!isDraggingGroup) return;
+            window.currentUndoDiffs = [];
             selectedElements.forEach(selId => { 
                 const el = domTexts[selId]; 
                 if(el && !FIREBASE_DISABLED) elementsRef.child(selId).update({ x: parseFloat(el.style.left), y: parseFloat(el.style.top), senderId: tabId, isMoving: false }); 
+                if(groupDragOriginals[selId]) {
+                    if (groupDragOriginals[selId].x !== domTextsData[selId].x || groupDragOriginals[selId].y !== domTextsData[selId].y) {
+                        window.currentUndoDiffs.push({id: selId, oldData: groupDragOriginals[selId]});
+                    }
+                }
             });
+            if(window.currentUndoDiffs.length > 0) pushUndo(window.currentUndoDiffs);
             isDraggingGroup = false; 
             groupDragOffsets = {};
+            groupDragOriginals = {};
             document.removeEventListener('mousemove', onGroupDrag); 
             document.removeEventListener('touchmove', onGroupDrag);
             document.removeEventListener('mouseup', stopGroupDrag); 
@@ -1256,6 +1397,8 @@
             const data = domTextsData[id]; 
             if (!data || data.type === 'image') return; 
             if (isTyping) finishTyping();
+            
+            window.editingOriginal = {...domTextsData[id]};
             
             document.getElementById('text-color-picker').value = data.color || '#0000aa'; 
             document.getElementById('text-bold-checkbox').checked = (data.weight === 'bold'); 
@@ -1271,10 +1414,13 @@
 
         // --- ГАРЯЧІ КЛАВІШІ ТА КНОПКИ ---
         function deleteSelected() { 
+            window.currentUndoDiffs = [];
             selectedElements.forEach(id => { 
+                window.currentUndoDiffs.push({id: id, oldData: {...domTextsData[id]}});
                 if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
                 else { if (domTexts[id]) domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; } 
             }); 
+            if(window.currentUndoDiffs.length > 0) pushUndo(window.currentUndoDiffs);
             clearSelection(); 
         }
         function copySelected() { 
@@ -1286,13 +1432,16 @@
         function pasteClipboard() {
             if(clipboard.length === 0) return; 
             clearSelection();
+            window.currentUndoDiffs = [];
             clipboard.forEach(item => {
                 const id = (item.type==='image'?'img_':'txt_') + Date.now() + '_' + Math.random().toString(36).substr(2,5);
                 const dataObj = { ...item, id: id, x: item.x + 20, y: item.y + 40, senderId: tabId, timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) };
+                window.currentUndoDiffs.push({id: id, oldData: null});
                 if(!FIREBASE_DISABLED) elementsRef.child(id).set(dataObj); 
                 else renderTextObject({val: ()=>dataObj, key: id});
                 selectedElements.add(id);
             }); 
+            pushUndo(window.currentUndoDiffs);
             updateContextMenu();
         }
         
@@ -1306,7 +1455,6 @@
             let mergedText = "";
             for(let i = 0; i < nodes.length; i++) {
                 mergedText += nodes[i].text;
-                // Розумне додавання пробілів, якщо між елементами була візуальна дистанція
                 if(i < nodes.length - 1) {
                     const el = domTexts[nodes[i].id];
                     const nextEl = domTexts[nodes[i+1].id];
@@ -1317,8 +1465,10 @@
                 }
             }
             
+            window.currentUndoDiffs = [];
             selectedElements.forEach(id => { 
                 if(domTextsData[id] && domTextsData[id].type !== 'image') { 
+                    window.currentUndoDiffs.push({id: id, oldData: {...domTextsData[id]}});
                     if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
                     else { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; } 
                 } 
@@ -1329,6 +1479,9 @@
                 x: baseNode.x, y: baseNode.y, color: baseNode.color, weight: baseNode.weight, font: baseNode.font, 
                 senderId: tabId, timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
             };
+            window.currentUndoDiffs.push({id: newId, oldData: null});
+            pushUndo(window.currentUndoDiffs);
+            
             if(!FIREBASE_DISABLED) elementsRef.child(newId).set(dataObj); 
             else renderTextObject({val: ()=>dataObj, key: newId});
             
@@ -1348,6 +1501,7 @@
             if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
             if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'с')) { e.preventDefault(); copySelected(); }
             if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v' || e.key.toLowerCase() === 'м')) { e.preventDefault(); pasteClipboard(); }
+            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'я')) { e.preventDefault(); window.performUndo(); }
         });
 
         // --- УНІФІКОВАНИЙ СИНТАКСИС ТА МОРФЕМИ ---
@@ -1364,12 +1518,15 @@
                     else { domTextsData[targetId].syntax = type; renderTextObject({val: ()=>domTextsData[targetId], key: targetId}); } 
                 }
             } else {
+                window.currentUndoDiffs = [];
                 selectedElements.forEach(id => { 
                     if (!domTextsData[id] || domTextsData[id].type === 'image') return;
+                    window.currentUndoDiffs.push({id: id, oldData: {...domTextsData[id]}});
                     const cleanTxt = clearFormatting(domTextsData[id].text);
                     if(!FIREBASE_DISABLED) elementsRef.child(id).update({ syntax: null, text: cleanTxt }); 
                     else { domTextsData[id].syntax = null; domTextsData[id].text = cleanTxt; renderTextObject({val: ()=>domTextsData[id], key: id}); } 
                 });
+                if(window.currentUndoDiffs.length > 0) pushUndo(window.currentUndoDiffs);
             }
             clearSelection(); 
         };
@@ -1493,7 +1650,6 @@
         if(!FIREBASE_DISABLED) drawRef = db.ref(`game_action/${CONFIG.gameId}/draw`);
         let isDrawingMode = false; let isDrawing = false; let lastDrawX = 0; let lastDrawY = 0; let currentDrawMode = 'pencil'; 
         
-        // При натисканні на кнопку панель одразу відкривається, і режим малювання олівцем автоматично активується
         toggleDrawBtn.onclick = () => { 
             if (isTyping) finishTyping();
             drawPanel.style.display = 'flex'; 
@@ -1503,7 +1659,6 @@
             document.getElementById('draw-pencil-btn').classList.add('active'); 
             document.getElementById('draw-eraser-btn').classList.remove('active'); 
         };
-        // При закритті панелі на хрестик панель ховається, а малювання автоматично вимикається
         closeDrawBtn.onclick = () => { 
             drawPanel.style.display = 'none'; 
             canvas.style.pointerEvents = 'none'; 
@@ -1522,7 +1677,6 @@
             if(drawRef) drawRef.push(act); 
         };
 
-        // Шапка перетягування (draggable handle) мишкою та тачем
         const panelHeader = document.getElementById('draw-panel-header-global'); 
         let isDraggingPanel = false; let pOffsetX = 0; let pOffsetY = 0;
         panelHeader.onmousedown = panelHeader.ontouchstart = (e) => {
@@ -1544,7 +1698,6 @@
         document.addEventListener('mouseup', () => isDraggingPanel = false);
         document.addEventListener('touchend', () => isDraggingPanel = false);
         
-        // Точні координати відносно ігрового аркуша (враховує масштабування та різні екрани)
         function getCanvasCoords(e) { 
             const touch = e.touches ? e.touches[0] : e; 
             const rect = canvas.getBoundingClientRect();
@@ -1589,7 +1742,6 @@
         function stopDraw() { isDrawing = false; }
         
         function drawLineLocally(sx, sy, ex, ey, color, size, mode) {
-            // Підтримка старих збережень із відсотковими координатами (якщо координати <= 1)
             const realSx = sx <= 1 && ex <= 1 ? sx * canvas.width : sx;
             const realSy = sy <= 1 && ey <= 1 ? sy * canvas.height : sy;
             const realEx = sx <= 1 && ex <= 1 ? ex * canvas.width : ex;
@@ -1617,7 +1769,6 @@
             });
         }
 
-        // Завантаження локальних даних, якщо відкрито збережений HTML-файл
         if (FIREBASE_DISABLED && window.LOCAL_SAVE_DATA) {
             const data = window.LOCAL_SAVE_DATA;
             if(data.texts) Object.keys(data.texts).forEach(k => renderTextObject({val: () => data.texts[k], key: k}));
