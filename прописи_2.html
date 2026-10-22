@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Зошит у лінію - Синхронізація</title>
+
+    <!-- Firebase Compat -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* БАЗОВІ НАЛАШТУВАННЯ ТА ШРИФТ */
+        @font-face {
+            font-family: 'Propysy';
+            src: local('Propysy'), url('Propysy.ttf') format('truetype');
+        }
+        
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            font-family: Arial, sans-serif; background-color: #f0f0f0;
+            background-size: cover; background-position: center; background-repeat: no-repeat;
+        }
+
+        /* УНІВЕРСАЛЬНИЙ ЕКРАН-ЗАГЛУШКА */
+        #block-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); z-index: 999999; justify-content: center;
+            align-items: center; color: red; font-size: 5vw; font-weight: bold;
+            text-transform: uppercase; text-align: center;
+        }
+
+        /* ЛУПА (Масштабування) */
+        .zoom-controls {
+            position: fixed; top: 130px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 10000;
+        }
+        .zoom-btn {
+            background: #fff; border: 2px solid #ccc; border-radius: 50%; width: 50px; height: 50px;
+            font-size: 24px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex; justify-content: center; align-items: center; user-select: none;
+        }
+        .zoom-btn:active { background: #eee; }
+
+        /* ГОЛОВНИЙ КОНТЕЙНЕР */
+        #main-wrapper {
+            width: 100%; height: 100%; overflow: auto; position: relative; scrollbar-width: none; 
+        }
+        #main-wrapper::-webkit-scrollbar { display: none; }
+        
+        #game-container {
+            width: 3000px; height: 3000px; transform-origin: top left; position: relative; background: transparent;
+        }
+
+        /* ЗОШИТ У ЛІНІЮ */
+        #notebook-paper {
+            width: 100%; height: 100%; position: absolute; top: 0; left: 0;
+            background-image: repeating-linear-gradient(transparent, transparent 39px, #66afe9 39px, #66afe9 40px);
+            background-size: 100% 40px;
+        }
+        #notebook-paper::before {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 100px; width: 2px;
+            background-color: #ff9999; z-index: 1; pointer-events: none;
+        }
+
+        /* ТЕКСТ ТА НЕВИДИМИЙ ВВІД НА ЗОШИТІ */
+        .notebook-text {
+            position: absolute; font-family: 'Propysy', Arial, sans-serif; font-size: 32px;
+            line-height: 40px; cursor: grab; user-select: none; white-space: pre-wrap; word-break: break-word; z-index: 10;
+            margin-top: 6px; text-align: left;
+        }
+        .notebook-text:active { cursor: grabbing; }
+        .notebook-text.erase-mode:hover { opacity: 0.5; color: red !important; cursor: pointer; }
+        .notebook-text.selected-text {
+            background-color: rgba(0, 123, 255, 0.2); outline: 1px dashed #007bff; border-radius: 2px;
+        }
+        .ghost-typing {
+            opacity: 0.45; pointer-events: none; z-index: 15;
+        }
+        
+        #active-input {
+            position: absolute; font-family: 'Propysy', Arial, sans-serif; font-size: 32px;
+            line-height: 40px; background: transparent; border: none; outline: none;
+            padding: 0; margin: 0; margin-top: 6px; z-index: 20; min-width: 5px;
+            white-space: pre-wrap; word-break: break-word; text-align: left;
+            overflow: visible; display: none; cursor: text;
+        }
+
+        /* ЗОБРАЖЕННЯ (Картинки без тіней і рамок) */
+        .game-image {
+            position: absolute; z-index: 9; cursor: grab; resize: both; overflow: hidden;
+            max-width: 1500px; max-height: 1500px; border: 2px solid transparent; box-shadow: none; background: transparent;
+        }
+        .game-image.selected-img { border-color: #007bff; background-color: rgba(0, 123, 255, 0.1); }
+        .game-image img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; display: block; }
+        .game-image.erase-mode:hover { opacity: 0.5; border-color: red; cursor: pointer; }
+        
+        /* СИНТАКСИЧНИЙ РОЗБІР (Для цілого блоку) */
+        .syn-pidmet::after { content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background-color: #e74c3c; pointer-events: none; }
+        .syn-prysudok::after { content: ''; position: absolute; left: 0; right: 0; bottom: -8px; height: 6px; border-top: 2px solid #e74c3c; border-bottom: 2px solid #e74c3c; box-sizing: border-box; pointer-events: none; }
+        .syn-dodatok::after { content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background-image: linear-gradient(to right, #e74c3c 70%, transparent 70%); background-size: 14px 2px; background-repeat: repeat-x; pointer-events: none; }
+        .syn-oznachennya::after { content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 4px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='4'%3E%3Cpath d='M0 2 Q 3 0 6 2 T 12 2' fill='none' stroke='%23e74c3c' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-size: 12px 4px; pointer-events: none; }
+        .syn-obstavyna::after { content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 4px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='4'%3E%3Cpath d='M0 2 L 12 2' stroke='%23e74c3c' stroke-width='2'/%3E%3Ccircle cx='16' cy='2' r='1.5' fill='%23e74c3c'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-size: 20px 4px; pointer-events: none; }
+
+        /* СИНТАКСИЧНИЙ РОЗБІР ТА МОРФЕМИ (Inline spans всередині тексту) */
+        .syn-part { position: relative; display: inline-block; }
+        .syn-part.pidmet::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 2px; background-color: #e74c3c; pointer-events: none; }
+        .syn-part.prysudok::after { content: ''; position: absolute; left: 0; right: 0; bottom: -6px; height: 5px; border-top: 2px solid #e74c3c; border-bottom: 2px solid #e74c3c; box-sizing: border-box; pointer-events: none; }
+        .syn-part.dodatok::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 2px; background-image: linear-gradient(to right, #e74c3c 70%, transparent 70%); background-size: 14px 2px; background-repeat: repeat-x; pointer-events: none; }
+        .syn-part.oznachennya::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 5px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='5'%3E%3Cpath d='M0 2.5 Q 3 0 6 2.5 T 12 2.5' fill='none' stroke='%23e74c3c' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-size: 12px 5px; pointer-events: none; }
+        .syn-part.obstavyna::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 3px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='3'%3E%3Cpath d='M0 1.5 L 14 1.5' stroke='%23e74c3c' stroke-width='2'/%3E%3Ccircle cx='18' cy='1.5' r='1.5' fill='%23e74c3c'/%3E%3C/svg%3E"); background-repeat: repeat-x; background-size: 22px 3px; pointer-events: none; }
+
+        .mor-part { position: relative; display: inline-block; }
+        .mor-part.prefix::before { content: ''; position: absolute; left: 0; top: -0.2em; width: 100%; height: 0.3em; border-top: 2px solid currentColor; border-right: 2px solid currentColor; box-sizing: border-box; pointer-events: none; }
+        .mor-part.root::before { content: ''; position: absolute; left: 0; top: -0.3em; width: 100%; height: 0.4em; border-top: 2px solid currentColor; border-radius: 50% 50% 0 0 / 100% 100% 0 0; box-sizing: border-box; pointer-events: none; }
+        .mor-part.suffix::before {
+            content: ''; position: absolute; left: 0; top: -0.3em; width: 100%; height: 0.4em; background-color: currentColor; pointer-events: none;
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cpath d='M0 100 L50 0 L100 100' fill='none' stroke='black' stroke-width='8'/%3E%3C/svg%3E");
+            -webkit-mask-size: 100% 100%; mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cpath d='M0 100 L50 0 L100 100' fill='none' stroke='black' stroke-width='8'/%3E%3C/svg%3E"); mask-size: 100% 100%;
+        }
+        .mor-part.ending { border: 2px solid currentColor; border-radius: 2px; padding: 0 2px; margin: 0 -2px; }
+        .mor-part.zero::after { content: '∅'; position: absolute; right: -1em; top: -0.5em; font-family: Arial, sans-serif; font-size: 0.8em; pointer-events: none; }
+
+        /* Рамка виділення */
+        #selection-box { position: absolute; border: 1px solid #007bff; background-color: rgba(0, 123, 255, 0.1); z-index: 9999; pointer-events: none; display: none; }
+        
+        /* Секретні поля вводу */
+        .secret-input { color: transparent !important; text-shadow: none !important; }
+        .secret-input::selection { color: transparent !important; background: rgba(0,0,0,0.1); }
+
+        /* МІНІМАЛІСТИЧНА ПАНЕЛЬ УПРАВЛІННЯ */
+        #text-toolbar {
+            position: fixed; top: 20px; left: 20px; background: rgba(255, 255, 255, 0.95);
+            padding: 8px 12px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 10000; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 14px;
+        }
+        .toolbar-separator { width: 1px; height: 24px; background: #ccc; }
+        .tool-btn {
+            padding: 6px 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 18px;
+            background: #fff; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center;
+        }
+        .tool-btn.active { background: #66afe9; color: #fff; border-color: #317ab9; }
+        .tool-btn.danger { color: #d9534f; border-color: #d9534f; }
+        
+        #split-panel {
+            display: none; position: fixed; top: 75px; left: 20px; background: rgba(255, 255, 255, 0.95);
+            padding: 10px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); z-index: 10000; font-size: 14px;
+        }
+        #split-panel label { display: block; margin: 5px 0; cursor: pointer; }
+
+        /* КОНТЕКСТНЕ МЕНЮ */
+        #context-actions {
+            display: none; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.98);
+            padding: 15px 12px 12px 12px; border-radius: 8px; border: 1px solid #ced4da; box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10000;
+        }
+        .ctx-close-btn {
+            position: absolute; top: -10px; right: -10px; background: #d9534f; color: white; border: 2px solid white;
+            border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-weight: bold; font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;
+        }
+        .ctx-close-btn:hover { background: #c9302c; transform: scale(1.1); }
+        
+        .ctx-row { display: flex; gap: 5px; justify-content: center; align-items: center; }
+        .context-btn {
+            padding: 4px 8px; font-size: 16px; background: #fff; border: 1px solid #ccc;
+            border-radius: 4px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center;
+        }
+        .context-btn:hover { background: #f0f0f0; }
+        
+        .icon-syn { display: inline-block; width: 20px; height: 10px; position: relative; }
+        .icon-syn.pidmet { border-bottom: 2px solid #e74c3c; }
+        .icon-syn.prysudok { border-bottom: 4px double #e74c3c; }
+        .icon-syn.dodatok { background-image: linear-gradient(to right, #e74c3c 70%, transparent 70%); background-size: 10px 2px; background-position: bottom; background-repeat: repeat-x; }
+        .icon-syn.oznachennya { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='4'%3E%3Cpath d='M0 2 Q 3 0 6 2 T 12 2' fill='none' stroke='%23e74c3c' stroke-width='1.5'/%3E%3C/svg%3E"); background-position: bottom; background-repeat: repeat-x; }
+        .icon-syn.obstavyna { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='4'%3E%3Cpath d='M0 2 L 12 2' stroke='%23e74c3c' stroke-width='2'/%3E%3Ccircle cx='16' cy='2' r='1.5' fill='%23e74c3c'/%3E%3C/svg%3E"); background-position: bottom; background-repeat: repeat-x; }
+
+        input[type="color"] { cursor: pointer; border: 1px solid #ccc; border-radius: 3px; height: 30px; width: 35px; padding: 0; }
+        select { padding: 5px; border-radius: 5px; border: 1px solid #ccc; font-family: inherit; font-size: 14px; }
+
+        /* КУРСОР ГРАВЦІВ */
+        .remote-cursor {
+            position: absolute; width: 15px; height: 15px; border-radius: 50%; pointer-events: none;
+            z-index: 99999; transform: translate(-50%, -50%); transition: left 0.05s linear, top 0.05s linear;
+        }
+        .remote-cursor-name {
+            position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.6); color: white;
+            padding: 2px 5px; border-radius: 3px; font-size: 12px; white-space: nowrap;
+        }
+
+        /* THEME MANAGER (Галерея фонів) */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; border-radius: 50%;
+            background: #fff; border: 2px solid #ccc; font-size: 24px; cursor: pointer; z-index: 10000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center;
+        }
+        #theme-modal {
+            display: none; position: fixed; bottom: 80px; right: 20px; width: 320px; max-height: 60vh;
+            background: #fff; border: 2px solid #ccc; border-radius: 10px; overflow-y: auto; z-index: 10001;
+            padding: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        .theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .theme-card {
+            position: relative; width: 100%; height: 100px; background-color: #ddd; background-size: cover;
+            background-position: center; border-radius: 5px; cursor: pointer; border: 2px solid transparent;
+        }
+        .theme-card:hover { border-color: #8e44ad; }
+        .theme-card-title {
+            position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6);
+            color: #fff; font-size: 12px; text-align: center; padding: 2px 0; border-bottom-left-radius: 5px; border-bottom-right-radius: 5px;
+        }
+
+        /* ГЛОБАЛЬНЕ МАЛЮВАННЯ */
+        #draw-canvas-global { position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; z-index: 90000; pointer-events: none; }
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: #8e44ad;
+            color: white; border: none; font-size: 20px; cursor: pointer; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex; justify-content: center; align-items: center;
+        }
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #fff;
+            border: 2px solid #8e44ad; border-radius: 10px; padding: 10px; z-index: 100000; box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            flex-direction: column; gap: 10px; min-width: 250px;
+        }
+        .draw-panel-header { cursor: move; background: #8e44ad; color: #fff; padding: 5px; text-align: center; border-radius: 5px; font-weight: bold; position: relative; user-select: none; }
+        .close-draw-btn { position: absolute; right: 5px; top: 5px; cursor: pointer; font-size: 14px; }
+        .draw-controls-row { display: flex; justify-content: space-between; gap: 5px; align-items: center; }
+        .draw-btn { padding: 5px 10px; border: 1px solid #ccc; background: #eee; cursor: pointer; border-radius: 5px; }
+        .draw-btn.active { background: #8e44ad; color: #fff; border-color: #8e44ad; }
+
+        /* Ізольований контейнер вимірювання (поза екраном, щоб не створювати артефактів у лівому верхньому кутку) */
+        #hidden-measure-box {
+            position: fixed; top: -9999px; left: -9999px; visibility: hidden; pointer-events: none; white-space: pre; z-index: -1;
+        }
+
+        @media (max-width: 768px) {
+            #text-toolbar { flex-wrap: wrap; justify-content: center; width: 92%; left: 4%; }
+            #context-actions { width: 92%; flex-wrap: wrap; }
+            .ctx-row { flex-wrap: wrap; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Ізольований елемент для точного вимірювання ширини слів/букв -->
+    <div id="hidden-measure-box"></div>
+
+    <!-- Лупа -->
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="changeZoom(0.1)" title="Наблизити">🔍+</button>
+        <button class="zoom-btn" onclick="changeZoom(-0.1)" title="Віддалити">🔍-</button>
+    </div>
+
+    <!-- МІНІМАЛІСТИЧНА ПАНЕЛЬ ВВОДУ -->
+    <div id="text-toolbar">
+        <button id="tool-text-btn" class="tool-btn active" title="Текст / Виділення">🔤</button>
+        <button id="tool-pan-btn" class="tool-btn" title="Переміщати аркуш">🖐️</button>
+        <button id="tool-erase-btn" class="tool-btn danger" title="Гумка елементів">🧹</button>
+        <button id="tool-img-btn" class="tool-btn" title="Додати картинку" onclick="document.getElementById('img-upload-input').click()">🖼️</button>
+        <input type="file" id="img-upload-input" accept="image/*" style="display:none">
+        
+        <div class="toolbar-separator"></div>
+        <button id="btn-split-settings" class="tool-btn" title="Налаштування розбиття (для кліку)">✂️</button>
+        <button id="btn-secret-toggle" class="tool-btn" title="Приховати/показати текст при вводі (Секретний ввід)">👁️</button>
+        <div class="toolbar-separator"></div>
+
+        <select id="text-font-selector" title="Шрифт">
+            <option value="Propysy">Прописи</option>
+            <option value="Arial">Arial</option>
+            <option value="Courier New">Courier</option>
+            <option value="Times New Roman">Times</option>
+        </select>
+        
+        <input type="color" id="text-color-picker" value="#0000aa" title="Колір тексту">
+        <label title="Жирний" style="display:flex; align-items:center; cursor:pointer;"><input type="checkbox" id="text-bold-checkbox" style="margin-right:3px;"> <b>Ж</b></label>
+
+        <div class="toolbar-separator"></div>
+        
+        <label title="Показувати панель аналізу при виділенні"><input type="checkbox" id="toggle-parsing-ui"> <b>Аналіз</b></label>
+        
+        <div class="toolbar-separator"></div>
+        <button id="btn-save-project" class="tool-btn" title="Зберегти проєкт як HTML файлик">💾</button>
+        <button id="btn-load-project" class="tool-btn" title="Завантажити HTML проєкт" onclick="document.getElementById('project-upload-input').click()">📂</button>
+        <input type="file" id="project-upload-input" accept=".html" style="display:none">
+
+        <button id="clear-all-text-btn" class="tool-btn danger" title="Очистити все" style="margin-left:5px;">🗑️</button>
+    </div>
+
+    <!-- Прихована панель розбиття -->
+    <div id="split-panel">
+        <b style="color:red; font-size:12px;">Розбиває текст по кліку на ньому:</b>
+        <label><input type="radio" name="split-mode" value="full" checked> Цілий текст</label>
+        <label><input type="radio" name="split-mode" value="word"> По словах</label>
+        <label><input type="radio" name="split-mode" value="letter"> По буквах</label>
+    </div>
+
+    <!-- КОНТЕКСТНЕ МЕНЮ -->
+    <div id="context-actions">
+        <button class="ctx-close-btn" onclick="closeContextMenu()" title="Закрити панель">✕</button>
+        
+        <!-- Рядок 1: Базові дії -->
+        <div class="ctx-row">
+            <button class="context-btn" id="ctx-copy" title="Копіювати (Ctrl+C)">📄</button>
+            <button class="context-btn" id="ctx-paste" title="Вставити (Ctrl+V)">📋</button>
+            <button class="context-btn" id="ctx-merge" title="Об'єднати виділені елементи">🔗</button>
+            <button class="context-btn danger" id="ctx-delete" title="Видалити (Delete)" style="color:red; border-color:red;">❌</button>
+        </div>
+        
+        <div id="parsing-tools-container" style="display:none;">
+            <!-- Рядок 2: Синтаксичний розбір (Для цілих виділених блоків) -->
+            <div class="ctx-row" id="ctx-row-block-syntax" style="margin-top:5px;">
+                <span style="font-size:12px; color:#555; margin-right:5px;" title="Застосовується до всього блоку">Члени реч.:</span>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="applyBlockSyntax('pidmet')" title="Підмет"><span class="icon-syn pidmet"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="applyBlockSyntax('prysudok')" title="Присудок"><span class="icon-syn prysudok"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="applyBlockSyntax('dodatok')" title="Додаток"><span class="icon-syn dodatok"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="applyBlockSyntax('oznachennya')" title="Означення"><span class="icon-syn oznachennya"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="applyBlockSyntax('obstavyna')" title="Обставина"><span class="icon-syn obstavyna"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="applyBlockSyntax('none')" title="Прибрати розбір" style="font-size:12px;">Очис.</button>
+            </div>
+            <!-- Рядок 3: Синтаксичний розбір (Для тексту ВСЕРЕДИНІ під час редагування) -->
+            <div class="ctx-row" id="ctx-row-inline-syntax" style="margin-top:5px; display:none;">
+                <span style="font-size:12px; color:#555; margin-right:5px;">Члени реч.:</span>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleSyntaxClick('pidmet')" title="Підмет"><span class="icon-syn pidmet"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleSyntaxClick('prysudok')" title="Присудок"><span class="icon-syn prysudok"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleSyntaxClick('dodatok')" title="Додаток"><span class="icon-syn dodatok"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleSyntaxClick('oznachennya')" title="Означення"><span class="icon-syn oznachennya"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleSyntaxClick('obstavyna')" title="Обставина"><span class="icon-syn obstavyna"></span></button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleSyntaxClick('none')" title="Прибрати розбір" style="font-size:12px;">Очис.</button>
+            </div>
+            <!-- Рядок 4: Розбір за будовою (ВСЕРЕДИНІ під час редагування) -->
+            <div class="ctx-row" id="ctx-row-inline-morpheme" style="margin-top:5px; display:none;">
+                <span style="font-size:12px; color:#555; margin-right:5px;">Будова слова:</span>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleMorphemeClick('prefix')" title="Префікс">¬</button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleMorphemeClick('root')" title="Корінь">⌒</button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleMorphemeClick('suffix')" title="Суфікс">∧</button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleMorphemeClick('ending')" title="Закінчення">□</button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleMorphemeClick('zero')" title="Нульове закінчення">∅</button>
+                <button class="context-btn" onmousedown="event.preventDefault();" ontouchstart="event.preventDefault();" onclick="handleMorphemeClick('none')" title="Прибрати значок" style="font-size:12px;">Очис.</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Головна ігрова зона -->
+    <div id="main-wrapper">
+        <div id="game-container">
+            <div id="notebook-paper"></div>
+            <div id="selection-box"></div>
+            <div id="active-input" contenteditable="true" spellcheck="false"></div>
+            <!-- Полотно малювання всередині game-container для ідеального збігу координат на всіх екранах -->
+            <canvas id="draw-canvas-global" width="3000" height="3000"></canvas>
+        </div>
+    </div>
+
+    <!-- Theme Manager -->
+    <button id="theme-btn" title="Вибір фону">⚙️</button>
+    <div id="theme-modal">
+        <div class="theme-grid" id="theme-grid"></div>
+    </div>
+
+    <!-- Кнопка та панель Глобального Малювання -->
+    <button id="toggle-draw-btn-global" title="Малювати">✏️</button>
+    <div id="draw-panel-global">
+        <div class="draw-panel-header" id="draw-panel-header-global">
+            <span></span>
+            <span class="close-draw-btn" id="close-draw-btn-global">✕</span>
+        </div>
+        <div class="draw-controls-row">
+            <button class="draw-btn active" id="draw-pencil-btn">✏️ Олівець</button>
+            <button class="draw-btn" id="draw-eraser-btn">🧽 Гумка</button>
+        </div>
+        <div class="draw-controls-row">
+            <input type="color" id="draw-color-picker" value="#e74c3c">
+            <input type="range" id="draw-size-slider" min="1" max="50" value="4">
+            <button class="draw-btn" id="draw-clear-btn">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <!-- Універсальний блок контролю (Екран-заглушка) -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <script>
+        // --- 1. НАЛАШТУВАННЯ ТА ІДЕНТИФІКАЦІЯ ---
+        const CONFIG = { 
+            gameId: 'notebook_game_sync_v5', 
+            lineHeight: 40,
+            defaultLeftMargin: 115 // Координата X одразу за червоною лінією полів
+        };
+
+        const firebaseConfig = { 
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/", 
+            projectId: "lesson-13c44" 
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const myColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+
+        let FIREBASE_DISABLED = false;
+        if (window.LOCAL_SAVE_DATA) FIREBASE_DISABLED = true;
+
+        // --- 2. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Ідентифікація, Радар та Блокування) ---
+        if (!FIREBASE_DISABLED) {
+            const userRef = db.ref(`online_users/${myName}/${tabId}`);
+            const connectedRef = db.ref('.info/connected');
+            connectedRef.on('value', snap => {
+                if (snap.val() === true) { 
+                    userRef.set({ game: CONFIG.gameId, time: firebase.database.ServerValue.TIMESTAMP }); 
+                    userRef.onDisconnect().remove(); 
+                }
+            });
+            window.addEventListener('beforeunload', () => userRef.remove());
+            
+            db.ref('force_refresh').on('value', snap => { if(snap.val()) window.location.reload(); });
+            db.ref(`blocked_users/${myName}`).on('value', snap => { 
+                document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none'; 
+            });
+
+            let initImmunity = true; 
+            setTimeout(() => { initImmunity = false; }, 1000);
+            db.ref('current_activity').on('value', snap => {
+                if (initImmunity) return; 
+                const activity = snap.val();
+                if (activity === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }
+
+        // --- 3. МАСШТАБУВАННЯ (ЛУПА) ---
+        let currentScale = 1; 
+        const wrapper = document.getElementById('main-wrapper'); 
+        const container = document.getElementById('game-container');
+        function changeZoom(delta) { 
+            currentScale += delta; 
+            if(currentScale < 0.4) currentScale = 0.4; 
+            if(currentScale > 3) currentScale = 3; 
+            container.style.transform = `scale(${currentScale})`; 
+        }
+
+        // --- 4. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager) ІЗ СИНХРОНІЗАЦІЄЮ ---
+        const themeBtn = document.getElementById('theme-btn'); 
+        const themeModal = document.getElementById('theme-modal');
+        const themeGrid = document.getElementById('theme-grid'); 
+        let themeRef = null; 
+        if(!FIREBASE_DISABLED) themeRef = db.ref(`game_theme/${CONFIG.gameId}`);
+        let localSavedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+
+        if (localSavedBg) {
+            document.body.style.backgroundImage = localSavedBg === 'none' ? 'none' : `url('${localSavedBg}')`;
+        }
+
+        themeBtn.onclick = () => { themeModal.style.display = themeModal.style.display === 'block' ? 'none' : 'block'; };
+        
+        // Строго послідовне завантаження фонів до помилки 404
+        async function loadThemes() {
+            themeGrid.innerHTML = '';
+            const noBgCard = document.createElement('div'); 
+            noBgCard.className = 'theme-card'; 
+            noBgCard.style.backgroundColor = '#f0f0f0';
+            noBgCard.innerHTML = `<div class="theme-card-title">Без фону</div>`; 
+            noBgCard.onclick = () => selectTheme('none'); 
+            themeGrid.appendChild(noBgCard);
+
+            const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+            for (let i = 1; i <= 1000; i++) {
+                const url = `${baseUrl}background_${i}.webp`;
+                try {
+                    const res = await fetch(url, {method: 'HEAD'}); 
+                    if (!res.ok) break; // При отриманні 404 негайно зупиняємо перевірку
+                    const card = document.createElement('div'); 
+                    card.className = 'theme-card'; 
+                    card.style.backgroundImage = `url('${url}')`;
+                    card.innerHTML = `<div class="theme-card-title">Фон ${i}</div>`; 
+                    card.onclick = () => selectTheme(url); 
+                    themeGrid.appendChild(card);
+                } catch(e) { 
+                    break; 
+                }
+            }
+        }
+        loadThemes();
+        
+        function selectTheme(url) { 
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url); 
+            if(themeRef) themeRef.set(url); 
+            else document.body.style.backgroundImage = url === 'none' ? 'none' : `url('${url}')`;
+            themeModal.style.display = 'none'; 
+        }
+        
+        if(themeRef) {
+            themeRef.on('value', snap => {
+                const url = snap.val(); 
+                let finalUrl = url;
+                if(!url && localSavedBg) { 
+                    finalUrl = localSavedBg; 
+                    themeRef.set(localSavedBg); 
+                }
+                if (finalUrl) {
+                    localStorage.setItem('mySavedBg_' + CONFIG.gameId, finalUrl);
+                }
+                document.body.style.backgroundImage = (finalUrl === 'none' || !finalUrl) ? 'none' : `url('${finalUrl}')`;
+            });
+        }
+
+        // --- 5. СИНХРОНІЗАЦІЯ КУРСОРІВ, НАЛАШТУВАНЬ ТА ВВОДУ В РЕАЛЬНОМУ ЧАСІ ---
+        let cursorsRef = null; 
+        let typingRef = null;
+        let settingsRef = null;
+        let isRemoteSetting = false;
+
+        if(!FIREBASE_DISABLED) {
+            cursorsRef = db.ref(`cursors/${CONFIG.gameId}`); 
+            typingRef = db.ref(`game_action/${CONFIG.gameId}/typing`);
+            settingsRef = db.ref(`game_action/${CONFIG.gameId}/ui_settings`);
+
+            // Очищуємо завислі "привиди" вводу при свіжому старті, щоб не було артефактів у кутку
+            typingRef.child(tabId).remove();
+            typingRef.child(tabId).onDisconnect().remove();
+            cursorsRef.child(tabId).onDisconnect().remove();
+
+            const cursors = {}; 
+            let lastCursorSync = 0;
+            
+            function sendCursorPos(clientX, clientY) {
+                const now = Date.now();
+                if (now - lastCursorSync > 40) {
+                    const rect = container.getBoundingClientRect(); 
+                    const x = (clientX - rect.left) / currentScale; 
+                    const y = (clientY - rect.top) / currentScale;
+                    cursorsRef.child(tabId).set({ x: Math.round(x), y: Math.round(y), name: myName, color: myColor }); 
+                    lastCursorSync = now;
+                }
+            }
+
+            wrapper.addEventListener('mousemove', (e) => sendCursorPos(e.clientX, e.clientY));
+            wrapper.addEventListener('touchmove', (e) => {
+                if(e.touches && e.touches[0]) sendCursorPos(e.touches[0].clientX, e.touches[0].clientY);
+            }, {passive: true});
+
+            cursorsRef.on('child_added', updateCursor); 
+            cursorsRef.on('child_changed', updateCursor);
+            cursorsRef.on('child_removed', snap => { 
+                const id = snap.key; 
+                if(cursors[id]) { cursors[id].remove(); delete cursors[id]; } 
+            });
+            window.addEventListener('beforeunload', () => { 
+                cursorsRef.child(tabId).remove(); 
+                typingRef.child(tabId).remove(); 
+            });
+            
+            function updateCursor(snap) {
+                const id = snap.key; 
+                if (id === tabId) return; 
+                const data = snap.val();
+                if (!data || isNaN(data.x) || isNaN(data.y)) return;
+                if (!cursors[id]) {
+                    const el = document.createElement('div'); 
+                    el.className = 'remote-cursor'; 
+                    el.style.backgroundColor = data.color || '#ff0000';
+                    el.innerHTML = `<div class="remote-cursor-name" style="background-color:${data.color || '#ff0000'}">${data.name || 'Гравець'}</div>`; 
+                    container.appendChild(el); 
+                    cursors[id] = el;
+                }
+                cursors[id].style.left = data.x + 'px'; 
+                cursors[id].style.top = data.y + 'px';
+            }
+
+            // Відображення кожної букви в реальному часі під час набору
+            typingRef.on('value', snap => {
+                const data = snap.val() || {};
+                document.querySelectorAll('.ghost-typing').forEach(el => el.remove());
+                Object.keys(data).forEach(key => {
+                    if (key === tabId) return;
+                    const tData = data[key];
+                    if (!tData || !tData.text || tData.text.trim() === '' || isNaN(tData.x) || isNaN(tData.y)) return;
+                    const el = document.createElement('div'); 
+                    el.className = 'notebook-text ghost-typing';
+                    el.innerHTML = tData.text; 
+                    el.style.left = tData.x + 'px'; 
+                    el.style.top = tData.y + 'px';
+                    el.style.color = tData.color || '#0000aa'; 
+                    el.style.fontFamily = tData.font || 'Propysy'; 
+                    el.style.fontWeight = tData.weight || 'normal';
+                    container.appendChild(el);
+                });
+            });
+
+            // Синхронізація режимів (Розбиття, Аналіз, Шрифт, Колір, Жирність) між усіма учасниками
+            settingsRef.on('value', snap => {
+                const s = snap.val();
+                if (!s || s.senderId === tabId) return;
+                isRemoteSetting = true;
+                if (s.splitMode) {
+                    const radio = document.querySelector(`input[name="split-mode"][value="${s.splitMode}"]`);
+                    if (radio) radio.checked = true;
+                }
+                if (typeof s.parsingUi === 'boolean') {
+                    document.getElementById('toggle-parsing-ui').checked = s.parsingUi;
+                    document.getElementById('parsing-tools-container').style.display = s.parsingUi ? 'block' : 'none';
+                    updateContextMenu();
+                }
+                if (s.font) document.getElementById('text-font-selector').value = s.font;
+                if (s.color) document.getElementById('text-color-picker').value = s.color;
+                if (typeof s.bold === 'boolean') document.getElementById('text-bold-checkbox').checked = s.bold;
+                isRemoteSetting = false;
+            });
+        }
+
+        function broadcastSettings() {
+            if (FIREBASE_DISABLED || isRemoteSetting || !settingsRef) return;
+            settingsRef.set({
+                senderId: tabId,
+                splitMode: document.querySelector('input[name="split-mode"]:checked').value,
+                parsingUi: document.getElementById('toggle-parsing-ui').checked,
+                font: document.getElementById('text-font-selector').value,
+                color: document.getElementById('text-color-picker').value,
+                bold: document.getElementById('text-bold-checkbox').checked,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+        }
+
+        // --- МЕНЮ РОЗБИТТЯ, СЕКРЕТНИЙ ВВІД ТА АНАЛІЗ ---
+        const btnSplit = document.getElementById('btn-split-settings'); 
+        const splitPanel = document.getElementById('split-panel');
+        btnSplit.onclick = () => { splitPanel.style.display = splitPanel.style.display === 'block' ? 'none' : 'block'; };
+        
+        document.querySelectorAll('input[name="split-mode"]').forEach(r => {
+            r.addEventListener('change', broadcastSettings);
+        });
+
+        const btnSecretToggle = document.getElementById('btn-secret-toggle');
+        let isSecretInputMode = false;
+        btnSecretToggle.onclick = () => {
+            isSecretInputMode = !isSecretInputMode;
+            btnSecretToggle.classList.toggle('active', isSecretInputMode);
+            document.getElementById('active-input').classList.toggle('secret-input', isSecretInputMode);
+        };
+
+        const toggleParsingUi = document.getElementById('toggle-parsing-ui');
+        toggleParsingUi.addEventListener('change', (e) => {
+            document.getElementById('parsing-tools-container').style.display = e.target.checked ? 'block' : 'none';
+            updateContextMenu();
+            broadcastSettings();
+        });
+
+        function closeContextMenu() {
+            document.getElementById('toggle-parsing-ui').checked = false;
+            document.getElementById('parsing-tools-container').style.display = 'none';
+            contextActions.style.display = 'none';
+            broadcastSettings();
+        }
+
+        // --- РЕЖИМИ ТА МАСОВЕ ВИДІЛЕННЯ ---
+        let mainToolMode = 'text'; 
+        const btnText = document.getElementById('tool-text-btn'); 
+        const btnPan = document.getElementById('tool-pan-btn');
+        const btnEraseText = document.getElementById('tool-erase-btn'); 
+        const paper = document.getElementById('notebook-paper');
+        const contextActions = document.getElementById('context-actions');
+        
+        let selectedElements = new Set(); 
+        let clipboard = [];
+
+        function updateContextMenu() {
+            if (selectedElements.size > 0 || clipboard.length > 0 || isTyping) {
+                contextActions.style.display = 'flex';
+                document.getElementById('ctx-merge').style.display = (selectedElements.size > 1 && !isTyping) ? 'flex' : 'none';
+                document.getElementById('ctx-copy').style.display = isTyping ? 'none' : 'flex';
+                document.getElementById('ctx-paste').style.display = isTyping ? 'none' : 'flex';
+                document.getElementById('ctx-delete').style.display = isTyping ? 'none' : 'flex';
+                
+                const showParsing = document.getElementById('toggle-parsing-ui').checked;
+                document.getElementById('ctx-row-block-syntax').style.display = (!isTyping && selectedElements.size > 0 && showParsing) ? 'flex' : 'none';
+                document.getElementById('ctx-row-inline-syntax').style.display = (isTyping && showParsing) ? 'flex' : 'none';
+                document.getElementById('ctx-row-inline-morpheme').style.display = (isTyping && showParsing) ? 'flex' : 'none';
+            } else {
+                contextActions.style.display = 'none';
+            }
+            Object.values(domTexts).forEach(el => { 
+                if (selectedElements.has(el.id)) el.classList.add('selected-text', 'selected-img'); 
+                else el.classList.remove('selected-text', 'selected-img'); 
+            });
+        }
+        function clearSelection() { selectedElements.clear(); updateContextMenu(); }
+        function clearModes() {
+            btnText.classList.remove('active'); 
+            btnPan.classList.remove('active'); 
+            btnEraseText.classList.remove('active');
+            Object.values(domTexts).forEach(el => el.classList.remove('erase-mode'));
+        }
+
+        btnText.onclick = () => { clearModes(); mainToolMode = 'text'; btnText.classList.add('active'); paper.style.cursor = 'crosshair'; };
+        btnPan.onclick = () => { clearModes(); mainToolMode = 'pan'; btnPan.classList.add('active'); paper.style.cursor = 'grab'; };
+        btnEraseText.onclick = () => { 
+            clearModes(); mainToolMode = 'erase_text'; btnEraseText.classList.add('active'); paper.style.cursor = 'crosshair'; 
+            Object.values(domTexts).forEach(el => el.classList.add('erase-mode')); 
+        };
+
+        let isPanning = false; let panStartX, panStartY, panScrollLeft, panScrollTop;
+        function startPan(e) {
+            if (mainToolMode !== 'pan' || document.getElementById('draw-canvas-global').style.pointerEvents === 'auto') return;
+            isPanning = true; const touch = e.touches ? e.touches[0] : e;
+            panStartX = touch.pageX - wrapper.offsetLeft; panStartY = touch.pageY - wrapper.offsetTop; 
+            panScrollLeft = wrapper.scrollLeft; panScrollTop = wrapper.scrollTop; paper.style.cursor = 'grabbing';
+        }
+        function doPan(e) {
+            if (!isPanning) return; e.preventDefault(); const touch = e.touches ? e.touches[0] : e;
+            wrapper.scrollLeft = panScrollLeft - ((touch.pageX - wrapper.offsetLeft) - panStartX); 
+            wrapper.scrollTop = panScrollTop - ((touch.pageY - wrapper.offsetTop) - panStartY);
+        }
+        function stopPan() { if (!isPanning) return; isPanning = false; if(mainToolMode === 'pan') paper.style.cursor = 'grab'; }
+        wrapper.addEventListener('mousedown', startPan); wrapper.addEventListener('mousemove', doPan); window.addEventListener('mouseup', stopPan);
+        wrapper.addEventListener('touchstart', startPan, {passive: false}); wrapper.addEventListener('touchmove', doPan, {passive: false}); window.addEventListener('touchend', stopPan);
+
+        // --- ЛОГІКА ЗОШИТА, ВИДІЛЕННЯ, ПЕРЕНОСУ НА ПОЧАТОК РЯДКА ТА ВВОДУ ---
+        const activeInput = document.getElementById('active-input'); 
+        const hiddenMeasureBox = document.getElementById('hidden-measure-box');
+        let elementsRef = null; 
+        if(!FIREBASE_DISABLED) elementsRef = db.ref(`game_action/${CONFIG.gameId}/texts`);
+        const selectionBox = document.getElementById('selection-box');
+        let isTyping = false; let isSelectingBox = false; let selStartX = 0, selStartY = 0; 
+        let domTextsData = {}; 
+        const domTexts = {};
+
+        // Запам'ятовування виділення всередині activeInput
+        let savedSelectionRange = null;
+        document.addEventListener('selectionchange', () => {
+            if (isTyping) {
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    if (activeInput.contains(range.commonAncestorContainer)) {
+                        savedSelectionRange = range.cloneRange();
+                    }
+                }
+            }
+        });
+        function restoreSelection() {
+            if (savedSelectionRange) {
+                const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedSelectionRange);
+            }
+        }
+
+        document.getElementById('clear-all-text-btn').onclick = () => { 
+            if(confirm('Точно очистити аркуш від усіх текстів та картинок?')) { 
+                if(!FIREBASE_DISABLED) {
+                    elementsRef.remove();
+                    typingRef.remove();
+                } else { 
+                    Object.values(domTexts).forEach(el => el.remove());
+                    for (let k in domTexts) delete domTexts[k];
+                    domTextsData = {}; 
+                } 
+                clearSelection(); 
+            } 
+        };
+
+        document.addEventListener('mousedown', (e) => {
+            if (isTyping && e.target !== activeInput && !activeInput.contains(e.target) && !e.target.closest('#context-actions') && !e.target.closest('#text-toolbar') && !e.target.closest('#split-panel')) {
+                finishTyping();
+            }
+        });
+
+        paper.addEventListener('mousedown', (e) => {
+            if (mainToolMode !== 'text' || e.target !== paper || document.getElementById('draw-canvas-global').style.pointerEvents === 'auto' || e.button !== 0) return;
+            if (isTyping) return;
+            
+            const rect = container.getBoundingClientRect(); 
+            selStartX = (e.clientX - rect.left) / currentScale; 
+            selStartY = (e.clientY - rect.top) / currentScale;
+            isSelectingBox = true; 
+            selectionBox.style.left = selStartX + 'px'; 
+            selectionBox.style.top = selStartY + 'px'; 
+            selectionBox.style.width = '0px'; 
+            selectionBox.style.height = '0px'; 
+            selectionBox.style.display = 'block';
+            clearSelection();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isSelectingBox) return;
+            const rect = container.getBoundingClientRect(); 
+            const currentX = (e.clientX - rect.left) / currentScale; 
+            const currentY = (e.clientY - rect.top) / currentScale;
+            selectionBox.style.left = Math.min(selStartX, currentX) + 'px'; 
+            selectionBox.style.top = Math.min(selStartY, currentY) + 'px';
+            selectionBox.style.width = Math.abs(currentX - selStartX) + 'px'; 
+            selectionBox.style.height = Math.abs(currentY - selStartY) + 'px';
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (!isSelectingBox) return; 
+            isSelectingBox = false; 
+            selectionBox.style.display = 'none';
+            const rect = container.getBoundingClientRect(); 
+            const endX = (e.clientX - rect.left) / currentScale; 
+            const endY = (e.clientY - rect.top) / currentScale;
+            const moveDist = Math.hypot(endX - selStartX, endY - selStartY);
+            
+            if (moveDist < 5) { 
+                const snappedY = Math.floor(selStartY / CONFIG.lineHeight) * CONFIG.lineHeight;
+                openActiveInput(selStartX, snappedY, '');
+            } else { 
+                const boxRect = { left: Math.min(selStartX, endX), top: Math.min(selStartY, endY), right: Math.max(selStartX, endX), bottom: Math.max(selStartY, endY) };
+                Object.values(domTexts).forEach(el => {
+                    const elX = parseFloat(el.style.left); const elY = parseFloat(el.style.top);
+                    if (elX < boxRect.right && (elX + el.offsetWidth) > boxRect.left && elY < boxRect.bottom && (elY + el.offsetHeight) > boxRect.top) {
+                        selectedElements.add(el.id);
+                    }
+                });
+                updateContextMenu();
+            }
+        });
+
+        function openActiveInput(x, y, initialHtml) {
+            activeInput.style.left = Math.max(10, Math.round(x)) + 'px'; 
+            activeInput.style.top = Math.max(0, Math.round(y)) + 'px';
+            activeInput.style.color = document.getElementById('text-color-picker').value;
+            activeInput.style.fontWeight = document.getElementById('text-bold-checkbox').checked ? 'bold' : 'normal';
+            activeInput.style.fontFamily = document.getElementById('text-font-selector').value;
+            activeInput.style.display = 'block'; 
+            activeInput.innerHTML = initialHtml || ''; 
+            isTyping = true; 
+            updateContextMenu();
+            setTimeout(() => {
+                activeInput.focus();
+                if (initialHtml && typeof window.getSelection !== "undefined" && typeof document.createRange !== "undefined") {
+                    let range = document.createRange(); 
+                    range.selectNodeContents(activeInput); 
+                    range.collapse(false); 
+                    let sel = window.getSelection(); 
+                    sel.removeAllRanges(); 
+                    sel.addRange(range);
+                }
+            }, 20);
+        }
+
+        // КЛЮЧОВЕ ВИПРАВЛЕННЯ: При натисканні Enter зберігаємо поточний рядок і переносимо курсор НА ПОЧАТОК наступного рядка (за червоне поле 115px)
+        activeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const nextLineY = parseFloat(activeInput.style.top) + CONFIG.lineHeight;
+                finishTyping();
+                // Починаємо новий рядок чітко від червоного поля зошита (115px)
+                openActiveInput(CONFIG.defaultLeftMargin, nextLineY, '');
+            }
+        });
+
+        activeInput.addEventListener('input', () => {
+            if(isTyping && !FIREBASE_DISABLED) {
+                const txt = activeInput.innerHTML;
+                if (!txt || txt.trim() === '') {
+                    typingRef.child(tabId).remove();
+                } else {
+                    typingRef.child(tabId).set({ 
+                        text: txt, 
+                        x: parseFloat(activeInput.style.left), 
+                        y: parseFloat(activeInput.style.top), 
+                        color: activeInput.style.color, 
+                        font: activeInput.style.fontFamily, 
+                        weight: activeInput.style.fontWeight 
+                    });
+                }
+            }
+        });
+
+        document.getElementById('text-color-picker').addEventListener('input', (e) => { 
+            if (isTyping) { activeInput.style.color = e.target.value; activeInput.dispatchEvent(new Event('input')); } 
+            broadcastSettings();
+        });
+        document.getElementById('text-bold-checkbox').addEventListener('change', (e) => { 
+            if (isTyping) { activeInput.style.fontWeight = e.target.checked ? 'bold' : 'normal'; activeInput.dispatchEvent(new Event('input')); } 
+            broadcastSettings();
+        });
+        document.getElementById('text-font-selector').addEventListener('change', (e) => { 
+            if (isTyping) { activeInput.style.fontFamily = e.target.value; activeInput.dispatchEvent(new Event('input')); } 
+            broadcastSettings();
+        });
+        
+        function finishTyping() {
+            if (!isTyping) return; 
+            isTyping = false; 
+            activeInput.style.display = 'none'; 
+            if(!FIREBASE_DISABLED && typingRef) typingRef.child(tabId).remove();
+            
+            const htmlContent = activeInput.innerHTML; 
+            const textContent = activeInput.innerText.replace(/\u200B/g, '').trim();
+            
+            if (!textContent && !htmlContent.includes('mor-part')) { 
+                activeInput.innerHTML = '';
+                updateContextMenu(); 
+                return; 
+            }
+            
+            let mode = document.querySelector('input[name="split-mode"]:checked').value;
+            if (htmlContent.includes('<span')) mode = 'full'; 
+            
+            const baseX = parseFloat(activeInput.style.left);
+            const baseY = parseFloat(activeInput.style.top);
+            const color = activeInput.style.color;
+            const weight = activeInput.style.fontWeight;
+            const font = activeInput.style.fontFamily;
+
+            activeInput.innerHTML = '';
+
+            if (mode === 'full') {
+                createSyncedTextObjects(htmlContent, 'full', baseX, baseY, color, weight, font);
+            } else {
+                const linesArray = textContent.split('\n');
+                let currentY = baseY;
+                linesArray.forEach((line, idx) => {
+                    const lineX = idx === 0 ? baseX : CONFIG.defaultLeftMargin;
+                    if (line.trim() !== '') createSyncedTextObjects(line, mode, lineX, currentY, color, weight, font);
+                    currentY += CONFIG.lineHeight;
+                });
+            }
+            updateContextMenu();
+        }
+
+        function createSyncedTextObjects(htmlText, mode, startX, startY, color, weight, font) {
+            if (!htmlText || isNaN(startX) || isNaN(startY)) return;
+            htmlText = htmlText.replace(/&nbsp;/g, ' ').replace(/[\u00A0\u202F\u200B\n\r\t]/g, ' ');
+            let pieces = [];
+            if (mode === 'full') pieces = [{char: htmlText, margin: 0}];
+            else if (mode === 'word') { htmlText.split(/\s+/).filter(w => w.length > 0).forEach(w => pieces.push({char: w, margin: 15})); }
+            else pieces = htmlText.split('').filter(c => c.trim().length > 0 || c === ' ').map(c => ({char: c, margin: 0}));
+
+            hiddenMeasureBox.style.fontFamily = font || 'Propysy'; 
+            hiddenMeasureBox.style.fontSize = '32px'; 
+            hiddenMeasureBox.style.fontWeight = weight || 'normal';
+
+            let currentX = startX;
+            pieces.forEach(p => {
+                if (p.char === ' ' && mode === 'letter') {
+                    currentX += 14;
+                    return;
+                }
+                hiddenMeasureBox.innerHTML = p.char;
+                const measuredWidth = Math.max(12, hiddenMeasureBox.offsetWidth);
+                const id = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+                const dataObj = { 
+                    id: id, 
+                    type: 'text', 
+                    text: p.char, 
+                    x: Math.round(currentX), 
+                    y: Math.round(startY), 
+                    color: color || '#0000aa', 
+                    weight: weight || 'normal', 
+                    font: font || 'Propysy', 
+                    senderId: tabId, 
+                    timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
+                };
+                if(!FIREBASE_DISABLED) elementsRef.child(id).set(dataObj); 
+                else renderTextObject({val: ()=>dataObj, key: id});
+                currentX += measuredWidth + p.margin;
+            });
+            hiddenMeasureBox.innerHTML = '';
+        }
+
+        // --- КАРТИНКИ (ДОДАВАННЯ ТА СТИСНЕННЯ + DRAG & DROP) ---
+        function handleImageUpload(file, x, y) {
+            if(!file || !file.type.startsWith('image/')) return;
+            const isGif = file.type === 'image/gif';
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const base64 = event.target.result;
+                const img = new Image();
+                img.onload = function() {
+                    let w = img.width, h = img.height; const MAX_WIDTH = 800;
+                    let finalSrc = base64;
+                    if (!isGif) {
+                        if(w > MAX_WIDTH) { h = Math.round((h * MAX_WIDTH) / w); w = MAX_WIDTH; }
+                        const canvasImg = document.createElement('canvas'); canvasImg.width = w; canvasImg.height = h;
+                        const ctxImg = canvasImg.getContext('2d'); ctxImg.drawImage(img, 0, 0, w, h);
+                        finalSrc = canvasImg.toDataURL('image/webp', 0.85); 
+                    } else {
+                        if(w > MAX_WIDTH) { h = Math.round((h * MAX_WIDTH) / w); w = MAX_WIDTH; }
+                    }
+
+                    const id = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+                    const rect = container.getBoundingClientRect(); 
+                    const startX = x !== undefined ? (x - rect.left - w/2) / currentScale : (window.innerWidth/2 - rect.left - w/2) / currentScale; 
+                    const startY = y !== undefined ? (y - rect.top - h/2) / currentScale : (window.innerHeight/2 - rect.top - h/2) / currentScale;
+                    const dataObj = { 
+                        id: id, type: 'image', src: finalSrc, 
+                        x: Math.max(10, Math.round(startX)), y: Math.max(10, Math.round(startY)), 
+                        width: w, height: h, senderId: tabId, 
+                        timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
+                    };
+                    if(!FIREBASE_DISABLED) elementsRef.child(id).set(dataObj); 
+                    else renderTextObject({val: ()=>dataObj, key: id});
+                }
+                img.src = base64;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        document.getElementById('img-upload-input').addEventListener('change', (e) => { handleImageUpload(e.target.files[0]); e.target.value = ''; });
+        document.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
+        document.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); const file = e.dataTransfer.files[0]; if(file) handleImageUpload(file, e.clientX, e.clientY); });
+
+        if(!FIREBASE_DISABLED) {
+            elementsRef.on('child_added', renderTextObject); 
+            elementsRef.on('child_changed', renderTextObject);
+            elementsRef.on('child_removed', snap => {
+                const id = snap.key; 
+                if(domTexts[id]) { 
+                    domTexts[id].remove(); 
+                    delete domTexts[id]; 
+                    delete domTextsData[id]; 
+                    if(selectedElements.has(id)) { selectedElements.delete(id); updateContextMenu(); } 
+                }
+            });
+        }
+
+        let isDraggingGroup = false; 
+        let groupDragOffsets = {};
+
+        function renderTextObject(snap) {
+            const data = snap.val(); 
+            const key = snap.key || (data && data.id);
+            
+            // ЗАХИСТ ВІД АРТЕФАКТІВ У КУТКУ: Ігноруємо та видаляємо порожні або биті записи
+            if (!data || ! data.id || isNaN(data.x) || isNaN(data.y)) {
+                if (!FIREBASE_DISABLED && key && elementsRef) elementsRef.child(key).remove();
+                return;
+            }
+            if (data.type !== 'image' && (!data.text || data.text.replace(/\u200B/g, '').trim() === '' && !data.text.includes('mor-part'))) {
+                if (!FIREBASE_DISABLED && key && elementsRef) elementsRef.child(key).remove();
+                return;
+            }
+
+            domTextsData[data.id] = data; 
+            if (data.senderId === tabId && isDraggingGroup && selectedElements.has(data.id) && data.isMoving) return;
+
+            let el = domTexts[data.id];
+            if (!el) {
+                el = document.createElement('div'); 
+                el.addEventListener('mousedown', handleTextInteraction); 
+                el.addEventListener('touchstart', handleTextInteraction, {passive: false});
+                
+                if(data.type === 'image') {
+                    el.className = 'game-image';
+                    const img = document.createElement('img'); 
+                    el.appendChild(img);
+                    const resizeObserver = new ResizeObserver(entries => {
+                        if (data.senderId !== tabId && !el.classList.contains('selected-img')) return; 
+                        for (let entry of entries) {
+                            const newW = Math.round(entry.contentRect.width); 
+                            const newH = Math.round(entry.contentRect.height);
+                            if (newW > 20 && newH > 20 && (Math.abs(newW - domTextsData[data.id].width) > 5 || Math.abs(newH - domTextsData[data.id].height) > 5)) {
+                                if(!FIREBASE_DISABLED) elementsRef.child(data.id).update({ width: newW, height: newH, senderId: tabId });
+                                else { domTextsData[data.id].width = newW; domTextsData[data.id].height = newH; }
+                            }
+                        }
+                    });
+                    resizeObserver.observe(el);
+                } else {
+                    el.className = 'notebook-text';
+                    el.addEventListener('dblclick', () => editElement(data.id));
+                    let lastTap = 0; 
+                    el.addEventListener('touchend', (e) => {
+                        if (isDraggingGroup || mainToolMode !== 'text') return;
+                        const tapLength = new Date().getTime() - lastTap;
+                        if (tapLength < 450 && tapLength > 0) { editElement(data.id); e.preventDefault(); } 
+                        lastTap = new Date().getTime();
+                    });
+                }
+                container.appendChild(el); 
+                domTexts[data.id] = el;
+            }
+            
+            el.id = data.id; 
+            el.style.left = data.x + 'px'; 
+            el.style.top = data.y + 'px';
+            
+            if(data.type === 'image') {
+                el.querySelector('img').src = data.src;
+                if(!el.style.width || Math.abs(parseFloat(el.style.width) - data.width) > 5) { 
+                    el.style.width = data.width + 'px'; 
+                    el.style.height = data.height + 'px'; 
+                }
+                if(selectedElements.has(data.id)) el.classList.add('selected-img'); else el.classList.remove('selected-img');
+                if(mainToolMode === 'erase_text') el.classList.add('erase-mode'); else el.classList.remove('erase-mode');
+            } else {
+                el.innerHTML = data.text; 
+                el.style.color = data.color || '#0000aa'; 
+                el.style.fontWeight = data.weight || 'normal'; 
+                el.style.fontFamily = data.font || 'Propysy';
+                el.className = 'notebook-text';
+                if(selectedElements.has(data.id)) el.classList.add('selected-text');
+                if(mainToolMode === 'erase_text') el.classList.add('erase-mode');
+                if(data.syntax && data.syntax !== 'none') el.classList.add('syn-' + data.syntax);
+            }
+        }
+
+        // ФУНКЦІЯ ОЧИЩЕННЯ ТЕКСТУ, ЩОБ ГАРАНТОВАНО ЗНАХОДИТИ ПРОБІЛИ
+        function elTextClean(html) {
+            const d = document.createElement('div'); 
+            d.innerHTML = html; 
+            let txt = d.textContent || d.innerText || "";
+            return txt.replace(/[\u00A0\u200B\u202F\n\r\t]/g, ' ').replace(/\s+/g, ' ');
+        }
+
+        function handleTextInteraction(e) {
+            if (document.getElementById('draw-canvas-global').style.pointerEvents === 'auto' || (e.type === 'mousedown' && e.button !== 0)) return;
+            let targetEl = e.target;
+            while(targetEl && !targetEl.classList.contains('notebook-text') && !targetEl.classList.contains('game-image')) { 
+                targetEl = targetEl.parentElement; 
+            }
+            if(!targetEl) return;
+            const id = targetEl.id;
+            
+            if(targetEl.classList.contains('game-image')) {
+                const rect = targetEl.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                if (clientX > rect.right - 22 && clientY > rect.bottom - 22) return; 
+            }
+            
+            if (mainToolMode === 'erase_text') { 
+                e.preventDefault(); 
+                if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
+                else { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; if(selectedElements.has(id)){selectedElements.delete(id); updateContextMenu();} } 
+                return; 
+            }
+            if (mainToolMode !== 'text') return;
+
+            const data = domTextsData[id];
+            if (!data) return;
+
+            // ЛОГІКА РОЗБИТТЯ
+            if (data.type !== 'image') {
+                const mode = document.querySelector('input[name="split-mode"]:checked').value;
+                const plainTxt = elTextClean(data.text).trim();
+                const isMultiWord = plainTxt.includes(' ');
+                const isMultiLetter = plainTxt.replace(/\s+/g, '').length > 1;
+
+                if (!data.text.includes('syn-part') && !data.text.includes('mor-part') && ((mode === 'word' && isMultiWord) || (mode === 'letter' && isMultiLetter))) {
+                    e.preventDefault(); 
+                    if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
+                    else { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; if(selectedElements.has(id)){selectedElements.delete(id); updateContextMenu();} }
+                    
+                    createSyncedTextObjects(plainTxt, mode, data.x, data.y, data.color || '#0000aa', data.weight || 'normal', data.font || 'Propysy'); 
+                    return; // Текст розбито - дія завершується, щоб наступним кліком можна було брати окремі частинки
+                }
+            }
+
+            if (!selectedElements.has(id)) { clearSelection(); selectedElements.add(id); updateContextMenu(); }
+
+            const touch = e.touches ? e.touches[0] : e; 
+            const rect = container.getBoundingClientRect();
+            const rawX = (touch.clientX - rect.left) / currentScale; 
+            const rawY = (touch.clientY - rect.top) / currentScale;
+            isDraggingGroup = true; 
+            groupDragOffsets = {};
+            selectedElements.forEach(selId => {
+                const el = domTexts[selId]; 
+                if(el) groupDragOffsets[selId] = { offX: rawX - parseFloat(el.style.left), offY: rawY - parseFloat(el.style.top) };
+            });
+
+            document.addEventListener('mousemove', onGroupDrag); 
+            document.addEventListener('touchmove', onGroupDrag, {passive: false});
+            document.addEventListener('mouseup', stopGroupDrag); 
+            document.addEventListener('touchend', stopGroupDrag);
+        }
+
+        function onGroupDrag(e) {
+            if (!isDraggingGroup) return; 
+            e.preventDefault(); 
+            const touch = e.touches ? e.touches[0] : e;
+            const rawX = (touch.clientX - container.getBoundingClientRect().left) / currentScale; 
+            const rawY = (touch.clientY - container.getBoundingClientRect().top) / currentScale;
+            selectedElements.forEach(selId => {
+                const offsets = groupDragOffsets[selId]; 
+                if(!offsets || !domTextsData[selId]) return;
+                const newX = Math.round(rawX - offsets.offX); 
+                let newY = Math.round(rawY - offsets.offY);
+                if(domTextsData[selId].type !== 'image') newY = Math.round(newY / CONFIG.lineHeight) * CONFIG.lineHeight; 
+                
+                const el = domTexts[selId]; 
+                if(el) { 
+                    el.style.left = newX + 'px'; 
+                    el.style.top = newY + 'px'; 
+                    if(!FIREBASE_DISABLED) elementsRef.child(selId).update({ x: newX, y: newY, senderId: tabId, isMoving: true }); 
+                    else { domTextsData[selId].x = newX; domTextsData[selId].y = newY; } 
+                }
+            });
+        }
+
+        function stopGroupDrag() {
+            if (!isDraggingGroup) return;
+            selectedElements.forEach(selId => { 
+                const el = domTexts[selId]; 
+                if(el && !FIREBASE_DISABLED) elementsRef.child(selId).update({ x: parseFloat(el.style.left), y: parseFloat(el.style.top), senderId: tabId, isMoving: false }); 
+            });
+            isDraggingGroup = false; 
+            groupDragOffsets = {};
+            document.removeEventListener('mousemove', onGroupDrag); 
+            document.removeEventListener('touchmove', onGroupDrag);
+            document.removeEventListener('mouseup', stopGroupDrag); 
+            document.removeEventListener('touchend', stopGroupDrag);
+        }
+
+        function editElement(id) {
+            if (mainToolMode !== 'text' || document.getElementById('draw-canvas-global').style.pointerEvents === 'auto') return;
+            const data = domTextsData[id]; 
+            if (!data || data.type === 'image') return; 
+            if (isTyping) finishTyping();
+            
+            document.getElementById('text-color-picker').value = data.color || '#0000aa'; 
+            document.getElementById('text-bold-checkbox').checked = (data.weight === 'bold'); 
+            document.getElementById('text-font-selector').value = data.font || 'Propysy';
+            
+            if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
+            else { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; } 
+            clearSelection();
+
+            openActiveInput(data.x, data.y, data.text);
+            activeInput.dispatchEvent(new Event('input'));
+        }
+
+        // --- ГАРЯЧІ КЛАВІШІ ТА КНОПКИ ---
+        function deleteSelected() { 
+            selectedElements.forEach(id => { 
+                if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
+                else { if (domTexts[id]) domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; } 
+            }); 
+            clearSelection(); 
+        }
+        function copySelected() { 
+            if(selectedElements.size === 0) return; 
+            clipboard = []; 
+            selectedElements.forEach(id => { if(domTextsData[id]) clipboard.push({...domTextsData[id]}); }); 
+            updateContextMenu(); 
+        }
+        function pasteClipboard() {
+            if(clipboard.length === 0) return; 
+            clearSelection();
+            clipboard.forEach(item => {
+                const id = (item.type==='image'?'img_':'txt_') + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+                const dataObj = { ...item, id: id, x: item.x + 20, y: item.y + 40, senderId: tabId, timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) };
+                if(!FIREBASE_DISABLED) elementsRef.child(id).set(dataObj); 
+                else renderTextObject({val: ()=>dataObj, key: id});
+                selectedElements.add(id);
+            }); 
+            updateContextMenu();
+        }
+        function mergeSelected(shouldUpdate = true) {
+            if(selectedElements.size < 2) return Array.from(selectedElements)[0];
+            const nodes = Array.from(selectedElements).map(id => domTextsData[id]).filter(n => n && n.type !== 'image'); 
+            if(nodes.length === 0) return null;
+            nodes.sort((a, b) => a.x - b.x); 
+            const baseNode = nodes[0];
+            
+            selectedElements.forEach(id => { 
+                if(domTextsData[id] && domTextsData[id].type !== 'image') { 
+                    if(!FIREBASE_DISABLED) elementsRef.child(id).remove(); 
+                    else { domTexts[id].remove(); delete domTexts[id]; delete domTextsData[id]; } 
+                } 
+            });
+            const newId = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+            const dataObj = { 
+                id: newId, type: 'text', text: nodes.map(n => n.text).join(''), 
+                x: baseNode.x, y: baseNode.y, color: baseNode.color, weight: baseNode.weight, font: baseNode.font, 
+                senderId: tabId, timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
+            };
+            if(!FIREBASE_DISABLED) elementsRef.child(newId).set(dataObj); 
+            else renderTextObject({val: ()=>dataObj, key: newId});
+            
+            selectedElements.clear(); 
+            selectedElements.add(newId);
+            if(shouldUpdate) updateContextMenu();
+            return newId;
+        }
+
+        document.getElementById('ctx-delete').onclick = deleteSelected; 
+        document.getElementById('ctx-copy').onclick = copySelected; 
+        document.getElementById('ctx-paste').onclick = pasteClipboard; 
+        document.getElementById('ctx-merge').onclick = () => mergeSelected(true);
+        
+        window.addEventListener('keydown', (e) => {
+            if (isTyping || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
+            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'с')) { e.preventDefault(); copySelected(); }
+            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v' || e.key.toLowerCase() === 'м')) { e.preventDefault(); pasteClipboard(); }
+        });
+
+        // --- УНІФІКОВАНИЙ СИНТАКСИС ТА МОРФЕМИ ---
+        function clearFormatting(html) {
+            const tempDiv = document.createElement('div'); tempDiv.innerHTML = html; return tempDiv.innerText;
+        }
+
+        window.applyBlockSyntax = function(type) {
+            if(selectedElements.size === 0) return;
+            if (type !== 'none') {
+                const targetId = mergeSelected(false); 
+                if(targetId) { 
+                    if(!FIREBASE_DISABLED) elementsRef.child(targetId).update({ syntax: type }); 
+                    else { domTextsData[targetId].syntax = type; renderTextObject({val: ()=>domTextsData[targetId], key: targetId}); } 
+                }
+            } else {
+                selectedElements.forEach(id => { 
+                    if (!domTextsData[id] || domTextsData[id].type === 'image') return;
+                    const cleanTxt = clearFormatting(domTextsData[id].text);
+                    if(!FIREBASE_DISABLED) elementsRef.child(id).update({ syntax: null, text: cleanTxt }); 
+                    else { domTextsData[id].syntax = null; domTextsData[id].text = cleanTxt; renderTextObject({val: ()=>domTextsData[id], key: id}); } 
+                });
+            }
+            clearSelection(); 
+        };
+        
+        window.handleSyntaxClick = function(type) {
+            if (!isTyping) return;
+            restoreSelection();
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0 && !sel.isCollapsed) {
+                const range = sel.getRangeAt(0);
+                if (type === 'none') {
+                    let ancestor = range.commonAncestorContainer; if (ancestor.nodeType === 3) ancestor = ancestor.parentNode;
+                    if (ancestor.classList && ancestor.classList.contains('syn-part')) { ancestor.outerHTML = ancestor.innerHTML; } 
+                    else { document.execCommand('insertText', false, sel.toString()); }
+                } else {
+                    const span = document.createElement('span'); span.className = `syn-part ${type}`; span.textContent = sel.toString();
+                    const zws = document.createTextNode('\u200B'); 
+                    range.deleteContents(); range.insertNode(zws); range.insertNode(span);
+                    range.setStartAfter(zws); range.setEndAfter(zws); sel.removeAllRanges(); sel.addRange(range);
+                    savedSelectionRange = range.cloneRange();
+                }
+                activeInput.dispatchEvent(new Event('input')); 
+            } else if (type === 'none') {
+                activeInput.innerHTML = clearFormatting(activeInput.innerHTML); 
+                activeInput.dispatchEvent(new Event('input')); 
+            }
+        };
+        
+        window.handleMorphemeClick = function(type) {
+            if (!isTyping) { alert("Щоб позначити будову слова:\n1. Двічі клікніть на слово.\n2. Виділіть мишкою потрібні літери.\n3. Натисніть значок."); return; }
+            restoreSelection();
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0 && (!sel.isCollapsed || type === 'zero')) {
+                const range = sel.getRangeAt(0);
+                if (type === 'none') {
+                    let ancestor = range.commonAncestorContainer; if (ancestor.nodeType === 3) ancestor = ancestor.parentNode;
+                    if (ancestor.classList && ancestor.classList.contains('mor-part')) { ancestor.outerHTML = ancestor.innerHTML; } 
+                    else { document.execCommand('insertText', false, sel.toString()); }
+                } else if (type === 'zero') { 
+                    const span = document.createElement('span'); span.className = 'mor-part zero'; 
+                    const zws = document.createTextNode('\u200B');
+                    range.insertNode(span); range.collapse(false); range.insertNode(zws); 
+                    range.setStartAfter(zws); range.collapse(true); sel.removeAllRanges(); sel.addRange(range);
+                    savedSelectionRange = range.cloneRange();
+                } else { 
+                    const span = document.createElement('span'); span.className = `mor-part ${type}`; span.textContent = sel.toString();
+                    const zws = document.createTextNode('\u200B'); 
+                    range.deleteContents(); range.insertNode(zws); range.insertNode(span);
+                    range.setStartAfter(zws); range.setEndAfter(zws); sel.removeAllRanges(); sel.addRange(range);
+                    savedSelectionRange = range.cloneRange();
+                }
+                activeInput.dispatchEvent(new Event('input'));
+            } else if (type === 'none') {
+                activeInput.innerHTML = clearFormatting(activeInput.innerHTML); 
+                activeInput.dispatchEvent(new Event('input')); 
+            } else { alert("Спочатку виділіть мишкою літери в слові!"); }
+        };
+
+        // --- ЗБЕРЕЖЕННЯ ТА ЗАВАНТАЖЕННЯ HTML ---
+        let localDrawHistory = [];
+        document.getElementById('btn-save-project').onclick = () => {
+            if (isTyping) finishTyping(); 
+            
+            const dataToSave = { texts: domTextsData, draws: localDrawHistory };
+            
+            const clone = document.documentElement.cloneNode(true);
+            clone.querySelector('#game-container').innerHTML = '<div id="notebook-paper"></div><div id="selection-box"></div><div id="active-input" contenteditable="true" spellcheck="false"></div><canvas id="draw-canvas-global" width="3000" height="3000"></canvas>';
+            clone.querySelectorAll('iframe').forEach(el => el.remove());
+            
+            let oldScript = clone.querySelector('#local-save-data'); if (oldScript) oldScript.remove();
+            
+            const script = document.createElement('script'); script.id = 'local-save-data';
+            script.textContent = `window.LOCAL_SAVE_DATA = ${JSON.stringify(dataToSave).replace(/</g, '\\u003c')};`;
+            clone.querySelector('head').appendChild(script);
+            
+            const blob = new Blob(["<!DOCTYPE html>\n" + clone.outerHTML], {type: 'text/html;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'Урок_Зошит.html'; a.click(); URL.revokeObjectURL(url);
+        };
+        
+        document.getElementById('project-upload-input').addEventListener('change', function(e) {
+            const file = e.target.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const match = ev.target.result.match(/window\.LOCAL_SAVE_DATA\s*=\s*(\{.*?\});/);
+                if (match) {
+                    try {
+                        const data = JSON.parse(match[1].replace(/\\u003c/g, '<'));
+                        if(confirm("Завантаження перезапише поточний аркуш у всіх. Продовжити?")) { 
+                            if(!FIREBASE_DISABLED) {
+                                db.ref(`game_action/${CONFIG.gameId}/texts`).set(data.texts || {});
+                                db.ref(`game_action/${CONFIG.gameId}/draw`).remove();
+                                if(data.draws && data.draws.length > 0) { 
+                                    data.draws.forEach(d => db.ref(`game_action/${CONFIG.gameId}/draw`).push(d)); 
+                                }
+                            } else { 
+                                Object.values(domTexts).forEach(el => el.remove());
+                                for (let k in domTexts) delete domTexts[k];
+                                domTextsData = {}; 
+                                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                if(data.texts) Object.keys(data.texts).forEach(k => renderTextObject({val:()=>data.texts[k], key:k})); 
+                                if(data.draws) data.draws.forEach(d => {
+                                    if(d.type === 'clear_canvas') ctx.clearRect(0,0,canvas.width,canvas.height);
+                                    else drawLineLocally(d.sx, d.sy, d.ex, d.ey, d.color, d.size, d.mode);
+                                });
+                            }
+                        }
+                    } catch(err) { alert("Помилка файлу!"); }
+                } else alert("Це не збережений HTML файл гри!");
+            };
+            reader.readAsText(file); e.target.value = '';
+        });
+
+        // --- ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ (Олівець / Гумка) ---
+        const canvas = document.getElementById('draw-canvas-global'); 
+        const ctx = canvas.getContext('2d');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global'); 
+        const drawPanel = document.getElementById('draw-panel-global'); 
+        const closeDrawBtn = document.getElementById('close-draw-btn-global');
+        let drawRef = null; 
+        if(!FIREBASE_DISABLED) drawRef = db.ref(`game_action/${CONFIG.gameId}/draw`);
+        let isDrawingMode = false; let isDrawing = false; let lastDrawX = 0; let lastDrawY = 0; let currentDrawMode = 'pencil'; 
+        
+        // При натисканні на кнопку панель одразу відкривається, і режим малювання олівцем автоматично активується
+        toggleDrawBtn.onclick = () => { 
+            if (isTyping) finishTyping();
+            drawPanel.style.display = 'flex'; 
+            canvas.style.pointerEvents = 'auto'; 
+            isDrawingMode = true; 
+            currentDrawMode = 'pencil'; 
+            document.getElementById('draw-pencil-btn').classList.add('active'); 
+            document.getElementById('draw-eraser-btn').classList.remove('active'); 
+        };
+        // При закритті панелі на хрестик панель ховається, а малювання автоматично вимикається
+        closeDrawBtn.onclick = () => { 
+            drawPanel.style.display = 'none'; 
+            canvas.style.pointerEvents = 'none'; 
+            isDrawingMode = false; 
+        };
+        document.getElementById('draw-pencil-btn').onclick = function() { 
+            currentDrawMode = 'pencil'; this.classList.add('active'); document.getElementById('draw-eraser-btn').classList.remove('active'); 
+        };
+        document.getElementById('draw-eraser-btn').onclick = function() { 
+            currentDrawMode = 'eraser'; this.classList.add('active'); document.getElementById('draw-pencil-btn').classList.remove('active'); 
+        };
+        document.getElementById('draw-clear-btn').onclick = () => { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            const act = { type: 'clear_canvas', senderId: tabId, timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) }; 
+            localDrawHistory.push(act); 
+            if(drawRef) drawRef.push(act); 
+        };
+
+        // Шапка перетягування (draggable handle) мишкою та тачем
+        const panelHeader = document.getElementById('draw-panel-header-global'); 
+        let isDraggingPanel = false; let pOffsetX = 0; let pOffsetY = 0;
+        panelHeader.onmousedown = panelHeader.ontouchstart = (e) => {
+            if(e.target === closeDrawBtn) return; 
+            isDraggingPanel = true; 
+            const touch = e.touches ? e.touches[0] : e; 
+            const rect = drawPanel.getBoundingClientRect(); 
+            pOffsetX = touch.clientX - rect.left; 
+            pOffsetY = touch.clientY - rect.top;
+        };
+        function moveDrawPanel(e) {
+            if(!isDraggingPanel) return; 
+            const touch = e.touches ? e.touches[0] : e;
+            drawPanel.style.left = (touch.clientX - pOffsetX + drawPanel.offsetWidth/2) + 'px'; 
+            drawPanel.style.top = (touch.clientY - pOffsetY) + 'px';
+        }
+        document.addEventListener('mousemove', moveDrawPanel);
+        document.addEventListener('touchmove', moveDrawPanel, {passive: false});
+        document.addEventListener('mouseup', () => isDraggingPanel = false);
+        document.addEventListener('touchend', () => isDraggingPanel = false);
+        
+        // Точні координати відносно ігрового аркуша (враховує масштабування та різні екрани)
+        function getCanvasCoords(e) { 
+            const touch = e.touches ? e.touches[0] : e; 
+            const rect = canvas.getBoundingClientRect();
+            return { 
+                x: (touch.clientX - rect.left) / currentScale, 
+                y: (touch.clientY - rect.top) / currentScale 
+            }; 
+        }
+        canvas.addEventListener('mousedown', startDraw); 
+        canvas.addEventListener('touchstart', startDraw, {passive: false});
+        function startDraw(e) { 
+            if(!isDrawingMode) return; 
+            e.preventDefault(); 
+            isDrawing = true; 
+            const coords = getCanvasCoords(e); 
+            lastDrawX = coords.x; 
+            lastDrawY = coords.y; 
+        }
+        canvas.addEventListener('mousemove', draw); 
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        function draw(e) {
+            if(!isDrawing || !isDrawingMode) return; 
+            e.preventDefault(); 
+            const coords = getCanvasCoords(e);
+            const color = currentDrawMode === 'eraser' ? null : document.getElementById('draw-color-picker').value; 
+            const size = document.getElementById('draw-size-slider').value;
+            drawLineLocally(lastDrawX, lastDrawY, coords.x, coords.y, color, size, currentDrawMode);
+            const act = { 
+                type: 'draw_line', senderId: tabId, mode: currentDrawMode, 
+                sx: Math.round(lastDrawX), sy: Math.round(lastDrawY), 
+                ex: Math.round(coords.x), ey: Math.round(coords.y), 
+                color: color, size: size, 
+                timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
+            };
+            localDrawHistory.push(act);
+            if(drawRef) drawRef.push(act);
+            lastDrawX = coords.x; 
+            lastDrawY = coords.y;
+        }
+        canvas.addEventListener('mouseup', stopDraw); 
+        canvas.addEventListener('touchend', stopDraw); 
+        function stopDraw() { isDrawing = false; }
+        
+        function drawLineLocally(sx, sy, ex, ey, color, size, mode) {
+            // Підтримка старих збережень із відсотковими координатами (якщо координати <= 1)
+            const realSx = sx <= 1 && ex <= 1 ? sx * canvas.width : sx;
+            const realSy = sy <= 1 && ey <= 1 ? sy * canvas.height : sy;
+            const realEx = sx <= 1 && ex <= 1 ? ex * canvas.width : ex;
+            const realEy = sy <= 1 && ey <= 1 ? ey * canvas.height : ey;
+
+            ctx.beginPath(); ctx.moveTo(realSx, realSy); ctx.lineTo(realEx, realEy); 
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = size;
+            if(mode === 'eraser') { 
+                ctx.globalCompositeOperation = "destination-out"; 
+                ctx.strokeStyle = "rgba(0,0,0,1)"; 
+            } else { 
+                ctx.globalCompositeOperation = "source-over"; 
+                ctx.strokeStyle = color; 
+            }
+            ctx.stroke(); 
+            ctx.globalCompositeOperation = "source-over";
+        }
+        if(drawRef) {
+            drawRef.on('child_added', snap => {
+                const data = snap.val(); 
+                if(!data || data.senderId === tabId) return; 
+                localDrawHistory.push(data);
+                if(data.type === 'clear_canvas') ctx.clearRect(0, 0, canvas.width, canvas.height); 
+                else if(data.type === 'draw_line') drawLineLocally(data.sx, data.sy, data.ex, data.ey, data.color, data.size, data.mode);
+            });
+        }
+
+        // Завантаження локальних даних, якщо відкрито збережений HTML-файл
+        if (FIREBASE_DISABLED && window.LOCAL_SAVE_DATA) {
+            const data = window.LOCAL_SAVE_DATA;
+            if(data.texts) Object.keys(data.texts).forEach(k => renderTextObject({val: () => data.texts[k], key: k}));
+            if(data.draws) data.draws.forEach(d => {
+                if(d.type === 'clear_canvas') ctx.clearRect(0,0,canvas.width,canvas.height);
+                else drawLineLocally(d.sx, d.sy, d.ex, d.ey, d.color, d.size, d.mode);
+            });
+        }
+    </script>
+</body>
+</html>
