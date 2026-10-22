@@ -14,6 +14,7 @@
         @font-face {
             font-family: 'Propysy';
             src: local('Propysy'), url('Propysy.ttf') format('truetype');
+            font-display: swap;
         }
         
         body, html {
@@ -74,7 +75,7 @@
             background-color: rgba(0, 123, 255, 0.2); outline: 1px dashed #007bff; border-radius: 2px;
         }
         
-        /* GHOST-TYPING (Синхронізація набору): тепер текст не стає тьмяним! */
+        /* GHOST-TYPING (Синхронізація набору) */
         .ghost-typing {
             opacity: 1 !important; 
             pointer-events: none; 
@@ -297,6 +298,9 @@
         <!-- КНОПКА ВІДМІНИ (UNDO) -->
         <button id="btn-undo" class="tool-btn" title="Відмінити (Ctrl+Z)" onclick="performUndo()" disabled>↩️</button>
         
+        <!-- НОВА КНОПКА ПЕРЕХОПЛЕННЯ КОНТРОЛЮ -->
+        <button id="btn-force-reset" class="tool-btn" title="Перехопити контроль (скинути чужі виділення)">🔓</button>
+
         <button id="btn-save-project" class="tool-btn" title="Зберегти проєкт як HTML файлик" style="margin-left:5px;">💾</button>
         <button id="btn-load-project" class="tool-btn" title="Завантажити HTML проєкт" onclick="document.getElementById('project-upload-input').click()">📂</button>
         <input type="file" id="project-upload-input" accept=".html" style="display:none">
@@ -762,7 +766,7 @@
                     el.style.left = tData.x + 'px'; 
                     el.style.top = tData.y + 'px';
                     el.style.color = tData.color || '#0000aa'; 
-                    el.style.fontFamily = tData.font || 'Propysy'; 
+                    el.style.fontFamily = (tData.font === 'Propysy' || !tData.font) ? "'Propysy', Arial, sans-serif" : tData.font;
                     el.style.fontWeight = tData.weight || 'normal';
                     
                     // Відображення синього виділення в реальному часі
@@ -791,7 +795,27 @@
                 if (typeof s.bold === 'boolean') document.getElementById('text-bold-checkbox').checked = s.bold;
                 isRemoteSetting = false;
             });
+
+            // ЛОГІКА КНОПКИ ПЕРЕХОПЛЕННЯ КОНТРОЛЮ
+            db.ref(`game_action/${CONFIG.gameId}/force_reset`).on('value', snap => {
+                if (snap.val()) {
+                    if (isTyping) finishTyping();
+                    clearSelection();
+                }
+            });
         }
+
+        // КНОПКА ПЕРЕХОПЛЕННЯ КОНТРОЛЮ
+        document.getElementById('btn-force-reset').onclick = () => {
+            if (confirm("Перехопити контроль? Це примусово завершить редагування у всіх учнів та поверне слова на аркуш.")) {
+                if (!FIREBASE_DISABLED) {
+                    db.ref(`game_action/${CONFIG.gameId}/force_reset`).set(firebase.database.ServerValue.TIMESTAMP);
+                } else {
+                    if (isTyping) finishTyping();
+                    clearSelection();
+                }
+            }
+        };
 
         function broadcastSettings() {
             if (FIREBASE_DISABLED || isRemoteSetting || !settingsRef) return;
@@ -1009,7 +1033,11 @@
             activeInput.style.top = Math.max(0, Math.round(y)) + 'px';
             activeInput.style.color = document.getElementById('text-color-picker').value;
             activeInput.style.fontWeight = document.getElementById('text-bold-checkbox').checked ? 'bold' : 'normal';
-            activeInput.style.fontFamily = document.getElementById('text-font-selector').value;
+            
+            // Надійна передача вибраного шрифту в інпут (пріоритет Propysy)
+            const selFont = document.getElementById('text-font-selector').value;
+            activeInput.style.fontFamily = (selFont === 'Propysy' || !selFont) ? "'Propysy', Arial, sans-serif" : selFont;
+            
             activeInput.style.display = 'block'; 
             activeInput.innerHTML = initialHtml || ''; 
             isTyping = true; 
@@ -1048,7 +1076,7 @@
                         x: parseFloat(activeInput.style.left), 
                         y: parseFloat(activeInput.style.top), 
                         color: activeInput.style.color, 
-                        font: activeInput.style.fontFamily, 
+                        font: document.getElementById('text-font-selector').value, 
                         weight: activeInput.style.fontWeight,
                         selStart: offsets.start,
                         selEnd: offsets.end
@@ -1091,7 +1119,10 @@
         });
         document.getElementById('text-font-selector').addEventListener('change', (e) => { 
             const val = e.target.value;
-            if (isTyping) { activeInput.style.fontFamily = val; syncTypingState(); } 
+            if (isTyping) { 
+                activeInput.style.fontFamily = (val === 'Propysy') ? "'Propysy', Arial, sans-serif" : val; 
+                syncTypingState(); 
+            } 
             applyStyleToSelected('font', val);
             broadcastSettings();
         });
@@ -1126,7 +1157,7 @@
             const baseY = parseFloat(activeInput.style.top);
             const color = activeInput.style.color;
             const weight = activeInput.style.fontWeight;
-            const font = activeInput.style.fontFamily;
+            const font = document.getElementById('text-font-selector').value;
 
             activeInput.innerHTML = '';
 
@@ -1157,7 +1188,7 @@
             else if (mode === 'word') { htmlText.split(/\s+/).filter(w => w.length > 0).forEach(w => pieces.push({char: w, margin: 15})); }
             else pieces = htmlText.split('').filter(c => c.trim().length > 0 || c === ' ').map(c => ({char: c, margin: 0}));
 
-            hiddenMeasureBox.style.fontFamily = font || 'Propysy'; 
+            hiddenMeasureBox.style.fontFamily = (font === 'Propysy' || !font) ? "'Propysy', Arial, sans-serif" : font; 
             hiddenMeasureBox.style.fontSize = '32px'; 
             hiddenMeasureBox.style.fontWeight = weight || 'normal';
 
@@ -1326,7 +1357,10 @@
                 el.innerHTML = data.text; 
                 el.style.color = data.color || '#0000aa'; 
                 el.style.fontWeight = data.weight || 'normal'; 
-                el.style.fontFamily = data.font || 'Propysy';
+                
+                // Надійна передача шрифту на мобільні телефони з аркуша
+                el.style.fontFamily = (data.font === 'Propysy' || !data.font) ? "'Propysy', Arial, sans-serif" : data.font;
+                
                 el.className = 'notebook-text';
                 if(selectedElements.has(data.id)) el.classList.add('selected-text');
                 if(mainToolMode === 'erase_text') el.classList.add('erase-mode');
