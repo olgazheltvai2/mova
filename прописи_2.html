@@ -141,17 +141,17 @@
         .tool-btn.active { background: #66afe9; color: #fff; border-color: #317ab9; }
         .tool-btn.danger { color: #d9534f; border-color: #d9534f; }
         
+        /* СПЛИВАЮЧІ ВІКНА (Розміщення справа від тулбару) */
         #split-panel {
-            display: none; position: fixed; top: 75px; left: 20px; background: rgba(255, 255, 255, 0.95);
+            display: none; position: fixed; top: 80px; left: 560px; background: rgba(255, 255, 255, 0.95);
             padding: 10px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); z-index: 10000; font-size: 14px;
         }
         #split-panel label { display: block; margin: 5px 0; cursor: pointer; }
 
-        /* КОНТЕКСТНЕ МЕНЮ */
         #context-actions {
             display: none; flex-direction: column; gap: 5px; background: rgba(255,255,255,0.98);
             padding: 15px 12px 12px 12px; border-radius: 8px; border: 1px solid #ced4da; box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10000;
+            position: fixed; top: 20px; left: 560px; z-index: 10000;
         }
         .ctx-close-btn {
             position: absolute; top: -10px; right: -10px; background: #d9534f; color: white; border: 2px solid white;
@@ -232,9 +232,15 @@
             position: fixed; top: -9999px; left: -9999px; visibility: hidden; pointer-events: none; white-space: pre; z-index: -1;
         }
 
+        @media (max-width: 1000px) {
+            #context-actions { left: auto; right: 20px; }
+            #split-panel { left: auto; right: 20px; top: 90px; }
+        }
+
         @media (max-width: 768px) {
             #text-toolbar { flex-wrap: wrap; justify-content: center; width: 92%; left: 4%; }
-            #context-actions { width: 92%; flex-wrap: wrap; }
+            #context-actions { top: 150px; left: 50%; right: auto; transform: translateX(-50%); width: 92%; flex-wrap: wrap; }
+            #split-panel { top: 220px; left: 50%; right: auto; transform: translateX(-50%); width: 92%; }
             .ctx-row { flex-wrap: wrap; }
         }
     </style>
@@ -875,16 +881,34 @@
             }
         });
 
+        // ФУНКЦІЯ МАСОВОГО ЗАСТОСУВАННЯ СТИЛІВ ДО ВИДІЛЕНИХ ЕЛЕМЕНТІВ
+        function applyStyleToSelected(prop, val) {
+            if (selectedElements.size > 0) {
+                selectedElements.forEach(id => {
+                    if (domTextsData[id] && domTextsData[id].type !== 'image') {
+                        if (!FIREBASE_DISABLED) elementsRef.child(id).update({ [prop]: val, senderId: tabId });
+                        else { domTextsData[id][prop] = val; renderTextObject({val: ()=>domTextsData[id], key: id}); }
+                    }
+                });
+            }
+        }
+
         document.getElementById('text-color-picker').addEventListener('input', (e) => { 
-            if (isTyping) { activeInput.style.color = e.target.value; activeInput.dispatchEvent(new Event('input')); } 
+            const val = e.target.value;
+            if (isTyping) { activeInput.style.color = val; activeInput.dispatchEvent(new Event('input')); } 
+            applyStyleToSelected('color', val);
             broadcastSettings();
         });
         document.getElementById('text-bold-checkbox').addEventListener('change', (e) => { 
-            if (isTyping) { activeInput.style.fontWeight = e.target.checked ? 'bold' : 'normal'; activeInput.dispatchEvent(new Event('input')); } 
+            const val = e.target.checked ? 'bold' : 'normal';
+            if (isTyping) { activeInput.style.fontWeight = val; activeInput.dispatchEvent(new Event('input')); } 
+            applyStyleToSelected('weight', val);
             broadcastSettings();
         });
         document.getElementById('text-font-selector').addEventListener('change', (e) => { 
-            if (isTyping) { activeInput.style.fontFamily = e.target.value; activeInput.dispatchEvent(new Event('input')); } 
+            const val = e.target.value;
+            if (isTyping) { activeInput.style.fontFamily = val; activeInput.dispatchEvent(new Event('input')); } 
+            applyStyleToSelected('font', val);
             broadcastSettings();
         });
         
@@ -930,6 +954,7 @@
 
         function createSyncedTextObjects(htmlText, mode, startX, startY, color, weight, font) {
             if (!htmlText || isNaN(startX) || isNaN(startY)) return;
+            // Жорстка очистка всіх варіантів нерозривних пробілів
             htmlText = htmlText.replace(/&nbsp;/g, ' ').replace(/[\u00A0\u202F\u200B\n\r\t]/g, ' ');
             let pieces = [];
             if (mode === 'full') pieces = [{char: htmlText, margin: 0}];
@@ -1157,7 +1182,13 @@
                 }
             }
 
-            if (!selectedElements.has(id)) { clearSelection(); selectedElements.add(id); updateContextMenu(); }
+            // Додано підтримку Shift-кліку для зручного виділення багатьох елементів (наприклад, літер перед об'єднанням)
+            if (!selectedElements.has(id)) { 
+                const isShift = e.touches ? false : e.shiftKey;
+                if (!isShift) clearSelection(); 
+                selectedElements.add(id); 
+                updateContextMenu(); 
+            }
 
             const touch = e.touches ? e.touches[0] : e; 
             const rect = container.getBoundingClientRect();
@@ -1257,12 +1288,27 @@
             }); 
             updateContextMenu();
         }
+        
         function mergeSelected(shouldUpdate = true) {
             if(selectedElements.size < 2) return Array.from(selectedElements)[0];
             const nodes = Array.from(selectedElements).map(id => domTextsData[id]).filter(n => n && n.type !== 'image'); 
             if(nodes.length === 0) return null;
             nodes.sort((a, b) => a.x - b.x); 
             const baseNode = nodes[0];
+            
+            let mergedText = "";
+            for(let i = 0; i < nodes.length; i++) {
+                mergedText += nodes[i].text;
+                // Розумне додавання пробілів, якщо між елементами була візуальна дистанція
+                if(i < nodes.length - 1) {
+                    const el = domTexts[nodes[i].id];
+                    const nextEl = domTexts[nodes[i+1].id];
+                    if (el && nextEl) {
+                        const gap = nodes[i+1].x - (nodes[i].x + el.offsetWidth);
+                        if (gap > 8) mergedText += " ";
+                    }
+                }
+            }
             
             selectedElements.forEach(id => { 
                 if(domTextsData[id] && domTextsData[id].type !== 'image') { 
@@ -1272,7 +1318,7 @@
             });
             const newId = 'txt_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
             const dataObj = { 
-                id: newId, type: 'text', text: nodes.map(n => n.text).join(''), 
+                id: newId, type: 'text', text: mergedText, 
                 x: baseNode.x, y: baseNode.y, color: baseNode.color, weight: baseNode.weight, font: baseNode.font, 
                 senderId: tabId, timestamp: (!FIREBASE_DISABLED ? firebase.database.ServerValue.TIMESTAMP : Date.now()) 
             };
