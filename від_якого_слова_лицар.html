@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Лучник</title>
+  <style>
+    /* Скидання базових стилів та заборона виділення тексту */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a2a3a;
+    }
+
+    /* Головна сцена гри */
+    #game-stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Живий сюжетний SVG-фон */
+    #scene-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Анімації для живого фону */
+    @keyframes floatCloud1 {
+      0% { transform: translateX(-150px); }
+      100% { transform: translateX(1950px); }
+    }
+    @keyframes floatCloud2 {
+      0% { transform: translateX(1950px); }
+      100% { transform: translateX(-250px); }
+    }
+    @keyframes swayTree {
+      0%, 100% { transform: rotate(-1.5deg); }
+      50% { transform: rotate(2deg); }
+    }
+    @keyframes waveFlag {
+      0%, 100% { transform: skewY(-4deg) scaleX(1); }
+      50% { transform: skewY(5deg) scaleX(0.92); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 8px #ffcc00) drop-shadow(0 0 18px #ff4500); }
+      50% { filter: drop-shadow(0 0 18px #fffb00) drop-shadow(0 0 30px #ff2200); }
+    }
+
+    .cloud-1 { animation: floatCloud1 75s linear infinite; }
+    .cloud-2 { animation: floatCloud2 95s linear infinite; }
+    .tree-sway { transform-origin: bottom center; animation: swayTree 5s ease-in-out infinite; }
+    .tree-sway-alt { transform-origin: bottom center; animation: swayTree 6.5s ease-in-out infinite reverse; }
+    .castle-flag { transform-origin: left center; animation: waveFlag 1.8s ease-in-out infinite; }
+
+    /* Шар для дуги польоту стріли та спецефектів */
+    #fx-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    /* Контейнер для щитів зі словами речення */
+    #sentence-area {
+      position: absolute;
+      top: 47%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 92%;
+      max-width: 1400px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 22px;
+      z-index: 4;
+    }
+
+    /* Окремий дерев'яно-кований щит зі словом */
+    .word-shield {
+      position: relative;
+      cursor: pointer;
+      padding: 22px 28px 26px 28px;
+      min-width: 140px;
+      text-align: center;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s;
+      /* Складний візерунок щита без жодних білих прямокутників */
+      background: 
+        radial-gradient(circle at 50% 25%, rgba(255, 210, 125, 0.25), transparent 70%),
+        repeating-linear-gradient(90deg, #5e3a1e 0px, #5e3a1e 14px, #4d2e16 14px, #4d2e16 16px, #684122 16px, #684122 30px);
+      border: 4px solid #b8860b;
+      border-radius: 18px 18px 55% 55% / 14px 14px 45% 45%;
+      box-shadow: 
+        0 10px 20px rgba(0, 0, 0, 0.6),
+        inset 0 0 15px rgba(0, 0, 0, 0.7),
+        inset 0 3px 4px rgba(255, 230, 150, 0.4);
+    }
+
+    /* Металеві заклепки на щиті */
+    .word-shield::before {
+      content: '';
+      position: absolute;
+      inset: 5px;
+      border: 2px dashed rgba(255, 215, 0, 0.45);
+      border-radius: 14px 14px 52% 52% / 10px 10px 42% 42%;
+      pointer-events: none;
+    }
+
+    .word-shield:hover {
+      transform: translateY(-7px) scale(1.04);
+      filter: brightness(1.15);
+    }
+
+    /* Слово на щиті */
+    .word-text {
+      position: relative;
+      z-index: 2;
+      font-size: clamp(1.35rem, 2.2vw, 2.1rem);
+      font-weight: 800;
+      color: #fff3d1;
+      text-shadow: 0 3px 5px #1a0d00, 0 0 8px rgba(0, 0, 0, 0.9);
+      letter-spacing: 0.5px;
+    }
+
+    /* Щит зі словом-мішенню (до якого ставимо питання) */
+    .word-shield.target-word {
+      cursor: default;
+      background: 
+        radial-gradient(circle at 50% 30%, rgba(255, 90, 50, 0.35), transparent 70%),
+        repeating-linear-gradient(90deg, #6e1e1e 0px, #6e1e1e 14px, #541313 14px, #541313 16px, #7c2424 16px, #7c2424 30px);
+      border-color: #ffd700;
+      animation: pulseGlow 2.2s infinite ease-in-out;
+    }
+
+    /* Обране головне слово, на якому стоїть лучник */
+    .word-shield.active-head {
+      background: 
+        radial-gradient(circle at 50% 30%, rgba(80, 220, 100, 0.35), transparent 70%),
+        repeating-linear-gradient(90deg, #1f5e2e 0px, #1f5e2e 14px, #164621 14px, #164621 16px, #276f38 16px, #276f38 30px);
+      border-color: #98fb98;
+      box-shadow: 0 0 22px rgba(72, 255, 100, 0.65), inset 0 0 15px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Анімація тремтіння при помилці */
+    @keyframes shakeError {
+      0%, 100% { transform: translateX(0) rotate(0); }
+      20% { transform: translateX(-10px) rotate(-4deg); }
+      40% { transform: translateX(10px) rotate(4deg); }
+      60% { transform: translateX(-8px) rotate(-3deg); }
+      80% { transform: translateX(8px) rotate(3deg); }
+    }
+    .shake {
+      animation: shakeError 0.45s ease-in-out !important;
+    }
+
+    /* SVG-мішень над словом, відмінок якого треба визначити */
+    .bullseye-holder {
+      position: absolute;
+      top: -68px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 68px;
+      height: 68px;
+      pointer-events: none;
+    }
+
+    /* Контейнер живого персонажа-лучника */
+    #archer-container {
+      position: absolute;
+      width: 150px;
+      height: 170px;
+      z-index: 5;
+      pointer-events: none;
+      transition: left 0.55s cubic-bezier(0.28, 1.25, 0.5, 1), top 0.55s cubic-bezier(0.28, 1.25, 0.5, 1), transform 0.3s ease;
+      filter: drop-shadow(0 8px 10px rgba(0,0,0,0.55));
+    }
+
+    /* Дихання персонажа у спокої */
+    @keyframes archerIdle {
+      0%, 100% { transform: translateY(0px) scaleY(1); }
+      50% { transform: translateY(-4px) scaleY(1.02); }
+    }
+    /* Стрибок радості персонажа */
+    @keyframes archerCelebrate {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      25% { transform: translateY(-28px) rotate(-8deg) scale(1.08); }
+      50% { transform: translateY(0) rotate(0deg); }
+      75% { transform: translateY(-22px) rotate(8deg) scale(1.08); }
+    }
+    .archer-idle { animation: archerIdle 2.2s ease-in-out infinite; }
+    .archer-happy { animation: archerCelebrate 0.7s ease-in-out 3; }
+
+    /* Панель зі стрілами-питаннями внизу екрана */
+    #quiver-panel {
+      position: absolute;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(150px);
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+      z-index: 7;
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
+    }
+
+    #quiver-panel.visible {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Кнопка-стріла з питанням (стилізований сувій на древку стріли) */
+    .question-arrow-btn {
+      position: relative;
+      cursor: pointer;
+      width: 220px;
+      height: 76px;
+      background: transparent;
+      border: none;
+      outline: none;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s;
+      filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+    }
+
+    .question-arrow-btn:hover {
+      transform: translateY(-8px) scale(1.07);
+      filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.7)) brightness(1.12);
+    }
+
+    .question-arrow-btn svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Мінімалістичні кнопки навігації (Назад / Далі) */
+    .nav-btn {
+      position: absolute;
+      top: 22px;
+      width: 58px;
+      height: 58px;
+      cursor: pointer;
+      z-index: 10;
+      background: radial-gradient(circle at 35% 30%, #f5c75d, #b87b14 70%, #6e4406 100%);
+      border: 3px solid #ffe89e;
+      border-radius: 50%;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.6), inset 0 2px 5px rgba(255,255,255,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s ease, filter 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      transform: scale(1.12);
+      filter: brightness(1.15);
+    }
+
+    .nav-btn:active {
+      transform: scale(0.95);
+    }
+
+    #btn-prev { left: 24px; }
+    #btn-next { right: 24px; }
+
+    .nav-btn svg {
+      width: 30px;
+      height: 30px;
+      fill: #3d2000;
+      filter: drop-shadow(0 1px 1px rgba(255,235,170,0.8));
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-stage">
+  <!-- Мінімалістичні кнопки переходу між рівнями без зайвих слів -->
+  <button id="btn-prev" class="nav-btn" aria-label="Попередній рівень">
+    <svg viewBox="0 0 24 24">
+      <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+    </svg>
+  </button>
+  <button id="btn-next" class="nav-btn" aria-label="Наступний рівень">
+    <svg viewBox="0 0 24 24">
+      <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+    </svg>
+  </button>
+
+  <!-- Деталізований сюжетний SVG-фон: замок, ліс, гори, хмари, прапори -->
+  <svg id="scene-bg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Градієнт неба -->
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#2b5876"/>
+        <stop offset="45%" stop-color="#4e4376"/>
+        <stop offset="80%" stop-color="#c97b63"/>
+        <stop offset="100%" stop-color="#f6d365"/>
+      </linearGradient>
+
+      <!-- Сяйво сонця -->
+      <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff9c4" stop-opacity="1"/>
+        <stop offset="35%" stop-color="#ffd54f" stop-opacity="0.7"/>
+        <stop offset="100%" stop-color="#ff8f00" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Градієнти гір та пагорбів -->
+      <linearGradient id="mountFar" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#5d4e77"/>
+        <stop offset="100%" stop-color="#352a47"/>
+      </linearGradient>
+      <linearGradient id="mountMid" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#3f5efb"/>
+        <stop offset="0%" stop-color="#3c4f65"/>
+        <stop offset="100%" stop-color="#1e2938"/>
+      </linearGradient>
+      <linearGradient id="hillBack" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#386641"/>
+        <stop offset="100%" stop-color="#1b3b22"/>
+      </linearGradient>
+      <linearGradient id="hillFront" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#6a994e"/>
+        <stop offset="100%" stop-color="#284b26"/>
+      </linearGradient>
+
+      <!-- Кам'яна текстура замку та мурів -->
+      <linearGradient id="stoneWall" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#8d99ae"/>
+        <stop offset="50%" stop-color="#6c757d"/>
+        <stop offset="100%" stop-color="#495057"/>
+      </linearGradient>
+      <linearGradient id="roofRed" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#d90429"/>
+        <stop offset="50%" stop-color="#ef233c"/>
+        <stop offset="100%" stop-color="#8d0801"/>
+      </linearGradient>
+
+      <!-- Текстура кам'яного парапету на передньому плані -->
+      <pattern id="stoneBricks" width="120" height="60" patternUnits="userSpaceOnUse">
+        <rect width="120" height="60" fill="#4a4e54"/>
+        <rect x="2" y="2" width="56" height="26" rx="4" fill="#5c6269"/>
+        <rect x="62" y="2" width="56" height="26" rx="4" fill="#676d75"/>
+        <rect x="-28" y="32" width="56" height="26" rx="4" fill="#636970"/>
+        <rect x="32" y="32" width="56" height="26" rx="4" fill="#555a60"/>
+        <rect x="92" y="32" width="56" height="26" rx="4" fill="#6c727a"/>
+      </pattern>
+    </defs>
+
+    <!-- Небо -->
+    <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+
+    <!-- Сонце -->
+    <circle cx="1480" cy="260" r="240" fill="url(#sunGlow)"/>
+    <circle cx="1480" cy="260" r="65" fill="#fffde7"/>
+
+    <!-- Хмари, що пливуть -->
+    <g class="cloud-1" opacity="0.65" fill="#fff3e0">
+      <path d="M120 180 Q150 130 210 150 Q260 110 320 150 Q370 140 390 185 Q420 210 380 230 L110 230 Q80 205 120 180 Z"/>
+    </g>
+    <g class="cloud-2" opacity="0.5" fill="#ffe0b2">
+      <path d="M620 110 Q660 70 720 90 Q780 50 840 95 Q890 85 910 130 L600 130 Z"/>
+    </g>
+
+    <!-- Далекі гори зі сніжними вершинами -->
+    <polygon points="-50,700 280,290 610,700" fill="url(#mountFar)"/>
+    <polygon points="280,290 365,395 310,385 280,420 245,380 205,390" fill="#f8edeb" opacity="0.7"/>
+    <polygon points="420,700 820,230 1250,700" fill="url(#mountFar)"/>
+    <polygon points="820,230 925,355 860,340 820,385 775,335 725,355" fill="#f8edeb" opacity="0.75"/>
+    <polygon points="1050,700 1420,320 1820,700" fill="url(#mountFar)"/>
+    <polygon points="1480,700 1780,280 2050,700" fill="url(#mountMid)"/>
+
+    <!-- Середньовічний замок вдалечині -->
+    <g transform="translate(830, 310)">
+      <!-- Головні вежі та стіни -->
+      <rect x="45" y="90" width="170" height="160" fill="url(#stoneWall)"/>
+      <!-- Зубці стіни -->
+      <rect x="45" y="78" width="22" height="16" fill="#8d99ae"/>
+      <rect x="82" y="78" width="22" height="16" fill="#8d99ae"/>
+      <rect x="119" y="78" width="22" height="16" fill="#8d99ae"/>
+      <rect x="156" y="78" width="22" height="16" fill="#8d99ae"/>
+      <rect x="193" y="78" width="22" height="16" fill="#8d99ae"/>
+
+      <!-- Ліва вежа -->
+      <rect x="10" y="40" width="55" height="210" fill="url(#stoneWall)"/>
+      <polygon points="2,40 37,-35 73,40" fill="url(#roofRed)"/>
+      <!-- Прапор лівої вежі -->
+      <line x1="37" y1="-35" x2="37" y2="-75" stroke="#3a2010" stroke-width="3"/>
+      <polygon class="castle-flag" points="37,-73 88,-62 37,-50" fill="#ffb703"/>
+
+      <!-- Права вежа -->
+      <rect x="195" y="40" width="55" height="210" fill="url(#stoneWall)"/>
+      <polygon points="187,40 222,-35 258,40" fill="url(#roofRed)"/>
+      <!-- Прапор правої вежі -->
+      <line x1="222" y1="-35" x2="222" y2="-75" stroke="#3a2010" stroke-width="3"/>
+      <polygon class="castle-flag" points="222,-73 273,-62 222,-50" fill="#fb8500"/>
+
+      <!-- Центральна висока башта -->
+      <rect x="95" y="-10" width="70" height="260" fill="url(#stoneWall)"/>
+      <polygon points="85,-10 130,-95 175,-10" fill="url(#roofRed)"/>
+      <line x1="130" y1="-95" x2="130" y2="-140" stroke="#3a2010" stroke-width="4"/>
+      <polygon class="castle-flag" points="130,-138 195,-124 130,-108" fill="#e63946"/>
+
+      <!-- Вікна з теплим світлом -->
+      <path d="M120 25 A10 10 0 0 1 140 25 L140 50 L120 50 Z" fill="#ffea00"/>
+      <path d="M30 75 A7 7 0 0 1 44 75 L44 95 L30 95 Z" fill="#ffea00"/>
+      <path d="M215 75 A7 7 0 0 1 229 75 L229 95 L215 95 Z" fill="#ffea00"/>
+      <!-- Арка воріт -->
+      <path d="M105 160 A25 25 0 0 1 155 160 L155 250 L105 250 Z" fill="#2b1d12"/>
+      <line x1="130" y1="135" x2="130" y2="250" stroke="#5c4028" stroke-width="3"/>
+    </g>
+
+    <!-- Зелені пагорби та ліс -->
+    <path d="M-50 680 Q450 470 980 560 T1970 530 L1970 900 L-50 900 Z" fill="url(#hillBack)"/>
+    <path d="M-50 720 Q520 560 1120 650 T1970 610 L1970 950 L-50 950 Z" fill="url(#hillFront)"/>
+
+    <!-- Анімовані дерева, що гойдаються від вітру -->
+    <g class="tree-sway" transform="translate(170, 590)">
+      <rect x="-12" y="40" width="24" height="75" fill="#4a2c11"/>
+      <circle cx="0" cy="10" r="55" fill="#2d6a4f"/>
+      <circle cx="-32" cy="28" r="40" fill="#40916c"/>
+      <circle cx="32" cy="25" r="42" fill="#1b4332"/>
+      <circle cx="0" cy="-22" r="42" fill="#52b788"/>
+    </g>
+
+    <g class="tree-sway-alt" transform="translate(460, 620) scale(0.85)">
+      <rect x="-10" y="40" width="20" height="70" fill="#4a2c11"/>
+      <polygon points="0,-75 -55,20 55,20" fill="#2d6a4f"/>
+      <polygon points="0,-40 -65,55 65,55" fill="#1b4332"/>
+    </g>
+
+    <g class="tree-sway" transform="translate(1540, 580) scale(1.05)">
+      <rect x="-12" y="40" width="24" height="75" fill="#4a2c11"/>
+      <circle cx="0" cy="10" r="55" fill="#2d6a4f"/>
+      <circle cx="-32" cy="28" r="40" fill="#52b788"/>
+      <circle cx="32" cy="25" r="42" fill="#1b4332"/>
+      <circle cx="0" cy="-22" r="42" fill="#40916c"/>
+    </g>
+
+    <g class="tree-sway-alt" transform="translate(1770, 610) scale(0.9)">
+      <rect x="-10" y="40" width="20" height="70" fill="#4a2c11"/>
+      <polygon points="0,-75 -55,20 55,20" fill="#40916c"/>
+      <polygon points="0,-40 -65,55 65,55" fill="#2d6a4f"/>
+    </g>
+
+    <!-- Кам'яний мур-бастіон на передньому плані -->
+    <rect x="0" y="790" width="1920" height="290" fill="url(#stoneBricks)"/>
+    <rect x="0" y="776" width="1920" height="22" fill="#373a40"/>
+    <rect x="0" y="772" width="1920" height="6" fill="#7f868f"/>
+
+    <!-- Стартовий кам'яний п'єдестал для лучника ліворуч -->
+    <g id="home-pedestal" transform="translate(95, 680)">
+      <rect x="-55" y="45" width="110" height="60" rx="8" fill="#5c6269" stroke="#2f3237" stroke-width="4"/>
+      <rect x="-65" y="32" width="130" height="18" rx="6" fill="#7c858e" stroke="#2f3237" stroke-width="3"/>
+    </g>
+  </svg>
+
+  <!-- Живий персонаж: лицар-лучник з емоціями та рухомим луком -->
+  <div id="archer-container" class="archer-idle">
+    <svg id="archer-svg" viewBox="0 0 180 200" width="100%" height="100%">
+      <defs>
+        <linearGradient id="armorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#e0e6ed"/>
+          <stop offset="50%" stop-color="#94a3b8"/>
+          <stop offset="100%" stop-color="#475569"/>
+        </linearGradient>
+        <linearGradient id="tunicGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#16a34a"/>
+          <stop offset="100%" stop-color="#14532d"/>
+        </linearGradient>
+        <linearGradient id="capeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#dc2626"/>
+          <stop offset="100%" stop-color="#7f1d1d"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Плащ, що розвівається за спиною -->
+      <path id="archer-cape" d="M65 85 Q25 115 20 165 Q50 160 72 145 Z" fill="url(#capeGrad)" stroke="#450a0a" stroke-width="2.5"/>
+
+      <!-- Сагайдак зі стрілами за спиною -->
+      <g transform="translate(55, 68) rotate(-22)">
+        <rect x="0" y="10" width="16" height="45" rx="4" fill="#78350f" stroke="#451a03" stroke-width="2"/>
+        <polygon points="3,0 0,12 6,12" fill="#ef4444"/>
+        <polygon points="10,-3 7,12 13,12" fill="#eab308"/>
+      </g>
+
+      <!-- Ноги в чоботях -->
+      <rect x="72" y="145" width="14" height="34" rx="5" fill="#334155" stroke="#1e293b" stroke-width="2"/>
+      <rect x="96" y="145" width="14" height="34" rx="5" fill="#334155" stroke="#1e293b" stroke-width="2"/>
+      <path d="M68 172 L90 172 L92 184 L66 184 Z" fill="#451a03"/>
+      <path d="M94 172 L116 172 L118 184 L92 184 Z" fill="#451a03"/>
+
+      <!-- Тулуб у лицарській туніці та кірасі -->
+      <rect x="66" y="84" width="50" height="66" rx="14" fill="url(#tunicGrad)" stroke="#052e16" stroke-width="2.5"/>
+      <path d="M70 86 L112 86 L106 130 L91 140 L76 130 Z" fill="url(#armorGrad)" stroke="#334155" stroke-width="2.5"/>
+      <!-- Золотий герб на грудях -->
+      <polygon points="91,96 98,108 91,120 84,108" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/>
+      <!-- Пояс -->
+      <rect x="65" y="134" width="52" height="10" rx="3" fill="#78350f" stroke="#451a03" stroke-width="2"/>
+      <rect x="85" y="132" width="12" height="14" rx="2" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/>
+
+      <!-- Голова та шолом з пером -->
+      <g id="archer-head">
+        <!-- Обличчя -->
+        <circle cx="91" cy="58" r="24" fill="#fed7aa" stroke="#9a3412" stroke-width="2"/>
+        <!-- Шолом -->
+        <path d="M65 54 Q65 22 91 22 Q117 22 117 54 L122 60 L60 60 Z" fill="url(#armorGrad)" stroke="#1e293b" stroke-width="2.5"/>
+        <rect x="63" y="48" width="56" height="7" rx="3" fill="#fbbf24" stroke="#92400e" stroke-width="1.5"/>
+        <!-- Пишне червоно-золоте перо на шоломі -->
+        <path d="M85 24 Q60 -5 32 10 Q58 18 78 28 Z" fill="#ef4444" stroke="#991b1b" stroke-width="1.5"/>
+        <path d="M90 22 Q72 2 48 16 Q68 20 84 26 Z" fill="#fbbf24"/>
+
+        <!-- Очі та брови (змінюються залежно від емоцій) -->
+        <g id="face-neutral">
+          <circle cx="83" cy="61" r="3.5" fill="#1e293b"/>
+          <circle cx="101" cy="61" r="3.5" fill="#1e293b"/>
+          <circle cx="84" cy="59.5" r="1.2" fill="#ffffff"/>
+          <circle cx="102" cy="59.5" r="1.2" fill="#ffffff"/>
+          <path id="brows" d="M77 54 Q83 51 88 54 M96 54 Q101 51 107 54" stroke="#78350f" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <!-- Посмішка -->
+          <path id="mouth" d="M85 71 Q92 77 99 71" stroke="#9a3412" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        </g>
+      </g>
+
+      <!-- Рухомий вузол рук та лука (обертається в бік мішені) -->
+      <g id="bow-assembly" transform="translate(95, 102)">
+        <!-- Дерев'яний фігурний лук -->
+        <path d="M22 -48 Q46 -22 46 0 Q46 22 22 48" fill="none" stroke="#92400e" stroke-width="6" stroke-linecap="round"/>
+        <path d="M22 -48 Q43 -22 43 0 Q43 22 22 48" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
+        <!-- Тятива лука -->
+        <polyline id="bow-string" points="22,-46 22,0 22,46" fill="none" stroke="#f8fafc" stroke-width="2"/>
+        <!-- Стріла, вкладена в лук -->
+        <g id="loaded-arrow">
+          <line x1="-8" y1="0" x2="54" y2="0" stroke="#fde047" stroke-width="3.5"/>
+          <polygon points="62,0 48,-6 51,0 48,6" fill="#e2e8f0" stroke="#475569" stroke-width="1.2"/>
+          <polygon points="-2,0 -12,-5 -8,0 -12,5" fill="#ef4444"/>
+        </g>
+        <!-- Рукавичка лучника -->
+        <circle cx="38" cy="2" r="7" fill="url(#armorGrad)" stroke="#1e293b" stroke-width="2"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Шар щитів зі словами речення -->
+  <div id="sentence-area"></div>
+
+  <!-- Шар спецефектів, дуги питання та польоту стріли -->
+  <svg id="fx-layer" viewBox="0 0 1920 1080" preserveAspectRatio="none"></svg>
+
+  <!-- Панель вибору стріли з питанням -->
+  <div id="quiver-panel"></div>
+</div>
+
+<script>
+  // ============================================================================
+  // БАЗА ДАНИХ ІЗ 20 РЕЧЕНЬ
+  // Кожне речення містить:
+  // words: масив слів на щитах
+  // targetIdx: індекс слова, відмінок якого потрібно визначити (над ним мішень)
+  // headIdx: індекс слова, від якого треба поставити питання (куди стає лучник)
+  // correctQ: правильне питання на стрілі
+  // options: 4 варіанти питань
+  // ============================================================================
+  const LEVELS = [
+    {
+      words: ["Дракон", "подарував", "лицареві", "блискучий", "меч."],
+      targetIdx: 2,
+      headIdx: 1,
+      correctQ: "кому?",
+      options: ["кому?", "кого?", "ким?", "що?"]
+    },
+    {
+      words: ["Вправний", "коваль", "викував", "щит", "молотом."],
+      targetIdx: 4,
+      headIdx: 2,
+      correctQ: "чим?",
+      options: ["чим?", "чого?", "чому?", "що?"]
+    },
+    {
+      words: ["Вартовий", "помітив", "у небі", "швидкого", "сокола."],
+      targetIdx: 4,
+      headIdx: 1,
+      correctQ: "кого?",
+      options: ["кого?", "кому?", "ким?", "хто?"]
+    },
+    {
+      words: ["Старий", "король", "пишається", "своїм", "замком."],
+      targetIdx: 4,
+      headIdx: 2,
+      correctQ: "чим?",
+      options: ["чим?", "чого?", "чому?", "що?"]
+    },
+    {
+      words: ["Лицар", "напоїв", "коня", "джерельною", "водою."],
+      targetIdx: 4,
+      headIdx: 1,
+      correctQ: "чим?",
+      options: ["чим?", "чого?", "що?", "чому?"]
+    },
+    {
+      words: ["Золота", "корона", "короля", "яскраво", "сяє."],
+      targetIdx: 2,
+      headIdx: 1,
+      correctQ: "кого?",
+      options: ["кого?", "кому?", "ким?", "хто?"]
+    },
+    {
+      words: ["Музикант", "заграв", "веселу", "пісню", "на сопілці."],
+      targetIdx: 4,
+      headIdx: 1,
+      correctQ: "на чому?",
+      options: ["на чому?", "чим?", "чого?", "що?"]
+    },
+    {
+      words: ["Сонце", "освітило", "верхівки", "високих", "гір."],
+      targetIdx: 4,
+      headIdx: 2,
+      correctQ: "чого?",
+      options: ["чого?", "чому?", "чим?", "що?"]
+    },
+    {
+      words: ["Руда", "білка", "подарувала", "їжачкові", "горішок."],
+      targetIdx: 3,
+      headIdx: 2,
+      correctQ: "кому?",
+      options: ["кому?", "кого?", "ким?", "хто?"]
+    },
+    {
+      words: ["Відважний", "капітан", "керує", "великим", "кораблем."],
+      targetIdx: 4,
+      headIdx: 2,
+      correctQ: "чим?",
+      options: ["чим?", "що?", "чого?", "чому?"]
+    },
+    {
+      words: ["Кухар", "пригощає", "гостей", "смачним", "пирогом."],
+      targetIdx: 2,
+      headIdx: 1,
+      correctQ: "кого?",
+      options: ["кого?", "кому?", "ким?", "хто?"]
+    },
+    {
+      words: ["Ластівка", "зліпила", "гніздечко", "під дахом", "хати."],
+      targetIdx: 4,
+      headIdx: 3,
+      correctQ: "чого?",
+      options: ["чого?", "чому?", "чим?", "на чому?"]
+    },
+    {
+      words: ["Дідусь", "розповів", "онукам", "давню", "легенду."],
+      targetIdx: 2,
+      headIdx: 1,
+      correctQ: "кому?",
+      options: ["кому?", "кого?", "ким?", "хто?"]
+    },
+    {
+      words: ["Художник", "малює", "чудовий", "пейзаж", "фарбами."],
+      targetIdx: 4,
+      headIdx: 1,
+      correctQ: "чим?",
+      options: ["чим?", "чого?", "чому?", "що?"]
+    },
+    {
+      words: ["Білий", "лебідь", "пливе", "тихим", "озером."],
+      targetIdx: 4,
+      headIdx: 2,
+      correctQ: "чим?",
+      options: ["чим?", "на чому?", "чого?", "що?"]
+    },
+    {
+      words: ["Теплий", "вітерець", "гойдає", "гілки", "калини."],
+      targetIdx: 3,
+      headIdx: 2,
+      correctQ: "що?",
+      options: ["що?", "чого?", "чим?", "чому?"]
+    },
+    {
+      words: ["Лісник", "помітив", "сліди", "сірого", "вовка."],
+      targetIdx: 4,
+      headIdx: 2,
+      correctQ: "кого?",
+      options: ["кого?", "кому?", "ким?", "хто?"]
+    },
+    {
+      words: ["Бджілка", "збирає", "пахучий", "нектар", "на галявині."],
+      targetIdx: 4,
+      headIdx: 1,
+      correctQ: "на чому?",
+      options: ["на чому?", "чим?", "чого?", "що?"]
+    },
+    {
+      words: ["Садівник", "радіє", "рясному", "врожаю", "яблук."],
+      targetIdx: 3,
+      headIdx: 1,
+      correctQ: "чому?",
+      options: ["чому?", "чого?", "чим?", "що?"]
+    },
+    {
+      words: ["Мандрівники", "милувалися", "зоряним", "небом", "уночі."],
+      targetIdx: 3,
+      headIdx: 1,
+      correctQ: "чим?",
+      options: ["чим?", "на чому?", "чого?", "що?"]
+    }
+  ];
+
+  // ============================================================================
+  // ЗВУКОВИЙ СИНТЕЗАТОР (Web Audio API) — активні звукові фідбеки без слів
+  // ============================================================================
+  let audioCtx = null;
+
+  function initAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  // Звук стрибка лучника на правильне слово
+  function playJumpSound() {
+    initAudio();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(580, now + 0.18);
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.22);
+  }
+
+  // Звук помилки (глухий металевий брязкіт / пружина)
+  function playErrorSound() {
+    initAudio();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(170, now);
+    osc.frequency.linearRampToValueAtTime(95, now + 0.28);
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  // Звук натягування тятиви та свисту стріли
+  function playBowShootSound() {
+    initAudio();
+    const now = audioCtx.currentTime;
+    // Шумовий імпульс свисту повітря
+    const bufferSize = audioCtx.sampleRate * 0.35;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.12));
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(900, now);
+    filter.frequency.exponentialRampToValueAtTime(320, now + 0.35);
+
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.45, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    noise.start(now);
+  }
+
+  // Різноманітні переможні фанфари при влучанні в яблучко
+  function playVictoryFanfare(variant) {
+    initAudio();
+    const now = audioCtx.currentTime;
+
+    // Глухий удар стріли в дерев'яну мішень
+    const hitOsc = audioCtx.createOscillator();
+    const hitGain = audioCtx.createGain();
+    hitOsc.type = 'sine';
+    hitOsc.frequency.setValueAtTime(140, now);
+    hitOsc.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+    hitGain.gain.setValueAtTime(0.5, now);
+    hitGain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+    hitOsc.connect(hitGain);
+    hitGain.connect(audioCtx.destination);
+    hitOsc.start(now);
+    hitOsc.stop(now + 0.14);
+
+    // Різні мелодійні акорди для різноманітності фідбеків
+    const melodies = [
+      [523.25, 659.25, 783.99, 1046.50], // До-мажор фанфара
+      [587.33, 739.99, 880.00, 1174.66], // Ре-мажор королівський ріг
+      [440.00, 554.37, 659.25, 880.00, 1108.73], // Арфа перемоги
+      [659.25, 783.99, 987.77, 1318.51]  // Святковий передзвін
+    ];
+    const notes = melodies[variant % melodies.length];
+
+    notes.forEach((freq, idx) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      const startTime = now + 0.08 + idx * 0.09;
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0.22, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.008, startTime + 0.55);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.55);
+    });
+  }
+
+  // ============================================================================
+  // СТАН ГРИ ТА ОСНОВНІ ЕЛЕМЕНТИ
+  // ============================================================================
+  let currentLevel = 0;
+  let headFound = false;
+  let levelCompleted = false;
+  let autoNextTimer = null;
+
+  const stageEl = document.getElementById('game-stage');
+  const sentenceArea = document.getElementById('sentence-area');
+  const archerContainer = document.getElementById('archer-container');
+  const bowAssembly = document.getElementById('bow-assembly');
+  const bowString = document.getElementById('bow-string');
+  const loadedArrow = document.getElementById('loaded-arrow');
+  const mouthEl = document.getElementById('mouth');
+  const browsEl = document.getElementById('brows');
+  const quiverPanel = document.getElementById('quiver-panel');
+  const fxLayer = document.getElementById('fx-layer');
+
+  // Зміна виразу обличчя лучника
+  function setArcherEmotion(state) {
+    archerContainer.classList.remove('archer-happy');
+    if (state === 'happy') {
+      archerContainer.classList.add('archer-happy');
+      mouthEl.setAttribute('d', 'M82 69 Q92 82 102 69 Z');
+      mouthEl.setAttribute('fill', '#7c2d12');
+      browsEl.setAttribute('d', 'M76 50 Q83 46 88 50 M96 50 Q101 46 108 50');
+    } else if (state === 'confused') {
+      mouthEl.setAttribute('d', 'M84 74 Q92 68 100 74');
+      mouthEl.setAttribute('fill', 'none');
+      browsEl.setAttribute('d', 'M76 50 Q83 55 88 53 M96 53 Q101 47 108 51');
+    } else if (state === 'focused') {
+      mouthEl.setAttribute('d', 'M86 72 L98 71');
+      mouthEl.setAttribute('fill', 'none');
+      browsEl.setAttribute('d', 'M77 53 L88 56 M96 56 L107 53');
+    } else {
+      mouthEl.setAttribute('d', 'M85 71 Q92 77 99 71');
+      mouthEl.setAttribute('fill', 'none');
+      browsEl.setAttribute('d', 'M77 54 Q83 51 88 54 M96 54 Q101 51 107 54');
+    }
+  }
+
+  // Повернення лучника на стартовий п'єдестал
+  function moveArcherToStart() {
+    const stageRect = stageEl.getBoundingClientRect();
+    archerContainer.style.left = (stageRect.width * 0.03) + 'px';
+    archerContainer.style.top = (stageRect.height * 0.49) + 'px';
+    archerContainer.style.transform = 'scaleX(1)';
+    bowAssembly.setAttribute('transform', 'translate(95, 102) rotate(0)');
+    loadedArrow.style.opacity = '1';
+  }
+
+  // Переміщення лучника на обране головне слово та прицілювання в мішень
+  function moveArcherToShield(headShield, targetShield) {
+    const stageRect = stageEl.getBoundingClientRect();
+    const headRect = headShield.getBoundingClientRect();
+    const targetRect = targetShield.getBoundingClientRect();
+
+    const archerX = headRect.left + headRect.width / 2 - 75;
+    const archerY = headRect.top - 158;
+
+    archerContainer.style.left = archerX + 'px';
+    archerContainer.style.top = archerY + 'px';
+
+    // Розрахунок кута прицілювання від лучника до мішені
+    const dx = (targetRect.left + targetRect.width / 2) - (headRect.left + headRect.width / 2);
+    const dy = (targetRect.top - 30) - (archerY + 100);
+
+    if (dx < 0) {
+      archerContainer.style.transform = 'scaleX(-1)';
+      const angle = Math.atan2(dy, Math.abs(dx)) * (180 / Math.PI) - 12;
+      bowAssembly.setAttribute('transform', `translate(95, 102) rotate(${angle})`);
+    } else {
+      archerContainer.style.transform = 'scaleX(1)';
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI) - 12;
+      bowAssembly.setAttribute('transform', `translate(95, 102) rotate(${angle})`);
+    }
+  }
+
+  // Перемішування масиву варіантів відповідей
+  function shuffleArray(arr) {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  // Завантаження рівня
+  function loadLevel(index) {
+    if (autoNextTimer) {
+      clearTimeout(autoNextTimer);
+      autoNextTimer = null;
+    }
+    currentLevel = (index + LEVELS.length) % LEVELS.length;
+    headFound = false;
+    levelCompleted = false;
+
+    fxLayer.innerHTML = '';
+    sentenceArea.innerHTML = '';
+    quiverPanel.innerHTML = '';
+    quiverPanel.classList.remove('visible');
+
+    setArcherEmotion('neutral');
+    moveArcherToStart();
+
+    const levelData = LEVELS[currentLevel];
+
+    // Створення щитів зі словами речення
+    levelData.words.forEach((word, idx) => {
+      const shield = document.createElement('div');
+      shield.className = 'word-shield';
+      shield.dataset.idx = idx;
+
+      // Якщо це залежне слово, додаємо над ним деталізовану SVG-мішень
+      if (idx === levelData.targetIdx) {
+        shield.classList.add('target-word');
+        const bullseye = document.createElement('div');
+        bullseye.className = 'bullseye-holder';
+        bullseye.innerHTML = `
+          <svg viewBox="0 0 100 100" width="100%" height="100%">
+            <!-- Дерев'яна підставка мішені -->
+            <rect x="44" y="75" width="12" height="25" fill="#5c3a21"/>
+            <!-- Концентричні кола мішені -->
+            <circle cx="50" cy="48" r="42" fill="#f8fafc" stroke="#475569" stroke-width="4"/>
+            <circle cx="50" cy="48" r="31" fill="#0284c7"/>
+            <circle cx="50" cy="48" r="20" fill="#dc2626"/>
+            <circle cx="50" cy="48" r="9" fill="#facc15" stroke="#ca8a04" stroke-width="2"/>
+          </svg>
+        `;
+        shield.appendChild(bullseye);
+      }
+
+      const span = document.createElement('span');
+      span.className = 'word-text';
+      span.textContent = word;
+      shield.appendChild(span);
+
+      shield.addEventListener('click', () => onWordShieldClick(idx, shield));
+      sentenceArea.appendChild(shield);
+    });
+
+    // Створення 4 кнопок-стріл з питаннями
+    const shuffledOptions = shuffleArray(levelData.options);
+    shuffledOptions.forEach((qText) => {
+      const btn = document.createElement('button');
+      btn.className = 'question-arrow-btn';
+      btn.innerHTML = `
+        <svg viewBox="0 0 240 84">
+          <!-- Оперення стріли -->
+          <polygon points="8,42 28,20 44,20 26,42 44,64 28,64" fill="#ef4444" stroke="#7f1d1d" stroke-width="2"/>
+          <polygon points="22,42 40,22 54,22 38,42 54,62 40,62" fill="#fbbf24" stroke="#92400e" stroke-width="2"/>
+          <!-- Древко стріли -->
+          <rect x="20" y="38" width="185" height="8" rx="3" fill="#78350f" stroke="#451a03" stroke-width="2"/>
+          <!-- Сталевий наконечник -->
+          <polygon points="236,42 196,22 205,42 196,62" fill="#e2e8f0" stroke="#334155" stroke-width="2.5"/>
+          <!-- Кольоровий геральдичний прапорець-сувій із питанням -->
+          <path d="M52 14 Q122 8 188 14 L182 70 Q122 64 58 70 Z" fill="#fef08a" stroke="#b45309" stroke-width="3"/>
+          <path d="M56 18 Q122 12 184 18 L179 66 Q122 60 61 66 Z" fill="#fde047" opacity="0.6"/>
+          <text x="120" y="49" text-anchor="middle" fill="#451a03" font-size="25" font-weight="900" font-family="Segoe UI, sans-serif">${qText}</text>
+        </svg>
+      `;
+      btn.addEventListener('click', () => onQuestionArrowClick(qText, btn));
+      quiverPanel.appendChild(btn);
+    });
+  }
+
+  // Обробка кліку на щит зі словом у реченні
+  function onWordShieldClick(idx, shieldEl) {
+    if (levelCompleted || headFound) return;
+
+    const levelData = LEVELS[currentLevel];
+
+    // Якщо дитина клікнула на правильне головне слово
+    if (idx === levelData.headIdx) {
+      headFound = true;
+      shieldEl.classList.add('active-head');
+      playJumpSound();
+      setArcherEmotion('focused');
+
+      const targetShield = sentenceArea.children[levelData.targetIdx];
+      moveArcherToShield(shieldEl, targetShield);
+
+      // Показуємо сагайдак із питаннями
+      quiverPanel.classList.add('visible');
+    } else {
+      // Помилкове слово — щит тремтить, лучник здивовано хитає головою
+      playErrorSound();
+      setArcherEmotion('confused');
+      shieldEl.classList.remove('shake');
+      void shieldEl.offsetWidth;
+      shieldEl.classList.add('shake');
+      setTimeout(() => {
+        if (!headFound) setArcherEmotion('neutral');
+      }, 900);
+    }
+  }
+
+  // Обробка вибору стріли з питанням
+  function onQuestionArrowClick(selectedQ, btnEl) {
+    if (levelCompleted || !headFound) return;
+
+    const levelData = LEVELS[currentLevel];
+    const headShield = sentenceArea.children[levelData.headIdx];
+    const targetShield = sentenceArea.children[levelData.targetIdx];
+
+    if (selectedQ === levelData.correctQ) {
+      levelCompleted = true;
+      quiverPanel.classList.remove('visible');
+      shootArrowAnimation(headShield, targetShield, selectedQ, true);
+    } else {
+      // Неправильне питання — стріла летить криво і відскакує
+      btnEl.classList.remove('shake');
+      void btnEl.offsetWidth;
+      btnEl.classList.add('shake');
+      shootArrowAnimation(headShield, targetShield, selectedQ, false);
+    }
+  }
+
+  // Реалістична анімація натягування лука та польоту стріли по параболі
+  function shootArrowAnimation(headShield, targetShield, questionText, isCorrect) {
+    // 1. Натягуємо тятиву лука
+    bowString.setAttribute('points', '22,-46 4,0 22,46');
+    playBowShootSound();
+
+    setTimeout(() => {
+      // Відпускаємо тятиву
+      bowString.setAttribute('points', '22,-46 22,0 22,46');
+      loadedArrow.style.opacity = '0';
+
+      const stageRect = stageEl.getBoundingClientRect();
+      const headRect = headShield.getBoundingClientRect();
+      const targetRect = targetShield.getBoundingClientRect();
+
+      // Переводимо координати екрана у систему координат SVG-шару (1920x1080)
+      const scaleX = 1920 / stageRect.width;
+      const scaleY = 1080 / stageRect.height;
+
+      const startX = (headRect.left + headRect.width / 2) * scaleX;
+      const startY = (headRect.top - 55) * scaleY;
+
+      const endX = (targetRect.left + targetRect.width / 2) * scaleX;
+      const endY = (isCorrect ? (targetRect.top - 34) : (targetRect.top + 40)) * scaleY;
+
+      // Контрольна точка параболи (висока дуга)
+      const ctrlX = (startX + endX) / 2;
+      const ctrlY = Math.min(startY, endY) - 240;
+
+      // Створюємо пунктирну золоту дугу траєкторії
+      const arcPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const pathD = `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+      arcPath.setAttribute('d', pathD);
+      arcPath.setAttribute('fill', 'none');
+      arcPath.setAttribute('stroke', isCorrect ? '#fde047' : '#ef4444');
+      arcPath.setAttribute('stroke-width', '5');
+      arcPath.setAttribute('stroke-dasharray', '12 10');
+      arcPath.setAttribute('opacity', '0.85');
+      fxLayer.appendChild(arcPath);
+
+      // Створюємо летючу стрілу з прапорцем питання
+      const flyingArrow = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      flyingArrow.innerHTML = `
+        <line x1="-45" y1="0" x2="35" y2="0" stroke="#78350f" stroke-width="5"/>
+        <polygon points="48,0 28,-9 33,0 28,9" fill="#e2e8f0" stroke="#1e293b" stroke-width="2"/>
+        <polygon points="-38,0 -52,-8 -46,0 -52,8" fill="#ef4444"/>
+        <rect x="-32" y="-38" width="76" height="28" rx="6" fill="#fef08a" stroke="#b45309" stroke-width="2.5"/>
+        <text x="6" y="-18" text-anchor="middle" fill="#451a03" font-size="18" font-weight="900">${questionText}</text>
+      `;
+      fxLayer.appendChild(flyingArrow);
+
+      const duration = 520;
+      const startTime = performance.now();
+
+      function animateFrame(now) {
+        const t = Math.min((now - startTime) / duration, 1);
+
+        // Квадратична крива Безьє для координат стріли
+        const x = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * ctrlX + t * t * endX;
+        const y = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * ctrlY + t * t * endY;
+
+        // Похідна для обчислення точного кута нахилу стріли в польоті
+        const tx = 2 * (1 - t) * (ctrlX - startX) + 2 * t * (endX - ctrlX);
+        const ty = 2 * (1 - t) * (ctrlY - startY) + 2 * t * (endY - ctrlY);
+        const angle = Math.atan2(ty, tx) * (180 / Math.PI);
+
+        flyingArrow.setAttribute('transform', `translate(${x}, ${y}) rotate(${angle})`);
+
+        if (t < 1) {
+          requestAnimationFrame(animateFrame);
+        } else {
+          if (isCorrect) {
+            // Стріла влучила в центр мішені! Залишаємо прапорець з питанням над дугою
+            const badge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            const midX = 0.25 * startX + 0.5 * ctrlX + 0.25 * endX;
+            const midY = 0.25 * startY + 0.5 * ctrlY + 0.25 * endY;
+            badge.setAttribute('transform', `translate(${midX}, ${midY - 18})`);
+            badge.innerHTML = `
+              <rect x="-75" y="-26" width="150" height="44" rx="12" fill="#fef08a" stroke="#d97706" stroke-width="4"/>
+              <text x="0" y="4" text-anchor="middle" fill="#451a03" font-size="26" font-weight="900">${questionText}</text>
+            `;
+            fxLayer.appendChild(badge);
+
+            setArcherEmotion('happy');
+            playVictoryFanfare(currentLevel);
+            triggerRichCelebration(endX, endY, currentLevel % 4);
+
+            // Автоматичний перехід на наступне речення після святкування
+            autoNextTimer = setTimeout(() => {
+              loadLevel(currentLevel + 1);
+            }, 2700);
+          } else {
+            // Промах: стріла ламається та падає вниз
+            playErrorSound();
+            setArcherEmotion('confused');
+            arcPath.remove();
+            flyingArrow.style.transition = 'transform 0.45s ease-in, opacity 0.45s';
+            flyingArrow.setAttribute('transform', `translate(${endX}, ${endY + 180}) rotate(115)`);
+            flyingArrow.style.opacity = '0';
+            setTimeout(() => {
+              flyingArrow.remove();
+              loadedArrow.style.opacity = '1';
+              setArcherEmotion('focused');
+            }, 500);
+          }
+        }
+      }
+
+      requestAnimationFrame(animateFrame);
+    }, 140);
+  }
+
+  // ============================================================================
+  // АКТИВНІ ВІЗУАЛЬНІ ФІДБЕКИ БЕЗ СЛІВ (салюти, золоті корони, птахи, іскри)
+  // ============================================================================
+  function triggerRichCelebration(hitX, hitY, effectType) {
+    const colors = ['#fde047', '#ef4444', '#22c55e', '#38bdf8', '#f97316', '#a855f7'];
+
+    // 1. Вибух зірок та іскор навколо мішені
+    for (let i = 0; i < 28; i++) {
+      const star = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      star.setAttribute('points', '0,-14 4,-4 14,-4 6,3 9,13 0,7 -9,13 -6,3 -14,-4 -4,-4');
+      star.setAttribute('fill', colors[i % colors.length]);
+      fxLayer.appendChild(star);
+
+      const angle = (Math.PI * 2 * i) / 28 + (Math.random() * 0.3);
+      const speed = 90 + Math.random() * 190;
+      const dx = Math.cos(angle) * speed;
+      const dy = Math.sin(angle) * speed - 40;
+
+      const start = performance.now();
+      function animStar(now) {
+        const p = Math.min((now - start) / 950, 1);
+        const curX = hitX + dx * p;
+        const curY = hitY + dy * p + (180 * p * p);
+        const scale = 1.3 * (1 - p);
+        star.setAttribute('transform', `translate(${curX}, ${curY}) rotate(${p * 360}) scale(${scale})`);
+        if (p < 1) requestAnimationFrame(animStar);
+        else star.remove();
+      }
+      requestAnimationFrame(animStar);
+    }
+
+    // 2. Додатковий сюжетний спецефект залежно від варіанта
+    if (effectType === 0) {
+      // Королівські феєрверки в небі над замком
+      [450, 960, 1450].forEach((fxX, idx) => {
+        setTimeout(() => {
+          for (let k = 0; k < 20; k++) {
+            const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            c.setAttribute('r', '7');
+            c.setAttribute('fill', colors[(k + idx) % colors.length]);
+            fxLayer.appendChild(c);
+            const ang = (Math.PI * 2 * k) / 20;
+            const dist = 140 + Math.random() * 80;
+            const st = performance.now();
+            function step(now) {
+              const pr = Math.min((now - st) / 800, 1);
+              const cx = fxX + Math.cos(ang) * dist * pr;
+              const cy = 240 + Math.sin(ang) * dist * pr + 60 * pr * pr;
+              c.setAttribute('cx', cx);
+              c.setAttribute('cy', cy);
+              c.setAttribute('opacity', 1 - pr);
+              if (pr < 1) requestAnimationFrame(step);
+              else c.remove();
+            }
+            requestAnimationFrame(step);
+          }
+        }, idx * 220);
+      });
+    } else if (effectType === 1) {
+      // Зграя золотих птахів злітає над лісом
+      for (let b = 0; b < 10; b++) {
+        const bird = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        bird.setAttribute('d', 'M-20,0 Q-10,-15 0,0 Q10,-15 20,0 Q10,-5 0,5 Q-10,-5 -20,0 Z');
+        bird.setAttribute('fill', '#fde047');
+        fxLayer.appendChild(bird);
+        const startBx = 300 + b * 140;
+        const startBy = 650 + (b % 3) * 40;
+        const st = performance.now();
+        function fly(now) {
+          const pr = Math.min((now - st) / 1400, 1);
+          const bx = startBx + pr * (b % 2 === 0 ? 180 : -180);
+          const by = startBy - pr * 520;
+          const flap = Math.sin(pr * 25) * 0.4 + 0.8;
+          bird.setAttribute('transform', `translate(${bx}, ${by}) scale(1.2, ${flap})`);
+          bird.setAttribute('opacity', 1 - pr * 0.5);
+          if (pr < 1) requestAnimationFrame(fly);
+          else bird.remove();
+        }
+        requestAnimationFrame(fly);
+      }
+    } else if (effectType === 2) {
+      // Золотий дощ із лицарських щитів та корон
+      for (let m = 0; m < 14; m++) {
+        const crown = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        crown.setAttribute('points', '-18,10 -22,-10 -8,0 0,-16 8,0 22,-10 18,10');
+        crown.setAttribute('fill', '#fbbf24');
+        crown.setAttribute('stroke', '#b45309');
+        crown.setAttribute('stroke-width', '2');
+        fxLayer.appendChild(crown);
+        const cx = 180 + m * 120;
+        const st = performance.now();
+        function fall(now) {
+          const pr = Math.min((now - st) / 1300, 1);
+          const cy = -40 + pr * 850;
+          crown.setAttribute('transform', `translate(${cx}, ${cy}) rotate(${Math.sin(pr * 10) * 25})`);
+          crown.setAttribute('opacity', 1 - pr * 0.4);
+          if (pr < 1) requestAnimationFrame(fall);
+          else crown.remove();
+        }
+        requestAnimationFrame(fall);
+      }
+    } else {
+      // Сяючі сонячні кільця розходяться від мішені
+      for (let r = 0; r < 4; r++) {
+        setTimeout(() => {
+          const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          ring.setAttribute('cx', hitX);
+          ring.setAttribute('cy', hitY);
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', colors[r]);
+          ring.setAttribute('stroke-width', '8');
+          fxLayer.appendChild(ring);
+          const st = performance.now();
+          function expand(now) {
+            const pr = Math.min((now - st) / 700, 1);
+            ring.setAttribute('r', 20 + pr * 280);
+            ring.setAttribute('opacity', 1 - pr);
+            if (pr < 1) requestAnimationFrame(expand);
+            else ring.remove();
+          }
+          requestAnimationFrame(expand);
+        }, r * 160);
+      }
+    }
+  }
+
+  // Навігація кнопками "Назад" та "Далі" (миттєвий перехід без обов'язкового проходження)
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    playJumpSound();
+    loadLevel(currentLevel - 1);
+  });
+
+  document.getElementById('btn-next').addEventListener('click', () => {
+    playJumpSound();
+    loadLevel(currentLevel + 1);
+  });
+
+  // Коригування позиції лучника при зміні розміру вікна браузера
+  window.addEventListener('resize', () => {
+    const levelData = LEVELS[currentLevel];
+    if (headFound && sentenceArea.children[levelData.headIdx]) {
+      moveArcherToShield(
+        sentenceArea.children[levelData.headIdx],
+        sentenceArea.children[levelData.targetIdx]
+      );
+    } else {
+      moveArcherToStart();
+    }
+  });
+
+  // Запуск першого рівня
+  window.addEventListener('DOMContentLoaded', () => {
+    loadLevel(0);
+  });
+</script>
+
+</body>
+</html>
