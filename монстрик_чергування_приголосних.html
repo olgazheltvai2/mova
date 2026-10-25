@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Чергування приголосних: К-Ч-Ц, Г-Ж-З, Х-Ш-С</title>
+  <style>
+    /* ==========================================================
+       ОСНОВНІ СТИЛІ ТА ШРИФТИ
+       ========================================================== */
+    @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Nunito:wght@800;900&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Nunito', 'Comfortaa', sans-serif;
+      background: #1a2f1d;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #scene-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* ==========================================================
+       ІНТЕРАКТИВНІ ЧАСТИНИ ТІЛА МОНСТРИКА
+       ========================================================== */
+    .interactive-part {
+      cursor: pointer;
+      transition: filter 0.25s ease;
+    }
+    .interactive-part:hover {
+      filter: drop-shadow(0 0 16px rgba(255, 245, 130, 0.95)) brightness(1.07);
+    }
+
+    /* Плавна пружна зміна розміру (велика -> маленька -> звичайна з мухою) */
+    .morph-part {
+      transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-box: view-box;
+    }
+
+    /* Природне дихання монстрика */
+    @keyframes breathe {
+      0%, 100% { transform: translateY(0px) scaleY(1) scaleX(1); }
+      50% { transform: translateY(-5px) scaleY(1.016) scaleX(0.992); }
+    }
+    .monster-breathe {
+      animation: breathe 3.6s ease-in-out infinite;
+      transform-origin: 540px 680px;
+    }
+
+    /* Тріпотіння крилець мухи */
+    @keyframes wingBuzzLeft {
+      0%, 100% { transform: rotate(-18deg) scaleY(1); }
+      50% { transform: rotate(30deg) scaleY(0.55); }
+    }
+    @keyframes wingBuzzRight {
+      0%, 100% { transform: rotate(18deg) scaleY(1); }
+      50% { transform: rotate(-30deg) scaleY(0.55); }
+    }
+    .fly-wing-l {
+      animation: wingBuzzLeft 0.045s linear infinite;
+      transform-origin: 0px 0px;
+    }
+    .fly-wing-r {
+      animation: wingBuzzRight 0.045s linear infinite;
+      transform-origin: 0px 0px;
+    }
+
+    /* ==========================================================
+       ПРАВА ЗОНА: ДЕРЕВ'ЯНЕ ВІКНО ЗІ СЛОВОМ ТА ВСІМА 3 ГРУПАМИ
+       ========================================================== */
+    #right-area {
+      position: absolute;
+      right: 3.5vw;
+      top: 50%;
+      transform: translateY(-50%);
+      width: min(760px, 47vw);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 26px;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    /* Головна дерев'яна дошка для поточного слова */
+    #word-plaque {
+      position: relative;
+      width: 100%;
+      height: 230px;
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
+    }
+
+    /* Перемикачі трійки букв зверху дошки (наприклад К -> Ч -> Ц) */
+    #triad-stepper {
+      position: absolute;
+      top: -34px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      z-index: 4;
+    }
+
+    .step-badge {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      font-weight: 900;
+      color: #fef3c7;
+      background: radial-gradient(circle at 30% 30%, #8d5524, #4e2a0c);
+      border: 4px solid #d99b52;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.5), inset 0 2px 5px rgba(255,255,255,0.3);
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .step-badge:hover {
+      transform: scale(1.12);
+    }
+    .step-badge.active {
+      background: radial-gradient(circle at 30% 30%, #ffeb3b, #ff6f00);
+      color: #4a1500;
+      border-color: #fff;
+      transform: scale(1.2) translateY(-5px);
+      box-shadow: 0 0 26px rgba(255, 214, 0, 0.95), 0 8px 16px rgba(0,0,0,0.55);
+    }
+    .step-arrow {
+      font-size: 30px;
+      color: #ffe082;
+      text-shadow: 0 3px 5px rgba(0,0,0,0.7);
+      font-weight: 900;
+    }
+
+    /* Крупне слово в центрі правого вікна */
+    #word-display {
+      position: relative;
+      z-index: 3;
+      font-size: clamp(58px, 6.2vw, 108px);
+      font-weight: 900;
+      color: #fff8e7;
+      text-shadow: 0 6px 0 #5b3112, 0 10px 22px rgba(0,0,0,0.65);
+      letter-spacing: 3px;
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 2px;
+      margin-top: 14px;
+    }
+
+    /* Яскраве блимання потрібної букви */
+    @keyframes blinkLetter {
+      0%, 100% {
+        color: #ffeb3b;
+        transform: scale(1.24) translateY(-7px);
+        text-shadow: 0 0 25px #ffeb3b, 0 0 48px #ff5722, 0 6px 0 #7f1d00;
+      }
+      50% {
+        color: #ff3d00;
+        transform: scale(1.02) translateY(0px);
+        text-shadow: 0 0 12px #ff9100, 0 4px 0 #4e1200;
+      }
+    }
+
+    .highlight-letter {
+      display: inline-block;
+      animation: blinkLetter 0.75s ease-in-out infinite;
+      padding: 0 5px;
+      border-radius: 12px;
+    }
+
+    /* ==========================================================
+       ТАБЛИЦЯ ВСІХ ТРЬОХ ГРУП (ТАКОЖ СПРАВА, НЕ ЗАКРИВАЄ МОНСТРА)
+       ========================================================== */
+    #all-groups-board {
+      width: 100%;
+      padding: 20px 22px;
+      border-radius: 34px;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255,220,150,0.14), transparent 60%),
+        linear-gradient(160deg, #6d411d 0%, #47280f 55%, #331b08 100%);
+      border: 6px solid #c68642;
+      box-shadow:
+        0 18px 40px rgba(0,0,0,0.7),
+        inset 0 3px 10px rgba(255, 230, 180, 0.3),
+        inset 0 -6px 14px rgba(0,0,0,0.55);
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      pointer-events: auto;
+      animation: popBoard 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    #all-groups-board.open {
+      display: flex;
+    }
+
+    @keyframes popBoard {
+      0% { transform: scale(0.85); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .summary-row {
+      display: grid;
+      grid-template-columns: 155px 1fr 1fr 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 22px;
+      background: linear-gradient(90deg, rgba(0,0,0,0.38), rgba(255,255,255,0.06));
+      border: 2px solid rgba(255, 213, 128, 0.28);
+    }
+
+    .summary-triad-box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 12px 6px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #ffb300, #e65100);
+      border: 3px solid #fff59d;
+      box-shadow: 0 5px 12px rgba(0,0,0,0.45);
+      font-size: clamp(20px, 1.9vw, 28px);
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 2px 0 #7f2700;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+    .summary-triad-box:hover {
+      transform: scale(1.06);
+    }
+
+    .summary-word-card {
+      height: 82px;
+      border-radius: 18px;
+      background: linear-gradient(145deg, #8c5828, #573312);
+      border: 3px solid #d7995b;
+      box-shadow: 0 5px 12px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .summary-word-card:hover {
+      transform: translateY(-4px) scale(1.04);
+      border-color: #ffeb3b;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.55), 0 0 14px rgba(255, 235, 59, 0.5);
+    }
+    .summary-word-card.playing {
+      background: linear-gradient(145deg, #2e7d32, #1b5e20);
+      border-color: #ffeb3b;
+      transform: scale(1.05);
+    }
+
+    .summary-word-text {
+      font-size: clamp(22px, 2.1vw, 34px);
+      font-weight: 900;
+      color: #fff8e1;
+      text-shadow: 0 3px 0 #3e1e04;
+    }
+
+    /* ==========================================================
+       МІНІМАЛІСТИЧНІ КНОПКИ КЕРУВАННЯ (ДАЛІ / НАЗАД / ВСІ 3 ГРУПИ)
+       ========================================================== */
+    #controls-bar {
+      position: absolute;
+      right: 3.5vw;
+      bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      z-index: 30;
+    }
+
+    .nav-btn {
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #8d5524, #4a280b);
+      border: 4px solid #e6a962;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.55), inset 0 2px 4px rgba(255,255,255,0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+    }
+    .nav-btn:hover {
+      transform: scale(1.12);
+      filter: brightness(1.12);
+    }
+    .nav-btn:active {
+      transform: scale(0.95);
+    }
+    .nav-btn.active-toggle {
+      background: radial-gradient(circle at 30% 30%, #66bb6a, #1b5e20);
+      border-color: #ffeb3b;
+      box-shadow: 0 0 20px rgba(255, 235, 59, 0.75), 0 6px 14px rgba(0,0,0,0.55);
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ==========================================================
+       ПРАВА ПАНЕЛЬ: ВЕЛИКЕ СЛОВО З БЛИМАЮЧОЮ БУКВОЮ ТА ДОШКА 3 ГРУП
+       ========================================================== -->
+  <div id="right-area">
+    <!-- Дерев'яне вікно зі словом -->
+    <div id="word-plaque">
+      <!-- Інтерактивні кружечки трійки букв -->
+      <div id="triad-stepper">
+        <div class="step-badge active" id="step-btn-0" onclick="selectCurrentStep(0)">К</div>
+        <div class="step-arrow">➔</div>
+        <div class="step-badge" id="step-btn-1" onclick="selectCurrentStep(1)">Ч</div>
+        <div class="step-arrow">➔</div>
+        <div class="step-badge" id="step-btn-2" onclick="selectCurrentStep(2)">Ц</div>
+      </div>
+
+      <!-- Деталізована різьблена дерев'яна дошка (SVG) -->
+      <svg viewBox="0 0 760 220" style="position:absolute; inset:0; width:100%; height:100%; filter: drop-shadow(0 14px 24px rgba(0,0,0,0.65));">
+        <defs>
+          <linearGradient id="woodPlaqueGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#9c5f28"/>
+            <stop offset="50%" stop-color="#734218"/>
+            <stop offset="100%" stop-color="#4a280b"/>
+          </linearGradient>
+          <linearGradient id="woodBorderGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#f0b673"/>
+            <stop offset="100%" stop-color="#9c6127"/>
+          </linearGradient>
+        </defs>
+        <!-- Підвісні канати дошки -->
+        <path d="M120,0 L120,28 M640,0 L640,28" stroke="#d7995b" stroke-width="10" stroke-linecap="round"/>
+        <!-- Корпус дошки -->
+        <path d="M40,24 Q380,10 720,24 Q748,110 720,196 Q380,210 40,196 Q12,110 40,24 Z"
+              fill="url(#woodPlaqueGrad)" stroke="url(#woodBorderGrad)" stroke-width="9"/>
+        <!-- Текстура дерева -->
+        <path d="M70,54 Q380,40 690,54" fill="none" stroke="rgba(255,220,160,0.18)" stroke-width="4" stroke-linecap="round"/>
+        <path d="M65,168 Q380,182 695,168" fill="none" stroke="rgba(0,0,0,0.32)" stroke-width="5" stroke-linecap="round"/>
+        <!-- Кутові золоті заклепки -->
+        <circle cx="58" cy="52" r="8" fill="#ffd54f" stroke="#5d4037" stroke-width="2.5"/>
+        <circle cx="702" cy="52" r="8" fill="#ffd54f" stroke="#5d4037" stroke-width="2.5"/>
+        <circle cx="58" cy="168" r="8" fill="#ffd54f" stroke="#5d4037" stroke-width="2.5"/>
+        <circle cx="702" cy="168" r="8" fill="#ffd54f" stroke="#5d4037" stroke-width="2.5"/>
+      </svg>
+
+      <!-- Текст слова з блимаючою буквою -->
+      <div id="word-display">
+        <span>ру</span><span class="highlight-letter">К</span><span>а</span>
+      </div>
+    </div>
+
+    <!-- Таблиця всіх 3 груп (К-Ч-Ц, Г-Ж-З, Х-Ш-С), що відкривається тут же праворуч -->
+    <div id="all-groups-board">
+      <!-- Ряд 1: К - Ч - Ц -->
+      <div class="summary-row">
+        <div class="summary-triad-box" onclick="playTriadDemo('hand')">
+          <span>К</span><span>➔</span><span>Ч</span><span>➔</span><span>Ц</span>
+        </div>
+        <div class="summary-word-card" id="sum-hand-0" onclick="pickFromSummary('hand', 0)">
+          <div class="summary-word-text">ру<span class="highlight-letter">К</span>а</div>
+        </div>
+        <div class="summary-word-card" id="sum-hand-1" onclick="pickFromSummary('hand', 1)">
+          <div class="summary-word-text">ру<span class="highlight-letter">Ч</span>ка</div>
+        </div>
+        <div class="summary-word-card" id="sum-hand-2" onclick="pickFromSummary('hand', 2)">
+          <div class="summary-word-text">на ру<span class="highlight-letter">Ц</span>і</div>
+        </div>
+      </div>
+
+      <!-- Ряд 2: Г - Ж - З -->
+      <div class="summary-row">
+        <div class="summary-triad-box" onclick="playTriadDemo('leg')">
+          <span>Г</span><span>➔</span><span>Ж</span><span>➔</span><span>З</span>
+        </div>
+        <div class="summary-word-card" id="sum-leg-0" onclick="pickFromSummary('leg', 0)">
+          <div class="summary-word-text">но<span class="highlight-letter">Г</span>а</div>
+        </div>
+        <div class="summary-word-card" id="sum-leg-1" onclick="pickFromSummary('leg', 1)">
+          <div class="summary-word-text">ні<span class="highlight-letter">Ж</span>ка</div>
+        </div>
+        <div class="summary-word-card" id="sum-leg-2" onclick="pickFromSummary('leg', 2)">
+          <div class="summary-word-text">на но<span class="highlight-letter">З</span>і</div>
+        </div>
+      </div>
+
+      <!-- Ряд 3: Х - Ш - С -->
+      <div class="summary-row">
+        <div class="summary-triad-box" onclick="playTriadDemo('ear')">
+          <span>Х</span><span>➔</span><span>Ш</span><span>➔</span><span>С</span>
+        </div>
+        <div class="summary-word-card" id="sum-ear-0" onclick="pickFromSummary('ear', 0)">
+          <div class="summary-word-text">ву<span class="highlight-letter">Х</span>о</div>
+        </div>
+        <div class="summary-word-card" id="sum-ear-1" onclick="pickFromSummary('ear', 1)">
+          <div class="summary-word-text">ву<span class="highlight-letter">Ш</span>ко</div>
+        </div>
+        <div class="summary-word-card" id="sum-ear-2" onclick="pickFromSummary('ear', 2)">
+          <div class="summary-word-text">на ву<span class="highlight-letter">С</span>і</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================
+       МІНІМАЛІСТИЧНІ КНОПКИ: НАЗАД, ДАЛІ ТА ПОКАЗ УСІХ 3 ГРУП
+       ========================================================== -->
+  <div id="controls-bar">
+    <!-- Кнопка "Назад" -->
+    <div class="nav-btn" onclick="stepSequence(-1)" title="Попередній крок">
+      <svg width="34" height="34" viewBox="0 0 48 48">
+        <path d="M30,10 L16,24 L30,38" fill="none" stroke="#fff8e1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <!-- Кнопка показу всіх 3 груп разом -->
+    <div class="nav-btn" id="toggle-all-btn" onclick="toggleSummaryBoard()" title="Показати / сховати всі 3 групи">
+      <svg width="34" height="34" viewBox="0 0 48 48">
+        <rect x="6" y="7" width="36" height="8" rx="4" fill="#ffeb3b"/>
+        <rect x="6" y="20" width="36" height="8" rx="4" fill="#ffca28"/>
+        <rect x="6" y="33" width="36" height="8" rx="4" fill="#ffa000"/>
+      </svg>
+    </div>
+
+    <!-- Кнопка "Далі" -->
+    <div class="nav-btn" onclick="stepSequence(1)" title="Наступний крок">
+      <svg width="34" height="34" viewBox="0 0 48 48">
+        <path d="M18,10 L32,24 L18,38" fill="none" stroke="#fff8e1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ==========================================================
+       ГОЛОВНА SVG-СЦЕНА (ЗЛІВА МОНСТРИК НА ПЕНЬКУ, ЖИВИЙ ЛІС)
+       ========================================================== -->
+  <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Градієнти неба та сонячної галявини -->
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#4fc3f7"/>
+        <stop offset="55%" stop-color="#a8e6cf"/>
+        <stop offset="100%" stop-color="#dcedc1"/>
+      </linearGradient>
+
+      <radialGradient id="sunGlow" cx="75%" cy="18%" r="40%">
+        <stop offset="0%" stop-color="#fffde7" stop-opacity="0.95"/>
+        <stop offset="35%" stop-color="#fff59d" stop-opacity="0.45"/>
+        <stop offset="100%" stop-color="#fff59d" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Пагорби та галявина -->
+      <linearGradient id="farHillGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#68b684"/>
+        <stop offset="100%" stop-color="#3c7a57"/>
+      </linearGradient>
+      <linearGradient id="midHillGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#55a630"/>
+        <stop offset="100%" stop-color="#2b6e1b"/>
+      </linearGradient>
+      <linearGradient id="frontMeadowGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#70c132"/>
+        <stop offset="45%" stop-color="#438a1b"/>
+        <stop offset="100%" stop-color="#1e460a"/>
+      </linearGradient>
+
+      <!-- Дерев'яний пеньок-сцена -->
+      <linearGradient id="stumpTopGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#e6b88a"/>
+        <stop offset="100%" stop-color="#b8824c"/>
+      </linearGradient>
+      <linearGradient id="stumpBarkGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#4a2c11"/>
+        <stop offset="30%" stop-color="#6e441e"/>
+        <stop offset="65%" stop-color="#593515"/>
+        <stop offset="100%" stop-color="#361e09"/>
+      </linearGradient>
+
+      <!-- ==========================================================
+           3D-ГРАДІЄНТИ ДЛЯ ПУХНАСТОГО МОНСТРИКА
+           ========================================================== -->
+      <radialGradient id="monsterBodyFur" cx="42%" cy="32%" r="65%" fx="35%" fy="25%">
+        <stop offset="0%" stop-color="#64ffda"/>
+        <stop offset="32%" stop-color="#1de9b6"/>
+        <stop offset="68%" stop-color="#00897b"/>
+        <stop offset="92%" stop-color="#004d40"/>
+        <stop offset="100%" stop-color="#00332c"/>
+      </radialGradient>
+
+      <radialGradient id="monsterBellyFur" cx="48%" cy="38%" r="60%">
+        <stop offset="0%" stop-color="#fff9c4"/>
+        <stop offset="45%" stop-color="#ffe082"/>
+        <stop offset="85%" stop-color="#ffb74d"/>
+        <stop offset="100%" stop-color="#f57c00"/>
+      </radialGradient>
+
+      <radialGradient id="limbFurGrad" cx="35%" cy="28%" r="70%">
+        <stop offset="0%" stop-color="#80cbc4"/>
+        <stop offset="32%" stop-color="#26a69a"/>
+        <stop offset="75%" stop-color="#00796b"/>
+        <stop offset="100%" stop-color="#004d40"/>
+      </radialGradient>
+
+      <radialGradient id="earHighlightGrad" cx="40%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#a7ffeb"/>
+        <stop offset="40%" stop-color="#26a69a"/>
+        <stop offset="85%" stop-color="#00695c"/>
+        <stop offset="100%" stop-color="#003d33"/>
+      </radialGradient>
+
+      <radialGradient id="innerEarGrad" cx="45%" cy="45%" r="60%">
+        <stop offset="0%" stop-color="#ffcdd2"/>
+        <stop offset="55%" stop-color="#f06292"/>
+        <stop offset="100%" stop-color="#ad1457"/>
+      </radialGradient>
+
+      <radialGradient id="padGrad" cx="40%" cy="35%" r="65%">
+        <stop offset="0%" stop-color="#f8bbd0"/>
+        <stop offset="65%" stop-color="#ec407a"/>
+        <stop offset="100%" stop-color="#880e4f"/>
+      </radialGradient>
+
+      <linearGradient id="hornGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#fff8e1"/>
+        <stop offset="45%" stop-color="#ffd54f"/>
+        <stop offset="85%" stop-color="#ff8f00"/>
+        <stop offset="100%" stop-color="#6d4c41"/>
+      </linearGradient>
+
+      <!-- Градієнти очей та повік -->
+      <radialGradient id="scleraGrad" cx="42%" cy="38%" r="60%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="72%" stop-color="#f5f5f5"/>
+        <stop offset="92%" stop-color="#cfd8dc"/>
+        <stop offset="100%" stop-color="#90a4ae"/>
+      </radialGradient>
+
+      <radialGradient id="irisGrad" cx="45%" cy="40%" r="55%">
+        <stop offset="0%" stop-color="#ffeb3b"/>
+        <stop offset="35%" stop-color="#ff9800"/>
+        <stop offset="75%" stop-color="#8e24aa"/>
+        <stop offset="100%" stop-color="#311b92"/>
+      </radialGradient>
+
+      <linearGradient id="eyelidSkinGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#26a69a"/>
+        <stop offset="70%" stop-color="#00897b"/>
+        <stop offset="100%" stop-color="#004d40"/>
+      </linearGradient>
+
+      <!-- КРУГЛА МАСКА ДЛЯ ОКА (щоб повіки завжди були ідеально круглими по формі ока) -->
+      <clipPath id="roundEyeClip">
+        <circle cx="0" cy="0" r="46"/>
+      </clipPath>
+
+      <linearGradient id="mouthCavityGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3e001f"/>
+        <stop offset="100%" stop-color="#7b003b"/>
+      </linearGradient>
+      <radialGradient id="tongueGrad" cx="50%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#ff80ab"/>
+        <stop offset="65%" stop-color="#f50057"/>
+        <stop offset="100%" stop-color="#aa00ff"/>
+      </radialGradient>
+
+      <radialGradient id="dropShadowGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="rgba(0, 25, 10, 0.65)"/>
+        <stop offset="65%" stop-color="rgba(0, 25, 10, 0.28)"/>
+        <stop offset="100%" stop-color="rgba(0, 25, 10, 0)"/>
+      </radialGradient>
+    </defs>
+
+    <!-- ==========================================================
+         ШАР 1: СЮЖЕТНИЙ ЛІСОВИЙ ФОН
+         ========================================================== -->
+    <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+    <circle cx="1420" cy="180" r="380" fill="url(#sunGlow)"/>
+    <circle cx="1420" cy="180" r="74" fill="#fffde7" opacity="0.9"/>
+
+    <!-- Хмарки -->
+    <g opacity="0.85">
+      <g transform="translate(180, 105)">
+        <path d="M0,40 Q-25,40 -25,20 Q-25,0 0,0 Q15,-25 50,-20 Q85,-30 105,-2 Q135,0 135,22 Q135,42 105,42 Z" fill="#ffffff"/>
+      </g>
+      <g transform="translate(950, 85) scale(1.2)">
+        <path d="M0,40 Q-25,40 -25,20 Q-25,0 0,0 Q15,-25 50,-20 Q85,-30 105,-2 Q135,0 135,22 Q135,42 105,42 Z" fill="#ffffff"/>
+      </g>
+    </g>
+
+    <!-- Пагорби -->
+    <path d="M0,690 Q360,540 780,640 T1520,600 T1920,660 L1920,1080 L0,1080 Z" fill="url(#farHillGrad)"/>
+    <path d="M0,760 Q480,630 980,730 T1920,700 L1920,1080 L0,1080 Z" fill="url(#midHillGrad)"/>
+
+    <!-- Дерева на фоні -->
+    <g transform="translate(105, 455)">
+      <path d="M45,160 L45,280 L75,280 L75,160 Z" fill="#5d4037"/>
+      <circle cx="60" cy="110" r="75" fill="#388e3c"/>
+      <circle cx="20" cy="140" r="55" fill="#43a047"/>
+      <circle cx="100" cy="140" r="55" fill="#2e7d32"/>
+      <circle cx="60" cy="80" r="50" fill="#66bb6a"/>
+    </g>
+    <g transform="translate(960, 480) scale(0.95)">
+      <path d="M45,160 L45,280 L75,280 L75,160 Z" fill="#4e342e"/>
+      <circle cx="60" cy="110" r="75" fill="#2e7d32"/>
+      <circle cx="20" cy="140" r="55" fill="#388e3c"/>
+      <circle cx="100" cy="140" r="55" fill="#1b5e20"/>
+      <circle cx="60" cy="80" r="50" fill="#4caf50"/>
+    </g>
+
+    <!-- Галявина -->
+    <path d="M0,790 Q960,715 1920,805 L1920,1080 L0,1080 Z" fill="url(#frontMeadowGrad)"/>
+
+    <!-- Грибочки біля пенька -->
+    <g transform="translate(155, 835)">
+      <path d="M22,35 Q20,65 15,72 L38,72 Q33,65 31,35 Z" fill="#fff8e1"/>
+      <path d="M0,38 Q26,0 53,38 Z" fill="#e53935"/>
+      <circle cx="16" cy="26" r="4.5" fill="#fff"/>
+      <circle cx="28" cy="18" r="5" fill="#fff"/>
+      <circle cx="39" cy="28" r="4" fill="#fff"/>
+    </g>
+
+    <!-- ==========================================================
+         ДЕРЕВ'ЯНИЙ ПЕНЬОК ЗЛІВА (НА НЬОМУ СТОЇТЬ МОНСТРИК, НОГИ ПОВНІСТЮ ВИДНО)
+         ========================================================== -->
+    <g id="wooden-stage" transform="translate(540, 885)">
+      <ellipse cx="0" cy="60" rx="355" ry="50" fill="rgba(0,0,0,0.45)"/>
+      <path d="M-275,-15 L-310,55 Q0,92 310,55 L275,-15 Z" fill="url(#stumpBarkGrad)" stroke="#2b1706" stroke-width="4"/>
+      <path d="M-185,-5 L-200,56 M-85,5 L-90,66 M40,8 L45,68 M165,-2 L180,56" stroke="#2b1706" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+      <ellipse cx="0" cy="-15" rx="275" ry="40" fill="url(#stumpTopGrad)" stroke="#5c3818" stroke-width="5"/>
+      <ellipse cx="0" cy="-15" rx="215" ry="28" fill="none" stroke="#a6713d" stroke-width="3" opacity="0.65"/>
+      <ellipse cx="0" cy="-15" rx="135" ry="17" fill="none" stroke="#a6713d" stroke-width="2.5" opacity="0.5"/>
+      <ellipse id="monster-shadow" cx="0" cy="-12" rx="195" ry="28" fill="url(#dropShadowGrad)"/>
+    </g>
+
+    <!-- ==========================================================
+         ШАР 2: РЕАЛІСТИЧНИЙ МОНСТРИК ЗЛІВА (ЦЕНТР X = 540)
+         ========================================================== -->
+    <g id="monster-root" class="monster-breathe">
+
+      <!-- ========================================================
+           НОГИ МОНСТРИКА (ІНТЕРАКТИВНІ: ноГа -> ніЖка -> на ноЗі)
+           Повністю відкриті внизу зліва!
+           ======================================================== -->
+      <!-- Ліва опорна нога -->
+      <g id="leg-left-anchor" transform="translate(440, 735)">
+        <g class="interactive-part" onclick="triggerPartCycle('leg')">
+          <path d="M-32,-20 C-42,35 -48,75 -65,95 C-92,108 -85,138 -42,138 L22,138 C42,138 45,105 26,88 C22,55 24,15 24,-20 Z"
+                fill="url(#limbFurGrad)" stroke="#003d33" stroke-width="4.5" stroke-linejoin="round"/>
+          <ellipse cx="-58" cy="124" rx="18" ry="14" fill="#26a69a" stroke="#003d33" stroke-width="3.5"/>
+          <ellipse cx="-24" cy="127" rx="18" ry="14" fill="#26a69a" stroke="#003d33" stroke-width="3.5"/>
+          <ellipse cx="10" cy="124" rx="17" ry="14" fill="#26a69a" stroke="#003d33" stroke-width="3.5"/>
+          <path d="M-66,130 Q-60,115 -50,130 Z" fill="url(#hornGrad)"/>
+          <path d="M-32,133 Q-24,117 -16,133 Z" fill="url(#hornGrad)"/>
+          <path d="M2,130 Q10,115 18,130 Z" fill="url(#hornGrad)"/>
+        </g>
+      </g>
+
+      <!-- ПРАВА ГОЛОВНА ІНТЕРАКТИВНА НОГА (ноГа -> ніЖка -> на ноЗі) -->
+      <g id="leg-right-anchor" transform="translate(640, 735)">
+        <g id="leg-morph" class="morph-part interactive-part" style="transform-origin: 15px 15px;" onclick="triggerPartCycle('leg')">
+          <!-- Невидима розширена зона кліку, щоб маленьку ніжку було легко натискати -->
+          <circle cx="25" cy="80" r="85" fill="transparent"/>
+          <path d="M-24,-20 C-24,15 -22,55 -26,88 C-45,105 -42,138 -22,138 L52,138 C95,138 102,108 72,92 C52,72 45,35 34,-20 Z"
+                fill="url(#limbFurGrad)" stroke="#003d33" stroke-width="4.5" stroke-linejoin="round"/>
+          <path d="M32,32 L46,38 L34,45 M34,54 L48,60 L35,66" fill="#26a69a" stroke="#003d33" stroke-width="2.5" stroke-linejoin="round"/>
+          <!-- Пальчики та кігтики -->
+          <ellipse cx="-6" cy="124" rx="18" ry="14" fill="#26a69a" stroke="#003d33" stroke-width="3.5"/>
+          <ellipse cx="28" cy="128" rx="19" ry="15" fill="#26a69a" stroke="#003d33" stroke-width="3.5"/>
+          <ellipse cx="64" cy="124" rx="18" ry="14" fill="#26a69a" stroke="#003d33" stroke-width="3.5"/>
+          <path d="M-14,132 Q-6,115 2,132 Z" fill="url(#hornGrad)" stroke="#5d4037" stroke-width="1.5"/>
+          <path d="M20,135 Q28,118 36,135 Z" fill="url(#hornGrad)" stroke="#5d4037" stroke-width="1.5"/>
+          <path d="M56,132 Q64,115 72,132 Z" fill="url(#hornGrad)" stroke="#5d4037" stroke-width="1.5"/>
+          <ellipse cx="26" cy="102" rx="22" ry="8" fill="#80cbc4" opacity="0.45"/>
+        </g>
+      </g>
+
+      <!-- ========================================================
+           ПУХНАСТИЙ ТУЛУБ, РІЖКИ ТА ЖИВОТИК (КЛІК ЗМІНЮЄ ЕМОЦІЮ)
+           ======================================================== -->
+      <g id="monster-torso" style="cursor:pointer;" onclick="triggerRandomEmotion(true)">
+        <!-- Ріжки -->
+        <path d="M425,270 C395,195 425,150 465,175 C445,200 455,235 472,260 Z"
+              fill="url(#hornGrad)" stroke="#4e342e" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M422,215 Q438,205 456,218 M428,238 Q445,228 462,240" fill="none" stroke="#8d6e63" stroke-width="3" stroke-linecap="round"/>
+
+        <path d="M655,270 C685,195 655,150 615,175 C635,200 625,235 608,260 Z"
+              fill="url(#hornGrad)" stroke="#4e342e" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M658,215 Q642,205 624,218 M652,238 Q635,228 618,240" fill="none" stroke="#8d6e63" stroke-width="3" stroke-linecap="round"/>
+
+        <!-- Тіло з пухнастими щічками та боками -->
+        <path d="M540,230
+                 C645,230 720,285 742,380
+                 L762,392 L748,406
+                 C765,455 778,515 772,575
+                 L792,592 L768,605
+                 C758,685 705,745 625,762
+                 C575,772 505,772 455,762
+                 C375,745 322,685 312,605
+                 L288,592 L308,575
+                 C302,515 315,455 332,406
+                 L318,392 L338,380
+                 C360,285 435,230 540,230 Z"
+              fill="url(#monsterBodyFur)" stroke="#00332b" stroke-width="5" stroke-linejoin="round"/>
+
+        <!-- Чубчик на маківці -->
+        <path d="M505,235 Q515,192 532,225 Q545,182 562,225 Q582,195 585,236"
+              fill="#26a69a" stroke="#00332b" stroke-width="4" stroke-linejoin="round"/>
+
+        <!-- Плями на хутрі -->
+        <circle cx="365" cy="485" r="16" fill="#004d40" opacity="0.45"/>
+        <circle cx="348" cy="545" r="22" fill="#004d40" opacity="0.45"/>
+        <circle cx="382" cy="595" r="14" fill="#004d40" opacity="0.45"/>
+        <circle cx="715" cy="485" r="16" fill="#004d40" opacity="0.45"/>
+        <circle cx="732" cy="545" r="22" fill="#004d40" opacity="0.45"/>
+        <circle cx="698" cy="595" r="14" fill="#004d40" opacity="0.45"/>
+
+        <!-- Світлий пухнастий животик -->
+        <path d="M540,505
+                 C628,505 682,558 676,642
+                 C670,715 615,750 540,750
+                 C465,750 410,715 404,642
+                 C398,558 452,505 540,505 Z"
+              fill="url(#monsterBellyFur)" stroke="#e65100" stroke-width="3.5" opacity="0.95"/>
+        <path d="M445,575 Q540,600 635,575" fill="none" stroke="#f57c00" stroke-width="4.5" stroke-linecap="round" opacity="0.5"/>
+        <path d="M432,632 Q540,660 648,632" fill="none" stroke="#f57c00" stroke-width="4.5" stroke-linecap="round" opacity="0.5"/>
+        <path d="M455,688 Q540,712 625,688" fill="none" stroke="#f57c00" stroke-width="4.5" stroke-linecap="round" opacity="0.5"/>
+
+        <!-- Рум'янець -->
+        <ellipse cx="408" cy="440" rx="28" ry="15" fill="#ff5252" opacity="0.38"/>
+        <ellipse cx="672" cy="440" rx="28" ry="15" fill="#ff5252" opacity="0.38"/>
+      </g>
+
+      <!-- ========================================================
+           ВУХА МОНСТРИКА НА ПЕРЕДНЬОМУ ПЛАНІ (ІНТЕРАКТИВНІ: вуХо -> вуШко -> на вуСі)
+           Розташовані поверх контуру голови, тому маленьке вуШко ЗАВЖДИ чітко видно!
+           ======================================================== -->
+      <!-- Ліве вухо -->
+      <g id="ear-left-anchor" transform="translate(362, 330)">
+        <g class="interactive-part" onclick="triggerPartCycle('ear')">
+          <path d="M12,18 C-62,-48 -142,-16 -120,58 C-102,114 -28,98 18,52 Z"
+                fill="url(#earHighlightGrad)" stroke="#003d33" stroke-width="4.5" stroke-linejoin="round"/>
+          <path d="M0,22 C-50,-22 -96,-2 -82,48 C-70,84 -24,72 6,44 Z"
+                fill="url(#innerEarGrad)"/>
+          <path d="M-12,32 C-38,10 -64,20 -54,46" fill="none" stroke="#880e4f" stroke-width="3.5" stroke-linecap="round" opacity="0.55"/>
+        </g>
+      </g>
+
+      <!-- ПРАВЕ ГОЛОВНЕ ІНТЕРАКТИВНЕ ВУХО (вуХо -> вуШко -> на вуСі) -->
+      <g id="ear-right-anchor" transform="translate(718, 330)">
+        <!-- Точка трансформації (0, 32) прямо біля кріплення до голови, щоб вушко не ховалося -->
+        <g id="ear-morph" class="morph-part interactive-part" style="transform-origin: 0px 32px;" onclick="triggerPartCycle('ear')">
+          <!-- Невидима велика зона кліку -->
+          <circle cx="55" cy="30" r="85" fill="transparent"/>
+          <!-- Зовнішня пухнаста частина вуха -->
+          <path d="M-12,18 C65,-52 152,-18 128,60 C108,118 28,102 -18,52 Z"
+                fill="url(#earHighlightGrad)" stroke="#003d33" stroke-width="4.5" stroke-linejoin="round"/>
+          <!-- Яскрава рожева серединка вуха -->
+          <path d="M0,22 C54,-24 106,-2 92,50 C78,88 26,76 -6,44 Z"
+                fill="url(#innerEarGrad)"/>
+          <path d="M14,34 C42,10 68,20 58,48" fill="none" stroke="#880e4f" stroke-width="3.5" stroke-linecap="round" opacity="0.55"/>
+          <!-- Пухнасті китички на кінчику вуха -->
+          <path d="M102,-8 L122,-22 L110,-2 M125,16 L146,12 L128,26 M120,46 L138,54 L118,58"
+                fill="#4db6ac" stroke="#003d33" stroke-width="3" stroke-linejoin="round"/>
+        </g>
+      </g>
+
+      <!-- ========================================================
+           ОЧІ З КРУГЛИМИ АНАТОМІЧНИМИ ПОВІКАМИ ТА МІМІКА МОНСТРИКА
+           ======================================================== -->
+      <g id="monster-face" style="cursor:pointer;" onclick="triggerRandomEmotion(true)">
+        <!-- ЛІВЕ ОКО (усередині круглої маски roundEyeClip) -->
+        <g transform="translate(468, 365)">
+          <g clip-path="url(#roundEyeClip)">
+            <circle cx="0" cy="0" r="46" fill="url(#scleraGrad)"/>
+            <g id="pupil-left">
+              <circle cx="0" cy="0" r="25" fill="url(#irisGrad)"/>
+              <circle cx="0" cy="0" r="13" fill="#120024"/>
+              <circle cx="-8" cy="-9" r="7" fill="#ffffff"/>
+              <circle cx="9" cy="8" r="3.5" fill="#ffffff" opacity="0.85"/>
+            </g>
+            <!-- Верхня округла повіка (обрізається по колу ока!) -->
+            <path id="eyelid-top-left" d="M-52,-52 L52,-52 L52,-36 Q0,-26 -52,-36 Z"
+                  fill="url(#eyelidSkinGrad)" stroke="#00251a" stroke-width="4"/>
+            <!-- Нижня округла повіка для сміху та примруження -->
+            <path id="eyelid-bot-left" d="M-52,52 L52,52 L52,52 Q0,52 -52,52 Z"
+                  fill="url(#eyelidSkinGrad)" stroke="#00251a" stroke-width="3.5"/>
+          </g>
+          <!-- Зовнішній круглий контур ока поверх повік -->
+          <circle cx="0" cy="0" r="46" fill="none" stroke="#00332b" stroke-width="5"/>
+        </g>
+
+        <!-- ПРАВЕ ОКО (усередині круглої маски roundEyeClip) -->
+        <g transform="translate(612, 365)">
+          <g clip-path="url(#roundEyeClip)">
+            <circle cx="0" cy="0" r="46" fill="url(#scleraGrad)"/>
+            <g id="pupil-right">
+              <circle cx="0" cy="0" r="25" fill="url(#irisGrad)"/>
+              <circle cx="0" cy="0" r="13" fill="#120024"/>
+              <circle cx="-8" cy="-9" r="7" fill="#ffffff"/>
+              <circle cx="9" cy="8" r="3.5" fill="#ffffff" opacity="0.85"/>
+            </g>
+            <!-- Верхня округла повіка -->
+            <path id="eyelid-top-right" d="M-52,-52 L52,-52 L52,-36 Q0,-26 -52,-36 Z"
+                  fill="url(#eyelidSkinGrad)" stroke="#00251a" stroke-width="4"/>
+            <!-- Нижня округла повіка -->
+            <path id="eyelid-bot-right" d="M-52,52 L52,52 L52,52 Q0,52 -52,52 Z"
+                  fill="url(#eyelidSkinGrad)" stroke="#00251a" stroke-width="3.5"/>
+          </g>
+          <!-- Зовнішній круглий контур ока -->
+          <circle cx="0" cy="0" r="46" fill="none" stroke="#00332b" stroke-width="5"/>
+        </g>
+
+        <!-- Пухнасті рухливі брови -->
+        <path id="brow-left" d="M418,302 Q468,280 508,302" fill="none" stroke="#00332b" stroke-width="14" stroke-linecap="round"/>
+        <path id="brow-left-hi" d="M420,300 Q468,278 506,300" fill="none" stroke="#80cbc4" stroke-width="5" stroke-linecap="round"/>
+
+        <path id="brow-right" d="M572,302 Q612,280 662,302" fill="none" stroke="#00332b" stroke-width="14" stroke-linecap="round"/>
+        <path id="brow-right-hi" d="M574,300 Q612,278 660,300" fill="none" stroke="#80cbc4" stroke-width="5" stroke-linecap="round"/>
+
+        <!-- Носик -->
+        <ellipse cx="540" cy="412" rx="20" ry="13" fill="#004d40" stroke="#00251a" stroke-width="3"/>
+        <ellipse cx="533" cy="408" rx="7" ry="4" fill="#80cbc4" opacity="0.6"/>
+
+        <!-- РОТ МОНСТРИКА -->
+        <g id="mouth-group" transform="translate(540, 462)">
+          <path id="mouth-bg" d="M-75,-12 Q0,15 75,-12 Q65,58 0,58 Q-65,58 -75,-12 Z"
+                fill="url(#mouthCavityGrad)" stroke="#00251a" stroke-width="5" stroke-linejoin="round"/>
+          <path id="mouth-tongue" d="M-38,28 Q0,5 38,28 Q28,56 0,56 Q-28,56 -38,28 Z"
+                fill="url(#tongueGrad)"/>
+          <g id="mouth-teeth">
+            <path d="M-52,-8 L-42,14 L-30,-4 Z" fill="#ffffff" stroke="#cfd8dc" stroke-width="1.5"/>
+            <path d="M30,-4 L42,14 L52,-8 Z" fill="#ffffff" stroke="#cfd8dc" stroke-width="1.5"/>
+            <rect x="-14" y="-6" width="12" height="13" rx="4" fill="#ffffff"/>
+            <rect x="2" y="-6" width="12" height="13" rx="4" fill="#ffffff"/>
+          </g>
+        </g>
+      </g>
+
+      <!-- ========================================================
+           РУКИ МОНСТРИКА (ІНТЕРАКТИВНІ: руКа -> руЧка -> на руЦі)
+           ======================================================== -->
+      <!-- Ліва рука -->
+      <g id="hand-left-anchor" transform="translate(322, 500)">
+        <g class="interactive-part" onclick="triggerPartCycle('hand')">
+          <path d="M12,-15 C-45,-10 -95,20 -115,65 C-132,95 -105,125 -78,108 C-62,96 -52,118 -72,126 C-92,134 -72,155 -48,136 C-35,152 -12,142 -18,118 C-6,112 4,94 -15,78 C-5,42 15,25 26,15 Z"
+                fill="url(#limbFurGrad)" stroke="#003d33" stroke-width="4.5" stroke-linejoin="round"/>
+          <ellipse cx="-68" cy="95" rx="18" ry="14" fill="url(#padGrad)" opacity="0.85"/>
+        </g>
+      </g>
+
+      <!-- ПРАВА ГОЛОВНА ІНТЕРАКТИВНА РУКА (руКа -> руЧка -> на руЦі) -->
+      <g id="hand-right-anchor" transform="translate(748, 495)">
+        <g id="hand-morph" class="morph-part interactive-part" style="transform-origin: 0px 25px;" onclick="triggerPartCycle('hand')">
+          <!-- Невидима розширена зона кліку -->
+          <circle cx="110" cy="5" r="95" fill="transparent"/>
+          <path d="M-18,15
+                   C25,18 62,-2 95,-35
+                   C108,-68 136,-66 132,-32
+                   C152,-58 178,-45 158,-14
+                   C182,-28 198,-8 170,14
+                   C192,12 195,36 164,40
+                   C144,48 118,45 96,32
+                   C58,58 18,62 -12,48 Z"
+                fill="url(#limbFurGrad)" stroke="#003d33" stroke-width="4.5" stroke-linejoin="round"/>
+          <path d="M45,48 L56,64 L66,46 M68,44 L80,58 L88,40" fill="#26a69a" stroke="#003d33" stroke-width="3" stroke-linejoin="round"/>
+          <!-- Рожева долонька та подушечки пальців -->
+          <ellipse cx="134" cy="8" rx="24" ry="18" transform="rotate(-15 134 8)" fill="url(#padGrad)" opacity="0.9"/>
+          <circle cx="122" cy="-34" r="6" fill="url(#padGrad)"/>
+          <circle cx="148" cy="-24" r="6" fill="url(#padGrad)"/>
+          <circle cx="164" cy="-2" r="6" fill="url(#padGrad)"/>
+          <circle cx="164" cy="24" r="5.5" fill="url(#padGrad)"/>
+          <!-- Кігтики -->
+          <path d="M120,-58 Q126,-72 132,-56 Z" fill="url(#hornGrad)"/>
+          <path d="M156,-46 Q166,-58 166,-40 Z" fill="url(#hornGrad)"/>
+          <path d="M178,-22 Q190,-30 184,-14 Z" fill="url(#hornGrad)"/>
+        </g>
+      </g>
+
+    </g> <!-- Кінець #monster-root -->
+
+    <!-- ==========================================================
+         ШАР 3: ДЕТАЛІЗОВАНА КУМЕДНА МУХА (СІДАЄ НА РУКУ, НОГУ АБО ВУХО)
+         ========================================================== -->
+    <g id="fly-character" transform="translate(2100, 120) scale(0)" style="pointer-events:none;">
+      <ellipse cx="0" cy="24" rx="26" ry="8" fill="rgba(0,0,0,0.35)"/>
+      <path d="M-12,10 L-24,24 L-30,24 M0,12 L-4,26 L-10,26 M12,10 L22,24 L28,24"
+            fill="none" stroke="#1b1b1b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <ellipse cx="-14" cy="4" rx="18" ry="13" fill="#3949ab" stroke="#1a237e" stroke-width="3"/>
+      <path d="M-24,-4 Q-14,12 -6,-4 M-18,-7 Q-10,10 -2,-6" fill="none" stroke="#9fa8da" stroke-width="2" opacity="0.6"/>
+      <circle cx="6" cy="2" r="13" fill="#283593" stroke="#1a237e" stroke-width="3"/>
+      <g transform="translate(-2, -6)">
+        <ellipse class="fly-wing-l" cx="-16" cy="-18" rx="22" ry="10" fill="rgba(224, 247, 250, 0.82)" stroke="#80deea" stroke-width="2"/>
+        <ellipse class="fly-wing-r" cx="6" cy="-20" rx="22" ry="10" fill="rgba(224, 247, 250, 0.82)" stroke="#80deea" stroke-width="2"/>
+      </g>
+      <circle cx="14" cy="-4" r="9" fill="#ff5252" stroke="#880e4f" stroke-width="2.5"/>
+      <circle cx="20" cy="-2" r="8" fill="#ff1744" stroke="#880e4f" stroke-width="2.5"/>
+      <circle cx="16" cy="-7" r="3" fill="#ffffff"/>
+      <circle cx="22" cy="-5" r="2.5" fill="#ffffff"/>
+      <path d="M24,4 Q32,8 28,14" fill="none" stroke="#1b1b1b" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- Шар для салюту із зірочок під час трансформацій -->
+    <g id="particles-layer" style="pointer-events:none;"></g>
+  </svg>
+</div>
+
+<script>
+  /* ==========================================================
+     ДАНІ ГРИ: ТРИ ГРУПИ ЧЕРГУВАННЯ ПРИГОЛОСНИХ
+     Масштаби маленьких частин тіла (0.60 - 0.64) підібрані так,
+     щоб маленьке вуШко, руЧку та ніЖку було чудово видно!
+     ========================================================== */
+  const GROUPS_DATA = {
+    hand: {
+      letters: ['К', 'Ч', 'Ц'],
+      steps: [
+        // Крок 0: Велика рука
+        { prefix: 'ру', blink: 'К', suffix: 'а', scale: 1.72, fly: false },
+        // Крок 1: Маленька ручка (добре видима!)
+        { prefix: 'ру', blink: 'Ч', suffix: 'ка', scale: 0.58, fly: false },
+        // Крок 2: Муха на руці
+        { prefix: 'на ру', blink: 'Ц', suffix: 'і', scale: 1.08, fly: true }
+      ],
+      effectPos: { x: 885, y: 495 },
+      flyLandPos: { x: 890, y: 478 }
+    },
+    leg: {
+      letters: ['Г', 'Ж', 'З'],
+      steps: [
+        // Крок 0: Велика нога
+        { prefix: 'но', blink: 'Г', suffix: 'а', scale: 1.68, fly: false },
+        // Крок 1: Маленька ніжка (добре видима!)
+        { prefix: 'ні', blink: 'Ж', suffix: 'ка', scale: 0.60, fly: false },
+        // Крок 2: Муха на нозі
+        { prefix: 'на но', blink: 'З', suffix: 'і', scale: 1.06, fly: true }
+      ],
+      effectPos: { x: 685, y: 845 },
+      flyLandPos: { x: 685, y: 825 }
+    },
+    ear: {
+      letters: ['Х', 'Ш', 'С'],
+      steps: [
+        // Крок 0: Велике вухо
+        { prefix: 'ву', blink: 'Х', suffix: 'о', scale: 1.82, fly: false },
+        // Крок 1: Маленьке вушко (чітко видиме на краю голови!)
+        { prefix: 'ву', blink: 'Ш', suffix: 'ко', scale: 0.62, fly: false },
+        // Крок 2: Муха на вусі
+        { prefix: 'на ву', blink: 'С', suffix: 'і', scale: 1.12, fly: true }
+      ],
+      effectPos: { x: 815, y: 355 },
+      flyLandPos: { x: 815, y: 332 }
+    }
+  };
+
+  /* Послідовність усіх кроків для кнопок "Назад" / "Далі" */
+  const SEQUENCE_ORDER = [
+    { part: 'hand', step: 0 },
+    { part: 'hand', step: 1 },
+    { part: 'hand', step: 2 },
+    { part: 'leg',  step: 0 },
+    { part: 'leg',  step: 1 },
+    { part: 'leg',  step: 2 },
+    { part: 'ear',  step: 0 },
+    { part: 'ear',  step: 1 },
+    { part: 'ear',  step: 2 }
+  ];
+
+  let currentPart = 'hand';
+  let partStepIndex = { hand: 0, leg: -1, ear: -1 };
+  let currentEmotionIndex = 0;
+  let flyLookTarget = null;
+
+  /* ==========================================================
+     ЗВУКОВИЙ РУШІЙ (Web Audio API)
+     ========================================================== */
+  let audioCtx = null;
+  function getAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  /* Звук для ВЕЛИКОЇ частини тіла (руКа, ноГа, вуХо) */
+  function playGiantSound() {
+    const ctx = getAudio();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(95, now);
+    osc.frequency.exponentialRampToValueAtTime(265, now + 0.28);
+    osc.frequency.exponentialRampToValueAtTime(130, now + 0.52);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.28, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.56);
+  }
+
+  /* Звук для МАЛЕНЬКОЇ частини тіла (руЧка, ніЖка, вуШко) */
+  function playTinySound() {
+    const ctx = getAudio();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(980, now);
+    osc.frequency.exponentialRampToValueAtTime(380, now + 0.22);
+    osc.frequency.setValueAtTime(740, now + 0.24);
+    osc.frequency.exponentialRampToValueAtTime(1280, now + 0.36);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.4);
+  }
+
+  /* Звук дзижчання МУХИ (на руЦі, на ноЗі, на вуСі) */
+  function playFlyBuzzSound() {
+    const ctx = getAudio();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(195, now);
+    osc.frequency.linearRampToValueAtTime(245, now + 0.25);
+    osc.frequency.linearRampToValueAtTime(185, now + 0.55);
+
+    lfo.frequency.value = 38;
+    lfoGain.gain.value = 28;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+
+    filter.type = 'bandpass';
+    filter.frequency.value = 800;
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.26, now + 0.12);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.48);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    lfo.start(now);
+    osc.stop(now + 0.7);
+    lfo.stop(now + 0.7);
+  }
+
+  /* Звук зміни емоції монстрика */
+  function playMonsterEmotionSound() {
+    const ctx = getAudio();
+    const now = ctx.currentTime;
+    const notes = [330, 440, 587];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      const start = now + i * 0.065;
+      osc.frequency.setValueAtTime(freq + Math.random() * 70, start);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.25, start + 0.09);
+      gain.gain.setValueAtTime(0.18, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.11);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.12);
+    });
+  }
+
+  /* ==========================================================
+     СИСТЕМА 6 ЖИВИХ ЕМОЦІЙ МОНСТРИКА (З ОКРУГЛИМИ ПОВІКАМИ!)
+     ========================================================== */
+  const EMOTIONS = [
+    {
+      // 0: Щаслива широка усмішка
+      mouthBg: "M-75,-12 Q0,15 75,-12 Q65,58 0,58 Q-65,58 -75,-12 Z",
+      tongue: "M-38,28 Q0,5 38,28 Q28,56 0,56 Q-28,56 -38,28 Z",
+      teethVisible: true,
+      browL: "M418,300 Q468,275 508,300",
+      browR: "M572,300 Q612,275 662,300",
+      topLidL: "M-52,-52 L52,-52 L52,-38 Q0,-28 -52,-38 Z",
+      topLidR: "M-52,-52 L52,-52 L52,-38 Q0,-28 -52,-38 Z",
+      botLidL: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z",
+      botLidR: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z"
+    },
+    {
+      // 1: Сильне здивування ("О-о-о!", очі широко розплющені)
+      mouthBg: "M-32,-8 C-32,-32 32,-32 32,-8 C32,38 -32,38 -32,-8 Z",
+      tongue: "M-18,16 Q0,4 18,16 Q12,32 0,32 Q-12,32 -18,16 Z",
+      teethVisible: false,
+      browL: "M415,284 Q465,252 508,284",
+      browR: "M572,284 Q615,252 665,284",
+      topLidL: "M-52,-52 L52,-52 L52,-48 Q0,-46 -52,-48 Z",
+      topLidR: "M-52,-52 L52,-52 L52,-48 Q0,-46 -52,-48 Z",
+      botLidL: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z",
+      botLidR: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z"
+    },
+    {
+      // 2: Бешкетник (висунутий язик, ліве око хитро примружене дугою)
+      mouthBg: "M-65,-6 Q0,8 65,-6 Q50,35 0,35 Q-50,35 -65,-6 Z",
+      tongue: "M-15,10 Q15,5 35,22 Q48,68 12,72 Q-18,65 -15,10 Z",
+      teethVisible: true,
+      browL: "M418,310 Q468,292 508,288",
+      browR: "M572,288 Q612,264 662,296",
+      topLidL: "M-52,-52 L52,-52 L52,-12 Q0,-24 -52,-12 Z",
+      topLidR: "M-52,-52 L52,-52 L52,-40 Q0,-32 -52,-40 Z",
+      botLidL: "M-52,52 L52,52 L52,24 Q0,12 -52,24 Z",
+      botLidR: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z"
+    },
+    {
+      // 3: Щирий регіт (обидва ока усміхаються нижніми дугоподібними повіками)
+      mouthBg: "M-82,-16 Q0,6 82,-16 Q72,68 0,68 Q-72,68 -82,-16 Z",
+      tongue: "M-45,26 Q0,0 45,26 Q34,64 0,64 Q-34,64 -45,26 Z",
+      teethVisible: true,
+      browL: "M415,292 Q465,268 508,298",
+      browR: "M572,298 Q615,268 665,292",
+      topLidL: "M-52,-52 L52,-52 L52,-28 Q0,-36 -52,-28 Z",
+      topLidR: "M-52,-52 L52,-52 L52,-28 Q0,-36 -52,-28 Z",
+      botLidL: "M-52,52 L52,52 L52,26 Q0,10 -52,26 Z",
+      botLidR: "M-52,52 L52,52 L52,26 Q0,10 -52,26 Z"
+    },
+    {
+      // 4: Зацікавлена хитра посмішка
+      mouthBg: "M-58,4 Q10,-14 72,-18 Q58,34 -5,32 Q-48,30 -58,4 Z",
+      tongue: "M-20,16 Q15,8 35,18 Q20,32 -5,30 Z",
+      teethVisible: true,
+      browL: "M420,312 Q468,302 510,310",
+      browR: "M572,286 Q615,258 662,282",
+      topLidL: "M-52,-52 L52,-52 L52,-18 Q0,-10 -52,-22 Z",
+      topLidR: "M-52,-52 L52,-52 L52,-44 Q0,-38 -52,-44 Z",
+      botLidL: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z",
+      botLidR: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z"
+    },
+    {
+      // 5: Милий усміхнений монстрик
+      mouthBg: "M-42,-2 Q0,18 42,-2 Q32,28 0,28 Q-32,28 -42,-2 Z",
+      tongue: "M-22,12 Q0,4 22,12 Q16,27 0,27 Q-16,27 -22,12 Z",
+      teethVisible: false,
+      browL: "M418,310 Q465,282 508,290",
+      browR: "M572,290 Q615,282 662,310",
+      topLidL: "M-52,-52 L52,-52 L52,-34 Q0,-24 -52,-34 Z",
+      topLidR: "M-52,-52 L52,-52 L52,-34 Q0,-24 -52,-34 Z",
+      botLidL: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z",
+      botLidR: "M-52,52 L52,52 L52,52 Q0,52 -52,52 Z"
+    }
+  ];
+
+  function applyEmotion(index) {
+    currentEmotionIndex = index;
+    const emo = EMOTIONS[index];
+    document.getElementById('mouth-bg').setAttribute('d', emo.mouthBg);
+    document.getElementById('mouth-tongue').setAttribute('d', emo.tongue);
+    document.getElementById('mouth-teeth').style.display = emo.teethVisible ? 'block' : 'none';
+
+    document.getElementById('brow-left').setAttribute('d', emo.browL);
+    document.getElementById('brow-left-hi').setAttribute('d', emo.browL);
+    document.getElementById('brow-right').setAttribute('d', emo.browR);
+    document.getElementById('brow-right-hi').setAttribute('d', emo.browR);
+
+    document.getElementById('eyelid-top-left').setAttribute('d', emo.topLidL);
+    document.getElementById('eyelid-top-right').setAttribute('d', emo.topLidR);
+    document.getElementById('eyelid-bot-left').setAttribute('d', emo.botLidL);
+    document.getElementById('eyelid-bot-right').setAttribute('d', emo.botLidR);
+  }
+
+  function triggerRandomEmotion(withSound = false) {
+    let nextIdx = Math.floor(Math.random() * EMOTIONS.length);
+    if (nextIdx === currentEmotionIndex) {
+      nextIdx = (nextIdx + 1) % EMOTIONS.length;
+    }
+    applyEmotion(nextIdx);
+
+    if (withSound) {
+      playMonsterEmotionSound();
+      spawnParticles(540, 380, '#ffeb3b');
+    }
+  }
+
+  // Автоматична жива зміна емоцій та природне кругле кліпання очима
+  setInterval(() => {
+    triggerRandomEmotion(false);
+  }, 4500);
+
+  setInterval(() => {
+    const topL = document.getElementById('eyelid-top-left');
+    const topR = document.getElementById('eyelid-top-right');
+    // Повне закриття круглих повік із плавним вигином вій
+    topL.setAttribute('d', 'M-52,-52 L52,-52 L52,48 Q0,58 -52,48 Z');
+    topR.setAttribute('d', 'M-52,-52 L52,-52 L52,48 Q0,58 -52,48 Z');
+    setTimeout(() => {
+      topL.setAttribute('d', EMOTIONS[currentEmotionIndex].topLidL);
+      topR.setAttribute('d', EMOTIONS[currentEmotionIndex].topLidR);
+    }, 150);
+  }, 3300);
+
+  /* Стеження зіниць очей за курсором або мухою */
+  window.addEventListener('mousemove', (e) => {
+    if (flyLookTarget) return;
+    const svg = document.getElementById('scene-svg');
+    const rect = svg.getBoundingClientRect();
+    const normX = ((e.clientX - rect.left) / rect.width - 0.3) * 24;
+    const normY = ((e.clientY - rect.top) / rect.height - 0.35) * 20;
+    const dx = Math.max(-14, Math.min(14, normX));
+    const dy = Math.max(-12, Math.min(12, normY));
+    document.getElementById('pupil-left').setAttribute('transform', `translate(${dx}, ${dy})`);
+    document.getElementById('pupil-right').setAttribute('transform', `translate(${dx}, ${dy})`);
+  });
+
+  function lookAtPoint(svgX, svgY) {
+    const dxL = Math.max(-15, Math.min(15, (svgX - 468) / 20));
+    const dyL = Math.max(-14, Math.min(14, (svgY - 365) / 20));
+    const dxR = Math.max(-15, Math.min(15, (svgX - 612) / 20));
+    const dyR = Math.max(-14, Math.min(14, (svgY - 365) / 20));
+    document.getElementById('pupil-left').setAttribute('transform', `translate(${dxL}, ${dyL})`);
+    document.getElementById('pupil-right').setAttribute('transform', `translate(${dxR}, ${dyR})`);
+  }
+
+  /* ==========================================================
+     КЕРУВАННЯ ТРАНСФОРМАЦІЯМИ ЧАСТИН ТІЛА ТА СЛОВАМИ
+     ========================================================== */
+  function triggerPartCycle(partName) {
+    let nextStep = 0;
+    if (currentPart === partName) {
+      nextStep = (partStepIndex[partName] + 1) % 3;
+    }
+    setPartState(partName, nextStep);
+  }
+
+  function selectCurrentStep(stepIdx) {
+    setPartState(currentPart || 'hand', stepIdx);
+  }
+
+  function setPartState(partName, stepIdx, playSound = true) {
+    currentPart = partName;
+    partStepIndex[partName] = stepIdx;
+
+    const groupInfo = GROUPS_DATA[partName];
+    const stepData = groupInfo.steps[stepIdx];
+
+    // 1. Трансформуємо обрану частину тіла, а інші повертаємо до звичайного розміру
+    ['hand', 'leg', 'ear'].forEach(p => {
+      const morphEl = document.getElementById(`${p}-morph`);
+      if (p === partName) {
+        morphEl.style.transform = `scale(${stepData.scale})`;
+      } else {
+        morphEl.style.transform = 'scale(1)';
+      }
+    });
+
+    // 2. Оновлюємо кружечки трійки букв над дошкою
+    groupInfo.letters.forEach((letter, idx) => {
+      const btn = document.getElementById(`step-btn-${idx}`);
+      btn.textContent = letter;
+      btn.classList.toggle('active', idx === stepIdx);
+    });
+
+    // 3. Оновлюємо велике слово праворуч
+    const wordDisplay = document.getElementById('word-display');
+    wordDisplay.innerHTML = `
+      <span>${stepData.prefix}</span><span class="highlight-letter">${stepData.blink}</span><span>${stepData.suffix}</span>
+    `;
+
+    // 4. Підсвічуємо активну картку в таблиці всіх 3 груп
+    document.querySelectorAll('.summary-word-card').forEach(c => c.classList.remove('playing'));
+    const activeCard = document.getElementById(`sum-${partName}-${stepIdx}`);
+    if (activeCard) activeCard.classList.add('playing');
+
+    // 5. Анімація мухи, очей та звуків
+    if (stepData.fly) {
+      if (playSound) playFlyBuzzSound();
+      flyToPosition(groupInfo.flyLandPos.x, groupInfo.flyLandPos.y);
+      flyLookTarget = groupInfo.flyLandPos;
+      lookAtPoint(groupInfo.flyLandPos.x, groupInfo.flyLandPos.y);
+      applyEmotion(1); // Здивований погляд на муху
+      spawnParticles(groupInfo.effectPos.x, groupInfo.effectPos.y, '#80deea');
+    } else {
+      hideFly();
+      flyLookTarget = null;
+      lookAtPoint(groupInfo.effectPos.x, groupInfo.effectPos.y);
+
+      if (stepIdx === 0) {
+        if (playSound) playGiantSound();
+        applyEmotion(3); // Радісний сміх
+        spawnParticles(groupInfo.effectPos.x, groupInfo.effectPos.y, '#ffeb3b');
+      } else {
+        if (playSound) playTinySound();
+        applyEmotion(2); // Кумедний бешкетний вираз
+        spawnParticles(groupInfo.effectPos.x, groupInfo.effectPos.y, '#ff80ab');
+      }
+    }
+  }
+
+  /* Кнопки "Назад" та "Далі" для послідовного проходження всіх трійок */
+  function stepSequence(direction) {
+    const curIdx = SEQUENCE_ORDER.findIndex(
+      item => item.part === currentPart && item.step === partStepIndex[currentPart]
+    );
+    const nextIdx = (curIdx + direction + SEQUENCE_ORDER.length) % SEQUENCE_ORDER.length;
+    const target = SEQUENCE_ORDER[nextIdx];
+    setPartState(target.part, target.step);
+  }
+
+  /* Політ мухи по дузі */
+  let flyAnimFrame = null;
+  function flyToPosition(targetX, targetY) {
+    if (flyAnimFrame) cancelAnimationFrame(flyAnimFrame);
+    const flyEl = document.getElementById('fly-character');
+    const startX = 1150;
+    const startY = 80;
+    const startTime = performance.now();
+    const duration = 520;
+
+    function animateFly(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const ease = 1 - Math.pow(1 - t, 3);
+      const waveY = Math.sin(t * Math.PI * 3) * 40 * (1 - t);
+      const curX = startX + (targetX - startX) * ease;
+      const curY = startY + (targetY - startY) * ease + waveY;
+      const scale = 0.4 + 0.75 * ease;
+
+      flyEl.setAttribute('transform', `translate(${curX}, ${curY}) scale(${scale})`);
+      if (t < 1) {
+        flyAnimFrame = requestAnimationFrame(animateFly);
+      }
+    }
+    flyAnimFrame = requestAnimationFrame(animateFly);
+  }
+
+  function hideFly() {
+    if (flyAnimFrame) cancelAnimationFrame(flyAnimFrame);
+    const flyEl = document.getElementById('fly-character');
+    flyEl.setAttribute('transform', 'translate(2100, 120) scale(0)');
+  }
+
+  /* ==========================================================
+     ТАБЛИЦЯ «ВСІ 3 ГРУПИ РАЗОМ» (ПРАВОРУЧ ПІД ОСНОВНИМ СЛОВОМ)
+     ========================================================== */
+  function toggleSummaryBoard() {
+    const board = document.getElementById('all-groups-board');
+    const btn = document.getElementById('toggle-all-btn');
+    const isOpen = board.classList.toggle('open');
+    btn.classList.toggle('active-toggle', isOpen);
+    playMonsterEmotionSound();
+  }
+
+  function pickFromSummary(partName, stepIdx) {
+    setPartState(partName, stepIdx);
+  }
+
+  function playTriadDemo(partName) {
+    pickFromSummary(partName, 0);
+    setTimeout(() => pickFromSummary(partName, 1), 900);
+    setTimeout(() => pickFromSummary(partName, 2), 1800);
+  }
+
+  /* ==========================================================
+     ЧАСТИНКИ ТА ЗІРОЧКИ ПІД ЧАС ПЕРЕТВОРЕНЬ
+     ========================================================== */
+  function spawnParticles(cx, cy, color) {
+    const layer = document.getElementById('particles-layer');
+    for (let i = 0; i < 14; i++) {
+      const star = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      const angle = (Math.PI * 2 * i) / 14 + Math.random() * 0.3;
+      const dist = 55 + Math.random() * 85;
+      const r = 6 + Math.random() * 8;
+
+      star.setAttribute('cx', cx);
+      star.setAttribute('cy', cy);
+      star.setAttribute('r', r);
+      star.setAttribute('fill', i % 2 === 0 ? color : '#ffffff');
+      layer.appendChild(star);
+
+      const start = performance.now();
+      const dur = 480 + Math.random() * 220;
+
+      function step(now) {
+        const p = Math.min(1, (now - start) / dur);
+        const curX = cx + Math.cos(angle) * dist * p;
+        const curY = cy + Math.sin(angle) * dist * p;
+        star.setAttribute('cx', curX);
+        star.setAttribute('cy', curY);
+        star.setAttribute('r', r * (1 - p));
+        if (p < 1) {
+          requestAnimationFrame(step);
+        } else {
+          star.remove();
+        }
+      }
+      requestAnimationFrame(step);
+    }
+  }
+
+  // Початковий стан при завантаженні (показуємо руКу без різкого звуку до першого кліку)
+  setPartState('hand', 0, false);
+</script>
+
+</body>
+</html>
