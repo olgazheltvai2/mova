@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Осінні листочки</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;}
+  body{
+    font-family:'Segoe UI','Helvetica Neue',system-ui,sans-serif;
+    background:#2a1a0e;user-select:none;-webkit-user-select:none;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  }
+  #app{position:fixed;inset:0;overflow:hidden;}
+  #bgCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0;}
+  #app::after{
+    content:'';position:absolute;inset:0;pointer-events:none;z-index:1;
+    background:radial-gradient(ellipse at 50% 45%,transparent 48%,rgba(50,18,0,0.38) 100%);
+  }
+
+  #leaves{
+    position:absolute;left:230px;right:150px;top:20px;bottom:100px;
+    pointer-events:none;z-index:2;
+  }
+
+  .leaf-slot{
+    position:absolute;
+    pointer-events:auto;cursor:pointer;
+    filter:drop-shadow(0 10px 12px rgba(40,20,0,0.4));
+    transition:filter .25s;
+    will-change:transform;
+  }
+  .leaf-slot:hover{filter:drop-shadow(0 14px 18px rgba(40,20,0,0.55)) brightness(1.06);}
+
+  .leaf{
+    position:absolute;inset:0;
+    animation:float 4.2s ease-in-out infinite;
+    animation-delay:var(--d,0s);
+    transform-origin:50% 60%;
+    will-change:transform;
+  }
+  @keyframes float{
+    0%,100%{transform:rotate(var(--r,0deg)) scale(var(--s,1)) translateY(0);}
+    50%{transform:rotate(calc(var(--r,0deg) + 2.2deg)) scale(var(--s,1)) translateY(-6px);}
+  }
+  .leaf svg{width:100%;height:100%;display:block;overflow:visible;}
+  .leaf-body{
+    fill:var(--fill,#f4e8cc);
+    stroke:rgba(90,50,10,0.4);
+    stroke-width:1.6;
+    transition:fill .5s ease;
+  }
+  .leaf-sheen{opacity:.85;pointer-events:none;}
+  .leaf-vein{stroke:rgba(80,45,10,0.36);stroke-width:1.3;fill:none;}
+  .leaf-sideveins{stroke:rgba(80,45,10,0.22);stroke-width:0.9;fill:none;}
+
+  .leaf-word{
+    position:absolute;left:50%;top:49%;
+    transform:translate(-50%,-50%);
+    font-family:Georgia,'Palatino Linotype','Book Antiqua',serif;
+    font-weight:700;
+    color:#2b1706;
+    white-space:nowrap;
+    pointer-events:none;
+    letter-spacing:-0.2px;
+    text-shadow:0 1px 1px rgba(255,255,255,0.35);
+  }
+
+  @keyframes pop{
+    0%{transform:translate(-50%,-50%) scale(1);}
+    40%{transform:translate(-50%,-50%) scale(1.08);}
+    100%{transform:translate(-50%,-50%) scale(1);}
+  }
+  .leaf-slot.pop{animation:pop .34s ease;}
+
+  @keyframes shake{
+    0%,100%{transform:translate(-50%,-50%) rotate(0deg);}
+    10%{transform:translate(-56%,-50%) rotate(-5deg);}
+    20%{transform:translate(-44%,-50%) rotate(5deg);}
+    30%{transform:translate(-55%,-50%) rotate(-4deg);}
+    40%{transform:translate(-45%,-50%) rotate(4deg);}
+    50%{transform:translate(-53%,-50%) rotate(-3deg);}
+    60%{transform:translate(-47%,-50%) rotate(3deg);}
+    70%{transform:translate(-52%,-50%) rotate(-2deg);}
+    80%{transform:translate(-48%,-50%) rotate(2deg);}
+    90%{transform:translate(-50%,-50%) rotate(1deg);}
+  }
+  .leaf-slot.wrong{animation:shake .66s ease;}
+
+  @keyframes fall{
+    0%{transform:translate(-50%,-50%) translate(0,0) rotate(0deg);opacity:1;}
+    15%{transform:translate(-50%,-50%) translate(-22px,12vh) rotate(55deg);opacity:1;}
+    30%{transform:translate(-50%,-50%) translate(20px,26vh) rotate(-45deg);opacity:.95;}
+    45%{transform:translate(-50%,-50%) translate(-26px,42vh) rotate(95deg);opacity:.85;}
+    60%{transform:translate(-50%,-50%) translate(20px,58vh) rotate(-35deg);opacity:.7;}
+    75%{transform:translate(-50%,-50%) translate(-16px,76vh) rotate(140deg);opacity:.45;}
+    90%{transform:translate(-50%,-50%) translate(12px,96vh) rotate(-70deg);opacity:.2;}
+    100%{transform:translate(-50%,-50%) translate(0,118vh) rotate(230deg);opacity:0;}
+  }
+  .leaf-slot.falling{
+    animation:fall 2.7s cubic-bezier(.4,.1,.6,1) forwards;
+    pointer-events:none;
+  }
+  .leaf-slot.falling .leaf{animation:none;}
+
+  .leaf-slot.correct::after{
+    content:'';position:absolute;inset:-12%;border-radius:50%;
+    border:4px solid rgba(255,255,255,.94);
+    animation:ringOut .8s ease-out forwards;
+    pointer-events:none;
+  }
+  @keyframes ringOut{
+    0%{transform:scale(.45);opacity:1;}
+    100%{transform:scale(1.85);opacity:0;}
+  }
+
+  #panel{
+    position:absolute;left:24px;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;gap:24px;
+    padding:26px 18px;border-radius:24px;
+    background:linear-gradient(160deg,#b57e47 0%,#96622f 55%,#7a4d22 100%);
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,.28),
+      inset 0 -5px 14px rgba(0,0,0,.35),
+      0 16px 36px rgba(0,0,0,.42);
+    border:2px solid #5e3d1a;z-index:5;
+  }
+  #panel::before{
+    content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:repeating-linear-gradient(88deg,rgba(0,0,0,.07) 0 2px,transparent 2px 9px);
+    opacity:.55;
+  }
+  .swatch{
+    position:relative;width:86px;height:86px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:
+      inset 0 -8px 14px rgba(0,0,0,.28),
+      inset 0 6px 10px rgba(255,255,255,.38),
+      0 6px 14px rgba(0,0,0,.32);
+    border:3px solid rgba(255,255,255,.4);
+    transition:transform .18s cubic-bezier(.3,1.5,.5,1),box-shadow .18s;
+    z-index:1;
+  }
+  .swatch:hover{transform:scale(1.06);}
+  .swatch:active{transform:scale(.96);}
+  .swatch.active{
+    transform:scale(1.13);
+    box-shadow:0 0 0 4px #fff8e0,0 0 26px rgba(255,220,120,.95),inset 0 -8px 14px rgba(0,0,0,.28);
+  }
+  .swatch[data-cat="s"]{background:radial-gradient(circle at 35% 28%,#ffe98a,#f7c531 58%,#c99a10);}
+  .swatch[data-cat="z"]{background:radial-gradient(circle at 35% 28%,#ffbe78,#ef8a1f 58%,#b95f0a);}
+  .swatch[data-cat="zi"]{background:radial-gradient(circle at 35% 28%,#f57866,#d63a2b 58%,#8f1a10);}
+
+  .swatch-text{
+    font-family:Georgia,serif;font-size:26px;font-weight:800;
+    color:rgba(40,20,0,.82);text-shadow:0 1px 0 rgba(255,255,255,.45);
+    pointer-events:none;
+  }
+  .swatch[data-cat="zi"] .swatch-text{color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.45);}
+
+  @keyframes flashPulse{
+    0%,100%{transform:scale(1);}
+    50%{transform:scale(1.16);box-shadow:0 0 0 7px rgba(255,255,255,.85),0 0 30px rgba(255,220,120,.9);}
+  }
+  .swatch.flash{animation:flashPulse .46s ease;}
+
+  #checkBtn{
+    position:absolute;right:36px;bottom:36px;
+    width:88px;height:88px;border-radius:50%;border:none;
+    background:radial-gradient(circle at 35% 28%,#9bea72,#4faa2f 58%,#2f7a15);
+    box-shadow:
+      inset 0 -8px 14px rgba(0,0,0,.32),
+      inset 0 6px 10px rgba(255,255,255,.42),
+      0 12px 26px rgba(0,0,0,.42);
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:transform .15s,box-shadow .15s;z-index:6;
+  }
+  #checkBtn:hover{transform:scale(1.06);}
+  #checkBtn:active{transform:scale(.95);}
+  #checkBtn svg{width:38px;height:38px;}
+
+  #nextBtn{
+    position:absolute;right:36px;top:26px;
+    padding:11px 24px;border-radius:30px;border:none;
+    background:rgba(255,255,255,.22);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+    color:#fff;font-family:inherit;font-size:16px;font-weight:600;
+    letter-spacing:.6px;cursor:pointer;
+    transition:background .2s,transform .15s;
+    box-shadow:0 4px 14px rgba(0,0,0,.22);z-index:6;
+  }
+  #nextBtn:hover{background:rgba(255,255,255,.38);transform:translateY(-1px);}
+  #nextBtn:active{transform:translateY(0) scale(.97);}
+
+  @media (max-width:1100px){
+    #leaves{left:190px;right:120px;top:16px;bottom:90px;}
+    #panel{left:16px;padding:20px 14px;gap:16px;border-radius:20px;}
+    .swatch{width:70px;height:70px;}
+    .swatch-text{font-size:22px;}
+    #checkBtn{width:72px;height:72px;right:22px;bottom:22px;}
+    #checkBtn svg{width:32px;height:32px;}
+    #nextBtn{right:22px;top:18px;padding:9px 18px;font-size:14px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="bgCanvas"></canvas>
+  <div id="leaves"></div>
+
+  <aside id="panel">
+    <div class="swatch" data-cat="s"><span class="swatch-text">с-</span></div>
+    <div class="swatch" data-cat="z"><span class="swatch-text">з-</span></div>
+    <div class="swatch" data-cat="zi"><span class="swatch-text">зі-</span></div>
+  </aside>
+
+  <button id="checkBtn" aria-label="Перевірити">
+    <svg viewBox="0 0 24 24">
+      <path d="M4 12.6 L9.6 18.2 L20 6.6" stroke="#fff" stroke-width="3.6"
+            fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <button id="nextBtn">далі →</button>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <radialGradient id="sheenGrad" cx="35%" cy="28%" r="78%">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.7"/>
+        <stop offset="42%" stop-color="#ffffff" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#000000" stop-opacity="0.28"/>
+      </radialGradient>
+    </defs>
+  </svg>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ================= СЛОВНИК (НУШ 4 клас) ================= */
+const WORDS = {
+  s: [
+    'сказати','склеїти','скопати','скликати','скупатися','скотити','скрутити','сколоти','скопіювати','скрастися',
+    'списати','спитати','спекти','співати','спостерігати','спізнитися','сплющити','сподобатися','сповзти','спалити',
+    'спрямувати','сполоснути','спробувати','сплести','стерти','стрибати','створити','стулити','струснути','ствердити',
+    'стомитися','стьобати','стримати','станцювати','стукати','стиснути','струсити','стратити','сфотографувати','сформувати',
+    'сфальшувати','сфокусувати','сфантазувати','сховати','схопити','схуднути','схилити','схвилювати','схвалити','схотіти'
+  ],
+  z: [
+    'зорієнтуватися','зекономити','зігнорувати','зустріти','зорганізувати','зробити','зрубати','зламати','зловити','змити',
+    'змогти','знести','знайти','зварити','зважити','збудувати','зберегти','здогадатися','здивувати','зграти',
+    'згодувати','зжалити','зжовкнути','здружитися','здрібнити',"з'їсти","з'єднати","з'явитися",'зцілити','зцідити',
+    'зчистити','зчавити','зшити','зшукати','зчепити','змести','злити','зволікати','звабити','зміцнити',
+    'знагодитися','злякатися','зрадіти','збагатити','зблиснути','згубити','змолоти','зруйнувати','зрізати','змалювати'
+  ],
+  zi: [
+    'зігріти','зіграти','зігнути','зібрати','зібгати','зітхати','зітліти','зіткати','зіпріти','зіпсувати',
+    'зіщулитися','зіщипати','зіжмакати','зіжбурнути','зіскочити','зіставити','зіщулити','зілляти','зімліти',"зім'яти",
+    "зів'янути",'зігнати','зітерти','зіткнутися','зімкнути','зіпхнути','зіскоблити','зіпнутися','зігнити','зітнути',
+    'зіслизнути','зіскрібати','зіскакувати','зістрибнути','зістругати','зіструсити','зіпрілий','зітлілий','зігнутий','зібраний',
+    'зіпсований',"зім'ятий",'зімлілий','зіщулений','зітканий','зігрітий','зіпханий','зітертий','зімкнений','зіжмаканий'
+  ]
+};
+
+const CATS = {
+  s:  {hex:'#f7c531'},   // жовтий
+  z:  {hex:'#ef8a1f'},   // оранжевий
+  zi: {hex:'#d63a2b'}    // червоний
+};
+
+/* ================= ФОРМИ ЛИСТОЧКІВ ================= */
+const LEAF_PATHS = [
+  'M50,8 C82,32 88,88 50,122 C12,88 18,32 50,8 Z',
+  'M50,8 L58,30 L78,22 L72,44 L92,50 L76,64 L86,84 L62,78 L60,108 L50,92 L40,108 L38,78 L14,84 L24,64 L8,50 L28,44 L22,22 L42,30 Z',
+  'M50,6 C64,12 72,22 74,38 C86,42 92,56 84,70 C90,86 76,104 50,110 C24,104 10,86 16,70 C8,56 14,42 26,38 C28,22 36,12 50,6 Z',
+  'M50,4 C72,40 70,92 50,120 C30,92 28,40 50,4 Z',
+  'M50,118 C22,92 8,64 18,40 C30,16 48,22 50,38 C52,22 70,16 82,40 C92,64 78,92 50,118 Z',
+  'M50,12 C86,26 90,84 50,116 C10,84 14,26 50,12 Z'
+];
+
+const LEAF_ASPECT = 0.85; // ширина / висота
+
+/* ================= СТАН ================= */
+let selectedCat = null;
+let leaves = [];
+let checking = false;
+let roundToken = 0;
+let regenPoller = null;
+const leavesCont = document.getElementById('leaves');
+
+/* ================= ЗВУК ================= */
+let ac = null;
+function ensureAudio(){
+  if(!ac){
+    try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
+  }
+  if(ac.state==='suspended') ac.resume();
+}
+function tone(freq,start,dur,type,vol){
+  if(!ac) return;
+  type = type||'sine'; vol = vol||0.11;
+  const t = ac.currentTime + start;
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(vol,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(ac.destination);
+  o.start(t); o.stop(t+dur+0.05);
+}
+function noiseBurst(start,dur,vol,filterFreq){
+  if(!ac) return;
+  const t = ac.currentTime + start;
+  const len = Math.max(1,Math.floor(ac.sampleRate*dur));
+  const buf = ac.createBuffer(1,len,ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/len,2);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const f = ac.createBiquadFilter();
+  f.type='bandpass'; f.frequency.value = filterFreq||3000; f.Q.value=0.8;
+  const g = ac.createGain(); g.gain.value = vol||0.12;
+  src.connect(f); f.connect(g); g.connect(ac.destination);
+  src.start(t);
+}
+function playSelect(){ ensureAudio(); tone(900,0,0.07,'sine',0.07); tone(1350,0.03,0.07,'sine',0.045); }
+function playPaint(cat){
+  ensureAudio();
+  const base = {s:680, z:520, zi:420}[cat]||600;
+  tone(base,0,0.13,'triangle',0.09);
+  tone(base*1.5,0.04,0.11,'sine',0.05);
+  noiseBurst(0,0.09,0.045,2600);
+}
+function playCorrect(){
+  ensureAudio();
+  [523.25,659.25,783.99].forEach((n,i)=>tone(n,i*0.08,0.36,'sine',0.11));
+  noiseBurst(0.02,0.22,0.035,5200);
+}
+function playError(){
+  ensureAudio();
+  tone(230,0,0.14,'triangle',0.10);
+  tone(165,0.08,0.18,'triangle',0.10);
+  tone(110,0.16,0.30,'sine',0.09);
+  noiseBurst(0.02,0.14,0.05,400);
+}
+function playSuccess(){
+  ensureAudio();
+  [523.25,659.25,783.99,1046.5,783.99,1046.5].forEach((n,i)=>tone(n,i*0.09,0.42,'triangle',0.10));
+  noiseBurst(0,0.4,0.05,6000);
+  for(let i=0;i<7;i++) tone(1300+Math.random()*1900,0.55+i*0.055,0.16,'sine',0.042);
+}
+
+/* ================= ФОН ================= */
+const canvas = document.getElementById('bgCanvas');
+const ctx = canvas.getContext('2d');
+let W=0,H=0,DPR=1;
+let bgParticles=[];
+let trees=[];
+
+function initBackground(){
+  trees=[];
+  const treeCount = Math.max(6, Math.floor(W/210));
+  for(let i=0;i<treeCount;i++){
+    trees.push({
+      x:(i+0.2+Math.random()*0.6)/treeCount*W*1.08 - W*0.04,
+      y:H*(0.80+Math.random()*0.08),
+      h:H*(0.24+Math.random()*0.24),
+      sway:Math.random()*Math.PI*2,
+      speed:0.28+Math.random()*0.42,
+      hue:Math.random(),
+      depth:Math.random()
+    });
+  }
+  trees.sort((a,b)=>a.depth-b.depth);
+
+  bgParticles=[];
+  const count = Math.floor((W*H)/26000);
+  for(let i=0;i<count;i++){
+    bgParticles.push({
+      x:Math.random()*W, y:Math.random()*H,
+      vy:0.22+Math.random()*0.68, vx:(Math.random()-0.5)*0.5,
+      rot:Math.random()*Math.PI*2, vr:(Math.random()-0.5)*0.028,
+      size:4+Math.random()*10,
+      color:['#e8a13a','#d4741a','#c4561e','#f0b94a','#b8402a'][Math.floor(Math.random()*5)],
+      alpha:0.22+Math.random()*0.42,
+      phase:Math.random()*Math.PI*2
+    });
+  }
+}
+
+function resizeCanvas(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W*DPR);
+  canvas.height = Math.round(H*DPR);
+  canvas.style.width = W+'px';
+  canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  initBackground();
+}
+
+function drawHills(){
+  const layers=[
+    {y:0.60,amp:0.040,color:'rgba(178,100,58,0.42)'},
+    {y:0.70,amp:0.050,color:'rgba(138,74,40,0.62)'},
+    {y:0.80,amp:0.035,color:'rgba(104,56,28,0.85)'}
+  ];
+  layers.forEach((L,li)=>{
+    ctx.fillStyle=L.color;
+    ctx.beginPath();
+    ctx.moveTo(0,H);
+    for(let x=0;x<=W;x+=18){
+      const y = H*L.y + Math.sin(x*0.0042 + li*1.7)*H*L.amp + Math.sin(x*0.0113 + li*0.6)*H*L.amp*0.42;
+      ctx.lineTo(x,y);
+    }
+    ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+  });
+}
+function drawGround(){
+  const g=ctx.createLinearGradient(0,H*0.82,0,H);
+  g.addColorStop(0,'#7c4c22'); g.addColorStop(1,'#3d2210');
+  ctx.fillStyle=g;
+  ctx.beginPath();
+  ctx.moveTo(0,H*0.86);
+  for(let x=0;x<=W;x+=18){
+    ctx.lineTo(x, H*0.86 + Math.sin(x*0.005)*7 + Math.sin(x*0.021)*3);
+  }
+  ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath(); ctx.fill();
+}
+function drawTree(tr,t){
+  const sway = Math.sin(t*0.001*tr.speed + tr.sway)*0.022;
+  const h=tr.h, x=tr.x, y=tr.y;
+  ctx.save();
+  ctx.translate(x,y); ctx.rotate(sway);
+  ctx.globalAlpha = 0.55 + tr.depth*0.45;
+
+  ctx.fillStyle='rgba(48,26,12,0.9)';
+  ctx.beginPath();
+  ctx.moveTo(-h*0.032,0);
+  ctx.quadraticCurveTo(-h*0.022,-h*0.42,-h*0.014,-h*0.74);
+  ctx.lineTo(h*0.014,-h*0.74);
+  ctx.quadraticCurveTo(h*0.022,-h*0.42,h*0.032,0);
+  ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle='rgba(48,26,12,0.75)';
+  ctx.lineWidth = Math.max(1.5,h*0.008); ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(0,-h*0.55); ctx.lineTo(-h*0.14,-h*0.68);
+  ctx.moveTo(0,-h*0.62); ctx.lineTo(h*0.13,-h*0.74);
+  ctx.moveTo(0,-h*0.48); ctx.lineTo(h*0.10,-h*0.56);
+  ctx.stroke();
+
+  const palette = tr.hue<0.34 ? ['#b8402a','#d4562a','#94281a']
+                : tr.hue<0.67 ? ['#d4741a','#e89030','#b85a10']
+                : ['#e8a13a','#f0b94a','#c98420'];
+  const cy=-h*0.72, cr=h*0.36;
+  for(let i=0;i<6;i++){
+    const a=(i/6)*Math.PI*2 + tr.hue*5;
+    ctx.fillStyle=palette[i%3];
+    ctx.beginPath();
+    ctx.arc(Math.cos(a)*cr*0.55, cy+Math.sin(a)*cr*0.38, cr*(0.45+Math.random()*0.12), 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha=1; ctx.restore();
+}
+function drawParticles(t){
+  for(let i=0;i<bgParticles.length;i++){
+    const p=bgParticles[i];
+    p.x += p.vx + Math.sin(t*0.0011 + p.phase)*0.35;
+    p.y += p.vy;
+    p.rot += p.vr;
+    if(p.y>H+25){ p.y=-25; p.x=Math.random()*W; }
+    if(p.x<-25) p.x=W+25;
+    if(p.x>W+25) p.x=-25;
+    ctx.save();
+    ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+    ctx.globalAlpha=p.alpha; ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.ellipse(0,0,p.size*0.45,p.size,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
+}
+function drawBackground(t){
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#ffe4a8'); grad.addColorStop(0.32,'#ffc285');
+  grad.addColorStop(0.62,'#f0995f'); grad.addColorStop(1,'#b85f36');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+
+  const sunX=W*0.78, sunY=H*0.19;
+  const sunGrad=ctx.createRadialGradient(sunX,sunY,8,sunX,sunY,H*0.48);
+  sunGrad.addColorStop(0,'rgba(255,247,205,0.92)');
+  sunGrad.addColorStop(0.14,'rgba(255,232,155,0.5)');
+  sunGrad.addColorStop(1,'rgba(255,200,100,0)');
+  ctx.fillStyle=sunGrad; ctx.fillRect(0,0,W,H);
+  ctx.beginPath(); ctx.arc(sunX,sunY,H*0.072,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,250,222,0.96)'; ctx.fill();
+
+  drawHills(); drawGround();
+  for(let i=0;i<trees.length;i++) drawTree(trees[i],t);
+  drawParticles(t);
+}
+let rafId=null;
+function loop(t){ drawBackground(t); rafId=requestAnimationFrame(loop); }
+
+/* ================= УТИЛІТИ ================= */
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    const tmp=a[i]; a[i]=a[j]; a[j]=tmp;
+  }
+  return a;
+}
+
+/* прибираємо префікс */
+function displayWord(word, cat){
+  if(cat === 'zi'){
+    return '_' + word.slice(2);   // зігріти → _гріти
+  }
+  return '_' + word.slice(1);     // сказати/зробити → _казати/_робити
+}
+
+/* ================= ЛИСТОЧКИ ================= */
+function computeLayout(n){
+  const rect = leavesCont.getBoundingClientRect();
+  let best = {leafW:0, leafH:0, cols:3, rows:3};
+  if(rect.width < 10 || rect.height < 10){
+    // fallback на випадок першого кадру
+    return {leafW:150, leafH:176, cols:3, rows:3};
+  }
+  for(let cols = 2; cols <= 6; cols++){
+    const rows = Math.ceil(n/cols);
+    const cellW = rect.width / cols;
+    const cellH = rect.height / rows;
+    const leafW = Math.min(cellW * 0.9, cellH * 0.9 * LEAF_ASPECT);
+    if(leafW > best.leafW){
+      best = {leafW, leafH: leafW / LEAF_ASPECT, cols, rows};
+    }
+  }
+  return best;
+}
+
+function updateWordFont(leaf, leafW){
+  const wordEl = leaf.el.querySelector('.leaf-word');
+  if(!wordEl) return;
+  const charCount = Math.max(3, leaf.displayText.length);
+  const maxW = leafW * 0.82;
+  let fs = maxW / (charCount * 0.55);
+  fs = Math.max(11, Math.min(36, fs));
+  wordEl.style.fontSize = fs.toFixed(1) + 'px';
+}
+
+function layoutLeaves(){
+  if(!leaves.length) return;
+  const rect = leavesCont.getBoundingClientRect();
+  if(rect.width < 10) return;
+
+  const L = computeLayout(leaves.length);
+  const n = leaves.length;
+  const cols = L.cols;
+  const rows = Math.ceil(n / cols);
+
+  leaves.forEach((leaf, i) => {
+    if(leaf.done) return;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cellW = rect.width / cols;
+    const cellH = rect.height / rows;
+    const cx = (col + 0.5) * cellW;
+    const cy = (row + 0.5) * cellH;
+    const jx = (Math.random() - 0.5) * cellW * 0.06;
+    const jy = (Math.random() - 0.5) * cellH * 0.06;
+
+    leaf.el.style.left = (cx + jx) + 'px';
+    leaf.el.style.top  = (cy + jy) + 'px';
+    leaf.el.style.width  = L.leafW + 'px';
+    leaf.el.style.height = L.leafH + 'px';
+
+    updateWordFont(leaf, L.leafW);
+  });
+}
+
+function generateRound(){
+  roundToken++;
+  if(regenPoller){ clearTimeout(regenPoller); regenPoller = null; }
+  checking = false;
+  leavesCont.innerHTML = '';
+  leaves = [];
+
+  // адаптивна кількість листочків: 12 або 9
+  const probe = computeLayout(12);
+  const perCat = probe.leafW >= 130 ? 4 : 3;
+
+  const picks = [];
+  ['s','z','zi'].forEach(cat => {
+    const pool = shuffle(WORDS[cat].slice());
+    for(let i=0;i<perCat && i<pool.length;i++){
+      picks.push({word:pool[i], cat:cat});
+    }
+  });
+  shuffle(picks);
+
+  picks.forEach((p) => {
+    const slot = document.createElement('div');
+    slot.className = 'leaf-slot';
+
+    const shapeIdx = Math.floor(Math.random()*LEAF_PATHS.length);
+    const path = LEAF_PATHS[shapeIdx];
+    const rot = (Math.random()-0.5)*28;
+    const scale = 0.92 + Math.random()*0.13;
+    const delay = (Math.random()*2.5).toFixed(2);
+
+    const displayText = displayWord(p.word, p.cat);
+
+    slot.innerHTML =
+      '<div class="leaf" style="--r:'+rot.toFixed(1)+'deg;--s:'+scale.toFixed(2)+';--d:'+delay+'s;">' +
+        '<svg viewBox="0 0 100 130" preserveAspectRatio="xMidYMid meet">' +
+          '<path class="leaf-body" d="'+path+'"/>' +
+          '<path class="leaf-sheen" d="'+path+'" fill="url(#sheenGrad)"/>' +
+          '<path class="leaf-vein" d="M50,18 Q52,66 50,112"/>' +
+          '<path class="leaf-sideveins" d="M50,40 L41,49 M50,40 L59,49 M50,56 L40,65 M50,56 L60,65 M50,72 L41,81 M50,72 L59,81"/>' +
+        '</svg>' +
+        '<span class="leaf-word"></span>' +
+      '</div>';
+
+    slot.querySelector('.leaf-word').textContent = displayText;
+
+    const obj = {
+      word: p.word,
+      cat: p.cat,
+      displayText: displayText,
+      color: null,
+      el: slot,
+      done: false
+    };
+    leaves.push(obj);
+
+    slot.addEventListener('click', function(e){
+      e.stopPropagation();
+      paintLeaf(obj);
+    });
+
+    leavesCont.appendChild(slot);
+  });
+
+  layoutLeaves();
+}
+
+function paintLeaf(leaf){
+  if(leaf.done) return;
+  ensureAudio();
+
+  if(!selectedCat){
+    document.querySelectorAll('.swatch').forEach(s => {
+      s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash');
+      setTimeout(()=>s.classList.remove('flash'),480);
+    });
+    tone(320,0,0.12,'sine',0.06);
+    return;
+  }
+
+  if(leaf.color === selectedCat) return;
+
+  leaf.color = selectedCat;
+  leaf.el.style.setProperty('--fill', CATS[selectedCat].hex);
+  leaf.el.classList.remove('pop'); void leaf.el.offsetWidth;
+  leaf.el.classList.add('pop');
+  playPaint(selectedCat);
+}
+
+/* ================= ПЕРЕВІРКА ================= */
+function checkAll(){
+  if(checking) return;
+  const remaining = leaves.filter(l => !l.done);
+  if(!remaining.length) return;
+
+  const anyPainted = remaining.some(l => l.color !== null);
+  if(!anyPainted){
+    document.querySelectorAll('.swatch').forEach(s => {
+      s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash');
+      setTimeout(()=>s.classList.remove('flash'),480);
+    });
+    playError();
+    return;
+  }
+
+  checking = true;
+  const myToken = roundToken;
+
+  let anyWrong = false;
+  let anyRight = false;
+
+  remaining.forEach((leaf, idx) => {
+    const isCorrect = (leaf.color === leaf.cat);
+
+    if(isCorrect){
+      anyRight = true;
+      leaf.done = true;
+      setTimeout(() => {
+        if(myToken !== roundToken) return;
+        leaf.el.classList.add('correct');
+        setTimeout(() => {
+          if(myToken !== roundToken) return;
+          leaf.el.classList.add('falling');
+          setTimeout(() => {
+            if(myToken !== roundToken) return;
+            if(leaf.el.parentNode) leaf.el.remove();
+          }, 2950);
+        }, 220);
+      }, idx * 70);
+    } else {
+      anyWrong = true;
+      leaf.el.classList.add('wrong');
+      setTimeout(() => leaf.el.classList.remove('wrong'), 720);
+    }
+  });
+
+  if(anyRight) setTimeout(playCorrect, 120);
+  if(anyWrong) setTimeout(playError, 380);
+
+  if(anyRight && !anyWrong){
+    setTimeout(() => { if(myToken === roundToken) playSuccess(); }, 550);
+    pollAutoRegen(myToken);
+  }
+
+  setTimeout(() => {
+    if(myToken === roundToken) checking = false;
+  }, 1200);
+}
+
+function pollAutoRegen(token){
+  if(token !== roundToken) return;
+  const allDone = leaves.length > 0 && leaves.every(l => l.done);
+  const allGone = leavesCont.children.length === 0;
+  if(allDone && allGone){
+    generateRound();
+    return;
+  }
+  regenPoller = setTimeout(() => pollAutoRegen(token), 250);
+}
+
+/* ================= ПОДІЇ ================= */
+document.querySelectorAll('.swatch').forEach(sw => {
+  sw.addEventListener('click', function(e){
+    e.stopPropagation();
+    ensureAudio();
+    selectedCat = sw.dataset.cat;
+    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    playSelect();
+  });
+});
+
+document.getElementById('checkBtn').addEventListener('click', function(e){
+  e.stopPropagation();
+  ensureAudio();
+  checkAll();
+});
+
+document.getElementById('nextBtn').addEventListener('click', function(e){
+  e.stopPropagation();
+  ensureAudio();
+  tone(660,0,0.09,'sine',0.07);
+  tone(990,0.05,0.09,'sine',0.05);
+  generateRound();
+});
+
+document.addEventListener('pointerdown', function initAudioOnce(){
+  ensureAudio();
+  document.removeEventListener('pointerdown', initAudioOnce);
+});
+
+let resizeTimer = null;
+window.addEventListener('resize', function(){
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function(){
+    resizeCanvas();
+    layoutLeaves();
+  }, 150);
+});
+
+/* ================= СТАРТ ================= */
+function start(){
+  resizeCanvas();
+  generateRound();
+  if(rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(loop);
+}
+start();
+
+})();
+</script>
+</body>
+</html>
