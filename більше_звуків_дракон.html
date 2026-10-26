@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Битва з Драконом</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #0c0508;
+      font-family: 'Montserrat', sans-serif;
+    }
+
+    #game-stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: radial-gradient(circle at 60% 45%, #47141e 0%, #210913 50%, #090306 100%);
+    }
+
+    /* Тремтіння екрану під час ударів та реву дракона */
+    .screen-shake {
+      animation: shakeLight 0.42s cubic-bezier(.36,.07,.19,.97) both;
+    }
+    .screen-shake-heavy {
+      animation: shakeHeavy 0.8s cubic-bezier(.36,.07,.19,.97) both;
+    }
+
+    @keyframes shakeLight {
+      10%, 90% { transform: translate3d(-4px, 2px, 0); }
+      20%, 80% { transform: translate3d(6px, -3px, 0); }
+      30%, 50%, 70% { transform: translate3d(-8px, 4px, 0); }
+      40%, 60% { transform: translate3d(8px, -4px, 0); }
+    }
+
+    @keyframes shakeHeavy {
+      0%, 100% { transform: translate3d(0, 0, 0); }
+      10%, 30%, 50%, 70%, 90% { transform: translate3d(-13px, 7px, 0) rotate(-0.6deg); }
+      20%, 40%, 60%, 80% { transform: translate3d(13px, -7px, 0) rotate(0.6deg); }
+    }
+
+    /* Шари сцени */
+    #bg-svg, #bg-canvas, #battle-svg, #fx-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    #bg-svg { z-index: 1; object-fit: cover; }
+    #bg-canvas { z-index: 2; }
+    #battle-svg { z-index: 3; object-fit: cover; }
+    #fx-canvas { z-index: 5; }
+
+    /* Верхня панель для підвішених на ланцюгах геральдичних щитів зі словами (НІКОЛИ не перекриває голови дракона) */
+    #banners-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 25vh;
+      max-height: 220px;
+      z-index: 6;
+      pointer-events: none;
+      display: flex;
+      justify-content: flex-end;
+      align-items: flex-start;
+      padding-right: 9vw;
+      gap: 3.5vw;
+    }
+
+    .word-banner {
+      position: relative;
+      pointer-events: auto;
+      cursor: pointer;
+      width: clamp(250px, 27vw, 450px);
+      transform-origin: top center;
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease, opacity 0.25s ease;
+      filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.9));
+    }
+
+    .word-banner:hover {
+      transform: translateY(6px) scale(1.05);
+      filter: drop-shadow(0 18px 28px rgba(255, 175, 40, 0.6)) brightness(1.12);
+    }
+
+    .word-banner:active {
+      transform: translateY(2px) scale(0.97);
+    }
+
+    .word-banner.disabled {
+      pointer-events: none;
+    }
+
+    .word-banner svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      overflow: visible;
+    }
+
+    .word-text {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 900;
+      font-size: 46px;
+      letter-spacing: 1.5px;
+      fill: url(#parchmentGoldGrad);
+      paint-order: stroke fill;
+      stroke: #1a0805;
+      stroke-width: 7px;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 4px 3px rgba(0,0,0,0.95));
+      pointer-events: none;
+    }
+
+    /* Клікабельні голови дракона */
+    .dragon-hitbox {
+      cursor: pointer;
+      pointer-events: all;
+      transition: filter 0.2s ease;
+    }
+    .dragon-hitbox:hover, .dragon-hitbox.linked-hover {
+      filter: brightness(1.22) drop-shadow(0 0 18px rgba(255, 165, 30, 0.75));
+    }
+
+    /* Мінімалістична кована кнопка "Далі" */
+    #skip-btn {
+      position: absolute;
+      top: clamp(14px, 2.2vh, 26px);
+      right: clamp(14px, 2vw, 28px);
+      z-index: 10;
+      width: clamp(54px, 4.8vw, 70px);
+      height: clamp(54px, 4.8vw, 70px);
+      cursor: pointer;
+      background: none;
+      border: none;
+      outline: none;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
+      filter: drop-shadow(0 8px 16px rgba(0,0,0,0.85));
+    }
+
+    #skip-btn:hover {
+      transform: scale(1.13) rotate(5deg);
+      filter: drop-shadow(0 10px 20px rgba(255, 190, 50, 0.7)) brightness(1.15);
+    }
+
+    #skip-btn:active {
+      transform: scale(0.93);
+    }
+
+    .lava-glow {
+      animation: lavaPulse 3.2s ease-in-out infinite alternate;
+    }
+    @keyframes lavaPulse {
+      0% { opacity: 0.7; filter: brightness(0.95); }
+      100% { opacity: 1; filter: brightness(1.3); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-stage">
+  <!-- ================= 1. СЮЖЕТНИЙ ЖИВИЙ ФОН ІЗ ЗАМКОМ НА СКЕЛІ (SVG) ================= -->
+  <svg id="bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#08030d"/>
+        <stop offset="28%" stop-color="#1c0921"/>
+        <stop offset="58%" stop-color="#471220"/>
+        <stop offset="82%" stop-color="#852319"/>
+        <stop offset="100%" stop-color="#d45622"/>
+      </linearGradient>
+
+      <radialGradient id="craterGlow" cx="64%" cy="62%" r="48%">
+        <stop offset="0%" stop-color="#ff7b00" stop-opacity="0.52"/>
+        <stop offset="45%" stop-color="#b81d13" stop-opacity="0.26"/>
+        <stop offset="100%" stop-color="#1a050d" stop-opacity="0"/>
+      </radialGradient>
+
+      <radialGradient id="bloodMoon" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff6d6"/>
+        <stop offset="55%" stop-color="#f7b257"/>
+        <stop offset="85%" stop-color="#d44b20" stop-opacity="0.65"/>
+        <stop offset="100%" stop-color="#d44b20" stop-opacity="0"/>
+      </radialGradient>
+
+      <linearGradient id="farMountGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#2c101d"/>
+        <stop offset="100%" stop-color="#12050c"/>
+      </linearGradient>
+
+      <!-- Масивна скеля під замком, що спускається до самого низу долини -->
+      <linearGradient id="castleCliffGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#3b2029"/>
+        <stop offset="45%" stop-color="#241119"/>
+        <stop offset="100%" stop-color="#0d0509"/>
+      </linearGradient>
+
+      <linearGradient id="castleWallGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#4a2c36"/>
+        <stop offset="55%" stop-color="#2b1620"/>
+        <stop offset="100%" stop-color="#14080e"/>
+      </linearGradient>
+
+      <linearGradient id="midMountGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#220b15"/>
+        <stop offset="100%" stop-color="#090307"/>
+      </linearGradient>
+
+      <linearGradient id="bridgeStoneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#3d2f3a"/>
+        <stop offset="22%" stop-color="#291e27"/>
+        <stop offset="65%" stop-color="#171017"/>
+        <stop offset="100%" stop-color="#080508"/>
+      </linearGradient>
+
+      <linearGradient id="dragonRockGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#402325"/>
+        <stop offset="45%" stop-color="#241115"/>
+        <stop offset="100%" stop-color="#090407"/>
+      </linearGradient>
+
+      <linearGradient id="lavaRiverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fff282"/>
+        <stop offset="35%" stop-color="#ff7700"/>
+        <stop offset="75%" stop-color="#cc1600"/>
+        <stop offset="100%" stop-color="#4a0404"/>
+      </linearGradient>
+
+      <linearGradient id="parchmentGoldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="40%" stop-color="#fef08a"/>
+        <stop offset="80%" stop-color="#f59e0b"/>
+        <stop offset="100%" stop-color="#b45309"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Небо та вулканічна заграва -->
+    <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+    <rect width="1920" height="1080" fill="url(#craterGlow)"/>
+
+    <!-- Багряний місяць -->
+    <circle cx="145" cy="185" r="95" fill="url(#bloodMoon)" opacity="0.85"/>
+
+    <!-- Далекий гірський хребет на горизонті -->
+    <path d="M0,660 L110,520 L220,565 L370,450 L520,570 L670,470 L820,595 L980,455 L1140,580 L1310,415 L1490,555 L1670,430 L1810,530 L1920,475 L1920,1080 L0,1080 Z" fill="url(#farMountGrad)"/>
+
+    <!-- ================= МІЦНО ВКОРІНЕНА СКЕЛЯ ТА ФОРТЕЦЯ (БЕЗ ЗАВИСАННЯ В ПОВІТРІ) ================= -->
+    <g id="grounded-castle-complex">
+      <!-- Масивний скелястий стрімчак, на якому стоїть замок (йде від вершин замку аж до підніжжя мосту y=900) -->
+      <path d="M120,860 L165,640 L215,525 L245,455 L465,455 L505,535 L555,650 L620,860 Z" fill="url(#castleCliffGrad)" stroke="#14070c" stroke-width="3"/>
+      <!-- Кам'яні грані, уступи та рельєф скелі під замком -->
+      <path d="M245,455 L285,575 L235,720 L260,840 L150,840 L185,660 L225,530 Z" fill="#4f2d38" opacity="0.45"/>
+      <path d="M355,460 L380,590 L340,745 M465,455 L435,585 L485,730 M245,460 L300,530 L375,495 L455,540" stroke="#14070c" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <!-- Підпірні кам'яні контрфорси, що вростають прямо у скелю -->
+      <path d="M250,480 L235,565 L268,545 L268,460 Z" fill="#2c1721" stroke="#12060b" stroke-width="2"/>
+      <path d="M335,485 L328,585 L362,560 L362,465 Z" fill="#2c1721" stroke="#12060b" stroke-width="2"/>
+      <path d="M430,480 L445,570 L412,550 L412,460 Z" fill="#2c1721" stroke="#12060b" stroke-width="2"/>
+
+      <!-- Мури та вежі середньовічного замку, що стоять прямо на скельному плато -->
+      <g transform="translate(225, 250)">
+        <!-- Головна основа цитаделі (вмурована в скелю на рівні y=205..235) -->
+        <path d="M15,225 L15,105 L30,105 L30,120 L46,120 L46,105 L62,105 L62,160 L88,160 L88,58 L152,58 L152,150 L182,150 L182,88 L198,88 L198,104 L214,104 L214,88 L230,88 L230,225 Q175,240 120,232 Q65,240 15,225 Z" fill="url(#castleWallGrad)" stroke="#12060b" stroke-width="3"/>
+
+        <!-- Ліва сторожова вежа з гострим дахом -->
+        <rect x="18" y="95" width="42" height="125" fill="url(#castleWallGrad)" stroke="#12060b" stroke-width="2.5"/>
+        <path d="M10,95 L39,42 L68,95 Z" fill="#5c1922" stroke="#1a060b" stroke-width="2.5"/>
+
+        <!-- Центральний Донжон (Головна вежа) -->
+        <rect x="85" y="45" width="70" height="180" fill="url(#castleWallGrad)" stroke="#12060b" stroke-width="3"/>
+        <!-- Зубці центральної вежі -->
+        <path d="M78,45 L78,28 L94,28 L94,38 L108,38 L108,28 L132,28 L132,38 L146,38 L146,28 L162,28 L162,45 Z" fill="#3b202b" stroke="#12060b" stroke-width="2"/>
+        <!-- Високий шатровий дах донжона -->
+        <path d="M82,28 L120,-38 L158,28 Z" fill="#691b24" stroke="#1a060b" stroke-width="2.5"/>
+
+        <!-- Права башта -->
+        <rect x="180" y="80" width="48" height="142" fill="url(#castleWallGrad)" stroke="#12060b" stroke-width="2.5"/>
+        <path d="M172,80 L204,28 L236,80 Z" fill="#5c1922" stroke="#1a060b" stroke-width="2.5"/>
+
+        <!-- Рухомі королівські прапори на шпилях замку -->
+        <line x1="39" y1="42" x2="39" y2="8" stroke="#eab308" stroke-width="2.5"/>
+        <path id="castle-flag-1" d="M39,10 Q60,16 78,10 L68,20 L78,28 Q58,22 39,28 Z" fill="#dc2626" stroke="#fde047" stroke-width="1"/>
+
+        <line x1="120" y1="-38" x2="120" y2="-78" stroke="#eab308" stroke-width="3"/>
+        <path id="castle-flag-2" d="M120,-76 Q148,-68 172,-76 L158,-64 L172,-52 Q145,-60 120,-52 Z" fill="#dc2626" stroke="#fde047" stroke-width="1.2"/>
+
+        <line x1="204" y1="28" x2="204" y2="-6" stroke="#eab308" stroke-width="2.5"/>
+        <path id="castle-flag-3" d="M204,-4 Q225,2 243,-4 L233,6 L243,14 Q223,8 204,14 Z" fill="#dc2626" stroke="#fde047" stroke-width="1"/>
+
+        <!-- Тепле світло у бійницях та вікнах замку -->
+        <rect x="106" y="68" width="10" height="24" rx="5" fill="#ffbe42" class="lava-glow"/>
+        <rect x="124" y="68" width="10" height="24" rx="5" fill="#ffbe42" class="lava-glow"/>
+        <rect x="115" y="115" width="12" height="28" rx="6" fill="#ff9922" class="lava-glow"/>
+        <rect x="34" y="118" width="9" height="20" rx="4" fill="#ff9922" class="lava-glow"/>
+        <rect x="199" y="105" width="10" height="22" rx="4" fill="#ff9922" class="lava-glow"/>
+        <!-- Кована брама замку та серпантин стежки вниз по скелі -->
+        <path d="M104,225 L104,182 Q120,165 136,182 L136,225 Z" fill="#14070a" stroke="#eab308" stroke-width="2"/>
+        <line x1="112" y1="176" x2="112" y2="225" stroke="#52343d" stroke-width="2"/>
+        <line x1="120" y1="173" x2="120" y2="225" stroke="#52343d" stroke-width="2"/>
+        <line x1="128" y1="176" x2="128" y2="225" stroke="#52343d" stroke-width="2"/>
+      </g>
+    </g>
+
+    <!-- Середній план гір із потоками лави -->
+    <path d="M0,760 L140,655 L290,725 L540,585 L730,735 L950,555 L1140,695 L1360,505 L1590,675 L1790,545 L1920,625 L1920,1080 L0,1080 Z" fill="url(#midMountGrad)"/>
+
+    <!-- Розжарені лавові ріки в ущелині -->
+    <g class="lava-glow">
+      <path d="M950,560 Q970,650 920,740 Q870,830 940,950 L1000,950 Q950,825 985,735 Q1015,645 965,560 Z" fill="url(#lavaRiverGrad)"/>
+      <path d="M1360,510 Q1330,605 1380,690 Q1420,770 1350,900 L1400,900 Q1465,775 1415,685 Q1370,605 1375,510 Z" fill="url(#lavaRiverGrad)"/>
+      <ellipse cx="970" cy="935" rx="260" ry="42" fill="url(#lavaRiverGrad)" opacity="0.55"/>
+    </g>
+
+    <!-- Кам'яний бастіон та міст, по якому крокує Лицар -->
+    <g>
+      <path d="M0,835 L1290,842 L1350,925 L1260,1080 L0,1080 Z" fill="url(#bridgeStoneGrad)"/>
+      <!-- Зубці парапету вздовж мосту -->
+      <path d="M0,810 L90,810 L90,835 L130,835 L130,810 L220,810 L220,835 L260,835 L260,810 L350,810 L350,835 L390,835 L390,810 L480,810 L480,835 L520,835 L520,810 L610,810 L610,835 L650,835 L650,810 L740,810 L740,835 L780,835 L780,810 L870,810 L870,835 L910,835 L910,810 L1000,810 L1000,835 L1040,835 L1040,810 L1130,810 L1130,835 L0,835 Z" fill="#231922"/>
+      <!-- Кам'яні плити дороги -->
+      <path d="M0,842 L1290,848 L1325,890 L0,890 Z" fill="#4b3a46"/>
+      <path d="M0,848 L1295,854" stroke="#6b5364" stroke-width="3" opacity="0.65"/>
+      <g fill="#2d212b" stroke="#140d13" stroke-width="2" opacity="0.8">
+        <rect x="45" y="856" width="130" height="26" rx="4"/>
+        <rect x="195" y="858" width="160" height="25" rx="4"/>
+        <rect x="375" y="855" width="140" height="28" rx="4"/>
+        <rect x="535" y="859" width="175" height="24" rx="4"/>
+        <rect x="730" y="856" width="145" height="27" rx="4"/>
+        <rect x="895" y="858" width="165" height="25" rx="4"/>
+        <rect x="1080" y="860" width="140" height="25" rx="4"/>
+      </g>
+      <!-- Опорні арки мосту -->
+      <path d="M120,1080 Q260,905 400,1080 Z" fill="#090408"/>
+      <path d="M520,1080 Q670,905 820,1080 Z" fill="#090408"/>
+      <path d="M920,1080 Q1060,920 1200,1080 Z" fill="#090408"/>
+    </g>
+
+    <!-- Ковані жаровні з живим вогнем уздовж мосту -->
+    <g transform="translate(155, 725)">
+      <path d="M15,120 L25,45 L35,45 L45,120 Z" fill="#1a1318" stroke="#42323d" stroke-width="2"/>
+      <path d="M0,45 Q30,75 60,45 L52,30 L8,30 Z" fill="#2c2028" stroke="#6e5239" stroke-width="2"/>
+      <ellipse cx="30" cy="30" rx="22" ry="8" fill="#ff7b00" class="lava-glow"/>
+    </g>
+    <g transform="translate(795, 732)">
+      <path d="M15,120 L25,45 L35,45 L45,120 Z" fill="#1a1318" stroke="#42323d" stroke-width="2"/>
+      <path d="M0,45 Q30,75 60,45 L52,30 L8,30 Z" fill="#2c2028" stroke="#6e5239" stroke-width="2"/>
+      <ellipse cx="30" cy="30" rx="22" ry="8" fill="#ff7b00" class="lava-glow"/>
+    </g>
+
+    <!-- Вулканічний скелястий бастіон справа, де стоїть Двоглавий Дракон -->
+    <g>
+      <path d="M1140,1080 L1200,835 L1315,785 L1540,765 L1780,780 L1920,740 L1920,1080 Z" fill="url(#dragonRockGrad)"/>
+      <path d="M1260,855 L1340,905 L1310,985 M1520,810 L1470,895 L1540,990 M1710,825 L1660,935" stroke="url(#lavaRiverGrad)" stroke-width="5" fill="none" stroke-linecap="round" class="lava-glow"/>
+      <path d="M1200,835 L1315,785 L1540,765 L1780,780 L1920,740 L1920,770 L1775,805 L1535,795 L1325,815 L1215,860 Z" fill="#543132" opacity="0.65"/>
+    </g>
+  </svg>
+
+  <!-- Канвас живого фону: хмари, далекі дракони в небі, полум'я смолоскипів, іскри -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- ================= 2. ПЕРСОНАЖІ: ЛИЦАР З РУХОМИМИ НОГАМИ ТА ДВОГЛАВИЙ ДРАКОН (SVG) ================= -->
+  <svg id="battle-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="steelLight" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#f8fafc"/>
+        <stop offset="30%" stop-color="#cbd5e1"/>
+        <stop offset="65%" stop-color="#64748b"/>
+        <stop offset="100%" stop-color="#1e293b"/>
+      </linearGradient>
+
+      <linearGradient id="steelDark" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#94a3b8"/>
+        <stop offset="50%" stop-color="#475569"/>
+        <stop offset="100%" stop-color="#0f172a"/>
+      </linearGradient>
+
+      <linearGradient id="royalGold" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fef08a"/>
+        <stop offset="40%" stop-color="#eab308"/>
+        <stop offset="80%" stop-color="#a16207"/>
+        <stop offset="100%" stop-color="#422006"/>
+      </linearGradient>
+
+      <linearGradient id="crimsonCape" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#dc2626"/>
+        <stop offset="55%" stop-color="#991b1b"/>
+        <stop offset="100%" stop-color="#450a0a"/>
+      </linearGradient>
+
+      <linearGradient id="swordBlade" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="48%" stop-color="#e2e8f0"/>
+        <stop offset="52%" stop-color="#94a3b8"/>
+        <stop offset="100%" stop-color="#cbd5e1"/>
+      </linearGradient>
+
+      <linearGradient id="dragonBodyScale" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#7f1d1d"/>
+        <stop offset="45%" stop-color="#450a0a"/>
+        <stop offset="100%" stop-color="#1c0408"/>
+      </linearGradient>
+
+      <!-- Ліва голова має рубіново-золотий відтінок луски (відповідає Лівому Щиту) -->
+      <linearGradient id="dragonLeftScale" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#b91c1c"/>
+        <stop offset="50%" stop-color="#6b1111"/>
+        <stop offset="100%" stop-color="#290507"/>
+      </linearGradient>
+
+      <!-- Права голова має бронзово-смарагдовий гребінь і темну бронзову луску (відповідає Правому Щиту) -->
+      <linearGradient id="dragonRightScale" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#9a3412"/>
+        <stop offset="50%" stop-color="#431407"/>
+        <stop offset="100%" stop-color="#1f0802"/>
+      </linearGradient>
+
+      <linearGradient id="dragonBellyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#f59e0b"/>
+        <stop offset="30%" stop-color="#d97706"/>
+        <stop offset="75%" stop-color="#92400e"/>
+        <stop offset="100%" stop-color="#451a03"/>
+      </linearGradient>
+
+      <linearGradient id="wingMembrane" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#991b1b" stop-opacity="0.92"/>
+        <stop offset="60%" stop-color="#4c0519" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="#1e0209" stop-opacity="0.98"/>
+      </linearGradient>
+
+      <linearGradient id="hornGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fef3c7"/>
+        <stop offset="45%" stop-color="#b45309"/>
+        <stop offset="100%" stop-color="#291202"/>
+      </linearGradient>
+
+      <radialGradient id="dragonEyeGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fef08a"/>
+        <stop offset="55%" stop-color="#f97316"/>
+        <stop offset="100%" stop-color="#dc2626"/>
+      </radialGradient>
+
+      <radialGradient id="magmaThroat" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="35%" stop-color="#fde047"/>
+        <stop offset="75%" stop-color="#ea580c"/>
+        <stop offset="100%" stop-color="#7f1d1d"/>
+      </radialGradient>
+    </defs>
+
+    <!-- ==================== ДВОГЛАВИЙ ДРАКОН (НИЖЧЕ В ПРАВІЙ ЗОНІ, ЩОБ ЩИТИ ЗГОРИ НІКОЛИ НЕ ПЕРЕКРИВАЛИ ГОЛОВИ) ==================== -->
+    <g id="dragon-root" transform="translate(1485, 815) scale(0.92)">
+      <ellipse cx="0" cy="38" rx="275" ry="38" fill="#050204" opacity="0.82"/>
+
+      <!-- Хвіст дракона -->
+      <g id="dragon-tail">
+        <path d="M80,-10 Q240,35 330,-45 Q405,-115 350,-195 Q310,-240 275,-200 Q315,-165 285,-110 Q230,-35 95,-55 Z" fill="url(#dragonBodyScale)" stroke="#240507" stroke-width="3"/>
+        <path d="M160,-15 L175,-42 L195,-18 M235,-30 L260,-62 L272,-35 M315,-85 L348,-105 L335,-125 M350,-195 L395,-230 L340,-225 L310,-190 Z" fill="url(#hornGrad)"/>
+      </g>
+
+      <!-- Ліве крило -->
+      <g id="dragon-wing-left" transform="translate(-45, -210)">
+        <path d="M0,0 Q-140,-175 -300,-205 Q-240,-110 -270,-30 Q-185,-85 -180,-5 Q-115,-50 -95,30 Q-45,-25 0,40 Z" fill="url(#wingMembrane)" stroke="#2b0609" stroke-width="3"/>
+        <path d="M0,0 Q-140,-175 -300,-205 L-318,-230 L-285,-212" stroke="url(#hornGrad)" stroke-width="8" fill="none" stroke-linecap="round"/>
+        <path d="M-150,-135 L-270,-30 M-105,-95 L-180,-5 M-65,-60 L-95,30" stroke="#69141e" stroke-width="4" stroke-linecap="round"/>
+      </g>
+
+      <!-- Праве крило -->
+      <g id="dragon-wing-right" transform="translate(55, -220)">
+        <path d="M0,0 Q130,-205 330,-245 Q270,-135 305,-45 Q210,-105 210,-12 Q125,-65 105,25 Q55,-25 0,45 Z" fill="url(#wingMembrane)" stroke="#38070c" stroke-width="4"/>
+        <path d="M0,0 Q130,-205 330,-245" stroke="#5c1118" stroke-width="12" fill="none" stroke-linecap="round"/>
+        <path d="M160,-150 L335,-250 L358,-228 L325,-225 Z" fill="url(#hornGrad)"/>
+        <path d="M190,-165 L305,-45 M135,-120 L210,-12 M82,-75 L105,25" stroke="#7d1924" stroke-width="5" stroke-linecap="round"/>
+      </g>
+
+      <!-- Задні лапи -->
+      <g id="dragon-back-legs">
+        <path d="M75,-115 Q175,-85 160,15 L95,25 Q95,-35 35,-65 Z" fill="url(#dragonBodyScale)" stroke="#1f0306" stroke-width="3"/>
+        <path d="M95,25 L68,42 L88,18 M120,25 L98,46 L118,18 M148,20 L132,42 L152,14" fill="url(#hornGrad)" stroke="#1f0b02" stroke-width="1.5"/>
+      </g>
+
+      <!-- Тулуб Дракона -->
+      <g id="dragon-torso">
+        <path d="M-135,-120 Q-165,-245 -45,-285 Q95,-305 135,-175 Q165,-55 65,10 Q-55,30 -135,-120 Z" fill="url(#dragonBodyScale)" stroke="#240407" stroke-width="4"/>
+        <path d="M-115,-125 Q-135,-215 -45,-255 Q35,-250 45,-145 Q40,-45 -35,-10 Q-95,-35 -115,-125 Z" fill="url(#dragonBellyGrad)" stroke="#451a03" stroke-width="3"/>
+        <path d="M-108,-185 Q-35,-165 25,-195 M-115,-145 Q-35,-125 38,-155 M-105,-105 Q-30,-85 38,-115 M-85,-65 Q-25,-50 25,-75" stroke="#ff9900" stroke-width="4" fill="none" opacity="0.85"/>
+        <path d="M-95,-110 Q-175,-60 -155,22 L-95,28 Q-100,-35 -45,-75 Z" fill="url(#dragonBodyScale)" stroke="#1f0306" stroke-width="3"/>
+        <path d="M-155,22 L-185,38 L-150,12 M-130,25 L-158,44 L-125,14 M-102,28 L-125,45 L-98,16" fill="url(#hornGrad)" stroke="#1f0b02" stroke-width="1.5"/>
+      </g>
+
+      <!-- ======== ГОЛОВА 0: ЛІВА ШИЯ ТА ГОЛОВА (РУБІНОВИЙ НАШИЙНИК — ВІДПОВІДАЄ ЛІВОМУ ЩИТУ) ======== -->
+      <g id="dragon-neck-0" class="dragon-hitbox" transform="translate(-95, -215)">
+        <path d="M-35,20 Q-85,-30 -105,-85 L-45,-105 Q-25,-50 25,-5 Z" fill="url(#dragonLeftScale)" stroke="#240407" stroke-width="3"/>
+        <path d="M-32,12 Q-75,-30 -95,-80" stroke="url(#dragonBellyGrad)" stroke-width="14" stroke-linecap="round" fill="none"/>
+
+        <!-- Рухома голова 0, що відрубується -->
+        <g id="dragon-head-0-detachable" transform="translate(-82, -92)">
+          <path d="M-20,10 Q-62,-65 -15,-135 L40,-112 Q10,-55 35,5 Z" fill="url(#dragonLeftScale)" stroke="#240407" stroke-width="3"/>
+          <!-- Рубіново-золотий нашийник для візуального зв'язку з Лівим Щитом -->
+          <path d="M-32,-38 Q0,-25 26,-42" stroke="#eab308" stroke-width="7" fill="none" stroke-linecap="round"/>
+          <circle cx="-6" cy="-34" r="6" fill="#ef4444" stroke="#fef08a" stroke-width="2"/>
+          <!-- Гребінь -->
+          <path d="M22,-118 L52,-132 L32,-95 L60,-102 L38,-68 L62,-70 L35,-38 Z" fill="url(#hornGrad)"/>
+          <path d="M-15,5 Q-50,-60 -10,-125" stroke="url(#dragonBellyGrad)" stroke-width="13" stroke-linecap="round" fill="none"/>
+
+          <!-- Череп 0 -->
+          <g id="dragon-skull-0" transform="translate(-10, -128)">
+            <path d="M10,-35 Q85,-72 135,-35 Q75,-30 25,-5 Z" fill="url(#hornGrad)" stroke="#291202" stroke-width="2.5"/>
+            <path d="M20,-15 Q75,-35 110,-5 Q65,-5 22,10 Z" fill="url(#hornGrad)" stroke="#291202" stroke-width="2"/>
+
+            <!-- Нижня щелепа 0 -->
+            <g id="dragon-jaw-0" transform="translate(-15, 10)">
+              <path d="M0,0 Q-65,5 -115,0 Q-75,30 0,22 Z" fill="url(#magmaThroat)"/>
+              <path d="M15,5 Q-55,38 -135,18 Q-145,8 -125,2 L0,-2 Z" fill="url(#dragonLeftScale)" stroke="#240407" stroke-width="3"/>
+              <path d="M-115,4 L-110,-14 L-100,4 M-85,4 L-82,-11 L-74,4 M-55,3 L-52,-9 L-45,3" fill="#fffbeb" stroke="#451a03" stroke-width="1"/>
+            </g>
+
+            <!-- Верхня щелепа 0 -->
+            <path d="M35,5 Q25,-45 -25,-42 Q-85,-32 -145,-12 Q-162,2 -140,12 L-10,12 Z" fill="url(#dragonLeftScale)" stroke="#240407" stroke-width="3"/>
+            <path d="M-132,10 L-126,28 L-116,10 M-102,10 L-96,24 L-88,10 M-70,10 L-66,22 L-58,10 M-40,10 L-36,20 L-30,10" fill="#fffbeb" stroke="#451a03" stroke-width="1"/>
+            <ellipse id="nostril-0" cx="-132" cy="-4" rx="6" ry="4" fill="#1a0305" stroke="#ff7b00" stroke-width="1.5"/>
+            <path d="M-138,-10 L-152,-32 L-122,-15 Z" fill="url(#hornGrad)"/>
+
+            <!-- Око 0 -->
+            <g transform="translate(-52, -16)">
+              <ellipse cx="0" cy="0" rx="15" ry="11" fill="url(#dragonEyeGlow)" stroke="#1a0305" stroke-width="2.5"/>
+              <ellipse id="dragon-pupil-0" cx="-3" cy="0" rx="3.5" ry="9" fill="#090204"/>
+              <circle cx="-6" cy="-4" r="2.5" fill="#ffffff" opacity="0.9"/>
+              <path id="dragon-shock-0" d="M-8,-8 L8,8 M8,-8 L-8,8" stroke="#1a0305" stroke-width="3.5" stroke-linecap="round" opacity="0"/>
+              <path id="dragon-brow-0" d="M-18,-10 Q0,-18 18,-8" stroke="#2e0507" stroke-width="6" stroke-linecap="round" fill="none"/>
+              <path id="dragon-brow-inner-0" d="M-18,-10 Q0,-18 18,-8" stroke="url(#hornGrad)" stroke-width="3" stroke-linecap="round" fill="none"/>
+            </g>
+          </g>
+        </g>
+      </g>
+
+      <!-- ======== ГОЛОВА 1: ПРАВА ШИЯ ТА ГОЛОВА (СМАРАГДОВО-БРОНЗОВИЙ НАШИЙНИК — ВІДПОВІДАЄ ПРАВОМУ ЩИТУ) ======== -->
+      <g id="dragon-neck-1" class="dragon-hitbox" transform="translate(25, -240)">
+        <path d="M-25,20 Q-10,-40 -5,-100 L55,-90 Q45,-30 35,20 Z" fill="url(#dragonRightScale)" stroke="#1f0802" stroke-width="3"/>
+        <path d="M-18,12 Q-5,-40 0,-94" stroke="url(#dragonBellyGrad)" stroke-width="14" stroke-linecap="round" fill="none"/>
+
+        <!-- Рухома голова 1, що відрубується -->
+        <g id="dragon-head-1-detachable" transform="translate(20, -95)">
+          <path d="M-25,10 Q-35,-72 15,-142 L65,-115 Q25,-58 30,10 Z" fill="url(#dragonRightScale)" stroke="#1f0802" stroke-width="3"/>
+          <!-- Смарагдово-золотий нашийник для візуального зв'язку з Правим Щитом -->
+          <path d="M-20,-42 Q12,-30 42,-46" stroke="#eab308" stroke-width="7" fill="none" stroke-linecap="round"/>
+          <circle cx="10" cy="-38" r="6" fill="#10b981" stroke="#fef08a" stroke-width="2"/>
+          <!-- Гребінь -->
+          <path d="M48,-125 L80,-138 L55,-98 L85,-102 L55,-68 L82,-66 L45,-34 Z" fill="url(#hornGrad)"/>
+          <path d="M-18,5 Q-28,-68 20,-132" stroke="url(#dragonBellyGrad)" stroke-width="13" stroke-linecap="round" fill="none"/>
+
+          <!-- Череп 1 -->
+          <g id="dragon-skull-1" transform="translate(25, -135)">
+            <path d="M12,-35 Q90,-75 145,-38 Q80,-30 25,-5 Z" fill="url(#hornGrad)" stroke="#291202" stroke-width="2.5"/>
+            <path d="M22,-15 Q80,-38 118,-8 Q70,-5 24,10 Z" fill="url(#hornGrad)" stroke="#291202" stroke-width="2"/>
+
+            <!-- Нижня щелепа 1 -->
+            <g id="dragon-jaw-1" transform="translate(-15, 10)">
+              <path d="M0,0 Q-65,5 -115,0 Q-75,30 0,22 Z" fill="url(#magmaThroat)"/>
+              <path d="M15,5 Q-55,38 -135,18 Q-145,8 -125,2 L0,-2 Z" fill="url(#dragonRightScale)" stroke="#1f0802" stroke-width="3"/>
+              <path d="M-115,4 L-110,-14 L-100,4 M-85,4 L-82,-11 L-74,4 M-55,3 L-52,-9 L-45,3" fill="#fffbeb" stroke="#451a03" stroke-width="1"/>
+            </g>
+
+            <!-- Верхня щелепа 1 -->
+            <path d="M35,5 Q25,-45 -25,-42 Q-85,-32 -145,-12 Q-162,2 -140,12 L-10,12 Z" fill="url(#dragonRightScale)" stroke="#1f0802" stroke-width="3"/>
+            <path d="M-132,10 L-126,28 L-116,10 M-102,10 L-96,24 L-88,10 M-70,10 L-66,22 L-58,10 M-40,10 L-36,20 L-30,10" fill="#fffbeb" stroke="#451a03" stroke-width="1"/>
+            <ellipse id="nostril-1" cx="-132" cy="-4" rx="6" ry="4" fill="#1a0305" stroke="#ff7b00" stroke-width="1.5"/>
+            <path d="M-138,-10 L-152,-32 L-122,-15 Z" fill="url(#hornGrad)"/>
+
+            <!-- Око 1 -->
+            <g transform="translate(-52, -16)">
+              <ellipse cx="0" cy="0" rx="15" ry="11" fill="url(#dragonEyeGlow)" stroke="#1a0305" stroke-width="2.5"/>
+              <ellipse id="dragon-pupil-1" cx="-3" cy="0" rx="3.5" ry="9" fill="#090204"/>
+              <circle cx="-6" cy="-4" r="2.5" fill="#ffffff" opacity="0.9"/>
+              <path id="dragon-shock-1" d="M-8,-8 L8,8 M8,-8 L-8,8" stroke="#1a0305" stroke-width="3.5" stroke-linecap="round" opacity="0"/>
+              <path id="dragon-brow-1" d="M-18,-10 Q0,-18 18,-8" stroke="#291202" stroke-width="6" stroke-linecap="round" fill="none"/>
+              <path id="dragon-brow-inner-1" d="M-18,-10 Q0,-18 18,-8" stroke="url(#hornGrad)" stroke-width="3" stroke-linecap="round" fill="none"/>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <!-- ==================== ЛИЦАР ІЗ ПОВНОЦІННИМИ СУГЛОБОВИМИ НОГАМИ (СТЕГНО + ГОМІЛКА + СТОПА) ==================== -->
+    <g id="knight-root" transform="translate(420, 845)">
+      <!-- Тінь під лицарем -->
+      <ellipse id="knight-shadow" cx="0" cy="18" rx="88" ry="18" fill="#070306" opacity="0.82"/>
+
+      <!-- Королівський багряний плащ -->
+      <g id="knight-cape" transform="translate(-25, -195)">
+        <path id="knight-cape-path" d="M10,0 Q-85,45 -135,145 Q-90,165 -35,155 Q-5,85 25,15 Z" fill="url(#crimsonCape)" stroke="#f59e0b" stroke-width="2.5"/>
+      </g>
+
+      <!-- ======== СУГЛОБОВІ НОГИ ЛИЦАРЯ (КРОКУЮТЬ ПІД ЧАС РУХУ ВПЕРЕД І НАЗАД) ======== -->
+      <g id="knight-legs">
+        <!-- ЗАДНЯ (ЛІВА) НОГА: кульшовий суглоб у (-18, -96) -->
+        <g id="knight-leg-left" transform="translate(-18, -96)">
+          <!-- Стегно лівої ноги (thighL) -->
+          <path d="M-16,-6 L14,-6 L10,48 L-18,48 Z" fill="url(#steelDark)" stroke="#0f172a" stroke-width="2.5"/>
+          <!-- Набедрений щиток -->
+          <path d="M-18,-4 L14,-4 L18,22 L-14,26 Z" fill="url(#steelDark)" stroke="#1e293b" stroke-width="2"/>
+          <!-- Колінний суглоб та гомілка лівої ноги (shinL) у (0, 46) -->
+          <g id="knight-shin-left" transform="translate(-2, 46)">
+            <!-- Колінна чашечка (Poleyns) -->
+            <ellipse cx="0" cy="0" rx="15" ry="11" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2"/>
+            <!-- Наголінник (Greave) -->
+            <path d="M-14,4 L12,4 L8,52 L-16,52 Z" fill="url(#steelDark)" stroke="#0f172a" stroke-width="2.5"/>
+            <!-- Стопа в латному черевику (Sabaton) -->
+            <g id="knight-foot-left" transform="translate(0, 50)">
+              <path d="M-18,-2 L18,-2 L36,14 L-20,14 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2.5"/>
+              <line x1="-10" y1="6" x2="24" y2="6" stroke="#475569" stroke-width="2"/>
+            </g>
+          </g>
+        </g>
+
+        <!-- ПЕРЕДНЯ (ПРАВА) НОГА: кульшовий суглоб у (18, -96) -->
+        <g id="knight-leg-right" transform="translate(18, -96)">
+          <!-- Стегно правої ноги (thighR) -->
+          <path d="M-15,-6 L16,-6 L14,48 L-14,48 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2.5"/>
+          <!-- Латний набедреник із золотою каймою (Tasset) -->
+          <path d="M-16,-4 L18,-4 L22,24 L-14,28 Z" fill="url(#steelLight)" stroke="url(#royalGold)" stroke-width="2"/>
+          <!-- Колінний суглоб та гомілка правої ноги (shinR) у (2, 46) -->
+          <g id="knight-shin-right" transform="translate(2, 46)">
+            <!-- Золочений наколінник -->
+            <path d="M-16,-6 Q2,-18 18,-4 Q4,14 -16,6 Z" fill="url(#steelLight)" stroke="url(#royalGold)" stroke-width="2.5"/>
+            <!-- Наголінник (Greave) -->
+            <path d="M-13,4 L14,4 L12,52 L-14,52 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2.5"/>
+            <!-- Відблиск на сталі -->
+            <line x1="-3" y1="10" x2="-4" y2="46" stroke="#ffffff" stroke-width="2.5" opacity="0.55" stroke-linecap="round"/>
+            <!-- Латний черевик (Sabaton) -->
+            <g id="knight-foot-right" transform="translate(0, 50)">
+              <path d="M-16,-2 L20,-2 L42,14 L-18,14 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2.5"/>
+              <path d="M8,-2 L24,14 M18,2 L32,14" stroke="url(#royalGold)" stroke-width="2"/>
+            </g>
+          </g>
+        </g>
+      </g>
+
+      <!-- ======== ВЕРХНЯ ЧАСТИНА ТІЛА ЛИЦАРЯ ======== -->
+      <g id="knight-upper-body" transform="translate(0, -108)">
+        <!-- Кольчужна спідниця та гербовий табард -->
+        <path d="M-45,-10 L48,-10 L58,28 L-52,28 Z" fill="#334155" stroke="#0f172a" stroke-width="2.5"/>
+        <path d="M-20,-10 L26,-10 L32,34 L0,46 L-26,34 Z" fill="url(#crimsonCape)" stroke="url(#royalGold)" stroke-width="2.5"/>
+
+        <!-- Сталева кіраса (нагрудник) -->
+        <path d="M-48,-105 Q0,-122 52,-105 L45,-5 Q0,10 -42,-5 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="3"/>
+        <path d="M-15,-72 L5,-88 L25,-72 L15,-42 L5,-32 L-5,-42 Z" fill="url(#royalGold)"/>
+        <path d="M-32,-95 L-22,-15" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+        <rect x="-46" y="-18" width="92" height="12" rx="4" fill="url(#royalGold)" stroke="#422006" stroke-width="2"/>
+
+        <!-- ПРАВА РУКА З МЕЧЕМ -->
+        <g id="knight-sword-arm" transform="translate(32, -88) rotate(-18)">
+          <path d="M-22,-18 Q10,-32 28,-5 Q8,15 -18,12 Z" fill="url(#steelLight)" stroke="url(#royalGold)" stroke-width="2.5"/>
+          <path d="M0,0 L45,22 L38,42 L-10,18 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2.5"/>
+
+          <g id="knight-sword" transform="translate(42, 28) rotate(-35)">
+            <rect x="-8" y="-8" width="16" height="36" rx="5" fill="#7f1d1d" stroke="#422006" stroke-width="2"/>
+            <circle cx="0" cy="34" r="11" fill="url(#royalGold)" stroke="#422006" stroke-width="2"/>
+            <path d="M-36,-8 Q0,-2 36,-8 L30,-18 Q0,-10 -30,-18 Z" fill="url(#royalGold)" stroke="#422006" stroke-width="2"/>
+            <circle cx="0" cy="-12" r="6" fill="#dc2626" stroke="#fef08a" stroke-width="1.5"/>
+            <path d="M-13,-18 L-9,-215 L0,-248 L9,-215 L13,-18 Z" fill="url(#swordBlade)" stroke="#475569" stroke-width="2"/>
+            <line x1="0" y1="-22" x2="0" y2="-210" stroke="#64748b" stroke-width="3" stroke-linecap="round"/>
+            <ellipse cx="0" cy="6" rx="13" ry="10" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2"/>
+          </g>
+        </g>
+
+        <!-- ШОЛОМ ТА ОБЛИЧЧЯ ЛИЦАРЯ -->
+        <g id="knight-head" transform="translate(2, -142)">
+          <path id="knight-plume" d="M-12,-45 Q-65,-85 -98,-32 Q-65,-20 -25,-22 Z" fill="url(#crimsonCape)" stroke="#f87171" stroke-width="1.5"/>
+          <path d="M-5,-52 Q-48,-95 -75,-58 Q-45,-35 -15,-32 Z" fill="#ef4444"/>
+          <path d="M-38,15 L-38,-22 Q-38,-56 2,-56 Q42,-56 42,-22 L42,15 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="3"/>
+          <path d="M-12,-56 Q2,-65 16,-56 L10,-28 L-6,-28 Z" fill="url(#royalGold)" stroke="#422006" stroke-width="1.5"/>
+
+          <!-- Відкритий візор -->
+          <rect x="-18" y="-24" width="54" height="24" rx="6" fill="#1e151a" stroke="url(#royalGold)" stroke-width="2.5"/>
+          <g id="knight-eyes" transform="translate(10, -11)">
+            <ellipse cx="-12" cy="0" rx="7" ry="6" fill="#ffffff"/>
+            <circle class="knight-pupil" cx="-10" cy="0" r="3.5" fill="#1d4ed8"/>
+            <circle cx="-9" cy="-1.5" r="1.5" fill="#ffffff"/>
+            <ellipse cx="12" cy="0" rx="7" ry="6" fill="#ffffff"/>
+            <circle class="knight-pupil" cx="14" cy="0" r="3.5" fill="#1d4ed8"/>
+            <circle cx="15" cy="-1.5" r="1.5" fill="#ffffff"/>
+            <path id="knight-brow-l" d="M-20,-6 Q-12,-9 -4,-6" stroke="#451a03" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+            <path id="knight-brow-r" d="M4,-6 Q12,-9 20,-6" stroke="#451a03" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          </g>
+
+          <path d="M-38,-22 Q5,-45 48,-20 L38,-35 Q5,-55 -35,-32 Z" fill="url(#steelLight)" stroke="url(#royalGold)" stroke-width="2"/>
+          <path d="M-38,2 L-10,12 L42,2 L36,28 L-30,28 Z" fill="url(#steelLight)" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="2" y1="8" x2="2" y2="24" stroke="url(#royalGold)" stroke-width="3"/>
+        </g>
+
+        <!-- ЛІВА РУКА ТА ЩИТ -->
+        <g id="knight-shield-arm" transform="translate(-22, -78)">
+          <path d="M-25,-22 Q5,-35 25,-12 Q15,15 -22,12 Z" fill="url(#steelLight)" stroke="url(#royalGold)" stroke-width="2.5"/>
+          <g id="knight-shield" transform="translate(8, 22)">
+            <path d="M-38,-48 L38,-48 L38,-2 Q38,42 0,65 Q-38,42 -38,-2 Z" fill="url(#crimsonCape)" stroke="url(#royalGold)" stroke-width="6"/>
+            <path d="M-30,-40 L30,-40 L30,-2 Q30,34 0,54 Q-30,34 -30,-2 Z" fill="none" stroke="#fef08a" stroke-width="1.5" opacity="0.7"/>
+            <path d="M0,-44 L0,58 M-34,0 L34,0" stroke="url(#royalGold)" stroke-width="8"/>
+            <circle cx="0" cy="0" r="14" fill="url(#royalGold)" stroke="#7f1d1d" stroke-width="2.5"/>
+          </g>
+        </g>
+
+        <!-- Шар сажі та кіптяви після вогню дракона -->
+        <g id="knight-soot" opacity="0" pointer-events="none">
+          <ellipse cx="5" cy="-45" rx="60" ry="95" fill="#090708" opacity="0.72"/>
+          <circle cx="-15" cy="-120" r="28" fill="#141113" opacity="0.78"/>
+          <circle cx="22" cy="-35" r="35" fill="#141113" opacity="0.78"/>
+          <circle cx="-10" cy="25" r="34" fill="#141113" opacity="0.72"/>
+        </g>
+      </g>
+    </g>
+  </svg>
+
+  <!-- ================= 3. ПІДВІШЕНІ НА ЛАНЦЮГАХ ГЕРАЛЬДИЧНІ ЩИТИ У ВЕРХНІЙ ЗОНІ ЕКРАНА ================= -->
+  <div id="banners-bar">
+    <!-- Лівий Щит (Рубіновий самоцвіт — відповідає Лівій Голові Дракона) -->
+    <div id="banner-0" class="word-banner">
+      <svg viewBox="0 0 420 175">
+        <defs>
+          <linearGradient id="bannerIron" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#3d1e2d"/>
+            <stop offset="50%" stop-color="#210d1b"/>
+            <stop offset="100%" stop-color="#0f040c"/>
+          </linearGradient>
+          <linearGradient id="bannerGold" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fef08a"/>
+            <stop offset="35%" stop-color="#eab308"/>
+            <stop offset="70%" stop-color="#a16207"/>
+            <stop offset="100%" stop-color="#fde047"/>
+          </linearGradient>
+        </defs>
+        <!-- Ковані залізні ланцюги, якими щит кріпиться до верху екрана -->
+        <g stroke="#94a3b8" stroke-width="5" fill="none">
+          <rect x="82" y="-10" width="14" height="26" rx="6" fill="#1e293b"/>
+          <rect x="84" y="10" width="10" height="26" rx="5"/>
+          <rect x="82" y="28" width="14" height="24" rx="6" fill="#1e293b"/>
+          <rect x="324" y="-10" width="14" height="26" rx="6" fill="#1e293b"/>
+          <rect x="326" y="10" width="10" height="26" rx="5"/>
+          <rect x="324" y="28" width="14" height="24" rx="6" fill="#1e293b"/>
+        </g>
+        <!-- Бічні геральдичні крила -->
+        <path d="M22,102 L4,74 L30,80 L14,54 L46,64 L46,138 L14,148 L30,122 L4,128 Z" fill="url(#bannerGold)"/>
+        <path d="M398,102 L416,74 L390,80 L406,54 L374,64 L374,138 L406,148 L390,122 L416,128 Z" fill="url(#bannerGold)"/>
+        <!-- Полотно щита -->
+        <path d="M48,46 L372,46 L392,102 L372,158 L48,158 L28,102 Z" fill="url(#bannerIron)" stroke="url(#bannerGold)" stroke-width="6"/>
+        <path d="M58,56 L362,56 L378,102 L362,148 L58,148 L42,102 Z" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="10 5" opacity="0.65"/>
+        <!-- Рубіновий клейнод вгорі та внизу щита (кольоровий зв'язок з Лівою Головою) -->
+        <path d="M182,46 L210,30 L238,46 Z" fill="url(#bannerGold)"/>
+        <circle cx="210" cy="43" r="8" fill="#ef4444" stroke="#fef08a" stroke-width="2"/>
+        <path d="M188,158 L210,172 L232,158 Z" fill="#ef4444" stroke="url(#bannerGold)" stroke-width="2"/>
+        <circle cx="62" cy="102" r="5" fill="#fef08a"/>
+        <circle cx="358" cy="102" r="5" fill="#fef08a"/>
+        <!-- Слово крупним шрифтом -->
+        <text id="word-text-0" class="word-text" x="210" y="118" text-anchor="middle">ДЗЕРКАЛО</text>
+      </svg>
+    </div>
+
+    <!-- Правий Щит (Смарагдовий самоцвіт — відповідає Правій Голові Дракона) -->
+    <div id="banner-1" class="word-banner">
+      <svg viewBox="0 0 420 175">
+        <!-- Ковані ланцюги -->
+        <g stroke="#94a3b8" stroke-width="5" fill="none">
+          <rect x="82" y="-10" width="14" height="26" rx="6" fill="#1e293b"/>
+          <rect x="84" y="10" width="10" height="26" rx="5"/>
+          <rect x="82" y="28" width="14" height="24" rx="6" fill="#1e293b"/>
+          <rect x="324" y="-10" width="14" height="26" rx="6" fill="#1e293b"/>
+          <rect x="326" y="10" width="10" height="26" rx="5"/>
+          <rect x="324" y="28" width="14" height="24" rx="6" fill="#1e293b"/>
+        </g>
+        <!-- Бічні геральдичні крила -->
+        <path d="M22,102 L4,74 L30,80 L14,54 L46,64 L46,138 L14,148 L30,122 L4,128 Z" fill="url(#bannerGold)"/>
+        <path d="M398,102 L416,74 L390,80 L406,54 L374,64 L374,138 L406,148 L390,122 L416,128 Z" fill="url(#bannerGold)"/>
+        <!-- Полотно щита -->
+        <path d="M48,46 L372,46 L392,102 L372,158 L48,158 L28,102 Z" fill="url(#bannerIron)" stroke="url(#bannerGold)" stroke-width="6"/>
+        <path d="M58,56 L362,56 L378,102 L362,148 L58,148 L42,102 Z" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="10 5" opacity="0.65"/>
+        <!-- Смарагдовий клейнод (кольоровий зв'язок з Правою Головою) -->
+        <path d="M182,46 L210,30 L238,46 Z" fill="url(#bannerGold)"/>
+        <circle cx="210" cy="43" r="8" fill="#10b981" stroke="#fef08a" stroke-width="2"/>
+        <path d="M188,158 L210,172 L232,158 Z" fill="#10b981" stroke="url(#bannerGold)" stroke-width="2"/>
+        <circle cx="62" cy="102" r="5" fill="#fef08a"/>
+        <circle cx="358" cy="102" r="5" fill="#fef08a"/>
+        <!-- Слово крупним шрифтом -->
+        <text id="word-text-1" class="word-text" x="210" y="118" text-anchor="middle">КУКУРУДЗА</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Канвас для бойових спецефектів -->
+  <canvas id="fx-canvas"></canvas>
+
+  <!-- Мінімалістична кована кнопка "Далі" -->
+  <button id="skip-btn" aria-label="Next">
+    <svg viewBox="0 0 80 80">
+      <defs>
+        <radialGradient id="btnShieldGrad" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#7c2d12"/>
+          <stop offset="60%" stop-color="#3b0714"/>
+          <stop offset="100%" stop-color="#170208"/>
+        </radialGradient>
+      </defs>
+      <circle cx="40" cy="40" r="36" fill="url(#btnShieldGrad)" stroke="url(#bannerGold)" stroke-width="5"/>
+      <circle cx="40" cy="40" r="29" fill="none" stroke="#fde047" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.7"/>
+      <path d="M26,24 L46,40 L26,56 L32,40 Z" fill="url(#bannerGold)"/>
+      <path d="M42,24 L62,40 L42,56 L48,40 Z" fill="url(#bannerGold)"/>
+    </svg>
+  </button>
+</div>
+
+<script>
+  /********************************************************************
+   * 1. ПЕРЕВІРЕНА БАЗА З 78 УКРАЇНСЬКИХ СЛІВ
+   * Охоплює: щ, дз, дж, ь, ї, й, я, ю, є
+   ********************************************************************/
+  const WORD_DATABASE = [
+    // Щ (2 звуки)
+    { word: "ЩУКА", sounds: 5 },
+    { word: "ДОЩ", sounds: 4 },
+    { word: "КУЩ", sounds: 4 },
+    { word: "ПЛАЩ", sounds: 5 },
+    { word: "ЛЯЩ", sounds: 4 },
+    { word: "БОРЩ", sounds: 5 },
+    { word: "ЩИТ", sounds: 4 },
+    { word: "ЩІТКА", sounds: 6 },
+    { word: "ЩОГЛА", sounds: 6 },
+    { word: "ЯЩІРКА", sounds: 8 },
+    { word: "ЩАВЕЛЬ", sounds: 6 },
+    { word: "ДОЩИК", sounds: 6 },
+    { word: "КУЩИК", sounds: 6 },
+
+    // ДЗ (1 звук - злитий)
+    { word: "ДЗВІН", sounds: 4 },
+    { word: "ДЗЬОБ", sounds: 3 },
+    { word: "ҐЕДЗЬ", sounds: 3 },
+    { word: "ДЗЕРКАЛО", sounds: 7 },
+    { word: "КУКУРУДЗА", sounds: 8 },
+    { word: "ҐУДЗИК", sounds: 5 },
+    { word: "ДЗВІНОК", sounds: 6 },
+    { word: "ДЗИҐА", sounds: 4 },
+    { word: "РОДЗИНКИ", sounds: 7 },
+
+    // ДЖ (1 звук - злитий)
+    { word: "ДЖМІЛЬ", sounds: 4 },
+    { word: "БДЖОЛА", sounds: 5 },
+    { word: "ДЖЕРЕЛО", sounds: 6 },
+    { word: "ДЖЕМ", sounds: 3 },
+    { word: "ДЖИНСИ", sounds: 5 },
+    { word: "БДЖІЛКА", sounds: 6 },
+
+    // Ь (0 звуків)
+    { word: "ПЕНЬ", sounds: 3 },
+    { word: "ДЕНЬ", sounds: 3 },
+    { word: "ТІНЬ", sounds: 3 },
+    { word: "КІНЬ", sounds: 3 },
+    { word: "РИСЬ", sounds: 3 },
+    { word: "СІЛЬ", sounds: 3 },
+    { word: "ОЛЕНЬ", sounds: 4 },
+    { word: "ВЕДМІДЬ", sounds: 6 },
+    { word: "КАРАСЬ", sounds: 5 },
+    { word: "ХЛОПЕЦЬ", sounds: 6 },
+    { word: "ПАЛЕЦЬ", sounds: 5 },
+    { word: "КІЛЬЦЕ", sounds: 5 },
+    { word: "АЛЬБОМ", sounds: 5 },
+    { word: "ПАЛЬМА", sounds: 5 },
+
+    // Ї (2 звуки)
+    { word: "ЇЖАК", sounds: 5 },
+    { word: "ЇЖА", sounds: 4 },
+    { word: "ПОЇЗД", sounds: 6 },
+    { word: "ГАЇ", sounds: 4 },
+    { word: "КРАЇНА", sounds: 7 },
+    { word: "СОЛОВ'Ї", sounds: 7 },
+
+    // Й (1 звук)
+    { word: "ЧАЙ", sounds: 3 },
+    { word: "ГАЙ", sounds: 3 },
+    { word: "КЛЕЙ", sounds: 4 },
+    { word: "МУЗЕЙ", sounds: 5 },
+    { word: "ТРАМВАЙ", sounds: 7 },
+    { word: "ЙОГУРТ", sounds: 6 },
+    { word: "ЛІНІЙКА", sounds: 7 },
+    { word: "ЧАЙКА", sounds: 5 },
+    { word: "ЛІЙКА", sounds: 5 },
+
+    // Я, Ю, Є (1 або 2 звуки залежно від позиції)
+    { word: "ЯБЛУКО", sounds: 7 },
+    { word: "ЯГОДА", sounds: 6 },
+    { word: "ЯКІР", sounds: 5 },
+    { word: "ЯМА", sounds: 4 },
+    { word: "М'ЯЧ", sounds: 4 },
+    { word: "ПІР'Я", sounds: 5 },
+    { word: "СІМ'Я", sounds: 5 },
+    { word: "ЗЕМЛЯ", sounds: 5 },
+    { word: "ВИШНЯ", sounds: 5 },
+    { word: "ХВИЛЯ", sounds: 5 },
+    { word: "ЮШКА", sounds: 5 },
+    { word: "ЮНАК", sounds: 5 },
+    { word: "В'ЮН", sounds: 4 },
+    { word: "ЛЮК", sounds: 3 },
+    { word: "КЛЮЧ", sounds: 4 },
+    { word: "ТЮЛЕНЬ", sounds: 5 },
+    { word: "ЄНОТ", sounds: 5 },
+    { word: "ЗАЄЦЬ", sounds: 5 },
+    { word: "СИНЄ", sounds: 4 },
+    { word: "ЛІТНЄ", sounds: 5 },
+    { word: "МОЄ", sounds: 4 }
+  ];
+
+  /********************************************************************
+   * 2. СИНТЕЗАТОР ЗВУКІВ (WEB AUDIO API)
+   ********************************************************************/
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    // Легкий металевий передзвін при наведенні на щит
+    playHoverChime() {
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.095);
+    }
+
+    // Дзвін меча при виборі цілі
+    playSelectRing() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1100, now);
+      osc.frequency.exponentialRampToValueAtTime(1760, now + 0.16);
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.18);
+    }
+
+    // Синхронізований з кроками брязкіт латних чобіт по каменю
+    playArmorStep(pitchOffset = 0) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const clank = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      clank.type = 'square';
+      osc.frequency.setValueAtTime(220 + pitchOffset, now);
+      osc.frequency.exponentialRampToValueAtTime(75, now + 0.085);
+
+      clank.frequency.setValueAtTime(920 + pitchOffset * 2, now);
+      clank.frequency.exponentialRampToValueAtTime(420, now + 0.05);
+
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+      osc.connect(gain);
+      clank.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      clank.start(now);
+      osc.stop(now + 0.095);
+      clank.stop(now + 0.06);
+    }
+
+    // Свист розсікання повітря мечем
+    playSwordSlash() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const bufferSize = this.ctx.sampleRate * 0.28;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.Q.value = 3.5;
+      filter.frequency.setValueAtTime(600, now);
+      filter.frequency.exponentialRampToValueAtTime(2800, now + 0.12);
+      filter.frequency.exponentialRampToValueAtTime(400, now + 0.27);
+
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.45, now + 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      noise.start(now);
+    }
+
+    // Переможний удар мечем + глухий удар голови об землю + фанфара
+    playVictoryHit() {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      const impactOsc = this.ctx.createOscillator();
+      const impactGain = this.ctx.createGain();
+      impactOsc.type = 'sawtooth';
+      impactOsc.frequency.setValueAtTime(195, now);
+      impactOsc.frequency.exponentialRampToValueAtTime(38, now + 0.35);
+      impactGain.gain.setValueAtTime(0.55, now);
+      impactGain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+      impactOsc.connect(impactGain);
+      impactGain.connect(this.ctx.destination);
+      impactOsc.start(now);
+      impactOsc.stop(now + 0.37);
+
+      const thudOsc = this.ctx.createOscillator();
+      const thudGain = this.ctx.createGain();
+      thudOsc.type = 'sine';
+      thudOsc.frequency.setValueAtTime(98, now + 0.42);
+      thudOsc.frequency.exponentialRampToValueAtTime(24, now + 0.95);
+      thudGain.gain.setValueAtTime(0.001, now);
+      thudGain.gain.setValueAtTime(0.68, now + 0.42);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.98);
+      thudOsc.connect(thudGain);
+      thudGain.connect(this.ctx.destination);
+      thudOsc.start(now + 0.42);
+      thudOsc.stop(now + 1.0);
+
+      const notes = [261.63, 329.63, 392.00, 523.25];
+      notes.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, now + 0.14 + idx * 0.085);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1650, now + 0.14 + idx * 0.085);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.setValueAtTime(0.16, now + 0.14 + idx * 0.085);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.25);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + 0.14 + idx * 0.085);
+        osc.stop(now + 1.3);
+      });
+    }
+
+    // Відскок меча + рев дракона + потік вогню
+    playDragonFireBreath() {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      [860, 1320, 2080].forEach(freq => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.72, now + 0.22);
+        gain.gain.setValueAtTime(0.14, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      });
+
+      const roarOsc = this.ctx.createOscillator();
+      const roarSub = this.ctx.createOscillator();
+      const roarGain = this.ctx.createGain();
+      roarOsc.type = 'sawtooth';
+      roarSub.type = 'triangle';
+
+      roarOsc.frequency.setValueAtTime(140, now + 0.18);
+      roarOsc.frequency.linearRampToValueAtTime(70, now + 0.72);
+      roarOsc.frequency.exponentialRampToValueAtTime(42, now + 1.55);
+
+      roarSub.frequency.setValueAtTime(70, now + 0.18);
+      roarSub.frequency.exponentialRampToValueAtTime(30, now + 1.55);
+
+      roarGain.gain.setValueAtTime(0.001, now);
+      roarGain.gain.linearRampToValueAtTime(0.44, now + 0.3);
+      roarGain.gain.exponentialRampToValueAtTime(0.001, now + 1.6);
+
+      roarOsc.connect(roarGain);
+      roarSub.connect(roarGain);
+      roarGain.connect(this.ctx.destination);
+      roarOsc.start(now + 0.18);
+      roarSub.start(now + 0.18);
+      roarOsc.stop(now + 1.65);
+      roarSub.stop(now + 1.65);
+
+      const bufferSize = this.ctx.sampleRate * 1.5;
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const fireFilter = this.ctx.createBiquadFilter();
+      fireFilter.type = 'lowpass';
+      fireFilter.frequency.setValueAtTime(360, now + 0.2);
+      fireFilter.frequency.linearRampToValueAtTime(1450, now + 0.5);
+      fireFilter.frequency.exponentialRampToValueAtTime(280, now + 1.65);
+
+      const fireGain = this.ctx.createGain();
+      fireGain.gain.setValueAtTime(0.001, now + 0.2);
+      fireGain.gain.linearRampToValueAtTime(0.55, now + 0.42);
+      fireGain.gain.exponentialRampToValueAtTime(0.001, now + 1.68);
+
+      noise.connect(fireFilter);
+      fireFilter.connect(fireGain);
+      fireGain.connect(this.ctx.destination);
+      noise.start(now + 0.2);
+    }
+
+    playSkipClick() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(780, now + 0.11);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.13);
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  /********************************************************************
+   * 3. КАНВАС-ЕФЕКТИ: ЖИВИЙ ФОН ТА БОЙОВІ ЧАСТИНКИ
+   ********************************************************************/
+  const bgCanvas = document.getElementById('bg-canvas');
+  const bgCtx = bgCanvas.getContext('2d');
+  const fxCanvas = document.getElementById('fx-canvas');
+  const fxCtx = fxCanvas.getContext('2d');
+
+  let cw = window.innerWidth;
+  let ch = window.innerHeight;
+
+  function resizeCanvases() {
+    cw = window.innerWidth;
+    ch = window.innerHeight;
+    bgCanvas.width = cw;
+    bgCanvas.height = ch;
+    fxCanvas.width = cw;
+    fxCanvas.height = ch;
+  }
+  window.addEventListener('resize', resizeCanvases);
+  resizeCanvases();
+
+  function svgToScreen(svgX, svgY) {
+    const scale = Math.max(cw / 1920, ch / 1080);
+    const offsetX = (cw - 1920 * scale) / 2;
+    const offsetY = (ch - 1080 * scale) / 2;
+    return {
+      x: svgX * scale + offsetX,
+      y: svgY * scale + offsetY,
+      scale: scale
+    };
+  }
+
+  // Силуети далеких крилатих птахів/дракончиків біля замку та вулканічні іскри
+  const bgEmbers = [];
+  for (let i = 0; i < 65; i++) {
+    bgEmbers.push({
+      x: Math.random() * cw,
+      y: Math.random() * ch,
+      r: 1.2 + Math.random() * 3.2,
+      vx: -0.4 - Math.random() * 0.8,
+      vy: -0.6 - Math.random() * 1.5,
+      alpha: 0.3 + Math.random() * 0.7,
+      hue: 15 + Math.random() * 35
+    });
+  }
+
+  const distantFlyers = [
+    { svgX: 180, svgY: 220, speed: 0.35, phase: 0, amp: 12 },
+    { svgX: 520, svgY: 190, speed: 0.48, phase: 2.1, amp: 15 },
+    { svgX: 780, svgY: 260, speed: 0.3, phase: 4.2, amp: 10 }
+  ];
+
+  const fxParticles = [];
+  const slashArcs = [];
+
+  function spawnSmokePuff(svgX, svgY, count = 4, dark = false) {
+    const pos = svgToScreen(svgX, svgY);
+    for (let i = 0; i < count; i++) {
+      fxParticles.push({
+        type: 'smoke',
+        x: pos.x + (Math.random() - 0.5) * 16,
+        y: pos.y + (Math.random() - 0.5) * 10,
+        vx: (-0.8 - Math.random() * 1.4) * pos.scale,
+        vy: (-1.1 - Math.random() * 1.8) * pos.scale,
+        r: (6 + Math.random() * 9) * pos.scale,
+        maxR: (24 + Math.random() * 24) * pos.scale,
+        alpha: dark ? 0.65 : 0.38,
+        color: dark ? '25, 18, 22' : '165, 150, 160',
+        life: 0,
+        maxLife: 42 + Math.random() * 24
+      });
+    }
+  }
+
+  function spawnSwordSlash(svgX, svgY, isCorrect) {
+    const pos = svgToScreen(svgX, svgY);
+    slashArcs.push({
+      x: pos.x,
+      y: pos.y,
+      radius: 95 * pos.scale,
+      life: 0,
+      maxLife: 18,
+      color: isCorrect ? '#fde047' : '#cbd5e1',
+      glow: isCorrect ? '#f97316' : '#64748b'
+    });
+
+    const sparkCount = isCorrect ? 50 : 24;
+    for (let i = 0; i < sparkCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = (3 + Math.random() * (isCorrect ? 14 : 8)) * pos.scale;
+      fxParticles.push({
+        type: 'spark',
+        x: pos.x,
+        y: pos.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2 * pos.scale,
+        r: (2.5 + Math.random() * 4) * pos.scale,
+        color: isCorrect
+          ? (Math.random() > 0.35 ? '#fef08a' : '#ff7b00')
+          : '#e2e8f0',
+        life: 0,
+        maxLife: 24 + Math.random() * 20
+      });
+    }
+  }
+
+  function spawnDragonFireStream(mouthSvgX, mouthSvgY, targetSvgX, targetSvgY) {
+    const start = svgToScreen(mouthSvgX, mouthSvgY);
+    const end = svgToScreen(targetSvgX, targetSvgY);
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist;
+    const uy = dy / dist;
+
+    for (let i = 0; i < 9; i++) {
+      const speed = (18 + Math.random() * 14) * start.scale;
+      const spread = (Math.random() - 0.5) * 0.25;
+      const cos = Math.cos(spread);
+      const sin = Math.sin(spread);
+      const vx = (ux * cos - uy * sin) * speed;
+      const vy = (ux * sin + uy * cos) * speed;
+
+      fxParticles.push({
+        type: 'fire',
+        x: start.x + (Math.random() - 0.5) * 16 * start.scale,
+        y: start.y + (Math.random() - 0.5) * 16 * start.scale,
+        vx,
+        vy,
+        r: (14 + Math.random() * 20) * start.scale,
+        maxR: (55 + Math.random() * 45) * start.scale,
+        life: 0,
+        maxLife: 28 + Math.random() * 16
+      });
+    }
+  }
+
+  /********************************************************************
+   * 4. ГЕНЕРАТОР ПАР СЛІВ (РІЗНИЦЯ РІВНО НА 1 ЗВУК)
+   ********************************************************************/
+  const banner0 = document.getElementById('banner-0');
+  const banner1 = document.getElementById('banner-1');
+  const wordText0 = document.getElementById('word-text-0');
+  const wordText1 = document.getElementById('word-text-1');
+  const dragonNeck0 = document.getElementById('dragon-neck-0');
+  const dragonNeck1 = document.getElementById('dragon-neck-1');
+  const skipBtn = document.getElementById('skip-btn');
+  const gameStage = document.getElementById('game-stage');
+
+  let currentPair = [null, null];
+  let recentWords = [];
+  let isAnimating = false;
+
+  function adjustWordFontSize(textEl, wordStr) {
+    if (wordStr.length >= 9) {
+      textEl.style.fontSize = '38px';
+    } else if (wordStr.length >= 7) {
+      textEl.style.fontSize = '43px';
+    } else {
+      textEl.style.fontSize = '50px';
+    }
+  }
+
+  function generateNextWordPair() {
+    const bySounds = {};
+    WORD_DATABASE.forEach(item => {
+      if (!bySounds[item.sounds]) bySounds[item.sounds] = [];
+      bySounds[item.sounds].push(item);
+    });
+
+    const soundPairs = [[3, 4], [4, 5], [5, 6], [6, 7], [7, 8]];
+    const chosenRange = soundPairs[Math.floor(Math.random() * soundPairs.length)];
+
+    const poolLow = bySounds[chosenRange[0]].filter(w => !recentWords.includes(w.word));
+    const poolHigh = bySounds[chosenRange[1]].filter(w => !recentWords.includes(w.word));
+
+    const finalPoolLow = poolLow.length ? poolLow : bySounds[chosenRange[0]];
+    const finalPoolHigh = poolHigh.length ? poolHigh : bySounds[chosenRange[1]];
+
+    const wordLow = finalPoolLow[Math.floor(Math.random() * finalPoolLow.length)];
+    const wordHigh = finalPoolHigh[Math.floor(Math.random() * finalPoolHigh.length)];
+
+    recentWords.push(wordLow.word, wordHigh.word);
+    if (recentWords.length > 18) {
+      recentWords.splice(0, 2);
+    }
+
+    if (Math.random() < 0.5) {
+      currentPair = [wordHigh, wordLow];
+    } else {
+      currentPair = [wordLow, wordHigh];
+    }
+
+    wordText0.textContent = currentPair[0].word;
+    wordText1.textContent = currentPair[1].word;
+    adjustWordFontSize(wordText0, currentPair[0].word);
+    adjustWordFontSize(wordText1, currentPair[1].word);
+
+    [banner0, banner1].forEach(b => {
+      b.classList.remove('disabled');
+      b.style.opacity = '1';
+      b.style.transform = 'translateY(0) scale(1)';
+    });
+  }
+
+  // Підсвічування відповідної голови дракона при наведенні на щит зі словом
+  banner0.addEventListener('mouseenter', () => {
+    sound.playHoverChime();
+    dragonNeck0.classList.add('linked-hover');
+  });
+  banner0.addEventListener('mouseleave', () => dragonNeck0.classList.remove('linked-hover'));
+
+  banner1.addEventListener('mouseenter', () => {
+    sound.playHoverChime();
+    dragonNeck1.classList.add('linked-hover');
+  });
+  banner1.addEventListener('mouseleave', () => dragonNeck1.classList.remove('linked-hover'));
+
+  /********************************************************************
+   * 5. СУГЛОБОВА АНІМАЦІЯ КРОКУВАННЯ НОГАМИ ТА БОЮ
+   ********************************************************************/
+  const knightRoot = document.getElementById('knight-root');
+  const knightUpperBody = document.getElementById('knight-upper-body');
+  const knightLegLeft = document.getElementById('knight-leg-left');
+  const knightShinLeft = document.getElementById('knight-shin-left');
+  const knightLegRight = document.getElementById('knight-leg-right');
+  const knightShinRight = document.getElementById('knight-shin-right');
+  const knightSwordArm = document.getElementById('knight-sword-arm');
+  const knightShieldArm = document.getElementById('knight-shield-arm');
+  const knightCapePath = document.getElementById('knight-cape-path');
+  const knightBrowL = document.getElementById('knight-brow-l');
+  const knightBrowR = document.getElementById('knight-brow-r');
+  const knightPupils = document.querySelectorAll('.knight-pupil');
+  const knightSoot = document.getElementById('knight-soot');
+
+  const castleFlag1 = document.getElementById('castle-flag-1');
+  const castleFlag2 = document.getElementById('castle-flag-2');
+  const castleFlag3 = document.getElementById('castle-flag-3');
+
+  const dragonWingLeft = document.getElementById('dragon-wing-left');
+  const dragonWingRight = document.getElementById('dragon-wing-right');
+  const dragonTail = document.getElementById('dragon-tail');
+  const dragonTorso = document.getElementById('dragon-torso');
+
+  const headDetach0 = document.getElementById('dragon-head-0-detachable');
+  const headDetach1 = document.getElementById('dragon-head-1-detachable');
+  const jaw0 = document.getElementById('dragon-jaw-0');
+  const jaw1 = document.getElementById('dragon-jaw-1');
+  const brow0 = document.getElementById('dragon-brow-0');
+  const browInner0 = document.getElementById('dragon-brow-inner-0');
+  const brow1 = document.getElementById('dragon-brow-1');
+  const browInner1 = document.getElementById('dragon-brow-inner-1');
+  const shock0 = document.getElementById('dragon-shock-0');
+  const shock1 = document.getElementById('dragon-shock-1');
+  const pupil0 = document.getElementById('dragon-pupil-0');
+  const pupil1 = document.getElementById('dragon-pupil-1');
+
+  const animState = {
+    knightX: 420,
+    knightY: 845,
+    isWalking: false,
+    walkPhase: 0,
+    walkDir: 1, // 1 = вперед, -1 = відступ назад
+    swordAngle: -18,
+    shieldY: 0,
+    head0FallY: 0,
+    head0FallRot: 0,
+    head0Opacity: 1,
+    head1FallY: 0,
+    head1FallRot: 0,
+    head1Opacity: 1,
+    jaw0Angle: 0,
+    jaw1Angle: 0,
+    fireActive: false,
+    fireOriginSvg: { x: 1210, y: 480 }
+  };
+
+  function setCharacterEmotions(knightMood, dragonMood) {
+    if (knightMood === 'idle') {
+      knightBrowL.setAttribute('d', 'M-20,-6 Q-12,-9 -4,-6');
+      knightBrowR.setAttribute('d', 'M4,-6 Q12,-9 20,-6');
+      knightPupils.forEach(p => p.setAttribute('r', '3.5'));
+    } else if (knightMood === 'attack') {
+      knightBrowL.setAttribute('d', 'M-20,-9 L-4,-3');
+      knightBrowR.setAttribute('d', 'M4,-3 L20,-9');
+      knightPupils.forEach(p => p.setAttribute('r', '3.2'));
+    } else if (knightMood === 'victory') {
+      knightBrowL.setAttribute('d', 'M-20,-8 Q-12,-14 -4,-8');
+      knightBrowR.setAttribute('d', 'M4,-8 Q12,-14 20,-8');
+      knightPupils.forEach(p => p.setAttribute('r', '4'));
+    } else if (knightMood === 'scorched') {
+      knightBrowL.setAttribute('d', 'M-20,-4 Q-12,-12 -4,-10');
+      knightBrowR.setAttribute('d', 'M4,-10 Q12,-12 20,-4');
+      knightPupils.forEach(p => p.setAttribute('r', '2.2'));
+    }
+
+    if (dragonMood === 'idle') {
+      const idleBrow = 'M-18,-10 Q0,-18 18,-8';
+      [brow0, browInner0, brow1, browInner1].forEach(b => b.setAttribute('d', idleBrow));
+      shock0.setAttribute('opacity', '0');
+      shock1.setAttribute('opacity', '0');
+      pupil0.setAttribute('opacity', '1');
+      pupil1.setAttribute('opacity', '1');
+      pupil0.setAttribute('ry', '9');
+      pupil1.setAttribute('ry', '9');
+    } else if (dragonMood === 'angry') {
+      const angryBrow = 'M-20,-3 L0,-14 L18,-16';
+      [brow0, browInner0, brow1, browInner1].forEach(b => b.setAttribute('d', angryBrow));
+      pupil0.setAttribute('ry', '10');
+      pupil1.setAttribute('ry', '10');
+    } else if (dragonMood === 'hit0') {
+      shock0.setAttribute('opacity', '1');
+      pupil0.setAttribute('opacity', '0');
+      const scaredBrow = 'M-18,-16 Q0,-22 18,-12';
+      brow1.setAttribute('d', scaredBrow);
+      browInner1.setAttribute('d', scaredBrow);
+      pupil1.setAttribute('ry', '4');
+    } else if (dragonMood === 'hit1') {
+      shock1.setAttribute('opacity', '1');
+      pupil1.setAttribute('opacity', '0');
+      const scaredBrow = 'M-18,-16 Q0,-22 18,-12';
+      brow0.setAttribute('d', scaredBrow);
+      browInner0.setAttribute('d', scaredBrow);
+      pupil0.setAttribute('ry', '4');
+    }
+  }
+
+  function resetPositionsAndNextRound() {
+    animState.knightX = 420;
+    animState.knightY = 845;
+    animState.isWalking = false;
+    animState.walkPhase = 0;
+    animState.swordAngle = -18;
+    animState.shieldY = 0;
+    animState.head0FallY = 0;
+    animState.head0FallRot = 0;
+    animState.head0Opacity = 1;
+    animState.head1FallY = 0;
+    animState.head1FallRot = 0;
+    animState.head1Opacity = 1;
+    animState.jaw0Angle = 0;
+    animState.jaw1Angle = 0;
+    animState.fireActive = false;
+    knightSoot.setAttribute('opacity', '0');
+
+    setCharacterEmotions('idle', 'idle');
+    generateNextWordPair();
+    isAnimating = false;
+  }
+
+  function triggerShake(heavy = false) {
+    gameStage.classList.remove('screen-shake', 'screen-shake-heavy');
+    void gameStage.offsetWidth;
+    gameStage.classList.add(heavy ? 'screen-shake-heavy' : 'screen-shake');
+  }
+
+  // Головна бойова сцена при кліку на слово або голову дракона
+  function handleChoice(chosenIndex) {
+    if (isAnimating) return;
+    isAnimating = true;
+    sound.playSelectRing();
+
+    banner0.classList.add('disabled');
+    banner1.classList.add('disabled');
+    dragonNeck0.classList.remove('linked-hover');
+    dragonNeck1.classList.remove('linked-hover');
+
+    const chosenWord = currentPair[chosenIndex];
+    const otherWord = currentPair[1 - chosenIndex];
+    const isCorrect = chosenWord.sounds > otherWord.sounds;
+
+    const activeBanner = chosenIndex === 0 ? banner0 : banner1;
+    const passiveBanner = chosenIndex === 0 ? banner1 : banner0;
+    passiveBanner.style.opacity = '0.35';
+    activeBanner.style.transform = 'translateY(8px) scale(1.08)';
+
+    setCharacterEmotions('attack', 'idle');
+
+    const targetKnightX = chosenIndex === 0 ? 1015 : 1135;
+    const targetKnightY = chosenIndex === 0 ? 825 : 795;
+    const strikeSvgPos = chosenIndex === 0 ? { x: 1255, y: 495 } : { x: 1415, y: 435 };
+
+    const startTime = performance.now();
+    const walkDuration = 680; // Достатньо часу, щоб дитина чітко бачила, як лицар перебирає ногами
+    let lastStepIndex = -1;
+
+    // КРОК 1: Лицар біжить вперед, активно рухаючи суглобами обох ніг
+    animState.isWalking = true;
+    animState.walkDir = 1;
+
+    function animateCharge(now) {
+      const t = Math.min(1, (now - startTime) / walkDuration);
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+      animState.knightX = 420 + (targetKnightX - 420) * ease;
+      animState.knightY = 845 + (targetKnightY - 845) * ease;
+      animState.walkPhase = t * Math.PI * 5.5; // Майже 3 повних кроки обома ногами
+      animState.swordAngle = -18 - ease * 78;
+
+      const currentStep = Math.floor(animState.walkPhase / Math.PI);
+      if (currentStep !== lastStepIndex) {
+        lastStepIndex = currentStep;
+        sound.playArmorStep((currentStep % 2) * 35);
+        spawnSmokePuff(animState.knightX - 15, animState.knightY + 14, 3, false);
+      }
+
+      if (t < 1) {
+        requestAnimationFrame(animateCharge);
+      } else {
+        animState.isWalking = false;
+        executeSwordStrike();
+      }
+    }
+
+    // КРОК 2: Помах мечем
+    function executeSwordStrike() {
+      sound.playSwordSlash();
+      const strikeStart = performance.now();
+      const strikeDuration = 165;
+
+      function animateSwing(now) {
+        const t = Math.min(1, (now - strikeStart) / strikeDuration);
+        animState.swordAngle = -96 + t * 175;
+
+        if (t < 1) {
+          requestAnimationFrame(animateSwing);
+        } else {
+          spawnSwordSlash(strikeSvgPos.x, strikeSvgPos.y, isCorrect);
+          if (isCorrect) {
+            handleCorrectOutcome(chosenIndex);
+          } else {
+            handleWrongOutcome(chosenIndex);
+          }
+        }
+      }
+      requestAnimationFrame(animateSwing);
+    }
+
+    // КРОК 3А: ПРАВИЛЬНО — Голова падає, потім лицар крокує назад
+    function handleCorrectOutcome(headIdx) {
+      sound.playVictoryHit();
+      triggerShake(true);
+      setCharacterEmotions('victory', headIdx === 0 ? 'hit0' : 'hit1');
+
+      animState.swordAngle = -65;
+      if (headIdx === 0) {
+        animState.jaw1Angle = -24;
+      } else {
+        animState.jaw0Angle = -24;
+      }
+
+      const fallStart = performance.now();
+      const totalDuration = 1250;
+      let lastRetreatStep = -1;
+
+      function animateHeadFallAndRetreat(now) {
+        const t = Math.min(1, (now - fallStart) / totalDuration);
+        const fallT = Math.min(1, t / 0.65);
+        const gravityEase = fallT * fallT;
+
+        if (headIdx === 0) {
+          animState.head0FallY = gravityEase * 520;
+          animState.head0FallRot = -fallT * 110;
+          if (fallT > 0.7) animState.head0Opacity = Math.max(0, 1 - (fallT - 0.7) / 0.3);
+        } else {
+          animState.head1FallY = gravityEase * 520;
+          animState.head1FallRot = -fallT * 110;
+          if (fallT > 0.7) animState.head1Opacity = Math.max(0, 1 - (fallT - 0.7) / 0.3);
+        }
+
+        // Відступ лицаря кроком назад на вихідну позицію
+        if (t > 0.35) {
+          animState.isWalking = true;
+          animState.walkDir = -1;
+          const retreatT = Math.min(1, (t - 0.35) / 0.65);
+          animState.knightX = targetKnightX + (420 - targetKnightX) * retreatT;
+          animState.knightY = targetKnightY + (845 - targetKnightY) * retreatT;
+          animState.walkPhase = retreatT * Math.PI * 5;
+          animState.swordAngle = -65 + retreatT * 47;
+
+          const rStep = Math.floor(animState.walkPhase / Math.PI);
+          if (rStep !== lastRetreatStep) {
+            lastRetreatStep = rStep;
+            sound.playArmorStep((rStep % 2) * 30);
+            spawnSmokePuff(animState.knightX + 10, animState.knightY + 14, 2, false);
+          }
+        }
+
+        if (t < 1) {
+          requestAnimationFrame(animateHeadFallAndRetreat);
+        } else {
+          animState.isWalking = false;
+          setTimeout(() => {
+            spawnSmokePuff(strikeSvgPos.x, strikeSvgPos.y, 10, false);
+            resetPositionsAndNextRound();
+          }, 260);
+        }
+      }
+      requestAnimationFrame(animateHeadFallAndRetreat);
+    }
+
+    // КРОК 3Б: НЕПРАВИЛЬНО — Дракон дихає вогнем, лицар відступає, перебираючи ногами
+    function handleWrongOutcome(headIdx) {
+      sound.playDragonFireBreath();
+      triggerShake(true);
+      setCharacterEmotions('scorched', 'angry');
+
+      animState.jaw0Angle = -32;
+      animState.jaw1Angle = -32;
+      animState.shieldY = -18;
+      animState.fireActive = true;
+      animState.fireOriginSvg = headIdx === 0
+        ? { x: 1185, y: 495 }
+        : { x: 1335, y: 430 };
+
+      const fireStart = performance.now();
+      const fireDuration = 1400;
+      let lastRetreatStep = -1;
+
+      function animateFireRetreat(now) {
+        const t = Math.min(1, (now - fireStart) / fireDuration);
+
+        // Лицар активно задкує ногами від полум'я
+        const retreatT = Math.min(1, t / 0.8);
+        animState.isWalking = retreatT < 1;
+        animState.walkDir = -1;
+        animState.walkPhase = retreatT * Math.PI * 6;
+        animState.knightX = targetKnightX + (420 - targetKnightX) * retreatT;
+        animState.knightY = targetKnightY + (845 - targetKnightY) * retreatT;
+        animState.swordAngle = 22;
+
+        const rStep = Math.floor(animState.walkPhase / Math.PI);
+        if (rStep !== lastRetreatStep && retreatT < 1) {
+          lastRetreatStep = rStep;
+          sound.playArmorStep((rStep % 2) * 25);
+          spawnSmokePuff(animState.knightX + 12, animState.knightY + 14, 2, true);
+        }
+
+        if (t > 0.15 && t < 0.85) {
+          knightSoot.setAttribute('opacity', String(Math.min(1, (t - 0.15) * 2.5)));
+        }
+
+        if (t > 0.72) {
+          animState.fireActive = false;
+          animState.jaw0Angle = 0;
+          animState.jaw1Angle = 0;
+        }
+
+        if (t < 1) {
+          requestAnimationFrame(animateFireRetreat);
+        } else {
+          animState.isWalking = false;
+          spawnSmokePuff(420, 710, 12, true);
+          setTimeout(() => {
+            resetPositionsAndNextRound();
+          }, 340);
+        }
+      }
+      requestAnimationFrame(animateFireRetreat);
+    }
+
+    requestAnimationFrame(animateCharge);
+  }
+
+  banner0.addEventListener('click', () => handleChoice(0));
+  banner1.addEventListener('click', () => handleChoice(1));
+  dragonNeck0.addEventListener('click', () => handleChoice(0));
+  dragonNeck1.addEventListener('click', () => handleChoice(1));
+
+  skipBtn.addEventListener('click', () => {
+    sound.playSkipClick();
+    if (!isAnimating) {
+      generateNextWordPair();
+    } else {
+      resetPositionsAndNextRound();
+    }
+  });
+
+  /********************************************************************
+   * 6. ГОЛОВНИЙ ЦИКЛ ЖИВОЇ АНІМАЦІЇ (КРОКИ НІГ, ПРАПОРИ ЗАМКУ, ДИХАННЯ, ВОГОНЬ)
+   ********************************************************************/
+  let lastSmokeTime = 0;
+
+  function masterLoop(timestamp) {
+    const time = timestamp * 0.001;
+
+    // 1. ЖИВИЙ ФОН (bgCanvas)
+    bgCtx.clearRect(0, 0, cw, ch);
+
+    // Крилаті силуети в небі біля замку
+    distantFlyers.forEach(f => {
+      f.svgX += f.speed;
+      if (f.svgX > 1960) f.svgX = -40;
+      const pos = svgToScreen(f.svgX, f.svgY + Math.sin(time * 2 + f.phase) * f.amp);
+      const wingY = Math.sin(time * 7 + f.phase) * 6 * pos.scale;
+      bgCtx.save();
+      bgCtx.strokeStyle = 'rgba(25, 8, 14, 0.75)';
+      bgCtx.lineWidth = 2.2 * pos.scale;
+      bgCtx.beginPath();
+      bgCtx.moveTo(pos.x - 10 * pos.scale, pos.y + wingY);
+      bgCtx.quadraticCurveTo(pos.x - 4 * pos.scale, pos.y - 4 * pos.scale, pos.x, pos.y);
+      bgCtx.quadraticCurveTo(pos.x + 4 * pos.scale, pos.y - 4 * pos.scale, pos.x + 10 * pos.scale, pos.y + wingY);
+      bgCtx.stroke();
+      bgCtx.restore();
+    });
+
+    // Полум'я в жаровнях мосту
+    const brazierPositions = [
+      svgToScreen(185, 750),
+      svgToScreen(825, 757)
+    ];
+    brazierPositions.forEach((bPos, idx) => {
+      const flicker = Math.sin(time * 12 + idx * 2) * 4 * bPos.scale;
+      const grad = bgCtx.createRadialGradient(
+        bPos.x, bPos.y - 12 * bPos.scale, 2,
+        bPos.x, bPos.y - 18 * bPos.scale, (36 + flicker) * bPos.scale
+      );
+      grad.addColorStop(0, 'rgba(255, 250, 180, 0.95)');
+      grad.addColorStop(0.4, 'rgba(255, 120, 20, 0.75)');
+      grad.addColorStop(1, 'rgba(220, 20, 0, 0)');
+      bgCtx.fillStyle = grad;
+      bgCtx.beginPath();
+      bgCtx.arc(bPos.x, bPos.y - 14 * bPos.scale, (36 + flicker) * bPos.scale, 0, Math.PI * 2);
+      bgCtx.fill();
+    });
+
+    // Іскри у повітрі
+    bgEmbers.forEach(e => {
+      e.x += e.vx + Math.sin(time * 2 + e.y * 0.01) * 0.35;
+      e.y += e.vy;
+      if (e.y < -10) {
+        e.y = ch + 10;
+        e.x = Math.random() * cw;
+      }
+      if (e.x < -10) e.x = cw + 10;
+      bgCtx.save();
+      bgCtx.globalAlpha = e.alpha * (0.65 + 0.35 * Math.sin(time * 5 + e.x));
+      bgCtx.fillStyle = `hsl(${e.hue}, 100%, 62%)`;
+      bgCtx.shadowColor = '#ff6a00';
+      bgCtx.shadowBlur = 8;
+      bgCtx.beginPath();
+      bgCtx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+      bgCtx.fill();
+      bgCtx.restore();
+    });
+
+    // Хвилювання прапорів на вежах замку
+    const fWave = Math.sin(time * 6) * 5;
+    castleFlag1.setAttribute('d', `M39,10 Q60,${16 + fWave} 78,${10 - fWave * 0.5} L68,20 L78,${28 - fWave * 0.5} Q58,${22 + fWave} 39,28 Z`);
+    castleFlag2.setAttribute('d', `M120,-76 Q148,${-68 + fWave} 172,${-76 - fWave * 0.6} L158,-64 L172,${-52 - fWave * 0.6} Q145,${-60 + fWave} 120,-52 Z`);
+    castleFlag3.setAttribute('d', `M204,-4 Q225,${2 - fWave} 243,${-4 + fWave * 0.5} L233,6 L243,${14 + fWave * 0.5} Q223,${8 - fWave} 204,14 Z`);
+
+    // 2. АНІМАЦІЯ СУГЛОБІВ НІГ ТА ТІЛА ЛИЦАРЯ
+    let hipAngleL = 0;
+    let kneeAngleL = 0;
+    let hipAngleR = 0;
+    let kneeAngleR = 0;
+    let walkBobY = 0;
+    let torsoLean = 0;
+
+    if (animState.isWalking) {
+      const p = animState.walkPhase * animState.walkDir;
+      // Ліва і права нога рухаються у протифазі з реалістичним згинанням колін
+      hipAngleL = Math.sin(p) * 34;
+      kneeAngleL = Math.max(0, -Math.cos(p) * 38);
+
+      hipAngleR = Math.sin(p + Math.PI) * 34;
+      kneeAngleR = Math.max(0, -Math.cos(p + Math.PI) * 38);
+
+      walkBobY = -Math.abs(Math.sin(p)) * 12;
+      torsoLean = animState.walkDir * 7;
+    } else {
+      // Легке дихання у спокої
+      walkBobY = Math.sin(time * 3.2) * 3;
+    }
+
+    const capeWave = Math.sin(time * (animState.isWalking ? 11 : 5.5)) * (animState.isWalking ? 18 : 10);
+
+    knightRoot.setAttribute('transform', `translate(${animState.knightX}, ${animState.knightY})`);
+    knightLegLeft.setAttribute('transform', `translate(-18, -96) rotate(${hipAngleL})`);
+    knightShinLeft.setAttribute('transform', `translate(-2, 46) rotate(${kneeAngleL})`);
+    knightLegRight.setAttribute('transform', `translate(18, -96) rotate(${hipAngleR})`);
+    knightShinRight.setAttribute('transform', `translate(2, 46) rotate(${kneeAngleR})`);
+
+    knightUpperBody.setAttribute(
+      'transform',
+      `translate(0, ${-108 + walkBobY}) rotate(${torsoLean})`
+    );
+    knightSwordArm.setAttribute(
+      'transform',
+      `translate(32, -88) rotate(${animState.swordAngle + Math.sin(time * 3.2) * 2.5 - hipAngleL * 0.35})`
+    );
+    knightShieldArm.setAttribute(
+      'transform',
+      `translate(-22, ${-78 + animState.shieldY + Math.cos(time * 3.2) * 2}) rotate(${hipAngleL * 0.25})`
+    );
+    knightCapePath.setAttribute(
+      'd',
+      `M10,0 Q${-85 + capeWave},45 ${-135 + capeWave * 1.4},${145 + capeWave * 0.4} Q-90,165 -35,155 Q-5,85 25,15 Z`
+    );
+
+    // 3. АНІМАЦІЯ ДВОГЛАВОГО ДРАКОНА
+    const wingBeat = Math.sin(time * 2.6) * 7.5;
+    const tailSway = Math.cos(time * 2.1) * 5;
+    const dragonBreath = Math.sin(time * 2.6) * 4;
+
+    dragonWingLeft.setAttribute('transform', `translate(-45, ${-210 + dragonBreath}) rotate(${-wingBeat})`);
+    dragonWingRight.setAttribute('transform', `translate(55, ${-220 + dragonBreath}) rotate(${wingBeat})`);
+    dragonTail.setAttribute('transform', `rotate(${tailSway})`);
+    dragonTorso.setAttribute('transform', `translate(0, ${dragonBreath * 0.6})`);
+
+    const neck0Sway = Math.sin(time * 2.3) * 4;
+    const neck1Sway = Math.cos(time * 2.0 + 1.2) * 4.2;
+
+    dragonNeck0.setAttribute('transform', `translate(-95, ${-215 + dragonBreath}) rotate(${neck0Sway})`);
+    dragonNeck1.setAttribute('transform', `translate(25, ${-240 + dragonBreath}) rotate(${neck1Sway})`);
+
+    headDetach0.setAttribute(
+      'transform',
+      `translate(-82, ${-92 + animState.head0FallY}) rotate(${animState.head0FallRot + Math.cos(time * 2.3) * 2.8})`
+    );
+    headDetach0.setAttribute('opacity', String(animState.head0Opacity));
+
+    headDetach1.setAttribute(
+      'transform',
+      `translate(20, ${-95 + animState.head1FallY}) rotate(${animState.head1FallRot + Math.sin(time * 2.0) * 2.8})`
+    );
+    headDetach1.setAttribute('opacity', String(animState.head1Opacity));
+
+    const idleJaw0 = Math.sin(time * 2.3) * 2.5 - 2.5;
+    const idleJaw1 = Math.cos(time * 2.0) * 2.5 - 2.5;
+    jaw0.setAttribute('transform', `translate(-15, 10) rotate(${animState.jaw0Angle || idleJaw0})`);
+    jaw1.setAttribute('transform', `translate(-15, 10) rotate(${animState.jaw1Angle || idleJaw1})`);
+
+    if (!isAnimating && timestamp - lastSmokeTime > 1500) {
+      if (Math.random() < 0.5) {
+        spawnSmokePuff(1185, 485, 2, false);
+      } else {
+        spawnSmokePuff(1365, 420, 2, false);
+      }
+      lastSmokeTime = timestamp;
+    }
+
+    if (animState.fireActive) {
+      spawnDragonFireStream(
+        animState.fireOriginSvg.x,
+        animState.fireOriginSvg.y,
+        animState.knightX + 15,
+        animState.knightY - 125
+      );
+    }
+
+    // 4. БОЙОВІ СПЕЦЕФЕКТИ (fxCanvas)
+    fxCtx.clearRect(0, 0, cw, ch);
+
+    for (let i = slashArcs.length - 1; i >= 0; i--) {
+      const arc = slashArcs[i];
+      arc.life++;
+      const progress = arc.life / arc.maxLife;
+      fxCtx.save();
+      fxCtx.translate(arc.x, arc.y);
+      fxCtx.rotate(-0.65);
+      fxCtx.globalAlpha = 1 - progress;
+      fxCtx.strokeStyle = arc.color;
+      fxCtx.shadowColor = arc.glow;
+      fxCtx.shadowBlur = 22;
+      fxCtx.lineWidth = (1 - progress) * 18;
+      fxCtx.lineCap = 'round';
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, arc.radius * (0.85 + progress * 0.45), -Math.PI * 0.65, Math.PI * 0.65);
+      fxCtx.stroke();
+      fxCtx.restore();
+      if (arc.life >= arc.maxLife) slashArcs.splice(i, 1);
+    }
+
+    for (let i = fxParticles.length - 1; i >= 0; i--) {
+      const p = fxParticles[i];
+      p.life++;
+      const progress = p.life / p.maxLife;
+
+      if (p.type === 'fire') {
+        p.x += p.vx;
+        p.y += p.vy;
+        const currR = p.r + (p.maxR - p.r) * progress;
+        const alpha = Math.max(0, 1 - Math.pow(progress, 1.5));
+
+        fxCtx.save();
+        const grad = fxCtx.createRadialGradient(p.x, p.y, currR * 0.1, p.x, p.y, currR);
+        if (progress < 0.25) {
+          grad.addColorStop(0, `rgba(255, 255, 220, ${alpha})`);
+          grad.addColorStop(0.5, `rgba(255, 200, 30, ${alpha * 0.9})`);
+          grad.addColorStop(1, 'rgba(255, 80, 0, 0)');
+        } else if (progress < 0.65) {
+          grad.addColorStop(0, `rgba(255, 170, 20, ${alpha})`);
+          grad.addColorStop(0.55, `rgba(230, 45, 5, ${alpha * 0.85})`);
+          grad.addColorStop(1, 'rgba(120, 10, 5, 0)');
+        } else {
+          grad.addColorStop(0, `rgba(180, 35, 10, ${alpha * 0.8})`);
+          grad.addColorStop(0.6, `rgba(40, 25, 30, ${alpha * 0.65})`);
+          grad.addColorStop(1, 'rgba(15, 10, 12, 0)');
+        }
+        fxCtx.fillStyle = grad;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, currR, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.type === 'spark') {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.38;
+        fxCtx.save();
+        fxCtx.globalAlpha = 1 - progress;
+        fxCtx.fillStyle = p.color;
+        fxCtx.shadowColor = '#ff9900';
+        fxCtx.shadowBlur = 10;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, p.r * (1 - progress * 0.5), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.type === 'smoke') {
+        p.x += p.vx;
+        p.y += p.vy;
+        const currR = p.r + (p.maxR - p.r) * progress;
+        fxCtx.save();
+        fxCtx.globalAlpha = p.alpha * (1 - progress);
+        fxCtx.fillStyle = `rgb(${p.color})`;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, currR, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      }
+
+      if (p.life >= p.maxLife) fxParticles.splice(i, 1);
+    }
+
+    requestAnimationFrame(masterLoop);
+  }
+
+  window.onload = function () {
+    generateNextWordPair();
+    requestAnimationFrame(masterLoop);
+  };
+</script>
+</body>
+</html>
