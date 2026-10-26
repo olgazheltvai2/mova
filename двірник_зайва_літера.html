@@ -1,0 +1,2743 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Двірник підмітає вулицю</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Comfortaa:wght@700&family=Marck+Script&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #1c1917;
+      touch-action: none;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: default;
+    }
+
+    /* Stylized vintage brass & aged oak "Next" button - no white rectangles, no text */
+    #nextBtn {
+      position: fixed;
+      top: clamp(14px, 2.5vh, 28px);
+      right: clamp(14px, 2.5vw, 32px);
+      width: clamp(58px, 6.2vw, 78px);
+      height: clamp(58px, 6.2vw, 78px);
+      border-radius: 50%;
+      border: none;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+      z-index: 20;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+      filter: drop-shadow(0 8px 14px rgba(15, 10, 5, 0.55));
+      outline: none;
+    }
+
+    #nextBtn:hover {
+      transform: scale(1.09) rotate(4deg);
+      filter: drop-shadow(0 10px 18px rgba(255, 200, 90, 0.45));
+    }
+
+    #nextBtn:active {
+      transform: scale(0.93) rotate(-3deg);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Vintage Street Medallion "Next" Button (Pure SVG, zero text) -->
+  <button id="nextBtn" aria-label="Next">
+    <svg viewBox="0 0 100 100" width="100%" height="100%">
+      <defs>
+        <radialGradient id="woodGrad" cx="38%" cy="32%" r="68%">
+          <stop offset="0%" stop-color="#8d5b34" />
+          <stop offset="55%" stop-color="#5c361a" />
+          <stop offset="100%" stop-color="#361d0c" />
+        </radialGradient>
+        <linearGradient id="brassRim" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f6d57a" />
+          <stop offset="35%" stop-color="#c9933b" />
+          <stop offset="70%" stop-color="#7c5218" />
+          <stop offset="100%" stop-color="#e3b857" />
+        </linearGradient>
+        <linearGradient id="arrowGold" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fff3c4" />
+          <stop offset="45%" stop-color="#f3c152" />
+          <stop offset="100%" stop-color="#b87d1e" />
+        </linearGradient>
+      </defs>
+      <!-- Outer cast-iron & brass ring -->
+      <circle cx="50" cy="50" r="46" fill="url(#brassRim)" stroke="#2b190a" stroke-width="3" />
+      <circle cx="50" cy="50" r="39" fill="url(#woodGrad)" stroke="#d9a84e" stroke-width="2" />
+      <!-- Subtle wood grain arcs -->
+      <path d="M22,38 Q50,28 78,38" fill="none" stroke="#42240f" stroke-width="1.6" opacity="0.6" />
+      <path d="M18,62 Q50,72 82,62" fill="none" stroke="#42240f" stroke-width="1.6" opacity="0.6" />
+      <!-- Decorative brass rivets -->
+      <circle cx="50" cy="10" r="2.6" fill="#3a210c" />
+      <circle cx="50" cy="90" r="2.6" fill="#3a210c" />
+      <circle cx="10" cy="50" r="2.6" fill="#3a210c" />
+      <circle cx="90" cy="50" r="2.6" fill="#3a210c" />
+      <!-- Carved relief arrow -->
+      <path d="M28,43 L52,43 L52,30 L76,50 L52,70 L52,57 L28,57 Z"
+            fill="#2a1507" transform="translate(2, 3)" opacity="0.65" />
+      <path d="M28,43 L52,43 L52,30 L76,50 L52,70 L52,57 L28,57 Z"
+            fill="url(#arrowGold)" stroke="#4e2e0c" stroke-width="2" stroke-linejoin="round" />
+    </svg>
+  </button>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    /**
+     * ============================================================================
+     * ПРОЦЕДУРНИЙ АУДІО-РУШІЙ (Web Audio API, 100% без зовнішніх файлів і слів)
+     * ============================================================================
+     */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.ambientStarted = false;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+        if (this.ctx && !this.ambientStarted) {
+          this.ambientStarted = true;
+          this.startMorningAmbience();
+        }
+      }
+
+      // Лагідна ранкова атмосфера вулиці (легкий вітерець та далекі пташки)
+      startMorningAmbience() {
+        if (!this.ctx) return;
+        const scheduleChirp = () => {
+          if (this.ctx && this.ctx.state === 'running' && Math.random() < 0.65) {
+            this.playDistantBird();
+          }
+          setTimeout(scheduleChirp, 3800 + Math.random() * 4500);
+        };
+        setTimeout(scheduleChirp, 2000);
+      }
+
+      playDistantBird() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        const baseFreq = 2200 + Math.random() * 900;
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.28, now + 0.07);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.92, now + 0.16);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.35, now + 0.25);
+
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(0.022, now + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+
+      // Звук малювання крейдою по асфальту
+      playChalkWrite(duration = 0.22, pitchFactor = 1.0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+          // Зернистий шум крейди по каменю
+          const grain = Math.sin(i * 0.045 * pitchFactor) > -0.3 ? 1 : 0.2;
+          data[i] = (Math.random() * 2 - 1) * grain;
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const bandpass = this.ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.setValueAtTime(1950 * pitchFactor, now);
+        bandpass.Q.setValueAtTime(3.2, now);
+
+        const highpass = this.ctx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.setValueAtTime(900, now);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.09, now + 0.03);
+        gain.gain.setValueAtTime(0.07, now + duration * 0.7);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        noise.connect(bandpass);
+        bandpass.connect(highpass);
+        highpass.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        noise.start(now);
+        noise.stop(now + duration);
+      }
+
+      // Легкий шурхіт при наведенні на літеру
+      playHoverTick() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(620 + Math.random() * 140, now);
+        osc.frequency.exponentialRampToValueAtTime(920, now + 0.045);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.03, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.055);
+      }
+
+      // Кроки черевиків двірника по асфальту
+      playFootstep(stepIndex = 0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // Низький удар підошви
+        const osc = this.ctx.createOscillator();
+        const thudGain = this.ctx.createGain();
+        osc.type = 'sine';
+        const startFreq = stepIndex % 2 === 0 ? 135 : 150;
+        osc.frequency.setValueAtTime(startFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(42, now + 0.09);
+
+        thudGain.gain.setValueAtTime(0.14, now);
+        thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+
+        osc.connect(thudGain);
+        thudGain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+
+        // Хрускіт піщинок під черевиком
+        const dur = 0.065;
+        const bufSize = Math.floor(this.ctx.sampleRate * dur);
+        const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < bufSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.4));
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buf;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1250 + (stepIndex % 2) * 220, now);
+        filter.Q.setValueAtTime(1.8, now);
+
+        const gritGain = this.ctx.createGain();
+        gritGain.gain.setValueAtTime(0.08, now);
+        gritGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+        noise.connect(filter);
+        filter.connect(gritGain);
+        gritGain.connect(this.ctx.destination);
+        noise.start(now);
+        noise.stop(now + dur);
+      }
+
+      // Реалістичний шурхіт березової мітли по асфальту ("шух-шух!")
+      playBroomSweep(sweepNum = 0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const duration = 0.34;
+        const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+          const env = Math.sin((i / bufferSize) * Math.PI);
+          // Текстура прутиків мітли
+          const twigMod = 0.65 + 0.35 * Math.sin(i * 0.11);
+          data[i] = (Math.random() * 2 - 1) * env * twigMod;
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        const baseF = sweepNum % 2 === 0 ? 750 : 950;
+        filter.frequency.setValueAtTime(baseF * 0.7, now);
+        filter.frequency.exponentialRampToValueAtTime(baseF * 1.9, now + duration * 0.55);
+        filter.frequency.exponentialRampToValueAtTime(baseF * 0.8, now + duration);
+        filter.Q.setValueAtTime(1.4, now);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.28, now + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        noise.start(now);
+        noise.stop(now + duration);
+      }
+
+      // Звук зсування літер у нове слово
+      playLettersSlide() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = [392, 493.88, 587.33];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+          osc.frequency.exponentialRampToValueAtTime(freq * 1.15, now + idx * 0.055 + 0.15);
+
+          gain.gain.setValueAtTime(0.001, now + idx * 0.055);
+          gain.gain.linearRampToValueAtTime(0.08, now + idx * 0.055 + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.22);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.055);
+          osc.stop(now + idx * 0.055 + 0.24);
+        });
+      }
+
+      // Різноманітні активні святкові фідбеки (без слів!)
+      playCelebration(variant = 0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        if (variant % 3 === 0) {
+          // Варіант 1: Сонячний мажорний передзвін + радісний свист двірника
+          const chord = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+          chord.forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            const t = now + i * 0.075;
+            osc.frequency.setValueAtTime(freq, t);
+
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.13, t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.65);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.7);
+          });
+          // Художній свист
+          this.playHappyWhistle(now + 0.35);
+        } else if (variant % 3 === 1) {
+          // Варіант 2: Весела українська народна мелодія- награш (ксилофон/бандура тембр)
+          const melody = [
+            { f: 587.33, t: 0.0, d: 0.14 },
+            { f: 659.25, t: 0.12, d: 0.14 },
+            { f: 783.99, t: 0.24, d: 0.18 },
+            { f: 880.00, t: 0.40, d: 0.18 },
+            { f: 1174.66, t: 0.56, d: 0.45 }
+          ];
+          melody.forEach((n) => {
+            const osc = this.ctx.createOscillator();
+            const osc2 = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc2.type = 'sine';
+            osc.frequency.setValueAtTime(n.f, now + n.t);
+            osc2.frequency.setValueAtTime(n.f * 2, now + n.t);
+
+            gain.gain.setValueAtTime(0.001, now + n.t);
+            gain.gain.linearRampToValueAtTime(0.14, now + n.t + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+
+            osc.connect(gain);
+            osc2.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + n.t);
+            osc2.start(now + n.t);
+            osc.stop(now + n.t + n.d + 0.02);
+            osc2.stop(now + n.t + n.d + 0.02);
+          });
+          this.playDistantBird();
+        } else {
+          // Варіант 3: Святковий оркестровий акорд + зграйка пташок
+          const notes = [440, 554.37, 659.25, 880, 1108.73, 1318.51];
+          notes.forEach((f, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+            const start = now + i * 0.06;
+            osc.frequency.setValueAtTime(f, start);
+
+            gain.gain.setValueAtTime(0.001, start);
+            gain.gain.linearRampToValueAtTime(0.12, start + 0.025);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.6);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(start);
+            osc.stop(start + 0.65);
+          });
+          setTimeout(() => this.playDistantBird(), 180);
+          setTimeout(() => this.playDistantBird(), 360);
+        }
+      }
+
+      playHappyWhistle(startTime) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1150, startTime);
+        osc.frequency.exponentialRampToValueAtTime(1680, startTime + 0.16);
+        osc.frequency.exponentialRampToValueAtTime(1420, startTime + 0.28);
+        osc.frequency.exponentialRampToValueAtTime(1950, startTime + 0.46);
+
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(0.065, startTime + 0.04);
+        gain.gain.setValueAtTime(0.065, startTime + 0.38);
+        gain.gain.exponentialRampToValueAtTime(0.0005, startTime + 0.5);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.52);
+      }
+
+      // Незадоволений невербальний звук при помилці (стук мітли об асфальт + комічне бурчання фагота/тромбона)
+      playWrongGrumble() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // 1. Дерев'яний стук держака мітли об асфальт
+        const thudOsc = this.ctx.createOscillator();
+        const thudGain = this.ctx.createGain();
+        thudOsc.type = 'triangle';
+        thudOsc.frequency.setValueAtTime(160, now);
+        thudOsc.frequency.exponentialRampToValueAtTime(48, now + 0.12);
+        thudGain.gain.setValueAtTime(0.26, now);
+        thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+        thudOsc.connect(thudGain);
+        thudGain.connect(this.ctx.destination);
+        thudOsc.start(now);
+        thudOsc.stop(now + 0.14);
+
+        // 2. Двоскладове буркотливе "не-а / гм-гм" на низьких духових
+        const phrases = [
+          { f1: 195, f2: 175, start: 0.04, dur: 0.17 },
+          { f1: 165, f2: 130, start: 0.24, dur: 0.28 }
+        ];
+        phrases.forEach((p) => {
+          const osc = this.ctx.createOscillator();
+          const filter = this.ctx.createBiquadFilter();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(p.f1, now + p.start);
+          osc.frequency.linearRampToValueAtTime(p.f2, now + p.start + p.dur);
+
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(460, now + p.start);
+          filter.Q.setValueAtTime(4.0, now + p.start);
+
+          gain.gain.setValueAtTime(0.001, now + p.start);
+          gain.gain.linearRampToValueAtTime(0.14, now + p.start + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + p.start + p.dur);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(now + p.start);
+          osc.stop(now + p.start + p.dur + 0.02);
+        });
+
+        // 3. Короткий шурхіт мітли у повітрі
+        this.playBroomSweep(1);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /**
+     * ============================================================================
+     * СПИСОК СЛІВ ТА БЕЗКІНЕЧНИЙ ГЕНЕРАТОР
+     * ============================================================================
+     */
+    const WORD_BANK = [
+      { word: 'буряк', validIndices: [4], targetPreview: 'буря' },
+      { word: 'екран', validIndices: [0], targetPreview: 'кран' },
+      { word: 'рукав', validIndices: [4], targetPreview: 'рука' },
+      { word: 'ірис',  validIndices: [0], targetPreview: 'рис' },
+      { word: 'казкар', validIndices: [5], targetPreview: 'казка' },
+      { word: 'банка', validIndices: [4], targetPreview: 'банк' },
+      { word: 'комар', validIndices: [0, 4], targetPreview: 'омар / кома' },
+      { word: 'карета', validIndices: [3], targetPreview: 'карта' }
+    ];
+
+    class WordDeck {
+      constructor(items) {
+        this.items = items;
+        this.queue = [];
+        this.lastWord = null;
+      }
+
+      next() {
+        if (this.queue.length === 0) {
+          this.queue = [...this.items];
+          // Алгоритм тасування Фішера-Єйтса
+          for (let i = this.queue.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.queue[i], this.queue[j]] = [this.queue[j], this.queue[i]];
+          }
+          // Уникаємо повторення того самого слова на межі циклів
+          if (this.lastWord && this.queue[0].word === this.lastWord && this.queue.length > 1) {
+            const swapIdx = 1 + Math.floor(Math.random() * (this.queue.length - 1));
+            [this.queue[0], this.queue[swapIdx]] = [this.queue[swapIdx], this.queue[0]];
+          }
+        }
+        const chosen = this.queue.shift();
+        this.lastWord = chosen.word;
+        return chosen;
+      }
+    }
+
+    const wordDeck = new WordDeck(WORD_BANK);
+
+    /**
+     * ============================================================================
+     * НАЛАШТУВАННЯ ПОЛОТНА ТА КЕШОВАНИХ ТЕКСТУР (Вулиця, Фасади, Асфальт)
+     * ============================================================================
+     */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let W = window.innerWidth;
+    let H = window.innerHeight;
+    let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    // Кешований шар нерухомої архітектури та текстури асфальту для 60 FPS
+    const bgLayer = document.createElement('canvas');
+    const bgCtx = bgLayer.getContext('2d');
+
+    // Геометричні орієнтири сцени
+    let sidewalkTopY = 0;
+    let curbY = 0;
+    let asphaltCenterY = 0;
+
+    // Пастельні відтінки вуличної крейди
+    const CHALK_PALETTE = [
+      { main: '#fdf8eb', edge: '#e7dec3', glow: 'rgba(255, 248, 220, 0.7)' }, // Тепла вершкова крейда
+      { main: '#eef7fc', edge: '#c3dff0', glow: 'rgba(200, 235, 255, 0.7)' }, // Ніжно-блакитна крейда
+      { main: '#fef5d4', edge: '#ebd594', glow: 'rgba(255, 238, 170, 0.7)' }, // Сонячно-жовта крейда
+      { main: '#fceee9', edge: '#e8c5b8', glow: 'rgba(255, 215, 200, 0.7)' }  // Персиково-рожева крейда
+    ];
+
+    /**
+     * Побудова реалістичного фону європейської/української вулиці та зернистого асфальту
+     */
+    function buildStaticEnvironment() {
+      bgLayer.width = W * DPR;
+      bgLayer.height = H * DPR;
+      bgCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+      sidewalkTopY = Math.round(H * 0.37);
+      curbY = Math.round(H * 0.465);
+      asphaltCenterY = Math.round(curbY + (H - curbY) * 0.54);
+
+      // 1. Ранкове небо з теплим золотистим градієнтом біля горизонту
+      const skyGrad = bgCtx.createLinearGradient(0, 0, 0, sidewalkTopY);
+      skyGrad.addColorStop(0, '#5a8ec8');
+      skyGrad.addColorStop(0.52, '#8cb8de');
+      skyGrad.addColorStop(1, '#f4d9a6');
+      bgCtx.fillStyle = skyGrad;
+      bgCtx.fillRect(0, 0, W, sidewalkTopY + 10);
+
+      // Далекі силуети дахів старого міста на горизонті
+      bgCtx.fillStyle = '#c8b29b';
+      for (let x = 0; x < W; x += 90) {
+        const h = 35 + ((x * 37) % 45);
+        bgCtx.fillRect(x, sidewalkTopY - h - 30, 95, h + 30);
+      }
+
+      // 2. Деталізовані фасади затишних міських кам'яниць
+      drawHistoricBuildings(bgCtx, W, sidewalkTopY);
+
+      // 3. Кована металева огорожа палісадника між будинками
+      drawWroughtIronFence(bgCtx, W, sidewalkTopY);
+
+      // 4. Стовбури каштанів і кленів на задньому плані (крони анімуються наживо)
+      drawTreeTrunks(bgCtx, W, sidewalkTopY);
+
+      // 5. Дерев'яна паркова лавка з чавунними бильцями та ліхтар
+      drawParkBench(bgCtx, W * 0.76, sidewalkTopY + 10, Math.min(1, W / 1280));
+      drawStreetLamp(bgCtx, W * 0.14, sidewalkTopY + 16, Math.min(1.08, H / 750));
+
+      // 6. Брукований кам'яний тротуар
+      drawCobblestoneSidewalk(bgCtx, W, sidewalkTopY, curbY);
+
+      // 7. Гранітний бордюр з фаскою та тінями
+      drawGraniteCurb(bgCtx, W, curbY);
+
+      // 8. Високодеталізований реалістичний асфальт у нижній частині екрана
+      drawRealisticAsphalt(bgCtx, W, H, curbY);
+    }
+
+    function drawHistoricBuildings(c, width, groundY) {
+      // Три колоритні фасади: теракотова цегляна кам'яниця, тепла вохриста штукатурка та оливково-кремова будівля
+      const buildings = [
+        { x: -10, w: width * 0.34, h: groundY * 0.92, wall: '#b85d43', trim: '#ead7bd', roof: '#5e3226', brick: true },
+        { x: width * 0.31, w: width * 0.36, h: groundY * 0.84, wall: '#e4be7e', trim: '#fbf0d9', roof: '#485966', brick: false },
+        { x: width * 0.65, w: width * 0.38, h: groundY * 0.90, wall: '#c7cfb5', trim: '#f2efe4', roof: '#783c2a', brick: false }
+      ];
+
+      buildings.forEach((b, bIdx) => {
+        const topY = groundY - b.h;
+
+        // Тінь між будинками
+        c.fillStyle = 'rgba(25, 18, 12, 0.25)';
+        c.fillRect(b.x - 6, topY + 10, b.w + 12, b.h);
+
+        // Основна стіна
+        const wallGrad = c.createLinearGradient(b.x, topY, b.x + b.w, groundY);
+        wallGrad.addColorStop(0, b.wall);
+        wallGrad.addColorStop(1, shadeColor(b.wall, -18));
+        c.fillStyle = wallGrad;
+        c.fillRect(b.x, topY, b.w, b.h);
+
+        // Текстура цегли та штукатурки
+        if (b.brick) {
+          c.fillStyle = 'rgba(70, 22, 12, 0.22)';
+          for (let y = topY + 14; y < groundY - 22; y += 10) {
+            const offset = ((y / 10) % 2) * 14;
+            for (let x = b.x + offset; x < b.x + b.w - 16; x += 28) {
+              if ((x * y) % 5 !== 0) {
+                c.fillRect(x, y, 22, 6);
+              }
+            }
+          }
+        } else {
+          // Фактура старовинної штукатурки
+          c.fillStyle = 'rgba(255, 255, 255, 0.08)';
+          for (let i = 0; i < 65; i++) {
+            const px = b.x + ((i * 73) % Math.max(20, b.w - 20));
+            const py = topY + 15 + ((i * 47) % Math.max(20, b.h - 30));
+            c.fillRect(px, py, 18 + (i % 15), 8 + (i % 9));
+          }
+        }
+
+        // Кам'яний цоколь внизу будівлі
+        c.fillStyle = '#6e655c';
+        c.fillRect(b.x, groundY - 24, b.w, 24);
+        c.strokeStyle = '#4e463e';
+        c.lineWidth = 1.5;
+        for (let x = b.x; x < b.x + b.w; x += 36) {
+          c.strokeRect(x, groundY - 24, 36, 24);
+        }
+
+        // Рустовані кути кам'яниці
+        c.fillStyle = b.trim;
+        for (let y = topY + 12; y < groundY - 26; y += 16) {
+          const wQ = ((y / 16) % 2 === 0) ? 18 : 11;
+          c.fillRect(b.x, y, wQ, 12);
+          c.fillRect(b.x + b.w - wQ, y, wQ, 12);
+        }
+
+        // Карниз та черепичний дах з димарем
+        c.fillStyle = b.roof;
+        c.beginPath();
+        c.moveTo(b.x - 8, topY);
+        c.lineTo(b.x + 18, topY - 34);
+        c.lineTo(b.x + b.w - 18, topY - 34);
+        c.lineTo(b.x + b.w + 8, topY);
+        c.closePath();
+        c.fill();
+
+        // Димар
+        c.fillStyle = '#7d4432';
+        c.fillRect(b.x + b.w * 0.25, topY - 52, 22, 24);
+        c.fillStyle = '#4e291d';
+        c.fillRect(b.x + b.w * 0.25 - 3, topY - 56, 28, 5);
+
+        // Профільований карниз
+        c.fillStyle = b.trim;
+        c.fillRect(b.x - 5, topY - 4, b.w + 10, 9);
+
+        // Вікна з фіранками, віконницями та квітковими ящиками з пеларгоніями
+        const cols = Math.max(2, Math.min(4, Math.floor(b.w / 115)));
+        const winW = Math.min(46, b.w / (cols * 2.1));
+        const winH = Math.min(68, b.h * 0.36);
+        const spacingX = b.w / (cols + 1);
+        const winY = topY + b.h * 0.26;
+
+        for (let i = 1; i <= cols; i++) {
+          const wx = b.x + spacingX * i - winW / 2;
+          drawDetailedWindow(c, wx, winY, winW, winH, b.trim, (bIdx + i) % 2 === 0);
+        }
+      });
+    }
+
+    function drawDetailedWindow(c, x, y, w, h, trimColor, hasShutters) {
+      // Дерев'яні віконниці
+      if (hasShutters) {
+        c.fillStyle = '#3b6952';
+        c.strokeStyle = '#254535';
+        c.lineWidth = 1.5;
+        c.fillRect(x - w * 0.34, y + 4, w * 0.3, h - 4);
+        c.strokeRect(x - w * 0.34, y + 4, w * 0.3, h - 4);
+        c.fillRect(x + w * 1.04, y + 4, w * 0.3, h - 4);
+        c.strokeRect(x + w * 1.04, y + 4, w * 0.3, h - 4);
+      }
+
+      // Обрамлення вікна та сандрик зверху
+      c.fillStyle = trimColor;
+      c.fillRect(x - 5, y - 5, w + 10, h + 10);
+      c.fillRect(x - 9, y - 11, w + 18, 6);
+
+      // Скло з теплим відблиском неба
+      const glassGrad = c.createLinearGradient(x, y, x + w, y + h);
+      glassGrad.addColorStop(0, '#2c4359');
+      glassGrad.addColorStop(0.45, '#466987');
+      glassGrad.addColorStop(1, '#1d2d3d');
+      c.fillStyle = glassGrad;
+      c.fillRect(x, y, w, h);
+
+      // Мереживні фіранки всередині
+      c.fillStyle = 'rgba(255, 250, 240, 0.55)';
+      c.beginPath();
+      c.moveTo(x, y);
+      c.lineTo(x + w * 0.42, y);
+      c.quadraticCurveTo(x + w * 0.32, y + h * 0.55, x, y + h * 0.78);
+      c.closePath();
+      c.fill();
+
+      c.beginPath();
+      c.moveTo(x + w, y);
+      c.lineTo(x + w * 0.58, y);
+      c.quadraticCurveTo(x + w * 0.68, y + h * 0.55, x + w, y + h * 0.78);
+      c.closePath();
+      c.fill();
+
+      // Сонячний блік на склі
+      c.fillStyle = 'rgba(255, 255, 255, 0.18)';
+      c.beginPath();
+      c.moveTo(x + 4, y + 4);
+      c.lineTo(x + w * 0.55, y + 4);
+      c.lineTo(x + 4, y + h * 0.65);
+      c.closePath();
+      c.fill();
+
+      // Дерев'яна рама вікна
+      c.strokeStyle = '#f5ebd6';
+      c.lineWidth = 2.5;
+      c.strokeRect(x + 1, y + 1, w - 2, h - 2);
+      c.beginPath();
+      c.moveTo(x, y + h * 0.38);
+      c.lineTo(x + w, y + h * 0.38);
+      c.moveTo(x + w * 0.5, y + h * 0.38);
+      c.lineTo(x + w * 0.5, y + h);
+      c.stroke();
+
+      // Підвіконня та ящик з червоними калачиками (пеларгоніями)
+      c.fillStyle = '#5c3c24';
+      c.fillRect(x - 4, y + h - 4, w + 8, 9);
+
+      // Зелень і квіти
+      for (let i = 0; i < 7; i++) {
+        const fx = x + (i / 6) * w;
+        const fy = y + h - 5 + (i % 2) * 3;
+        c.fillStyle = i % 2 === 0 ? '#2f6e36' : '#3e8544';
+        c.beginPath();
+        c.arc(fx, fy, 6, 0, Math.PI * 2);
+        c.fill();
+
+        if (i % 2 === 0) {
+          c.fillStyle = '#e03c31';
+          c.beginPath();
+          c.arc(fx + 1, fy - 4, 4, 0, Math.PI * 2);
+          c.fill();
+          c.fillStyle = '#ff7a70';
+          c.beginPath();
+          c.arc(fx, fy - 5, 2, 0, Math.PI * 2);
+          c.fill();
+        }
+      }
+    }
+
+    function drawWroughtIronFence(c, width, groundY) {
+      // Кущі вздовж огорожі
+      for (let x = 0; x < width; x += 26) {
+        c.fillStyle = (x % 52 === 0) ? '#3b6638' : '#2d522b';
+        c.beginPath();
+        c.arc(x, groundY - 12, 18 + (x % 9), 0, Math.PI * 2);
+        c.fill();
+      }
+    }
+
+    function drawTreeTrunks(c, width, groundY) {
+      const trunkPositions = [width * 0.06, width * 0.48, width * 0.91];
+      trunkPositions.forEach((tx, idx) => {
+        const trunkW = 28 + (idx % 2) * 8;
+        const grad = c.createLinearGradient(tx - trunkW, 0, tx + trunkW, 0);
+        grad.addColorStop(0, '#362519');
+        grad.addColorStop(0.45, '#59402e');
+        grad.addColorStop(1, '#261910');
+        c.fillStyle = grad;
+
+        c.beginPath();
+        c.moveTo(tx - trunkW * 0.7, groundY + 8);
+        c.quadraticCurveTo(tx - trunkW * 0.4, groundY * 0.5, tx - trunkW * 0.5, 0);
+        c.lineTo(tx + trunkW * 0.5, 0);
+        c.quadraticCurveTo(tx + trunkW * 0.4, groundY * 0.5, tx + trunkW * 0.7, groundY + 8);
+        c.closePath();
+        c.fill();
+      });
+    }
+
+    function drawParkBench(c, x, y, scale) {
+      c.save();
+      c.translate(x, y);
+      c.scale(scale, scale);
+
+      // Тінь під лавкою
+      c.fillStyle = 'rgba(20, 15, 10, 0.35)';
+      c.beginPath();
+      c.ellipse(0, 4, 82, 10, 0, 0, Math.PI * 2);
+      c.fill();
+
+      // Дерев'яні планки спинки
+      const woodColors = ['#9c6334', '#875227', '#73431d'];
+      for (let i = 0; i < 3; i++) {
+        c.fillStyle = woodColors[i];
+        c.strokeStyle = '#3d210b';
+        c.lineWidth = 1.2;
+        c.fillRect(-68, -44 + i * 9, 136, 7);
+        c.strokeRect(-68, -44 + i * 9, 136, 7);
+      }
+
+      // Сидіння
+      c.fillStyle = '#a86c3a';
+      c.fillRect(-72, -16, 144, 8);
+      c.strokeRect(-72, -16, 144, 8);
+
+      // Чавунні чорні ковані ніжки та бильця
+      c.strokeStyle = '#22252a';
+      c.lineWidth = 4.5;
+      c.lineCap = 'round';
+      [-58, 58].forEach((lx) => {
+        c.beginPath();
+        c.moveTo(lx, -46);
+        c.lineTo(lx, 4);
+        c.moveTo(lx - 8, -14);
+        c.quadraticCurveTo(lx + 10, -28, lx, -38);
+        c.stroke();
+      });
+
+      c.restore();
+    }
+
+    function drawStreetLamp(c, x, y, scale) {
+      c.save();
+      c.translate(x, y);
+      c.scale(scale, scale);
+
+      // Тінь біля основи
+      c.fillStyle = 'rgba(15, 12, 8, 0.4)';
+      c.beginPath();
+      c.ellipse(0, 4, 24, 7, 0, 0, Math.PI * 2);
+      c.fill();
+
+      // Чавунний стовп ліхтаря
+      const poleGrad = c.createLinearGradient(-10, 0, 10, 0);
+      poleGrad.addColorStop(0, '#1b2226');
+      poleGrad.addColorStop(0.4, '#3d4c54');
+      poleGrad.addColorStop(1, '#14191c');
+      c.fillStyle = poleGrad;
+
+      // Лита фігурна база
+      c.beginPath();
+      c.moveTo(-14, 4);
+      c.lineTo(-9, -45);
+      c.lineTo(9, -45);
+      c.lineTo(14, 4);
+      c.closePath();
+      c.fill();
+
+      c.fillRect(-4.5, -215, 9, 175);
+
+      // Золотисті пояски
+      c.fillStyle = '#c89d48';
+      c.fillRect(-11, -46, 22, 4);
+      c.fillRect(-7, -140, 14, 4);
+      c.fillRect(-8, -215, 16, 5);
+
+      // Ліхтарна головка з теплим ранковим світлом
+      const glow = c.createRadialGradient(0, -238, 4, 0, -238, 58);
+      glow.addColorStop(0, 'rgba(255, 242, 180, 0.85)');
+      glow.addColorStop(0.4, 'rgba(255, 210, 110, 0.32)');
+      glow.addColorStop(1, 'rgba(255, 200, 90, 0)');
+      c.fillStyle = glow;
+      c.beginPath();
+      c.arc(0, -238, 58, 0, Math.PI * 2);
+      c.fill();
+
+      // Скляний плафон
+      c.fillStyle = '#fff5c8';
+      c.strokeStyle = '#1e2429';
+      c.lineWidth = 2.5;
+      c.beginPath();
+      c.moveTo(-12, -215);
+      c.lineTo(-18, -252);
+      c.lineTo(18, -252);
+      c.lineTo(12, -215);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      // Кришка ліхтаря
+      c.fillStyle = '#1e2429';
+      c.beginPath();
+      c.moveTo(-23, -252);
+      c.lineTo(0, -270);
+      c.lineTo(23, -252);
+      c.closePath();
+      c.fill();
+      c.beginPath();
+      c.arc(0, -273, 4, 0, Math.PI * 2);
+      c.fill();
+
+      c.restore();
+    }
+
+    function drawCobblestoneSidewalk(c, width, topY, bottomY) {
+      const h = bottomY - topY;
+      const sideGrad = c.createLinearGradient(0, topY, 0, bottomY);
+      sideGrad.addColorStop(0, '#968c80');
+      sideGrad.addColorStop(0.7, '#aba093');
+      sideGrad.addColorStop(1, '#877d70');
+      c.fillStyle = sideGrad;
+      c.fillRect(0, topY, width, h);
+
+      // Перспективна кам'яна плитка тротуару
+      const rows = 4;
+      for (let r = 0; r < rows; r++) {
+        const ry1 = topY + (r / rows) * h;
+        const ry2 = topY + ((r + 1) / rows) * h;
+        const rh = ry2 - ry1;
+        const tileW = 54 + r * 12;
+        const shift = (r % 2) * (tileW * 0.5);
+
+        for (let x = -tileW; x < width + tileW; x += tileW) {
+          const tx = x + shift;
+          const shade = ((Math.floor(x / tileW) + r * 3) % 3 - 1) * 7;
+          c.fillStyle = shadeColor('#9e9487', shade);
+          c.fillRect(tx + 1.5, ry1 + 1.5, tileW - 3, rh - 3);
+
+          // Світла грань каменю
+          c.fillStyle = 'rgba(255, 250, 240, 0.16)';
+          c.fillRect(tx + 2, ry1 + 2, tileW - 4, 2);
+        }
+      }
+    }
+
+    function drawGraniteCurb(c, width, y) {
+      const curbH = 18;
+      // Верхня світла грань гранітного бордюру
+      c.fillStyle = '#c4bbb0';
+      c.fillRect(0, y - 6, width, 7);
+
+      // Вертикальна грань бордюру
+      const curbGrad = c.createLinearGradient(0, y, 0, y + curbH);
+      curbGrad.addColorStop(0, '#787169');
+      curbGrad.addColorStop(1, '#4c4742');
+      c.fillStyle = curbGrad;
+      c.fillRect(0, y + 1, width, curbH);
+
+      // Шви між гранітними блоками
+      const blockW = 110;
+      for (let x = 20; x < width; x += blockW) {
+        c.fillStyle = '#332f2c';
+        c.fillRect(x, y - 6, 3, curbH + 7);
+        c.fillStyle = 'rgba(255,255,255,0.22)';
+        c.fillRect(x + 3, y - 6, 2, curbH + 6);
+      }
+
+      // Глибока тінь під бордюром на асфальті
+      const shadowGrad = c.createLinearGradient(0, y + curbH, 0, y + curbH + 22);
+      shadowGrad.addColorStop(0, 'rgba(12, 11, 10, 0.72)');
+      shadowGrad.addColorStop(1, 'rgba(12, 11, 10, 0)');
+      c.fillStyle = shadowGrad;
+      c.fillRect(0, y + curbH, width, 22);
+    }
+
+    function drawRealisticAsphalt(c, width, height, topY) {
+      const roadY = topY + 18;
+      const roadH = height - roadY;
+
+      // Базовий градієнт темного волого-матового асфальту
+      const roadGrad = c.createLinearGradient(0, roadY, 0, height);
+      roadGrad.addColorStop(0, '#36383c');
+      roadGrad.addColorStop(0.28, '#2d2f34');
+      roadGrad.addColorStop(0.75, '#25272b');
+      roadGrad.addColorStop(1, '#1d1f23');
+      c.fillStyle = roadGrad;
+      c.fillRect(0, roadY, width, roadH);
+
+      // Процедурна зерниста текстура щебеню в асфальті (міріади мікрокамінців)
+      const pebbleCount = Math.min(9500, Math.floor((width * roadH) / 65));
+      for (let i = 0; i < pebbleCount; i++) {
+        // Детермінований псевдовипадковий розподіл
+        const px = (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * width;
+        const py = roadY + ((Math.sin(i * 78.233) * 43758.5453 % 1 + 1) % 1) * roadH;
+        const sz = (i % 3 === 0) ? 2.2 : 1.4;
+
+        if (i % 4 === 0) {
+          c.fillStyle = 'rgba(215, 210, 200, 0.13)';
+        } else if (i % 4 === 1) {
+          c.fillStyle = 'rgba(130, 135, 145, 0.16)';
+        } else {
+          c.fillStyle = 'rgba(15, 16, 18, 0.28)';
+        }
+        c.fillRect(px, py, sz, sz);
+      }
+
+      // Тонкі природні тріщинки та бітумні латки на асфальті
+      c.strokeStyle = 'rgba(18, 19, 22, 0.55)';
+      c.lineWidth = 1.6;
+      const crackStarts = [width * 0.18, width * 0.62, width * 0.85];
+      crackStarts.forEach((cx, idx) => {
+        c.beginPath();
+        let curX = cx;
+        let curY = roadY + 15 + idx * 35;
+        c.moveTo(curX, curY);
+        for (let s = 0; s < 7; s++) {
+          curX += Math.sin(s * 2.1 + idx) * 26;
+          curY += 16 + (s % 3) * 8;
+          c.lineTo(curX, curY);
+        }
+        c.stroke();
+      });
+
+      // Ливнева чавунна решітка біля бордюру
+      drawStormDrain(c, width * 0.82, roadY + 12);
+
+      // Реалістичний круглий чавунний люк зліва внизу (без тексту)
+      drawManholeCover(c, width * 0.11, height - Math.min(95, roadH * 0.24));
+    }
+
+    function drawStormDrain(c, x, y) {
+      c.save();
+      c.translate(x, y);
+      c.fillStyle = '#1c1d20';
+      c.fillRect(-38, -6, 76, 22);
+      c.strokeStyle = '#4a4d52';
+      c.lineWidth = 2.5;
+      c.strokeRect(-38, -6, 76, 22);
+
+      for (let gx = -30; gx <= 30; gx += 10) {
+        c.fillStyle = '#0d0e10';
+        c.fillRect(gx - 3, -3, 6, 16);
+      }
+      c.restore();
+    }
+
+    function drawManholeCover(c, x, y) {
+      c.save();
+      c.translate(x, y);
+      c.scale(1, 0.46); // Перспективне скорочення на площині дороги
+
+      // Зовнішнє кільце
+      c.fillStyle = '#202124';
+      c.beginPath();
+      c.arc(0, 0, 58, 0, Math.PI * 2);
+      c.fill();
+
+      c.fillStyle = '#383a40';
+      c.strokeStyle = '#191a1d';
+      c.lineWidth = 4;
+      c.beginPath();
+      c.arc(0, 0, 50, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      // Концентричний вафельний рельєф чавунного люка
+      c.strokeStyle = '#50535b';
+      c.lineWidth = 2.5;
+      [38, 25, 12].forEach((r) => {
+        c.beginPath();
+        c.arc(0, 0, r, 0, Math.PI * 2);
+        c.stroke();
+      });
+
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+        c.beginPath();
+        c.moveTo(Math.cos(a) * 12, Math.sin(a) * 12);
+        c.lineTo(Math.cos(a) * 48, Math.sin(a) * 48);
+        c.stroke();
+      }
+
+      c.restore();
+    }
+
+    function shadeColor(hex, percent) {
+      const num = parseInt(hex.replace('#', ''), 16);
+      const amt = Math.round(2.55 * percent);
+      const R = Math.max(0, Math.min(255, (num >> 16) + amt));
+      const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + amt));
+      const B = Math.max(0, Math.min(255, (num & 0x0000ff) + amt));
+      return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+    }
+
+    /**
+     * ============================================================================
+     * ЖИВЕ ОТОЧЕННЯ: Хмари, Гілки Дерев, Пташки (Горобці/Голуби), Осіннє Листя
+     * ============================================================================
+     */
+    const clouds = [];
+    const treeClusters = [];
+    const streetBirds = [];
+    const ambientLeaves = [];
+    let celebrationSunPulse = 0;
+
+    function initLivingWorld() {
+      clouds.length = 0;
+      for (let i = 0; i < 5; i++) {
+        clouds.push({
+          x: (i / 5) * W + Math.random() * 120,
+          y: 28 + (i % 3) * 32,
+          scale: 0.7 + Math.random() * 0.55,
+          speed: 6 + Math.random() * 7
+        });
+      }
+
+      treeClusters.length = 0;
+      const canopyCenters = [
+        { x: W * 0.05, y: sidewalkTopY * 0.18, r: Math.min(W, H) * 0.20, palette: ['#3b6e38', '#528741', '#d48c32', '#e8aa42'] },
+        { x: W * 0.48, y: sidewalkTopY * 0.10, r: Math.min(W, H) * 0.17, palette: ['#42783c', '#639949', '#c97b28', '#e0a538'] },
+        { x: W * 0.93, y: sidewalkTopY * 0.16, r: Math.min(W, H) * 0.21, palette: ['#366634', '#4e823d', '#cf8129', '#eab348'] }
+      ];
+      canopyCenters.forEach((c) => {
+        const blobs = [];
+        for (let i = 0; i < 16; i++) {
+          const ang = (i / 16) * Math.PI * 2;
+          const dist = (0.25 + (i % 3) * 0.26) * c.r;
+          blobs.push({
+            ox: Math.cos(ang) * dist * 1.35,
+            oy: Math.sin(ang) * dist * 0.75,
+            rad: c.r * (0.36 + (i % 4) * 0.08),
+            color: c.palette[i % c.palette.length],
+            phase: i * 0.7
+          });
+        }
+        treeClusters.push({ cx: c.x, cy: c.y, blobs });
+      });
+
+      streetBirds.length = 0;
+      for (let i = 0; i < 4; i++) {
+        streetBirds.push({
+          x: W * (0.22 + i * 0.18),
+          y: sidewalkTopY + 14 + (i % 2) * 16,
+          baseY: sidewalkTopY + 14 + (i % 2) * 16,
+          vx: 0,
+          vy: 0,
+          dir: i % 2 === 0 ? 1 : -1,
+          state: 'peck', // 'peck' | 'hop' | 'fly'
+          timer: 1 + Math.random() * 2,
+          wingPhase: Math.random() * 6,
+          kind: i % 2 === 0 ? 'sparrow' : 'pigeon'
+        });
+      }
+
+      ambientLeaves.length = 0;
+      for (let i = 0; i < 18; i++) {
+        ambientLeaves.push(createFallingLeaf(true));
+      }
+    }
+
+    function createFallingLeaf(randomY = false) {
+      const colors = ['#d97724', '#e59f32', '#c44b27', '#8ca632', '#df8828'];
+      const onCurb = randomY && Math.random() < 0.45;
+      return {
+        x: Math.random() * W,
+        y: onCurb ? (curbY + 12 + Math.random() * 24) : (randomY ? Math.random() * H * 0.85 : -20),
+        vx: 14 + Math.random() * 22,
+        vy: 18 + Math.random() * 22,
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 2.5,
+        size: 7 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        settled: onCurb,
+        settleY: curbY + 14 + Math.random() * (H - curbY - 35),
+        swayPhase: Math.random() * Math.PI * 2
+      };
+    }
+
+    function triggerBirdsCelebration() {
+      streetBirds.forEach((b, i) => {
+        b.state = 'fly';
+        b.vy = -120 - Math.random() * 60;
+        b.vx = (i % 2 === 0 ? 1 : -1) * (65 + Math.random() * 55);
+        b.dir = b.vx >= 0 ? 1 : -1;
+        b.timer = 2.4;
+      });
+    }
+
+    /**
+     * ============================================================================
+     * КРЕЙДЯНІ ЛІТЕРИ НА АСФАЛЬТІ (Високодеталізований рендер крейди)
+     * ============================================================================
+     */
+    class ChalkLetter {
+      constructor(char, index, total, x, y, size, colorSpec) {
+        this.char = char;
+        this.index = index;
+        this.total = total;
+        this.x = x;
+        this.targetX = x;
+        this.y = y;
+        this.size = size;
+        this.colorSpec = colorSpec;
+
+        // Прогрес появи (малювання крейдою на старті)
+        this.drawProgress = 0;
+        // Прогрес стирання мітлою (0 = ціла, 1 = стерта)
+        this.eraseProgress = 0;
+        this.smudgeOffset = 0;
+        this.hoverAmount = 0;
+        this.shakeTime = 0;
+        this.removed = false;
+
+        // Кешований відбиток текстурної крейдяної літери
+        this.canvas = document.createElement('canvas');
+        this.pad = Math.ceil(size * 0.92);
+        this.canvas.width = this.pad * 2;
+        this.canvas.height = this.pad * 2;
+        this.renderChalkTexture();
+      }
+
+      renderChalkTexture() {
+        const c = this.canvas.getContext('2d');
+        const cx = this.pad;
+        const cy = this.pad;
+        c.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        c.save();
+        c.font = `700 ${this.size}px "Comfortaa", "Caveat", sans-serif`;
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+
+        // 1. М'який крейдяний ореол (пилок навколо літери)
+        c.shadowColor = this.colorSpec.glow;
+        c.shadowBlur = 14;
+        c.fillStyle = this.colorSpec.edge;
+        c.globalAlpha = 0.45;
+        c.fillText(this.char, cx, cy);
+        c.shadowBlur = 0;
+
+        // 2. Багатошарові штрихи крейди для нерівного живого краю
+        const strokes = 14;
+        for (let i = 0; i < strokes; i++) {
+          const ang = (i / strokes) * Math.PI * 2;
+          const rad = 1.2 + (i % 3) * 1.1;
+          const ox = Math.cos(ang) * rad;
+          const oy = Math.sin(ang) * rad;
+          c.globalAlpha = 0.26;
+          c.fillStyle = i % 2 === 0 ? this.colorSpec.main : this.colorSpec.edge;
+          c.fillText(this.char, cx + ox, cy + oy);
+        }
+
+        // Основне тіло крейдяної літери
+        c.globalAlpha = 0.95;
+        c.fillStyle = this.colorSpec.main;
+        c.fillText(this.char, cx, cy);
+
+        // 3. Пористість крейди: асфальтові мікропори проступають крізь крейду
+        c.globalCompositeOperation = 'destination-out';
+        const poreCount = Math.floor(this.size * 3.8);
+        for (let i = 0; i < poreCount; i++) {
+          const px = cx + (Math.random() - 0.5) * this.size * 0.95;
+          const py = cy + (Math.random() - 0.5) * this.size * 0.95;
+          const r = 0.7 + Math.random() * 1.9;
+          c.globalAlpha = 0.25 + Math.random() * 0.45;
+          c.beginPath();
+          c.arc(px, py, r, 0, Math.PI * 2);
+          c.fill();
+        }
+
+        // 4. Навколишні крихти крейди на асфальті
+        c.globalCompositeOperation = 'source-over';
+        c.fillStyle = this.colorSpec.main;
+        for (let i = 0; i < 42; i++) {
+          const sx = cx + (Math.random() - 0.5) * this.size * 1.05;
+          const sy = cy + (Math.random() - 0.5) * this.size * 1.05;
+          c.globalAlpha = 0.2 + Math.random() * 0.45;
+          c.beginPath();
+          c.arc(sx, sy, 0.8 + Math.random() * 1.6, 0, Math.PI * 2);
+          c.fill();
+        }
+
+        c.restore();
+      }
+
+      containsPoint(px, py) {
+        if (this.removed || this.eraseProgress >= 0.95) return false;
+        const halfW = this.size * 0.44;
+        const halfH = this.size * 0.54;
+        return (
+          px >= this.x - halfW &&
+          px <= this.x + halfW &&
+          py >= this.y - halfH &&
+          py <= this.y + halfH
+        );
+      }
+
+      draw(c, celebrationGlow = 0) {
+        if (this.removed || this.drawProgress <= 0.01) return;
+        const alpha = Math.max(0, 1 - this.eraseProgress);
+        if (alpha <= 0.01) return;
+
+        c.save();
+
+        // Тремтіння при неправильному кліку
+        let shakeX = 0;
+        let shakeRot = 0;
+        if (this.shakeTime > 0) {
+          shakeX = Math.sin(this.shakeTime * 48) * 9 * (this.shakeTime / 0.55);
+          shakeRot = Math.sin(this.shakeTime * 48) * 0.07 * (this.shakeTime / 0.55);
+        }
+
+        const liftY = -this.hoverAmount * 5;
+        const scale = (0.85 + 0.15 * Math.min(1, this.drawProgress)) * (1 + this.hoverAmount * 0.06 + celebrationGlow * 0.07);
+
+        c.translate(this.x + shakeX + this.smudgeOffset, this.y + liftY);
+        c.rotate(shakeRot);
+        c.scale(scale, scale);
+
+        // Якщо слово складено правильно — золотисте крейдяне сяйво
+        if (celebrationGlow > 0.01) {
+          c.shadowColor = '#ffe57f';
+          c.shadowBlur = 24 * celebrationGlow;
+        } else if (this.hoverAmount > 0.05) {
+          c.shadowColor = this.colorSpec.glow;
+          c.shadowBlur = 16 * this.hoverAmount;
+        }
+
+        // Ефект поступового написання зверху вниз
+        if (this.drawProgress < 1) {
+          c.beginPath();
+          c.rect(-this.pad, -this.pad, this.pad * 2, this.pad * 2 * this.drawProgress);
+          c.clip();
+        }
+
+        // При замітанні літера розмивається вбік і блідне
+        c.globalAlpha = alpha;
+        c.drawImage(this.canvas, -this.pad, -this.pad);
+
+        if (this.eraseProgress > 0.05 && this.eraseProgress < 0.95) {
+          c.globalAlpha = alpha * 0.45;
+          c.drawImage(this.canvas, -this.pad + this.eraseProgress * 28, -this.pad - 4);
+          c.drawImage(this.canvas, -this.pad - this.eraseProgress * 22, -this.pad + 3);
+        }
+
+        c.restore();
+      }
+    }
+
+    /**
+     * ============================================================================
+     * ПЕРСОНАЖ: ДВІРНИК (Скелетна анімація, жива міміка, березова мітла)
+     * ============================================================================
+     */
+    class JanitorCharacter {
+      constructor() {
+        this.x = W * 0.15;
+        this.y = curbY + (H - curbY) * 0.34;
+        this.homeX = W * 0.14;
+        this.homeY = curbY + (H - curbY) * 0.36;
+
+        this.targetX = this.x;
+        this.targetY = this.y;
+        this.facing = 1; // 1 = дивиться вправо, -1 = вліво
+
+        // Стани: 'idle' | 'walking' | 'sweeping' | 'celebrating' | 'grumpy' | 'returning'
+        this.state = 'idle';
+        this.stateTimer = 0;
+        this.walkCycle = 0;
+        this.lastStepPhase = 0;
+        this.sweepCycle = 0;
+        this.sweepsCompleted = 0;
+        this.celebrationVariant = 0;
+
+        // Очі та погляд
+        this.blinkTimer = 2.5;
+        this.isBlinking = false;
+        this.lookTargetX = W * 0.5;
+        this.lookTargetY = H * 0.7;
+
+        // Гнучкість прутиків мітли
+        this.twigBend = 0;
+      }
+
+      resizeUpdate() {
+        this.homeX = W * 0.13;
+        this.homeY = curbY + (H - curbY) * 0.35;
+        if (this.state === 'idle' || this.state === 'returning') {
+          this.x = this.homeX;
+          this.y = this.homeY;
+        }
+      }
+
+      walkTo(destX, destY, onArrive) {
+        this.targetX = destX;
+        this.targetY = destY;
+        this.onArriveCallback = onArrive;
+        this.state = 'walking';
+        this.lastStepPhase = 0;
+      }
+
+      update(dt) {
+        this.stateTimer += dt;
+
+        // Природне кліпання очима
+        this.blinkTimer -= dt;
+        if (this.blinkTimer <= 0) {
+          if (!this.isBlinking) {
+            this.isBlinking = true;
+            this.blinkTimer = 0.13;
+          } else {
+            this.isBlinking = false;
+            this.blinkTimer = 2.4 + Math.random() * 3.2;
+          }
+        }
+
+        // Плавне повернення вигину мітли
+        this.twigBend *= Math.pow(0.08, dt);
+
+        if (this.state === 'walking' || this.state === 'returning') {
+          const dx = this.targetX - this.x;
+          const dy = this.targetY - this.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (Math.abs(dx) > 4) {
+            this.facing = dx > 0 ? 1 : -1;
+          }
+
+          const speed = Math.max(260, W * 0.30);
+          if (dist <= speed * dt) {
+            this.x = this.targetX;
+            this.y = this.targetY;
+            if (this.state === 'returning') {
+              this.state = 'idle';
+              this.facing = 1;
+            } else if (this.onArriveCallback) {
+              const cb = this.onArriveCallback;
+              this.onArriveCallback = null;
+              cb();
+            }
+          } else {
+            this.x += (dx / dist) * speed * dt;
+            this.y += (dy / dist) * speed * dt;
+            this.walkCycle += dt * 10.5;
+
+            // Синхронізація звуків кроків із фазою ходьби
+            const stepIndex = Math.floor(this.walkCycle / Math.PI);
+            if (stepIndex !== this.lastStepPhase) {
+              this.lastStepPhase = stepIndex;
+              sound.playFootstep(stepIndex);
+              spawnStepDust(this.x, this.y + 52);
+            }
+          }
+        } else {
+          // Плавне заспокоєння кроку
+          this.walkCycle = 0;
+        }
+      }
+
+      draw(c) {
+        const scale = Math.max(0.76, Math.min(1.22, H / 720));
+        c.save();
+        c.translate(this.x, this.y);
+        c.scale(scale, scale);
+
+        // Реалістична м'яка тінь на асфальті під ногами двірника
+        c.fillStyle = 'rgba(10, 10, 12, 0.44)';
+        c.beginPath();
+        c.ellipse(0, 62, 48, 14, 0, 0, Math.PI * 2);
+        c.fill();
+
+        // Розрахунок пози залежно від стану
+        const t = this.stateTimer;
+        let bodyBob = Math.sin(t * 2.6) * 2.2;
+        let torsoLean = 0.04;
+        let headTilt = Math.sin(t * 1.5) * 0.03;
+        let headShakeX = 0;
+
+        let leftLegAngle = 0;
+        let rightLegAngle = 0;
+        let leftKneeBend = 0;
+        let rightKneeBend = 0;
+
+        let broomAngle = 0.22;
+        let broomShiftX = 24;
+        let broomShiftY = -4;
+        let capTipOffset = 0;
+
+        if (this.state === 'walking' || this.state === 'returning') {
+          const wc = this.walkCycle;
+          bodyBob = -Math.abs(Math.sin(wc)) * 6;
+          torsoLean = 0.11;
+          leftLegAngle = Math.sin(wc) * 0.46;
+          rightLegAngle = -Math.sin(wc) * 0.46;
+          leftKneeBend = Math.max(0, -Math.cos(wc) * 0.35);
+          rightKneeBend = Math.max(0, Math.cos(wc) * 0.35);
+          broomAngle = -0.35 + Math.sin(wc) * 0.12;
+          broomShiftX = 18;
+          broomShiftY = -14;
+        } else if (this.state === 'sweeping') {
+          // Енергійні широкі помахи мітлою по літері
+          const sc = this.sweepCycle;
+          const sweepWave = Math.sin(sc * Math.PI * 2);
+          bodyBob = Math.abs(sweepWave) * 4;
+          torsoLean = 0.22 + sweepWave * 0.08;
+          headTilt = 0.15;
+          leftLegAngle = -0.18;
+          rightLegAngle = 0.22;
+          broomAngle = 0.15 + sweepWave * 0.56;
+          broomShiftX = 28 + sweepWave * 24;
+          broomShiftY = 6 + Math.abs(sweepWave) * 5;
+          this.twigBend = -sweepWave * 18;
+        } else if (this.state === 'grumpy') {
+          // Незадоволено хитає головою та махає мітлою / стукає об землю
+          headShakeX = Math.sin(t * 22) * 5;
+          headTilt = Math.sin(t * 14) * 0.09;
+          torsoLean = -0.05;
+          broomAngle = -0.55 + Math.sin(t * 20) * 0.32;
+          broomShiftX = 32;
+          broomShiftY = -22 + Math.abs(Math.sin(t * 10)) * 12;
+        } else if (this.state === 'celebrating') {
+          if (this.celebrationVariant % 3 === 0) {
+            // Варіант А: Піднімає кашкета та радісно всміхається
+            bodyBob = -Math.abs(Math.sin(t * 6)) * 7;
+            capTipOffset = Math.sin(Math.min(1, t * 2.5) * Math.PI) * 18;
+            broomAngle = -0.25 + Math.sin(t * 7) * 0.15;
+          } else if (this.celebrationVariant % 3 === 1) {
+            // Варіант Б: Веселий підскок з піднятою мітлою
+            bodyBob = -Math.abs(Math.sin(t * 8.5)) * 14;
+            leftLegAngle = Math.sin(t * 8.5) * 0.25;
+            rightLegAngle = -Math.sin(t * 8.5) * 0.25;
+            broomAngle = -0.75 + Math.sin(t * 10) * 0.22;
+            broomShiftY = -26;
+          } else {
+            // Варіант В: Гордо спирається на мітлу і посвистує
+            bodyBob = Math.sin(t * 4) * 3;
+            torsoLean = -0.06;
+            headTilt = -0.08 + Math.sin(t * 5) * 0.05;
+            broomAngle = 0.08;
+            broomShiftX = 34;
+          }
+        } else {
+          // Idle: дихає, інколи легенько ворушить мітлою
+          broomAngle = 0.18 + Math.sin(t * 1.6) * 0.04;
+        }
+
+        c.scale(this.facing, 1);
+        c.translate(0, bodyBob);
+
+        // 1. Задня нога (ліва)
+        this.drawLeg(c, -10, 12, leftLegAngle, leftKneeBend, true);
+
+        // 2. Передня нога (права)
+        this.drawLeg(c, 10, 12, rightLegAngle, rightKneeBend, false);
+
+        // 3. Тулуб (тепла картата фланелева сорочка та робоча безрукавка зі світловідбивними смугами)
+        c.save();
+        c.translate(0, 10);
+        c.rotate(torsoLean);
+
+        // Задня рука (ліва)
+        this.drawBackArm(c, broomShiftX, broomShiftY, broomAngle);
+
+        // Основа тулуба - фланелева сорочка
+        c.fillStyle = '#9e3328';
+        c.beginPath();
+        c.roundRect(-24, -56, 48, 64, 16);
+        c.fill();
+
+        // Клітинка на сорочці (тартан)
+        c.strokeStyle = 'rgba(40, 15, 10, 0.35)';
+        c.lineWidth = 3;
+        for (let sy = -48; sy < 4; sy += 12) {
+          c.beginPath();
+          c.moveTo(-22, sy);
+          c.lineTo(22, sy);
+          c.stroke();
+        }
+
+        // Робоча жилетка оливково-гірчичного кольору
+        const vestGrad = c.createLinearGradient(-25, -56, 25, 8);
+        vestGrad.addColorStop(0, '#5a6336');
+        vestGrad.addColorStop(1, '#3e4623');
+        c.fillStyle = vestGrad;
+        c.strokeStyle = '#282e15';
+        c.lineWidth = 2;
+
+        c.beginPath();
+        c.roundRect(-25, -55, 50, 62, 14);
+        c.fill();
+        c.stroke();
+
+        // Виріз жилетки та комір сорочки
+        c.fillStyle = '#b83d30';
+        c.beginPath();
+        c.moveTo(-8, -55);
+        c.lineTo(12, -55);
+        c.lineTo(6, -30);
+        c.closePath();
+        c.fill();
+
+        // Світловідбивні сигнальні смуги на жилетці двірника
+        c.fillStyle = '#e5d467';
+        c.fillRect(-24, -14, 48, 6);
+        c.fillStyle = '#c4cde0';
+        c.fillRect(-24, -12, 48, 2);
+
+        // Кишеня на жилетці та ґудзики
+        c.fillStyle = '#333b1b';
+        c.fillRect(6, -34, 14, 15);
+        c.strokeStyle = '#d4a849';
+        c.lineWidth = 1.5;
+        c.strokeRect(6, -34, 14, 15);
+
+        // 4. Голова двірника (кепка, вуса, брови, живий погляд)
+        this.drawHead(c, 2 + headShakeX, -62, headTilt, capTipOffset);
+
+        // 5. Деталізована березова мітла ("мітла")
+        this.drawBirchBroom(c, broomShiftX, broomShiftY, broomAngle);
+
+        // 6. Передня рука (права)
+        this.drawFrontArm(c, broomShiftX, broomShiftY, broomAngle, capTipOffset);
+
+        c.restore();
+        c.restore();
+      }
+
+      drawLeg(c, hipX, hipY, hipAngle, kneeBend, isBack) {
+        c.save();
+        c.translate(hipX, hipY);
+        c.rotate(hipAngle);
+
+        // Стегно (міцні робочі штани)
+        c.fillStyle = isBack ? '#2c3947' : '#364657';
+        c.strokeStyle = '#1c252e';
+        c.lineWidth = 2;
+        c.beginPath();
+        c.roundRect(-10, -4, 20, 30, 8);
+        c.fill();
+        c.stroke();
+
+        // Гомілка
+        c.translate(0, 22);
+        c.rotate(kneeBend);
+        c.fillStyle = isBack ? '#26323e' : '#303f4e';
+        c.beginPath();
+        c.roundRect(-9, -2, 18, 26, 7);
+        c.fill();
+        c.stroke();
+
+        // Підкочені манжети штанів
+        c.fillStyle = '#47596b';
+        c.fillRect(-10, 17, 20, 6);
+
+        // Міцний шкіряний черевик
+        c.translate(0, 24);
+        const bootGrad = c.createLinearGradient(-10, -4, 20, 8);
+        bootGrad.addColorStop(0, '#54331c');
+        bootGrad.addColorStop(1, '#2e1a0d');
+        c.fillStyle = bootGrad;
+        c.strokeStyle = '#1a0e06';
+        c.lineWidth = 2;
+        c.beginPath();
+        c.moveTo(-10, -3);
+        c.lineTo(8, -3);
+        c.quadraticCurveTo(22, -2, 23, 7);
+        c.lineTo(-11, 7);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        // Протектор підошви
+        c.fillStyle = '#171412';
+        c.fillRect(-11, 5, 34, 4);
+
+        c.restore();
+      }
+
+      drawBackArm(c, broomX, broomY, broomAngle) {
+        c.save();
+        c.translate(10, -44);
+        const handTargetX = broomX + Math.sin(broomAngle) * 14 - 10;
+        const handTargetY = broomY - Math.cos(broomAngle) * 14 + 28;
+        const ang = Math.atan2(handTargetY, handTargetX);
+
+        c.rotate(ang - 0.35);
+        // Рукав фланелевої сорочки в клітинку
+        c.fillStyle = '#8a2b22';
+        c.strokeStyle = '#47140f';
+        c.lineWidth = 2;
+        c.beginPath();
+        c.roundRect(-7, -6, 15, 34, 7);
+        c.fill();
+        c.stroke();
+
+        // Робоча рукавиця / долоня
+        c.fillStyle = '#e8b48a';
+        c.beginPath();
+        c.arc(0, 30, 7.5, 0, Math.PI * 2);
+        c.fill();
+        c.stroke();
+        c.restore();
+      }
+
+      drawFrontArm(c, broomX, broomY, broomAngle, capTipOffset) {
+        c.save();
+        c.translate(-12, -42);
+
+        if (capTipOffset > 2) {
+          // Рука тягнеться до козирка кашкета під час вітання
+          c.rotate(-1.15);
+          c.fillStyle = '#a8362b';
+          c.strokeStyle = '#47140f';
+          c.lineWidth = 2;
+          c.beginPath();
+          c.roundRect(-8, -6, 16, 34, 8);
+          c.fill();
+          c.stroke();
+
+          c.fillStyle = '#f0be95';
+          c.beginPath();
+          c.arc(0, 30, 8, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+        } else {
+          const handX = broomX - Math.sin(broomAngle) * 12 + 12;
+          const handY = broomY + Math.cos(broomAngle) * 12 + 36;
+          const ang = Math.atan2(handY, handX);
+
+          c.rotate(ang - 1.35);
+          c.fillStyle = '#a8362b';
+          c.strokeStyle = '#47140f';
+          c.lineWidth = 2;
+          c.beginPath();
+          c.roundRect(-8, -6, 16, 36, 8);
+          c.fill();
+          c.stroke();
+
+          // Смужка клітинки на рукаві
+          c.fillStyle = '#d99b43';
+          c.fillRect(-7, 14, 14, 4);
+
+          // Долоня, що міцно тримає держак мітли
+          c.fillStyle = '#f0be95';
+          c.beginPath();
+          c.arc(0, 32, 8.2, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+        }
+        c.restore();
+      }
+
+      drawBirchBroom(c, bx, by, angle) {
+        c.save();
+        c.translate(bx, by);
+        c.rotate(angle);
+
+        // Дерев'яний держак мітли (ясеновий/березовий)
+        const handleGrad = c.createLinearGradient(-4, -90, 4, 40);
+        handleGrad.addColorStop(0, '#deb37c');
+        handleGrad.addColorStop(0.5, '#b8864d');
+        handleGrad.addColorStop(1, '#855c2e');
+        c.fillStyle = handleGrad;
+        c.strokeStyle = '#4a3115';
+        c.lineWidth = 1.8;
+
+        c.beginPath();
+        c.roundRect(-3.8, -88, 7.6, 118, 3.8);
+        c.fill();
+        c.stroke();
+
+        // Пучок березового гілля ("віник/мітла") внизу держака
+        c.translate(0, 26);
+
+        // Намалюємо 26 пружних березових гілочок з вигином при підмітанні
+        const bend = this.twigBend;
+        for (let i = -13; i <= 13; i++) {
+          const spread = (i / 13);
+          const twigTopX = spread * 5;
+          const twigMidX = spread * 18 + bend * 0.45;
+          const twigBotX = spread * 31 + bend;
+          const twigLen = 40 + (Math.abs(i * 7) % 9);
+
+          c.strokeStyle = (i % 3 === 0) ? '#4a2b16' : (i % 2 === 0 ? '#694024' : '#7d4e2d');
+          c.lineWidth = 2.1;
+          c.beginPath();
+          c.moveTo(twigTopX, 0);
+          c.quadraticCurveTo(twigMidX, twigLen * 0.55, twigBotX, twigLen);
+          c.stroke();
+
+          // Дрібні бічні розгалуження на кінчиках мітли
+          if (i % 2 === 0) {
+            c.lineWidth = 1.2;
+            c.beginPath();
+            c.moveTo(twigMidX, twigLen * 0.65);
+            c.lineTo(twigBotX + (i > 0 ? 4 : -4), twigLen - 3);
+            c.stroke();
+          }
+        }
+
+        // Металеві дротяні перев'язки мітли
+        c.fillStyle = '#b0b7c0';
+        c.strokeStyle = '#383d42';
+        c.lineWidth = 1.5;
+        c.beginPath();
+        c.roundRect(-9, 1, 18, 5, 2);
+        c.roundRect(-13, 12, 26, 5, 2);
+        c.fill();
+        c.stroke();
+
+        c.restore();
+      }
+
+      drawHead(c, hx, hy, tilt, capTipOffset) {
+        c.save();
+        c.translate(hx, hy);
+        c.rotate(tilt);
+
+        // Шия
+        c.fillStyle = '#e0aa82';
+        c.fillRect(-8, -4, 16, 14);
+
+        // Голова (теплий живий тон шкіри)
+        const faceGrad = c.createRadialGradient(4, -22, 4, 0, -20, 26);
+        faceGrad.addColorStop(0, '#fad1b0');
+        faceGrad.addColorStop(1, '#e0a579');
+        c.fillStyle = faceGrad;
+        c.strokeStyle = '#6e4226';
+        c.lineWidth = 2;
+
+        c.beginPath();
+        c.arc(0, -20, 21, 0, Math.PI * 2);
+        c.fill();
+        c.stroke();
+
+        // Вухо
+        c.fillStyle = '#e5ab81';
+        c.beginPath();
+        c.arc(-19, -19, 5.5, 0, Math.PI * 2);
+        c.fill();
+        c.stroke();
+
+        // Сивіючі скроні під кепкою
+        c.fillStyle = '#75685c';
+        c.beginPath();
+        c.ellipse(-15, -26, 5, 8, -0.2, 0, Math.PI * 2);
+        c.fill();
+
+        // Рум'янець на щоках
+        c.fillStyle = 'rgba(225, 95, 80, 0.32)';
+        c.beginPath();
+        c.ellipse(-2, -15, 5.5, 3.8, 0, 0, Math.PI * 2);
+        c.ellipse(15, -15, 4.5, 3.5, 0, 0, Math.PI * 2);
+        c.fill();
+
+        // Очі та зіниці (реагують на курсор / літери)
+        const eyePositions = [3, 14];
+        eyePositions.forEach((ex) => {
+          if (this.isBlinking) {
+            c.strokeStyle = '#4a2e1b';
+            c.lineWidth = 2.2;
+            c.beginPath();
+            c.moveTo(ex - 3.5, -22);
+            c.quadraticCurveTo(ex, -20, ex + 3.5, -22);
+            c.stroke();
+          } else {
+            // Білок ока
+            c.fillStyle = '#ffffff';
+            c.beginPath();
+            c.ellipse(ex, -22, 4.2, 4.6, 0, 0, Math.PI * 2);
+            c.fill();
+
+            // Зіниця
+            c.fillStyle = '#2d4030';
+            c.beginPath();
+            c.arc(ex + 1.1, -21.5, 2.3, 0, Math.PI * 2);
+            c.fill();
+
+            // Блік в оці
+            c.fillStyle = '#ffffff';
+            c.beginPath();
+            c.arc(ex + 1.8, -22.8, 0.9, 0, Math.PI * 2);
+            c.fill();
+          }
+        });
+
+        // Пишні брови (змінюють нахил при радості чи незадоволенні)
+        c.strokeStyle = '#5c4c3e';
+        c.lineWidth = 3.4;
+        c.lineCap = 'round';
+        const browShift = this.state === 'grumpy' ? 3.2 : (this.state === 'celebrating' ? -2.5 : 0);
+
+        c.beginPath();
+        c.moveTo(-1, -28 - browShift * 0.5);
+        c.lineTo(7, -28 + browShift);
+        c.moveTo(11, -28 + browShift);
+        c.lineTo(18, -28 - browShift * 0.5);
+        c.stroke();
+
+        // Добродушний ніс картоплинкою
+        c.fillStyle = '#dfa074';
+        c.strokeStyle = '#6e4226';
+        c.lineWidth = 1.8;
+        c.beginPath();
+        c.arc(10, -17, 4.8, -0.6, Math.PI * 0.85);
+        c.fill();
+        c.stroke();
+
+        // Розкішні козацькі/міські вуса та усмішка
+        if (this.state === 'celebrating') {
+          // Широка щаслива усмішка під вусами
+          c.fillStyle = '#7a251d';
+          c.beginPath();
+          c.arc(8, -10, 6.5, 0.1, Math.PI - 0.1);
+          c.fill();
+        }
+
+        const moustacheDrop = this.state === 'grumpy' ? 3 : (this.state === 'celebrating' ? -2.5 : 0);
+        c.fillStyle = '#635243';
+        c.strokeStyle = '#3b2f25';
+        c.lineWidth = 1.5;
+        c.beginPath();
+        c.moveTo(8, -12);
+        c.quadraticCurveTo(-2, -13, -7, -7 + moustacheDrop);
+        c.quadraticCurveTo(1, -6, 8, -9);
+        c.quadraticCurveTo(15, -6, 21, -8 + moustacheDrop);
+        c.quadraticCurveTo(17, -13, 8, -12);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        // Твідовий картуз / кепка двірника (підіймається при святковому вітанні)
+        c.save();
+        c.translate(0, -capTipOffset);
+        c.rotate(-capTipOffset * 0.015);
+
+        // Козирок кепки
+        c.fillStyle = '#362b21';
+        c.beginPath();
+        c.moveTo(6, -33);
+        c.quadraticCurveTo(28, -32, 26, -26);
+        c.quadraticCurveTo(14, -27, 4, -30);
+        c.closePath();
+        c.fill();
+
+        // Тулія твідової кепки
+        const capGrad = c.createLinearGradient(-22, -48, 18, -28);
+        capGrad.addColorStop(0, '#7d6952');
+        capGrad.addColorStop(1, '#4f4030');
+        c.fillStyle = capGrad;
+        c.strokeStyle = '#2b2218';
+        c.lineWidth = 2;
+
+        c.beginPath();
+        c.moveTo(-21, -30);
+        c.quadraticCurveTo(-24, -47, 2, -46);
+        c.quadraticCurveTo(20, -45, 19, -30);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        // Ґудзик на маківці кепки
+        c.fillStyle = '#362b21';
+        c.beginPath();
+        c.arc(-1, -46, 2.8, 0, Math.PI * 2);
+        c.fill();
+
+        c.restore();
+        c.restore();
+      }
+    }
+
+    const janitor = new JanitorCharacter();
+
+    /**
+     * ============================================================================
+     * СИСТЕМА ЧАСТИНОК (Крейдяний пил, Камінці, Іскри, Листя з-під мітли)
+     * ============================================================================
+     */
+    const particles = [];
+
+    function spawnChalkDust(x, y, color = '#fdf8eb', count = 16, speedScale = 1) {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = (18 + Math.random() * 75) * speedScale;
+        particles.push({
+          type: 'dust',
+          x: x + (Math.random() - 0.5) * 28,
+          y: y + (Math.random() - 0.5) * 24,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 15,
+          r: 3 + Math.random() * 9,
+          color,
+          alpha: 0.55 + Math.random() * 0.35,
+          life: 0,
+          maxLife: 0.45 + Math.random() * 0.45
+        });
+      }
+    }
+
+    function spawnSweepDebris(x, y, dir = 1, chalkColor = '#fdf8eb') {
+      // Густі клуби крейдяного пилу
+      for (let i = 0; i < 26; i++) {
+        particles.push({
+          type: 'dust',
+          x: x + (Math.random() - 0.5) * 45,
+          y: y + (Math.random() - 0.5) * 35,
+          vx: dir * (55 + Math.random() * 140) + (Math.random() - 0.5) * 60,
+          vy: -25 - Math.random() * 75,
+          r: 6 + Math.random() * 16,
+          color: i % 3 === 0 ? '#b8b2a8' : chalkColor,
+          alpha: 0.65,
+          life: 0,
+          maxLife: 0.55 + Math.random() * 0.5
+        });
+      }
+      // Дрібні камінці та осінні листочки, що вилітають з-під мітли
+      for (let i = 0; i < 6; i++) {
+        particles.push({
+          type: i % 2 === 0 ? 'pebble' : 'leaf',
+          x: x + (Math.random() - 0.5) * 30,
+          y: y + (Math.random() - 0.5) * 20,
+          vx: dir * (90 + Math.random() * 160),
+          vy: -80 - Math.random() * 90,
+          rot: Math.random() * 6,
+          vRot: (Math.random() - 0.5) * 12,
+          r: 3.5 + Math.random() * 4.5,
+          color: i % 2 === 0 ? '#7c766e' : '#e0892b',
+          alpha: 1,
+          life: 0,
+          maxLife: 0.65 + Math.random() * 0.35
+        });
+      }
+    }
+
+    function spawnStepDust(x, y) {
+      for (let i = 0; i < 5; i++) {
+        particles.push({
+          type: 'dust',
+          x: x + (Math.random() - 0.5) * 16,
+          y: y + (Math.random() - 0.5) * 6,
+          vx: (Math.random() - 0.5) * 28,
+          vy: -8 - Math.random() * 16,
+          r: 3 + Math.random() * 5,
+          color: '#9e978e',
+          alpha: 0.38,
+          life: 0,
+          maxLife: 0.35 + Math.random() * 0.2
+        });
+      }
+    }
+
+    function spawnCelebrationSparkles(letters) {
+      const colors = ['#ffe57f', '#ff9e80', '#80d8ff', '#b9f6ca', '#fff59d'];
+      letters.forEach((lt) => {
+        if (lt.removed) return;
+        for (let i = 0; i < 14; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 35 + Math.random() * 115;
+          particles.push({
+            type: 'sparkle',
+            x: lt.x + (Math.random() - 0.5) * lt.size * 0.6,
+            y: lt.y + (Math.random() - 0.5) * lt.size * 0.5,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 35,
+            r: 4 + Math.random() * 6,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            alpha: 1,
+            life: 0,
+            maxLife: 0.8 + Math.random() * 0.6
+          });
+        }
+      });
+    }
+
+    /**
+     * ============================================================================
+     * ЛОГІКА ГРИ ТА KЕРУВАННЯ СЛОВАМИ
+     * ============================================================================
+     */
+    let currentWordObj = null;
+    let chalkLetters = [];
+    let gamePhase = 'writing'; // 'writing' | 'ready' | 'sweeping_action' | 'sliding' | 'celebrating'
+    let phaseTimer = 0;
+    let hoveredLetter = null;
+    let targetLetterToSweep = null;
+    let currentChalkColor = CHALK_PALETTE[0];
+    let celebrationCounter = 0;
+
+    function startNewWord() {
+      currentWordObj = wordDeck.next();
+      currentChalkColor = CHALK_PALETTE[Math.floor(Math.random() * CHALK_PALETTE.length)];
+      hoveredLetter = null;
+      targetLetterToSweep = null;
+      gamePhase = 'writing';
+      phaseTimer = 0;
+
+      layoutChalkWord(true);
+    }
+
+    function layoutChalkWord(resetDrawProgress = false) {
+      if (!currentWordObj) return;
+      const chars = Array.from(currentWordObj.word);
+      const count = chars.length;
+
+      // Крупний розмір літер на асфальті, адаптований під широкий екран
+      const maxTotalWidth = W * 0.72;
+      const fontSize = Math.floor(Math.min(H * 0.21, maxTotalWidth / (count * 0.82), 165));
+      const spacing = fontSize * 0.84;
+      const startX = W * 0.54 - ((count - 1) * spacing) / 2;
+      const centerY = curbY + (H - curbY) * 0.56;
+
+      if (resetDrawProgress || chalkLetters.length !== count) {
+        chalkLetters = chars.map((ch, idx) => {
+          const lx = startX + idx * spacing;
+          const ly = centerY + Math.sin(idx * 1.7) * 5;
+          return new ChalkLetter(ch, idx, count, lx, ly, fontSize, currentChalkColor);
+        });
+      } else {
+        // Оновлюємо координати при зміні розміру вікна зі збереженням стану
+        const activeLetters = chalkLetters.filter((l) => !l.removed);
+        const activeCount = activeLetters.length;
+        const newStartX = W * 0.54 - ((activeCount - 1) * spacing) / 2;
+        activeLetters.forEach((lt, aIdx) => {
+          lt.size = fontSize;
+          lt.targetX = newStartX + aIdx * spacing;
+          lt.x = lt.targetX;
+          lt.y = centerY + Math.sin(aIdx * 1.7) * 5;
+          lt.pad = Math.ceil(fontSize * 0.92);
+          lt.canvas.width = lt.pad * 2;
+          lt.canvas.height = lt.pad * 2;
+          lt.renderChalkTexture();
+        });
+      }
+    }
+
+    function handlePointerDown(clientX, clientY) {
+      sound.init();
+
+      if (gamePhase !== 'ready') return;
+
+      for (const lt of chalkLetters) {
+        if (lt.containsPoint(clientX, clientY)) {
+          const isCorrect = currentWordObj.validIndices.includes(lt.index);
+          if (isCorrect) {
+            triggerCorrectSweep(lt);
+          } else {
+            triggerWrongLetter(lt);
+          }
+          break;
+        }
+      }
+    }
+
+    function triggerCorrectSweep(letter) {
+      gamePhase = 'sweeping_action';
+      targetLetterToSweep = letter;
+      hoveredLetter = null;
+      canvas.style.cursor = 'default';
+
+      // Визначаємо зручну позицію для двірника поруч з обраною літерою
+      const standSide = janitor.x <= letter.x ? -1 : 1;
+      const standX = Math.max(70, Math.min(W - 70, letter.x + standSide * (letter.size * 0.66)));
+      const standY = letter.y - 42;
+
+      janitor.walkTo(standX, standY, () => {
+        janitor.facing = letter.x >= janitor.x ? 1 : -1;
+        janitor.state = 'sweeping';
+        janitor.stateTimer = 0;
+        janitor.sweepCycle = 0;
+        janitor.sweepsCompleted = 0;
+        sound.playBroomSweep(0);
+        spawnSweepDebris(letter.x, letter.y, janitor.facing, currentChalkColor.main);
+      });
+    }
+
+    function triggerWrongLetter(letter) {
+      // Літера тремтить, а двірник повертається і незадоволено махає мітлою
+      letter.shakeTime = 0.55;
+      spawnChalkDust(letter.x, letter.y, '#f29c94', 14, 0.8);
+
+      janitor.facing = letter.x >= janitor.x ? 1 : -1;
+      janitor.state = 'grumpy';
+      janitor.stateTimer = 0;
+      sound.playWrongGrumble();
+    }
+
+    function finishSweepAndSlide() {
+      if (!targetLetterToSweep) return;
+      targetLetterToSweep.removed = true;
+      targetLetterToSweep.eraseProgress = 1;
+
+      // Обчислюємо нові центровані позиції для літер, що залишилися, щоб утворити нове слово
+      const remaining = chalkLetters.filter((l) => !l.removed);
+      const spacing = remaining[0] ? remaining[0].size * 0.84 : 100;
+      const startX = W * 0.54 - ((remaining.length - 1) * spacing) / 2;
+
+      remaining.forEach((lt, idx) => {
+        lt.targetX = startX + idx * spacing;
+      });
+
+      sound.playLettersSlide();
+      gamePhase = 'sliding';
+      phaseTimer = 0;
+
+      // Двірник робить крок трохи вбік і починає радіти утвореному слову
+      janitor.celebrationVariant = celebrationCounter++;
+      janitor.state = 'celebrating';
+      janitor.stateTimer = 0;
+    }
+
+    /**
+     * ============================================================================
+     * ГОЛОВНИЙ ЦИКЛ ОНОВЛЕННЯ ТА ВІДМАЛЬОВКИ (60 FPS)
+     * ============================================================================
+     */
+    let lastTime = performance.now();
+
+    function update(dt, nowSec) {
+      // 1. Хмари
+      clouds.forEach((cl) => {
+        cl.x += cl.speed * dt;
+        if (cl.x - 160 > W) cl.x = -160;
+      });
+
+      // 2. Пташки на тротуарі
+      streetBirds.forEach((b) => {
+        b.timer -= dt;
+        b.wingPhase += dt * 18;
+
+        if (b.state === 'fly') {
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          b.vy += 95 * dt; // Повернення по дузі
+          if (b.y >= b.baseY) {
+            b.y = b.baseY;
+            b.vy = 0;
+            b.vx = 0;
+            b.state = 'peck';
+            b.timer = 1.5 + Math.random() * 2.5;
+          }
+          if (b.x < 40) { b.x = 40; b.vx = Math.abs(b.vx); b.dir = 1; }
+          if (b.x > W - 40) { b.x = W - 40; b.vx = -Math.abs(b.vx); b.dir = -1; }
+        } else if (b.state === 'hop') {
+          b.x += b.dir * 38 * dt;
+          if (b.timer <= 0) {
+            b.state = 'peck';
+            b.timer = 1.2 + Math.random() * 2.5;
+          }
+        } else {
+          if (b.timer <= 0) {
+            b.state = 'hop';
+            b.dir = Math.random() < 0.5 ? 1 : -1;
+            b.timer = 0.45 + Math.random() * 0.5;
+          }
+        }
+      });
+
+      // 3. Осіннє листя, що кружляє у повітрі та лежить біля бордюру
+      ambientLeaves.forEach((lf, idx) => {
+        if (!lf.settled) {
+          lf.swayPhase += dt * 2.4;
+          lf.x += (lf.vx + Math.sin(lf.swayPhase) * 28) * dt;
+          lf.y += lf.vy * dt;
+          lf.rot += lf.vRot * dt;
+          if (lf.y >= lf.settleY) {
+            lf.y = lf.settleY;
+            lf.settled = true;
+          }
+          if (lf.x > W + 30) lf.x = -20;
+        } else {
+          // Інколи вітерець підхоплює листочок з асфальту
+          if (Math.random() < 0.0008) {
+            ambientLeaves[idx] = createFallingLeaf(false);
+          }
+        }
+      });
+
+      // 4. Оновлення літер та фаз гри
+      if (gamePhase === 'writing') {
+        let allWritten = true;
+        const speed = 3.4;
+        for (let i = 0; i < chalkLetters.length; i++) {
+          const lt = chalkLetters[i];
+          const prevDone = i === 0 || chalkLetters[i - 1].drawProgress >= 0.75;
+          if (prevDone && lt.drawProgress < 1) {
+            const oldP = lt.drawProgress;
+            lt.drawProgress = Math.min(1, lt.drawProgress + dt * speed);
+            if (oldP === 0) {
+              sound.playChalkWrite(0.19, 0.92 + i * 0.05);
+              spawnChalkDust(lt.x, lt.y, currentChalkColor.main, 8, 0.55);
+            }
+          }
+          if (lt.drawProgress < 1) allWritten = false;
+        }
+        if (allWritten) {
+          gamePhase = 'ready';
+        }
+      } else if (gamePhase === 'sweeping_action' && janitor.state === 'sweeping' && targetLetterToSweep) {
+        const prevCycle = Math.floor(janitor.sweepCycle * 2);
+        janitor.sweepCycle += dt * 2.15; // ~4 енергійні помахи за ~1 секунду
+        const curCycle = Math.floor(janitor.sweepCycle * 2);
+
+        targetLetterToSweep.eraseProgress = Math.min(1, janitor.sweepCycle / 2.0);
+        targetLetterToSweep.smudgeOffset = Math.sin(janitor.sweepCycle * Math.PI * 2) * 14 * targetLetterToSweep.eraseProgress;
+
+        if (curCycle !== prevCycle && curCycle <= 4) {
+          sound.playBroomSweep(curCycle);
+          const sweepDir = curCycle % 2 === 0 ? janitor.facing : -janitor.facing;
+          spawnSweepDebris(targetLetterToSweep.x, targetLetterToSweep.y, sweepDir, currentChalkColor.main);
+        }
+
+        if (janitor.sweepCycle >= 2.05) {
+          finishSweepAndSlide();
+        }
+      } else if (gamePhase === 'sliding') {
+        phaseTimer += dt;
+        let allArrived = true;
+        chalkLetters.forEach((lt) => {
+          if (lt.removed) return;
+          const diff = lt.targetX - lt.x;
+          if (Math.abs(diff) > 0.8) {
+            lt.x += diff * Math.min(1, dt * 11);
+            allArrived = false;
+            if (Math.random() < 0.35) {
+              spawnChalkDust(lt.x, lt.y + lt.size * 0.3, currentChalkColor.main, 1, 0.35);
+            }
+          } else {
+            lt.x = lt.targetX;
+          }
+        });
+
+        if (allArrived || phaseTimer > 0.55) {
+          gamePhase = 'celebrating';
+          phaseTimer = 0;
+          celebrationSunPulse = 1.0;
+          sound.playCelebration(janitor.celebrationVariant);
+          spawnCelebrationSparkles(chalkLetters);
+          triggerBirdsCelebration();
+        }
+      } else if (gamePhase === 'celebrating') {
+        phaseTimer += dt;
+        celebrationSunPulse = Math.max(0, 1 - phaseTimer / 1.9);
+
+        if (phaseTimer >= 2.05) {
+          // Повертаємо двірника на вихідну позицію та запускаємо нове слово
+          janitor.state = 'returning';
+          janitor.targetX = janitor.homeX;
+          janitor.targetY = janitor.homeY;
+          startNewWord();
+        }
+      }
+
+      // Плавна анімація наведення та згасання тремтіння літер
+      chalkLetters.forEach((lt) => {
+        const targetHover = (hoveredLetter === lt && gamePhase === 'ready') ? 1 : 0;
+        lt.hoverAmount += (targetHover - lt.hoverAmount) * Math.min(1, dt * 12);
+        if (lt.shakeTime > 0) {
+          lt.shakeTime = Math.max(0, lt.shakeTime - dt);
+        }
+      });
+
+      // Якщо двірник закінчив бурчати після помилки — повертається в очікування
+      if (janitor.state === 'grumpy' && janitor.stateTimer > 0.72) {
+        janitor.state = 'idle';
+      }
+
+      // 5. Оновлення двірника
+      janitor.update(dt);
+
+      // 6. Оновлення частинок
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life += dt;
+        if (p.life >= p.maxLife) {
+          particles.splice(i, 1);
+          continue;
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        if (p.type === 'pebble') {
+          p.vy += 320 * dt;
+        } else if (p.type === 'leaf') {
+          p.vy += 85 * dt;
+          p.rot += p.vRot * dt;
+        } else if (p.type === 'dust') {
+          p.vx *= Math.pow(0.25, dt);
+          p.r += 14 * dt;
+        } else if (p.type === 'sparkle') {
+          p.vy += 60 * dt;
+        }
+      }
+    }
+
+    function render(nowSec) {
+      ctx.clearRect(0, 0, W, H);
+
+      // 1. Базове кешоване тло вулиці та асфальту
+      ctx.drawImage(bgLayer, 0, 0, W, H);
+
+      // 2. Живі хмари у верхній частині неба (під кронами дерев)
+      drawClouds(ctx);
+
+      // 3. Пишні крони дерев, що погойдуються на вітрі, та сонячні промені
+      drawSunbeams(ctx, nowSec);
+      drawSwayingCanopies(ctx, nowSec);
+
+      // 4. Пташки на тротуарі
+      drawStreetBirds(ctx, nowSec);
+
+      // 5. Осіннє листя на асфальті (задній план)
+      drawFallingLeaves(ctx, true);
+
+      // 6. Крейдяні літери на асфальті
+      const glow = gamePhase === 'celebrating' ? Math.sin(Math.min(1, phaseTimer * 2) * Math.PI) : 0;
+      chalkLetters.forEach((lt) => lt.draw(ctx, glow));
+
+      // Ефект крейди, що пише нове слово
+      if (gamePhase === 'writing') {
+        const writingLt = chalkLetters.find((l) => l.drawProgress > 0 && l.drawProgress < 1);
+        if (writingLt) {
+          drawMovingChalkPiece(ctx, writingLt);
+        }
+      }
+
+      // 7. Двірник
+      janitor.draw(ctx);
+
+      // 8. Осіннє листя, що летить у повітрі, та частинки пилу/іскор
+      drawFallingLeaves(ctx, false);
+      drawParticles(ctx);
+    }
+
+    function drawClouds(c) {
+      c.save();
+      c.beginPath();
+      c.rect(0, 0, W, sidewalkTopY * 0.55);
+      c.clip();
+
+      clouds.forEach((cl) => {
+        c.save();
+        c.translate(cl.x, cl.y);
+        c.scale(cl.scale, cl.scale);
+        c.fillStyle = 'rgba(255, 250, 242, 0.36)';
+        c.beginPath();
+        c.arc(0, 0, 28, 0, Math.PI * 2);
+        c.arc(26, -6, 34, 0, Math.PI * 2);
+        c.arc(56, 2, 26, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      });
+      c.restore();
+    }
+
+    function drawSunbeams(c, nowSec) {
+      c.save();
+      c.globalCompositeOperation = 'screen';
+      const baseAlpha = 0.08 + celebrationSunPulse * 0.14;
+      for (let i = 0; i < 4; i++) {
+        const x1 = W * (0.12 + i * 0.24) + Math.sin(nowSec * 0.4 + i) * 18;
+        const grad = c.createLinearGradient(x1, 0, x1 + 140, curbY + 80);
+        grad.addColorStop(0, `rgba(255, 238, 175, ${baseAlpha})`);
+        grad.addColorStop(1, 'rgba(255, 238, 175, 0)');
+        c.fillStyle = grad;
+        c.beginPath();
+        c.moveTo(x1 - 35, 0);
+        c.lineTo(x1 + 55, 0);
+        c.lineTo(x1 + 230, curbY + 90);
+        c.lineTo(x1 + 60, curbY + 90);
+        c.closePath();
+        c.fill();
+      }
+      c.restore();
+    }
+
+    function drawSwayingCanopies(c, nowSec) {
+      treeClusters.forEach((tc) => {
+        tc.blobs.forEach((b) => {
+          const swayX = Math.sin(nowSec * 1.4 + b.phase) * 5.5;
+          const swayY = Math.cos(nowSec * 1.1 + b.phase) * 2.5;
+          c.fillStyle = b.color;
+          c.beginPath();
+          c.arc(tc.cx + b.ox + swayX, tc.cy + b.oy + swayY, b.rad, 0, Math.PI * 2);
+          c.fill();
+        });
+      });
+    }
+
+    function drawStreetBirds(c, nowSec) {
+      streetBirds.forEach((b) => {
+        c.save();
+        c.translate(b.x, b.y);
+        c.scale(b.dir, 1);
+
+        const hopBob = b.state === 'hop' ? -Math.abs(Math.sin(nowSec * 22)) * 6 : 0;
+        const peckRot = b.state === 'peck' ? Math.max(0, Math.sin(nowSec * 9 + b.x)) * 0.45 : 0;
+        c.translate(0, hopBob);
+        c.rotate(peckRot);
+
+        // Тінь пташки
+        if (b.state !== 'fly') {
+          c.fillStyle = 'rgba(20, 16, 12, 0.28)';
+          c.beginPath();
+          c.ellipse(0, 6 - hopBob, 8, 2.5, 0, 0, Math.PI * 2);
+          c.fill();
+        }
+
+        // Тіло горобця чи голуба
+        c.fillStyle = b.kind === 'sparrow' ? '#7a563b' : '#6c7682';
+        c.beginPath();
+        c.ellipse(0, 0, 8.5, 5.8, -0.15, 0, Math.PI * 2);
+        c.fill();
+
+        // Крило
+        const wingY = b.state === 'fly' ? Math.sin(b.wingPhase) * 8 : 0;
+        c.fillStyle = b.kind === 'sparrow' ? '#573b26' : '#515963';
+        c.beginPath();
+        c.ellipse(-1, wingY * 0.5, 6, 3.5 + Math.abs(wingY) * 0.4, 0.2, 0, Math.PI * 2);
+        c.fill();
+
+        // Голівка і дзьоб
+        c.fillStyle = b.kind === 'sparrow' ? '#694830' : '#58626e';
+        c.beginPath();
+        c.arc(7, -4, 4.5, 0, Math.PI * 2);
+        c.fill();
+
+        c.fillStyle = '#e0a938';
+        c.beginPath();
+        c.moveTo(11, -5);
+        c.lineTo(15, -3.5);
+        c.lineTo(11, -2);
+        c.closePath();
+        c.fill();
+
+        c.restore();
+      });
+    }
+
+    function drawFallingLeaves(c, settledOnly) {
+      ambientLeaves.forEach((lf) => {
+        if (lf.settled !== settledOnly) return;
+        c.save();
+        c.translate(lf.x, lf.y);
+        c.rotate(lf.rot);
+        c.fillStyle = lf.color;
+        c.beginPath();
+        c.moveTo(-lf.size, 0);
+        c.quadraticCurveTo(0, -lf.size * 0.75, lf.size, 0);
+        c.quadraticCurveTo(0, lf.size * 0.75, -lf.size, 0);
+        c.fill();
+
+        c.strokeStyle = 'rgba(60, 25, 10, 0.4)';
+        c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(-lf.size * 0.8, 0);
+        c.lineTo(lf.size * 0.8, 0);
+        c.stroke();
+        c.restore();
+      });
+    }
+
+    function drawMovingChalkPiece(c, lt) {
+      const cx = lt.x + Math.sin(lt.drawProgress * Math.PI * 4) * (lt.size * 0.28);
+      const cy = lt.y - lt.size * 0.45 + lt.drawProgress * (lt.size * 0.9);
+      c.save();
+      c.translate(cx, cy);
+      c.rotate(-0.45);
+      c.fillStyle = currentChalkColor.main;
+      c.strokeStyle = '#9e9585';
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.roundRect(-5, -18, 10, 24, 3);
+      c.fill();
+      c.stroke();
+      c.restore();
+    }
+
+    function drawParticles(c) {
+      particles.forEach((p) => {
+        const t = p.life / p.maxLife;
+        const alpha = p.alpha * (1 - t);
+        c.save();
+        c.globalAlpha = Math.max(0, alpha);
+        c.translate(p.x, p.y);
+
+        if (p.type === 'dust') {
+          const grad = c.createRadialGradient(0, 0, 1, 0, 0, p.r);
+          grad.addColorStop(0, p.color);
+          grad.addColorStop(1, 'rgba(255,255,255,0)');
+          c.fillStyle = grad;
+          c.beginPath();
+          c.arc(0, 0, p.r, 0, Math.PI * 2);
+          c.fill();
+        } else if (p.type === 'pebble') {
+          c.fillStyle = p.color;
+          c.beginPath();
+          c.arc(0, 0, p.r, 0, Math.PI * 2);
+          c.fill();
+        } else if (p.type === 'leaf') {
+          c.rotate(p.rot);
+          c.fillStyle = p.color;
+          c.beginPath();
+          c.ellipse(0, 0, p.r * 1.5, p.r * 0.8, 0, 0, Math.PI * 2);
+          c.fill();
+        } else if (p.type === 'sparkle') {
+          c.fillStyle = p.color;
+          c.rotate(p.life * 6);
+          const s = p.r * (1 - t * 0.5);
+          c.beginPath();
+          c.moveTo(0, -s * 1.6);
+          c.quadraticCurveTo(s * 0.3, -s * 0.3, s * 1.6, 0);
+          c.quadraticCurveTo(s * 0.3, s * 0.3, 0, s * 1.6);
+          c.quadraticCurveTo(-s * 0.3, s * 0.3, -s * 1.6, 0);
+          c.quadraticCurveTo(-s * 0.3, -s * 0.3, 0, -s * 1.6);
+          c.closePath();
+          c.fill();
+        }
+        c.restore();
+      });
+    }
+
+    /**
+     * ============================================================================
+     * ОБРОБНИКИ ПОДІЙ ТА АДАПТИВНІСТЬ ЕКРАНА
+     * ============================================================================
+     */
+    function handleResize() {
+      W = window.innerWidth;
+      H = window.innerHeight;
+      DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+      canvas.width = W * DPR;
+      canvas.height = H * DPR;
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+      buildStaticEnvironment();
+      initLivingWorld();
+      janitor.resizeUpdate();
+      layoutChalkWord(false);
+    }
+
+    window.addEventListener('resize', handleResize);
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (gamePhase !== 'ready') {
+        hoveredLetter = null;
+        canvas.style.cursor = 'default';
+        return;
+      }
+
+      let found = null;
+      for (const lt of chalkLetters) {
+        if (lt.containsPoint(e.clientX, e.clientY)) {
+          found = lt;
+          break;
+        }
+      }
+
+      if (found !== hoveredLetter) {
+        hoveredLetter = found;
+        if (found) {
+          sound.playHoverTick();
+          spawnChalkDust(found.x, found.y, currentChalkColor.main, 5, 0.45);
+          janitor.facing = found.x >= janitor.x ? 1 : -1;
+        }
+      }
+      canvas.style.cursor = found ? 'pointer' : 'default';
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handlePointerDown(e.clientX, e.clientY);
+    });
+
+    // Мінімалістична кнопка "Далі" (миттєвий перехід до наступного слова)
+    document.getElementById('nextBtn').addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      sound.init();
+      sound.playBroomSweep(0);
+
+      // Ефект вихору крейдяного пилу при пропуску слова
+      chalkLetters.forEach((lt) => {
+        if (!lt.removed) {
+          spawnChalkDust(lt.x, lt.y, currentChalkColor.main, 7, 0.9);
+        }
+      });
+
+      janitor.state = 'returning';
+      janitor.targetX = janitor.homeX;
+      janitor.targetY = janitor.homeY;
+      startNewWord();
+    });
+
+    // Запуск гри
+    window.onload = () => {
+      handleResize();
+      startNewWord();
+
+      function loop(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+        update(dt, now / 1000);
+        render(now / 1000);
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    };
+  </script>
+</body>
+</html>
