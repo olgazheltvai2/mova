@@ -1,0 +1,2993 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Лабораторія слів</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&family=Comfortaa:wght@700&display=swap');
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #0b1017;
+            font-family: 'Rubik', sans-serif;
+        }
+
+        /* Головна сцена (16:9 широкий екран із чітким зонуванням) */
+        #game-stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: radial-gradient(circle at 62% 42%, #243447 0%, #141d28 58%, #090d12 100%);
+            display: grid;
+            grid-template-columns: 36% 64%;
+            grid-template-rows: 100%;
+        }
+
+        /* Ефект тремтіння камери під час вибуху */
+        .screen-shake {
+            animation: shakeAnim 0.72s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shakeAnim {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            10% { transform: translate(-14px, -9px) rotate(-1.3deg); }
+            20% { transform: translate(13px, 8px) rotate(1.3deg); }
+            30% { transform: translate(-10px, 7px) rotate(-0.9deg); }
+            40% { transform: translate(9px, -7px) rotate(0.9deg); }
+            50% { transform: translate(-7px, 5px) rotate(-0.5deg); }
+            65% { transform: translate(6px, -4px) rotate(0.4deg); }
+            80% { transform: translate(-3px, 2px) rotate(-0.2deg); }
+        }
+
+        /* Електричний спалах на весь екран */
+        #electric-flash {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 70;
+            opacity: 0;
+            background: radial-gradient(circle at 60% 50%, rgba(165, 243, 252, 0.85), rgba(56, 189, 248, 0.35) 55%, transparent 85%);
+            mix-blend-mode: screen;
+            transition: opacity 0.09s ease-out;
+        }
+
+        /* Фоновий SVG лабораторії */
+        #lab-bg-svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Фоновий канвас: бульбашки в колбах, пилинки у світлі, хвиля осцилографа, фонова плазма */
+        #bg-effects-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* ЛІВА ЗОНА: Подіум вченого (36% ширини екрана — ніколи не перекривається словами!) */
+        #left-scientist-zone {
+            position: relative;
+            grid-column: 1 / 2;
+            width: 100%;
+            height: 100%;
+            z-index: 15;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        #scientist-stage-box {
+            position: relative;
+            width: 100%;
+            height: 92vh;
+            max-width: 640px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            filter: drop-shadow(0 20px 28px rgba(0,0,0,0.75));
+        }
+
+        /* ПРАВА ЗОНА: Лабораторний пульт із питанням зверху та словами на столі знизу (64% ширини екрана) */
+        #right-console-zone {
+            position: relative;
+            grid-column: 2 / 3;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3vh 3.5vw 4vh 1.5vw;
+        }
+
+        /* Верхній ламповий прилад-осцилограф для питання */
+        #question-apparatus {
+            position: relative;
+            margin-top: 1vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            filter: drop-shadow(0 16px 26px rgba(0, 0, 0, 0.8));
+            z-index: 22;
+        }
+
+        /* Латунні вакуумні лампи зверху на корпусі питання */
+        .vacuum-tubes-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 28px;
+            margin-bottom: -6px;
+            z-index: 1;
+        }
+
+        .question-frame {
+            position: relative;
+            z-index: 2;
+            min-width: clamp(320px, 38vw, 620px);
+            padding: 16px 42px 18px 42px;
+            border-radius: 28px;
+            background:
+                linear-gradient(145deg, #c28438 0%, #865117 22%, #e0a958 48%, #65380b 78%, #a66c26 100%);
+            border: 4px solid #3d2206;
+            box-shadow:
+                inset 0 3px 6px rgba(255, 238, 195, 0.7),
+                inset 0 -5px 9px rgba(28, 14, 2, 0.9),
+                0 12px 28px rgba(0,0,0,0.75);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Скляний екран осцилографа */
+        .question-screen {
+            position: relative;
+            width: 100%;
+            padding: 14px 32px 16px 32px;
+            border-radius: 18px;
+            background:
+                radial-gradient(ellipse at 50% 42%, #133e38 0%, #082421 66%, #031210 100%);
+            border: 3.5px solid #261505;
+            box-shadow:
+                inset 0 7px 18px rgba(0,0,0,0.92),
+                inset 0 0 26px rgba(45, 212, 191, 0.32),
+                0 2px 3px rgba(255, 223, 165, 0.45);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Міліметрова сітка осцилографа */
+        .question-screen::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(45, 212, 191, 0.12) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(45, 212, 191, 0.12) 1px, transparent 1px);
+            background-size: 18px 18px;
+            pointer-events: none;
+        }
+
+        /* Відблиск опуклого скла */
+        .question-screen::after {
+            content: '';
+            position: absolute;
+            top: -38%;
+            left: -10%;
+            width: 120%;
+            height: 72%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.01) 100%);
+            transform: rotate(-3deg);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* Жива лінія осцилографа під текстом питання */
+        #oscilloscope-wave-svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.35;
+        }
+
+        #question-text {
+            position: relative;
+            z-index: 3;
+            font-family: 'Comfortaa', cursive;
+            font-weight: 700;
+            font-size: clamp(1.55rem, 2.8vw, 2.55rem);
+            color: #5eead4;
+            text-shadow:
+                0 0 14px rgba(45, 212, 191, 0.9),
+                0 0 28px rgba(20, 184, 166, 0.6),
+                0 2px 3px rgba(0, 0, 0, 0.95);
+            letter-spacing: 0.03em;
+            text-align: center;
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease;
+        }
+
+        /* Візуальна підказка напрямку (від 1-ї клеми пружиною до 2-ї клеми) */
+        .direction-schema {
+            position: relative;
+            z-index: 3;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 24px;
+        }
+
+        /* Нижній лабораторний стенд зі словами речення (у правій зоні) */
+        #console-workbench-area {
+            position: relative;
+            width: 100%;
+            margin-bottom: 1.5vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        /* Дубово-латунна панель-підставка під словами */
+        #words-console-board {
+            position: relative;
+            width: 100%;
+            min-height: clamp(210px, 34vh, 340px);
+            padding: clamp(26px, 4vh, 44px) clamp(20px, 2.4vw, 38px) clamp(28px, 4vh, 42px);
+            border-radius: 32px;
+            background:
+                radial-gradient(ellipse at 50% 0%, rgba(251, 191, 36, 0.14) 0%, transparent 70%),
+                repeating-linear-gradient(90deg, rgba(0,0,0,0.08) 0px, rgba(0,0,0,0.08) 3px, transparent 3px, transparent 18px),
+                linear-gradient(180deg, #43200a 0%, #2c1405 55%, #1a0b02 100%);
+            border: 5px solid #854d0e;
+            box-shadow:
+                inset 0 4px 12px rgba(254, 240, 138, 0.28),
+                inset 0 -10px 24px rgba(0, 0, 0, 0.9),
+                0 22px 40px rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            align-content: center;
+            gap: clamp(16px, 2.2vw, 32px) clamp(14px, 1.8vw, 26px);
+        }
+
+        /* Латунна окантовка кутів консолі */
+        #words-console-board::before {
+            content: '';
+            position: absolute;
+            inset: 6px;
+            border-radius: 24px;
+            border: 2px dashed rgba(217, 119, 6, 0.35);
+            pointer-events: none;
+        }
+
+        /* Декоративна мідна шина вздовж низу консолі */
+        .console-copper-rail {
+            position: absolute;
+            bottom: 10px;
+            left: 5%;
+            width: 90%;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #78350f 0%, #f59e0b 25%, #fef08a 50%, #d97706 75%, #78350f 100%);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.8);
+            pointer-events: none;
+        }
+
+        /* Окремий блок-ізолятор зі словом */
+        .word-node {
+            position: relative;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
+            filter: drop-shadow(0 12px 16px rgba(0,0,0,0.75));
+            z-index: 25;
+        }
+
+        .word-node:hover {
+            transform: translateY(-7px) scale(1.04);
+            filter: drop-shadow(0 18px 22px rgba(0,0,0,0.85)) drop-shadow(0 0 14px rgba(251, 191, 36, 0.4));
+        }
+
+        .word-node:active {
+            transform: translateY(-2px) scale(0.98);
+        }
+
+        /* Верхня порцеляново-мідна клема слова, куди чіпляється 3D-пружина */
+        .terminal-assembly {
+            position: relative;
+            width: 56px;
+            height: 46px;
+            margin-bottom: -9px;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        /* Латунний корпус слова */
+        .word-casing {
+            position: relative;
+            padding: 7px;
+            border-radius: 20px;
+            background:
+                linear-gradient(160deg, #d99b43 0%, #995f18 28%, #eec276 52%, #72430c 82%, #b5792b 100%);
+            border: 3px solid #3b2004;
+            box-shadow:
+                inset 0 2px 4px rgba(255, 240, 200, 0.75),
+                inset 0 -4px 6px rgba(40, 18, 2, 0.85);
+            transition: all 0.25s ease;
+        }
+
+        /* Внутрішня емальована табличка слова */
+        .word-plate {
+            position: relative;
+            padding: clamp(10px, 1.4vh, 16px) clamp(18px, 2vw, 30px);
+            border-radius: 13px;
+            background:
+                radial-gradient(circle at 50% 25%, #2b3c4d 0%, #18232f 70%, #0f171f 100%);
+            border: 2px solid #2b1806;
+            box-shadow:
+                inset 0 4px 10px rgba(0,0,0,0.88),
+                inset 0 0 15px rgba(245, 158, 11, 0.14);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Візерунок на пластині */
+        .word-plate::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                repeating-linear-gradient(45deg, rgba(255, 210, 130, 0.045) 0px, rgba(255, 210, 130, 0.045) 2px, transparent 2px, transparent 8px),
+                radial-gradient(circle at 12% 50%, rgba(245, 158, 11, 0.16) 0%, transparent 45%),
+                radial-gradient(circle at 88% 50%, rgba(245, 158, 11, 0.16) 0%, transparent 45%);
+            pointer-events: none;
+        }
+
+        /* Відблиск скла на слові */
+        .word-plate::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 4%;
+            width: 92%;
+            height: 44%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.01) 100%);
+            border-radius: 10px 10px 40% 40%;
+            pointer-events: none;
+        }
+
+        .word-label {
+            position: relative;
+            z-index: 2;
+            font-size: clamp(1.2rem, 1.95vw, 1.85rem);
+            font-weight: 700;
+            color: #fef3c7;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95), 0 0 10px rgba(251, 191, 36, 0.25);
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+
+        /* Заклепки */
+        .rivet {
+            position: absolute;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #fff3d1, #a16207 70%, #3b2104 100%);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.85);
+            z-index: 4;
+            pointer-events: none;
+        }
+        .rivet.tl { top: 5px; left: 5px; }
+        .rivet.tr { top: 5px; right: 5px; }
+        .rivet.bl { bottom: 5px; left: 5px; }
+        .rivet.br { bottom: 5px; right: 5px; }
+
+        /* Стан вибраного першого слова (від якого ставиться питання) */
+        .word-node.selected-source {
+            transform: translateY(-10px) scale(1.06);
+            filter: drop-shadow(0 18px 24px rgba(0,0,0,0.85)) drop-shadow(0 0 20px rgba(56, 189, 248, 0.85));
+        }
+
+        .word-node.selected-source .word-plate {
+            background: radial-gradient(circle at 50% 30%, #155e75 0%, #083344 70%, #041e29 100%);
+            box-shadow:
+                inset 0 4px 10px rgba(0,0,0,0.8),
+                inset 0 0 24px rgba(56, 189, 248, 0.65);
+        }
+
+        .word-node.selected-source .word-label {
+            color: #e0f2fe;
+            text-shadow: 0 0 12px rgba(56, 189, 248, 0.95), 0 2px 4px rgba(0,0,0,0.95);
+        }
+
+        /* Стан правильного з'єднання */
+        .word-node.connected-success {
+            transform: translateY(-10px) scale(1.07);
+            filter: drop-shadow(0 18px 25px rgba(0,0,0,0.85)) drop-shadow(0 0 26px rgba(52, 211, 153, 0.95));
+        }
+
+        .word-node.connected-success .word-plate {
+            background: radial-gradient(circle at 50% 30%, #065f46 0%, #064e3b 70%, #022c22 100%);
+            box-shadow: inset 0 0 28px rgba(52, 211, 153, 0.8);
+        }
+
+        /* Стан помилкового з'єднання */
+        .word-node.connected-error {
+            animation: nodeErrorShake 0.46s ease;
+        }
+
+        @keyframes nodeErrorShake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-11px) rotate(-2.5deg); }
+            40% { transform: translateX(11px) rotate(2.5deg); }
+            60% { transform: translateX(-7px) rotate(-1.2deg); }
+            80% { transform: translateX(7px) rotate(1.2deg); }
+        }
+
+        /* Канвас 3D-пружини, електричних дуг, диму та іскор */
+        #spring-fx-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 45;
+            pointer-events: none;
+        }
+
+        /* Мінімалістична кнопка "Далі" (механічний латунний тумблер-стрілка без слів) */
+        #next-btn {
+            position: fixed;
+            top: 2.4vh;
+            right: 2vw;
+            z-index: 60;
+            width: 66px;
+            height: 66px;
+            border-radius: 50%;
+            cursor: pointer;
+            background:
+                radial-gradient(circle at 35% 30%, #facc15 0%, #b45309 65%, #78350f 100%);
+            border: 4px solid #451a03;
+            box-shadow:
+                inset 0 3px 6px rgba(254, 240, 138, 0.8),
+                inset 0 -4px 6px rgba(69, 26, 3, 0.9),
+                0 10px 20px rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+        }
+
+        #next-btn:hover {
+            transform: scale(1.1) rotate(8deg);
+            filter: drop-shadow(0 0 15px rgba(250, 204, 21, 0.75));
+        }
+
+        #next-btn:active {
+            transform: scale(0.92);
+        }
+
+        /* Дуже малопомітний перемикач мов у правому нижньому кутку */
+        #lang-toggle {
+            position: fixed;
+            bottom: 8px;
+            right: 12px;
+            z-index: 60;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 7px;
+            border-radius: 7px;
+            background: rgba(15, 23, 42, 0.28);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            opacity: 0.24;
+            transition: opacity 0.25s ease;
+        }
+
+        #lang-toggle:hover {
+            opacity: 0.85;
+        }
+
+        .lang-btn {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            padding: 2px 5px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+        }
+
+        .lang-btn.active {
+            color: #f1f5f9;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* Анімаційні трансформації частин тіла вченого */
+        #sci-upper-torso {
+            transform-origin: 280px 470px;
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #sci-head-group {
+            transform-origin: 280px 295px;
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #sci-eyebrow-l, #sci-eyebrow-r {
+            transition: transform 0.26s ease;
+        }
+        #sci-pupils {
+            transition: transform 0.1s ease-out;
+        }
+        #sci-glasses-group {
+            transform-origin: 280px 235px;
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #sci-arm-l {
+            transform-origin: 205px 355px;
+            transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #sci-arm-r {
+            transform-origin: 355px 355px;
+            transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #control-lever-stick {
+            transform-origin: 122px 525px;
+            transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-stage">
+    <!-- Електричний спалах при успіху -->
+    <div id="electric-flash"></div>
+
+    <!-- Деталізований сюжетний SVG-фон лабораторії (розділений під ліву зону вченого та праву консоль) -->
+    <svg id="lab-bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <linearGradient id="wallGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#101823"/>
+                <stop offset="55%" stop-color="#1c2b3b"/>
+                <stop offset="100%" stop-color="#0b1118"/>
+            </linearGradient>
+
+            <linearGradient id="pipeCopper" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#7c3f12"/>
+                <stop offset="35%" stop-color="#d97706"/>
+                <stop offset="55%" stop-color="#fde68a"/>
+                <stop offset="85%" stop-color="#92400e"/>
+                <stop offset="100%" stop-color="#451a03"/>
+            </linearGradient>
+
+            <linearGradient id="pipeCopperV" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#5c2d0c"/>
+                <stop offset="35%" stop-color="#d97706"/>
+                <stop offset="55%" stop-color="#fef08a"/>
+                <stop offset="85%" stop-color="#92400e"/>
+                <stop offset="100%" stop-color="#3b1704"/>
+            </linearGradient>
+
+            <linearGradient id="steelPipe" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#1e293b"/>
+                <stop offset="42%" stop-color="#64748b"/>
+                <stop offset="55%" stop-color="#cbd5e1"/>
+                <stop offset="85%" stop-color="#334155"/>
+                <stop offset="100%" stop-color="#0f172a"/>
+            </linearGradient>
+
+            <linearGradient id="woodShelf" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#78350f"/>
+                <stop offset="30%" stop-color="#92400e"/>
+                <stop offset="70%" stop-color="#451a03"/>
+                <stop offset="100%" stop-color="#270e02"/>
+            </linearGradient>
+
+            <linearGradient id="glassShine" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="rgba(255,255,255,0.45)"/>
+                <stop offset="30%" stop-color="rgba(255,255,255,0.08)"/>
+                <stop offset="70%" stop-color="rgba(255,255,255,0.0)"/>
+                <stop offset="100%" stop-color="rgba(255,255,255,0.22)"/>
+            </linearGradient>
+
+            <radialGradient id="greenLiquid" cx="50%" cy="60%" r="55%">
+                <stop offset="0%" stop-color="#4ade80"/>
+                <stop offset="60%" stop-color="#16a34a"/>
+                <stop offset="100%" stop-color="#064e3b"/>
+            </radialGradient>
+
+            <radialGradient id="amberLiquid" cx="50%" cy="60%" r="55%">
+                <stop offset="0%" stop-color="#fbbf24"/>
+                <stop offset="60%" stop-color="#d97706"/>
+                <stop offset="100%" stop-color="#78350f"/>
+            </radialGradient>
+
+            <radialGradient id="cyanLiquid" cx="50%" cy="60%" r="55%">
+                <stop offset="0%" stop-color="#38bdf8"/>
+                <stop offset="65%" stop-color="#0284c7"/>
+                <stop offset="100%" stop-color="#0c4a6e"/>
+            </radialGradient>
+
+            <radialGradient id="magentaLiquid" cx="50%" cy="60%" r="55%">
+                <stop offset="0%" stop-color="#f472b6"/>
+                <stop offset="60%" stop-color="#db2777"/>
+                <stop offset="100%" stop-color="#831843"/>
+            </radialGradient>
+
+            <pattern id="brickPattern" width="120" height="60" patternUnits="userSpaceOnUse">
+                <rect width="120" height="60" fill="#15202b"/>
+                <rect x="2" y="2" width="56" height="26" rx="3" fill="#1c2a39" stroke="#0e161f" stroke-width="2"/>
+                <rect x="62" y="2" width="56" height="26" rx="3" fill="#192635" stroke="#0e161f" stroke-width="2"/>
+                <rect x="-28" y="32" width="56" height="26" rx="3" fill="#1a2736" stroke="#0e161f" stroke-width="2"/>
+                <rect x="32" y="32" width="56" height="26" rx="3" fill="#202f40" stroke="#0e161f" stroke-width="2"/>
+                <rect x="92" y="32" width="56" height="26" rx="3" fill="#1a2736" stroke="#0e161f" stroke-width="2"/>
+            </pattern>
+
+            <radialGradient id="lampGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="rgba(253, 224, 71, 0.32)"/>
+                <stop offset="50%" stop-color="rgba(245, 158, 11, 0.1)"/>
+                <stop offset="100%" stop-color="rgba(0, 0, 0, 0)"/>
+            </radialGradient>
+        </defs>
+
+        <!-- Стіна з цегляною фактурою -->
+        <rect width="1920" height="1080" fill="url(#brickPattern)"/>
+        <rect width="1920" height="1080" fill="url(#wallGrad)" opacity="0.62"/>
+
+        <!-- Світлові плями над вченим (ліворуч) і над консоллю (праворуч) -->
+        <circle cx="360" cy="380" r="460" fill="url(#lampGlow)"/>
+        <circle cx="1320" cy="280" r="480" fill="url(#lampGlow)"/>
+        <circle cx="1340" cy="740" r="520" fill="url(#lampGlow)"/>
+
+        <!-- Горизонтальні магістральні мідні труби -->
+        <rect x="0" y="95" width="1920" height="22" fill="url(#pipeCopper)"/>
+        <rect x="0" y="138" width="1920" height="14" fill="url(#pipeCopper)"/>
+
+        <!-- Вертикальна сталева колона, що візуально відділяє зону вченого (x=685) від зони слів -->
+        <rect x="678" y="0" width="32" height="1080" fill="url(#steelPipe)"/>
+        <rect x="674" y="210" width="40" height="16" rx="4" fill="url(#pipeCopper)"/>
+        <rect x="674" y="540" width="40" height="16" rx="4" fill="url(#pipeCopper)"/>
+        <rect x="674" y="840" width="40" height="16" rx="4" fill="url(#pipeCopper)"/>
+
+        <!-- Металева арка-генератор за спиною вченого (у лівій зоні, центр x=350) -->
+        <g transform="translate(105, 165)">
+            <path d="M40 780 L40 200 A 205 205 0 0 1 450 200 L450 780" fill="none" stroke="url(#steelPipe)" stroke-width="26"/>
+            <path d="M40 780 L40 200 A 205 205 0 0 1 450 200 L450 780" fill="none" stroke="url(#pipeCopper)" stroke-width="8" stroke-dasharray="28 18"/>
+            <circle cx="40" cy="260" r="16" fill="#0284c7" stroke="#bae6fd" stroke-width="3"/>
+            <circle cx="450" cy="260" r="16" fill="#0284c7" stroke="#bae6fd" stroke-width="3"/>
+            <circle cx="95" cy="82" r="16" fill="#0284c7" stroke="#bae6fd" stroke-width="3"/>
+            <circle cx="395" cy="82" r="16" fill="#0284c7" stroke="#bae6fd" stroke-width="3"/>
+        </g>
+
+        <!-- Висока плазмова колона Тесли біля вченого (x=575) -->
+        <g transform="translate(568, 220)">
+            <rect x="0" y="290" width="84" height="45" rx="6" fill="url(#pipeCopper)" stroke="#3b1704" stroke-width="3"/>
+            <rect x="12" y="20" width="60" height="270" rx="30" fill="rgba(14, 116, 144, 0.24)" stroke="rgba(103, 232, 249, 0.7)" stroke-width="3.5"/>
+            <rect x="8" y="75" width="68" height="10" rx="4" fill="url(#pipeCopper)"/>
+            <rect x="8" y="145" width="68" height="10" rx="4" fill="url(#pipeCopper)"/>
+            <rect x="8" y="215" width="68" height="10" rx="4" fill="url(#pipeCopper)"/>
+            <circle cx="42" cy="12" r="24" fill="url(#steelPipe)" stroke="#0f172a" stroke-width="3"/>
+            <circle cx="34" cy="4" r="6" fill="rgba(255,255,255,0.65)"/>
+        </g>
+
+        <!-- Манометри та вентиль ліворуч біля вченого -->
+        <rect x="64" y="95" width="22" height="985" fill="url(#pipeCopperV)"/>
+        <g transform="translate(75, 235)">
+            <circle cx="0" cy="0" r="42" fill="url(#pipeCopper)" stroke="#3b1704" stroke-width="4"/>
+            <circle cx="0" cy="0" r="32" fill="#fef3c7" stroke="#78350f" stroke-width="3"/>
+            <path d="M-20 13 A 24 24 0 1 1 20 13" fill="none" stroke="#dc2626" stroke-width="4" stroke-dasharray="6 4"/>
+            <line id="gauge-needle-1" x1="0" y1="4" x2="-15" y2="-17" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="0" cy="0" r="5" fill="#78350f"/>
+        </g>
+        <g id="valve-wheel-1" transform="translate(75, 365)">
+            <circle cx="0" cy="0" r="26" fill="none" stroke="#dc2626" stroke-width="7"/>
+            <line x1="-26" y1="0" x2="26" y2="0" stroke="#991b1b" stroke-width="5"/>
+            <line x1="0" y1="-26" x2="0" y2="26" stroke="#991b1b" stroke-width="5"/>
+            <circle cx="0" cy="0" r="8" fill="url(#pipeCopper)" stroke="#451a03" stroke-width="2"/>
+        </g>
+
+        <!-- Полиця з алхімічними колбами у правій зоні ліворуч від питання (x=735..1045) -->
+        <g transform="translate(730, 395)">
+            <path d="M22 22 L22 62 L58 22 Z" fill="#0f172a"/>
+            <path d="M248 22 L248 62 L212 22 Z" fill="#0f172a"/>
+            <rect x="0" y="0" width="275" height="22" rx="6" fill="url(#woodShelf)" stroke="#1e0b01" stroke-width="3"/>
+
+            <!-- Круглодонна колба з зеленою рідиною -->
+            <g transform="translate(26, -142)">
+                <ellipse cx="46" cy="138" rx="38" ry="7" fill="rgba(0,0,0,0.45)"/>
+                <path d="M12 102 C12 132, 80 132, 80 102 C80 85, 64 72, 56 60 L36 60 C28 72, 12 85, 12 102 Z" fill="url(#greenLiquid)"/>
+                <ellipse cx="46" cy="60" rx="11" ry="3.5" fill="#86efac"/>
+                <path d="M35 10 L57 10 L57 52 C72 68, 84 84, 84 104 C84 135, 8 135, 8 104 C8 84, 20 68, 35 52 Z"
+                      fill="url(#glassShine)" stroke="rgba(186, 230, 253, 0.78)" stroke-width="3.2"/>
+                <rect x="31" y="4" width="30" height="7" rx="3.5" fill="rgba(186, 230, 253, 0.82)"/>
+                <path d="M19 98 C17 82, 28 70, 35 58" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3.5" stroke-linecap="round"/>
+            </g>
+
+            <!-- Конічна колба з бурштиновим еліксиром -->
+            <g transform="translate(142, -132)">
+                <ellipse cx="45" cy="128" rx="40" ry="7" fill="rgba(0,0,0,0.45)"/>
+                <path d="M10 118 L80 118 L61 60 L29 60 Z" fill="url(#amberLiquid)"/>
+                <ellipse cx="45" cy="60" rx="16" ry="3.5" fill="#fde68a"/>
+                <path d="M33 8 L57 8 L57 44 L84 116 C86 122, 82 126, 76 126 L14 126 C8 126, 4 122, 6 116 L33 44 Z"
+                      fill="url(#glassShine)" stroke="rgba(186, 230, 253, 0.78)" stroke-width="3.2"/>
+                <rect x="29" y="3" width="32" height="7" rx="3.5" fill="rgba(186, 230, 253, 0.82)"/>
+            </g>
+        </g>
+
+        <!-- Полиця з колбами та манометрами у правій частині (x=1590..1880) -->
+        <rect x="1845" y="95" width="22" height="985" fill="url(#pipeCopperV)"/>
+        <g transform="translate(1856, 250)">
+            <circle cx="0" cy="0" r="42" fill="url(#pipeCopper)" stroke="#3b1704" stroke-width="4"/>
+            <circle cx="0" cy="0" r="32" fill="#fef3c7" stroke="#78350f" stroke-width="3"/>
+            <path d="M-20 13 A 24 24 0 1 1 20 13" fill="none" stroke="#16a34a" stroke-width="4" stroke-dasharray="6 4"/>
+            <line id="gauge-needle-2" x1="0" y1="4" x2="16" y2="-14" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="0" cy="0" r="5" fill="#78350f"/>
+        </g>
+
+        <g transform="translate(1575, 395)">
+            <path d="M22 22 L22 62 L58 22 Z" fill="#0f172a"/>
+            <path d="M248 22 L248 62 L212 22 Z" fill="#0f172a"/>
+            <rect x="0" y="0" width="275" height="22" rx="6" fill="url(#woodShelf)" stroke="#1e0b01" stroke-width="3"/>
+
+            <!-- Високий циліндр із блакитною рідиною -->
+            <g transform="translate(28, -162)">
+                <rect x="16" y="42" width="40" height="115" fill="url(#cyanLiquid)"/>
+                <ellipse cx="36" cy="42" rx="20" ry="4.5" fill="#bae6fd"/>
+                <rect x="14" y="10" width="44" height="148" rx="6" fill="url(#glassShine)" stroke="rgba(186, 230, 253, 0.78)" stroke-width="3.2"/>
+                <line x1="44" y1="35" x2="54" y2="35" stroke="rgba(255,255,255,0.7)" stroke-width="2"/>
+                <line x1="44" y1="60" x2="54" y2="60" stroke="rgba(255,255,255,0.7)" stroke-width="2"/>
+                <line x1="44" y1="85" x2="54" y2="85" stroke="rgba(255,255,255,0.7)" stroke-width="2"/>
+                <line x1="44" y1="110" x2="54" y2="110" stroke="rgba(255,255,255,0.7)" stroke-width="2"/>
+                <rect x="8" y="155" width="56" height="8" rx="4" fill="url(#pipeCopper)"/>
+            </g>
+
+            <!-- Куляста реторта з малиновим розчином -->
+            <g transform="translate(125, -140)">
+                <ellipse cx="48" cy="136" rx="40" ry="7" fill="rgba(0,0,0,0.45)"/>
+                <path d="M14 100 C14 130, 82 130, 82 100 C82 82, 66 70, 58 58 L38 58 C30 70, 14 82, 14 100 Z" fill="url(#magentaLiquid)"/>
+                <ellipse cx="48" cy="58" rx="12" ry="3.5" fill="#fbcfe8"/>
+                <path d="M38 14 C38 -4, 88 5, 125 42 L118 48 C85 20, 60 14, 58 30 L58 52 C74 68, 86 84, 86 102 C86 132, 10 132, 10 102 C10 84, 22 68, 38 52 Z"
+                      fill="url(#glassShine)" stroke="rgba(186, 230, 253, 0.78)" stroke-width="3.2"/>
+                <path d="M22 96 C20 80, 30 68, 38 56" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3.5" stroke-linecap="round"/>
+            </g>
+        </g>
+    </svg>
+
+    <!-- Канвас для фонових ефектів: бульбашок у колбах, пилинок та плазми -->
+    <canvas id="bg-effects-canvas"></canvas>
+
+    <!-- ==================== ЛІВА ЗОНА: ВЧЕНИЙ ТА ЙОГО ПУЛЬТ (БЕЗ ЖОДНИХ ПЕРЕКРИТТІВ!) ==================== -->
+    <div id="left-scientist-zone">
+        <div id="scientist-stage-box">
+            <svg id="scientist-svg" viewBox="0 0 560 680" width="100%" height="100%" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <radialGradient id="skinGrad" cx="46%" cy="38%" r="58%">
+                        <stop offset="0%" stop-color="#ffedd5"/>
+                        <stop offset="58%" stop-color="#fdba74"/>
+                        <stop offset="88%" stop-color="#ea580c" stop-opacity="0.45"/>
+                        <stop offset="100%" stop-color="#c2410c" stop-opacity="0.62"/>
+                    </radialGradient>
+
+                    <radialGradient id="noseGrad" cx="35%" cy="30%" r="65%">
+                        <stop offset="0%" stop-color="#fed7aa"/>
+                        <stop offset="55%" stop-color="#fb923c"/>
+                        <stop offset="100%" stop-color="#c2410c"/>
+                    </radialGradient>
+
+                    <radialGradient id="cheekGlow" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="rgba(244, 63, 94, 0.45)"/>
+                        <stop offset="100%" stop-color="rgba(244, 63, 94, 0)"/>
+                    </radialGradient>
+
+                    <linearGradient id="coatGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#ffffff"/>
+                        <stop offset="55%" stop-color="#e2e8f0"/>
+                        <stop offset="100%" stop-color="#94a3b8"/>
+                    </linearGradient>
+
+                    <linearGradient id="shirtGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#0284c7"/>
+                        <stop offset="100%" stop-color="#0369a1"/>
+                    </linearGradient>
+
+                    <radialGradient id="hairNormalGrad" cx="50%" cy="40%" r="60%">
+                        <stop offset="0%" stop-color="#ffffff"/>
+                        <stop offset="65%" stop-color="#cbd5e1"/>
+                        <stop offset="100%" stop-color="#64748b"/>
+                    </radialGradient>
+
+                    <radialGradient id="hairShockGrad" cx="50%" cy="50%" r="60%">
+                        <stop offset="0%" stop-color="#f8fafc"/>
+                        <stop offset="55%" stop-color="#94a3b8"/>
+                        <stop offset="100%" stop-color="#334155"/>
+                    </radialGradient>
+
+                    <linearGradient id="lensGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="rgba(186, 230, 253, 0.58)"/>
+                        <stop offset="50%" stop-color="rgba(56, 189, 248, 0.2)"/>
+                        <stop offset="100%" stop-color="rgba(255, 255, 255, 0.48)"/>
+                    </linearGradient>
+
+                    <radialGradient id="sootSpot" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="rgba(15, 23, 42, 0.9)"/>
+                        <stop offset="55%" stop-color="rgba(30, 41, 59, 0.68)"/>
+                        <stop offset="100%" stop-color="rgba(30, 41, 59, 0)"/>
+                    </radialGradient>
+
+                    <linearGradient id="podiumBrass" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#451a03"/>
+                        <stop offset="25%" stop-color="#b45309"/>
+                        <stop offset="50%" stop-color="#fde68a"/>
+                        <stop offset="75%" stop-color="#b45309"/>
+                        <stop offset="100%" stop-color="#451a03"/>
+                    </linearGradient>
+
+                    <linearGradient id="podiumBody" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#334155"/>
+                        <stop offset="40%" stop-color="#1e293b"/>
+                        <stop offset="100%" stop-color="#0f172a"/>
+                    </linearGradient>
+                </defs>
+
+                <!-- ВЕРХНЯ ЧАСТИНА ТОРСА, РУКИ ТА ГОЛОВА ВЧЕНОГО -->
+                <g id="sci-upper-torso">
+                    <!-- Ліва рука вченого (тримає важіль або піднімається в емоціях) -->
+                    <g id="sci-arm-l">
+                        <path d="M205 348 C165 365, 135 415, 124 468 L158 478 C170 432, 190 395, 218 378 Z"
+                              fill="url(#coatGrad)" stroke="#475569" stroke-width="3.5" stroke-linejoin="round"/>
+                        <!-- Кисть лівої руки -->
+                        <circle cx="138" cy="478" r="20" fill="url(#skinGrad)" stroke="#9a3412" stroke-width="3"/>
+                        <path d="M126 472 Q138 465 148 474" fill="none" stroke="#c2410c" stroke-width="2.5" stroke-linecap="round"/>
+                    </g>
+
+                    <!-- Основний торс у білому лабораторному халаті -->
+                    <g id="sci-body-group">
+                        <path d="M160 535 C160 390, 200 325, 280 325 C360 325, 400 390, 400 535 Z"
+                              fill="url(#coatGrad)" stroke="#475569" stroke-width="3.8"/>
+
+                        <!-- Жилетка та сорочка -->
+                        <polygon points="238,328 280,435 322,328" fill="url(#shirtGrad)"/>
+
+                        <!-- Кумедний червоний метелик у горошок -->
+                        <g transform="translate(280, 348)">
+                            <path d="M-4 -4 L-34 -17 C-38 -6, -38 6, -34 17 L-4 4 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="2.2"/>
+                            <path d="M4 -4 L34 -17 C38 -6, 38 6, 34 17 L4 4 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="2.2"/>
+                            <circle cx="-19" cy="-4" r="3.2" fill="#fef08a"/>
+                            <circle cx="-23" cy="6" r="2.6" fill="#fef08a"/>
+                            <circle cx="19" cy="-4" r="3.2" fill="#fef08a"/>
+                            <circle cx="23" cy="6" r="2.6" fill="#fef08a"/>
+                            <rect x="-6.5" y="-7.5" width="13" height="15" rx="4" fill="#991b1b" stroke="#450a0a" stroke-width="2"/>
+                        </g>
+
+                        <!-- Лацкани халата та ґудзики -->
+                        <path d="M235 326 L205 402 L242 414 L275 458 L240 328 Z" fill="#f1f5f9" stroke="#64748b" stroke-width="2.5"/>
+                        <path d="M325 326 L355 402 L318 414 L285 458 L320 328 Z" fill="#e2e8f0" stroke="#64748b" stroke-width="2.5"/>
+                        <circle cx="280" cy="478" r="5.5" fill="#334155"/>
+                        <circle cx="280" cy="508" r="5.5" fill="#334155"/>
+
+                        <!-- Нагрудна кишеня з пробіркою, олівцем та лупою -->
+                        <g transform="translate(326, 422)">
+                            <rect x="0" y="-22" width="11" height="30" rx="5.5" fill="#38bdf8" stroke="#0284c7" stroke-width="1.8" transform="rotate(-7)"/>
+                            <circle cx="4" cy="-16" r="2.5" fill="#bae6fd"/>
+                            <rect x="15" y="-17" width="8" height="25" rx="3" fill="#f59e0b" stroke="#b45309" stroke-width="1.8" transform="rotate(7)"/>
+                            <path d="M-6 0 L36 0 L36 35 C36 42, 29 46, 15 46 C1 46, -6 42, -6 35 Z" fill="#f8fafc" stroke="#64748b" stroke-width="2.5"/>
+                        </g>
+
+                        <!-- Плями сажі на халаті після вибуху -->
+                        <g class="soot-layer" opacity="0" style="transition: opacity 0.25s ease;">
+                            <ellipse cx="215" cy="415" rx="38" ry="24" fill="url(#sootSpot)"/>
+                            <ellipse cx="345" cy="395" rx="32" ry="22" fill="url(#sootSpot)"/>
+                            <ellipse cx="280" cy="465" rx="45" ry="28" fill="url(#sootSpot)"/>
+                        </g>
+                    </g>
+
+                    <!-- Права рука вченого (з жестом "Клас / Thumbs Up" після успіху або біля приладів) -->
+                    <g id="sci-arm-r">
+                        <path d="M355 348 C395 365, 422 415, 430 468 L396 478 C386 432, 368 395, 342 378 Z"
+                              fill="url(#coatGrad)" stroke="#475569" stroke-width="3.5" stroke-linejoin="round"/>
+                        <!-- Звичайна кисть правої руки -->
+                        <g id="sci-hand-r-normal">
+                            <circle cx="414" cy="478" r="20" fill="url(#skinGrad)" stroke="#9a3412" stroke-width="3"/>
+                            <path d="M402 472 Q414 465 424 474" fill="none" stroke="#c2410c" stroke-width="2.5" stroke-linecap="round"/>
+                        </g>
+                        <!-- Жест "Супер! Великий палець вгору" після вибуху -->
+                        <g id="sci-hand-r-thumb" opacity="0" transform="translate(414, 468)">
+                            <path d="M-8 0 L-8 -28 C-8 -36, 6 -36, 6 -28 L6 -6 Z" fill="url(#skinGrad)" stroke="#9a3412" stroke-width="2.8"/>
+                            <rect x="-16" y="-8" width="28" height="26" rx="11" fill="url(#skinGrad)" stroke="#9a3412" stroke-width="2.8"/>
+                            <line x1="-12" y1="0" x2="6" y2="0" stroke="#c2410c" stroke-width="2"/>
+                            <line x1="-12" y1="8" x2="6" y2="8" stroke="#c2410c" stroke-width="2"/>
+                        </g>
+                    </g>
+
+                    <!-- ГОЛОВА ТА ОБЛИЧЧЯ ВЧЕНОГО -->
+                    <g id="sci-head-group">
+                        <!-- Звичайне пухнасте сиве волосся -->
+                        <g id="sci-hair-normal">
+                            <path d="M185 248 C142 242, 132 198, 164 176 C142 145, 174 112, 210 128 C230 96, 330 96, 350 128 C386 112, 418 145, 396 176 C428 198, 418 242, 375 248 Z"
+                                  fill="url(#hairNormalGrad)" stroke="#475569" stroke-width="3.2"/>
+                            <path d="M156 210 C138 205, 140 178, 162 178" fill="none" stroke="#94a3b8" stroke-width="3.2" stroke-linecap="round"/>
+                            <path d="M404 210 C422 205, 420 178, 398 178" fill="none" stroke="#94a3b8" stroke-width="3.2" stroke-linecap="round"/>
+                            <path d="M254 116 C270 88, 296 92, 304 116" fill="none" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+                        </g>
+
+                        <!-- Наелектризоване волосся дибки після вибуху! -->
+                        <g id="sci-hair-shocked" opacity="0" style="transition: opacity 0.15s ease;">
+                            <path d="M176 246
+                                     L102 220 L158 198
+                                     L88 154 L168 164
+                                     L118 88 L198 134
+                                     L174 52 L235 118
+                                     L250 42 L278 112
+                                     L308 40 L320 116
+                                     L378 54 L355 132
+                                     L442 86 L382 160
+                                     L472 152 L396 196
+                                     L454 220 L384 246 Z"
+                                  fill="url(#hairShockGrad)" stroke="#1e293b" stroke-width="3.2" stroke-linejoin="round"/>
+                            <path d="M134 104 L194 142 M188 68 L232 124 M280 56 L282 116 M365 68 L344 134 M424 102 L374 162"
+                                  stroke="#e2e8f0" stroke-width="3.2" stroke-linecap="round"/>
+                        </g>
+
+                        <!-- Вуха -->
+                        <g>
+                            <ellipse cx="184" cy="254" rx="19" ry="25" fill="url(#skinGrad)" stroke="#9a3412" stroke-width="2.6"/>
+                            <path d="M180 244 C174 249, 174 261, 182 264" fill="none" stroke="#c2410c" stroke-width="2.5" stroke-linecap="round"/>
+                            <ellipse cx="376" cy="254" rx="19" ry="25" fill="url(#skinGrad)" stroke="#9a3412" stroke-width="2.6"/>
+                            <path d="M380 244 C386 249, 386 261, 378 264" fill="none" stroke="#c2410c" stroke-width="2.5" stroke-linecap="round"/>
+                        </g>
+
+                        <!-- Шия -->
+                        <rect x="252" y="300" width="56" height="38" rx="14" fill="url(#skinGrad)" stroke="#9a3412" stroke-width="2.6"/>
+
+                        <!-- Контур обличчя -->
+                        <path d="M192 212 C192 148, 368 148, 368 212 C374 274, 348 324, 280 324 C212 324, 186 274, 192 212 Z"
+                              fill="url(#skinGrad)" stroke="#9a3412" stroke-width="3.2"/>
+
+                        <!-- Зморшки на лобі -->
+                        <path d="M236 174 Q280 167 324 174" fill="none" stroke="#c2410c" stroke-width="2.2" opacity="0.45" stroke-linecap="round"/>
+                        <path d="M246 184 Q280 179 314 184" fill="none" stroke="#c2410c" stroke-width="2.2" opacity="0.45" stroke-linecap="round"/>
+
+                        <!-- Рум'янець -->
+                        <circle cx="220" cy="270" r="23" fill="url(#cheekGlow)"/>
+                        <circle cx="340" cy="270" r="23" fill="url(#cheekGlow)"/>
+
+                        <!-- Очі -->
+                        <g id="sci-eyes-group">
+                            <circle cx="242" cy="234" r="23" fill="#ffffff" stroke="#475569" stroke-width="2.6"/>
+                            <circle cx="318" cy="234" r="23" fill="#ffffff" stroke="#475569" stroke-width="2.6"/>
+
+                            <!-- Зіниці -->
+                            <g id="sci-pupils">
+                                <g transform="translate(242, 234)">
+                                    <circle cx="0" cy="0" r="11.5" fill="#0284c7"/>
+                                    <circle cx="0" cy="0" r="6.2" fill="#0f172a"/>
+                                    <circle cx="-3.5" cy="-3.5" r="3.2" fill="#ffffff"/>
+                                    <circle cx="3" cy="3" r="1.3" fill="#ffffff"/>
+                                </g>
+                                <g transform="translate(318, 234)">
+                                    <circle cx="0" cy="0" r="11.5" fill="#0284c7"/>
+                                    <circle cx="0" cy="0" r="6.2" fill="#0f172a"/>
+                                    <circle cx="-3.5" cy="-3.5" r="3.2" fill="#ffffff"/>
+                                    <circle cx="3" cy="3" r="1.3" fill="#ffffff"/>
+                                </g>
+                            </g>
+
+                            <!-- Повіки -->
+                            <path id="sci-eyelid-l" d="M218 234 A24 24 0 0 1 266 234 Z" fill="#fdba74" stroke="#9a3412" stroke-width="2" transform="scale(1, 0)" style="transform-origin: 242px 210px; transition: transform 0.1s ease;"/>
+                            <path id="sci-eyelid-r" d="M294 234 A24 24 0 0 1 342 234 Z" fill="#fdba74" stroke="#9a3412" stroke-width="2" transform="scale(1, 0)" style="transform-origin: 318px 210px; transition: transform 0.1s ease;"/>
+                        </g>
+
+                        <!-- Варіанти рота для різних емоцій -->
+                        <g id="sci-mouth-group">
+                            <!-- 1. Привітна усмішка -->
+                            <path id="mouth-smile" d="M252 292 Q280 309 308 292" fill="none" stroke="#7c2d12" stroke-width="4.2" stroke-linecap="round"/>
+                            <!-- 2. Замислений рот -->
+                            <path id="mouth-hmm" d="M260 296 Q278 289 298 298" fill="none" stroke="#7c2d12" stroke-width="4.2" stroke-linecap="round" opacity="0"/>
+                            <!-- 3. Здивований рот "О" -->
+                            <ellipse id="mouth-o" cx="280" cy="297" rx="13" ry="15" fill="#450a0a" stroke="#7c2d12" stroke-width="3.5" opacity="0"/>
+                            <!-- 4. Кумедна хвиляста гримаса при короткому замиканні -->
+                            <path id="mouth-zigzag" d="M254 296 Q266 286 278 296 T304 294" fill="none" stroke="#7c2d12" stroke-width="4.2" stroke-linecap="round" opacity="0"/>
+                            <!-- 5. Широченна щаслива усмішка після вибуху! -->
+                            <g id="mouth-boom-happy" opacity="0">
+                                <path d="M240 286 C240 322, 320 322, 320 286 Z" fill="#450a0a" stroke="#7c2d12" stroke-width="3.5" stroke-linejoin="round"/>
+                                <path d="M244 288 L316 288 C315 300, 245 300, 244 288 Z" fill="#ffffff"/>
+                                <line x1="262" y1="288" x2="262" y2="297" stroke="#cbd5e1" stroke-width="1.6"/>
+                                <line x1="280" y1="288" x2="280" y2="298" stroke="#cbd5e1" stroke-width="1.6"/>
+                                <line x1="298" y1="288" x2="298" y2="297" stroke="#cbd5e1" stroke-width="1.6"/>
+                                <path d="M264 307 Q280 297 296 307 C290 314, 270 314, 264 307 Z" fill="#f43f5e"/>
+                            </g>
+                        </g>
+
+                        <!-- Пишні сиві вуса -->
+                        <g id="sci-mustache" transform="translate(280, 280)">
+                            <path d="M0 -4 C-19 -12, -44 -2, -55 12 C-36 16, -15 10, 0 4 C15 10, 36 16, 55 12 C44 -2, 19 -12, 0 -4 Z"
+                                  fill="url(#hairNormalGrad)" stroke="#475569" stroke-width="2.6"/>
+                        </g>
+
+                        <!-- Великий кумедний ніс -->
+                        <ellipse cx="280" cy="256" rx="20" ry="15.5" fill="url(#noseGrad)" stroke="#9a3412" stroke-width="2.6"/>
+                        <ellipse cx="274" cy="251" rx="6.5" ry="3.8" fill="rgba(255,255,255,0.48)" transform="rotate(-15 274 251)"/>
+
+                        <!-- Окуляри в латунній оправі (перекошуються після вибуху!) -->
+                        <g id="sci-glasses-group">
+                            <line x1="190" y1="234" x2="212" y2="234" stroke="#b45309" stroke-width="4.5" stroke-linecap="round"/>
+                            <line x1="348" y1="234" x2="370" y2="234" stroke="#b45309" stroke-width="4.5" stroke-linecap="round"/>
+                            <path d="M270 234 Q280 225 290 234" fill="none" stroke="#d97706" stroke-width="4.5"/>
+                            <circle cx="241" cy="234" r="29" fill="url(#lensGrad)" stroke="#d97706" stroke-width="5.2"/>
+                            <circle cx="241" cy="234" r="29" fill="none" stroke="#fef08a" stroke-width="1.5" opacity="0.7"/>
+                            <circle cx="319" cy="234" r="29" fill="url(#lensGrad)" stroke="#d97706" stroke-width="5.2"/>
+                            <circle cx="319" cy="234" r="29" fill="none" stroke="#fef08a" stroke-width="1.5" opacity="0.7"/>
+                            <path d="M224 219 L237 210" stroke="rgba(255,255,255,0.78)" stroke-width="3.8" stroke-linecap="round"/>
+                            <path d="M302 219 L315 210" stroke="rgba(255,255,255,0.78)" stroke-width="3.8" stroke-linecap="round"/>
+                        </g>
+
+                        <!-- Кудлаті брови -->
+                        <g id="sci-eyebrow-l" style="transform-origin: 242px 202px;">
+                            <path d="M212 206 Q240 190 266 203" fill="none" stroke="#e2e8f0" stroke-width="11.5" stroke-linecap="round"/>
+                            <path d="M212 206 Q240 190 266 203" fill="none" stroke="#94a3b8" stroke-width="4.2" stroke-linecap="round"/>
+                        </g>
+                        <g id="sci-eyebrow-r" style="transform-origin: 318px 202px;">
+                            <path d="M294 203 Q320 190 348 206" fill="none" stroke="#e2e8f0" stroke-width="11.5" stroke-linecap="round"/>
+                            <path d="M294 203 Q320 190 348 206" fill="none" stroke="#94a3b8" stroke-width="4.2" stroke-linecap="round"/>
+                        </g>
+
+                        <!-- Плями сажі на обличчі після вибуху -->
+                        <g class="soot-layer" opacity="0" style="transition: opacity 0.25s ease;">
+                            <ellipse cx="220" cy="270" rx="30" ry="22" fill="url(#sootSpot)"/>
+                            <ellipse cx="338" cy="256" rx="32" ry="24" fill="url(#sootSpot)"/>
+                            <ellipse cx="278" cy="186" rx="44" ry="19" fill="url(#sootSpot)"/>
+                            <ellipse cx="275" cy="256" rx="17" ry="12" fill="url(#sootSpot)"/>
+                            <ellipse cx="230" cy="226" rx="17" ry="13" fill="url(#sootSpot)"/>
+                        </g>
+                    </g>
+                </g>
+
+                <!-- ВЛАСНИЙ ЛАБОРАТОРНИЙ ПУЛЬТ І ПОДІУМ ПЕРЕД ВЧЕНИМ (у лівій зоні) -->
+                <g id="scientist-control-desk">
+                    <!-- Важіль рубильника під лівою рукою вченого -->
+                    <g id="control-lever-stick" transform="rotate(-14)">
+                        <line x1="122" y1="525" x2="122" y2="442" stroke="#cbd5e1" stroke-width="8" stroke-linecap="round"/>
+                        <circle cx="122" cy="436" r="16" fill="#dc2626" stroke="#450a0a" stroke-width="3"/>
+                        <circle cx="117" cy="431" r="4.5" fill="#fca5a5"/>
+                    </g>
+                    <!-- База рубильника -->
+                    <path d="M92 525 A30 30 0 0 1 152 525 Z" fill="#475569" stroke="#0f172a" stroke-width="3"/>
+
+                    <!-- Скляний міні-купол плазмового індикатора на столі вченого -->
+                    <g transform="translate(405, 472)">
+                        <path d="M0 53 L0 22 A24 24 0 0 1 48 22 L48 53 Z" fill="rgba(56, 189, 248, 0.25)" stroke="#bae6fd" stroke-width="2.5"/>
+                        <circle id="desk-bulb-core" cx="24" cy="30" r="10" fill="#38bdf8"/>
+                        <rect x="-6" y="48" width="60" height="10" rx="4" fill="url(#podiumBrass)" stroke="#451a03" stroke-width="2"/>
+                    </g>
+
+                    <!-- Корпус пульта керування вченого -->
+                    <rect x="45" y="520" width="470" height="18" rx="6" fill="url(#podiumBrass)" stroke="#270e02" stroke-width="3"/>
+                    <path d="M62 538 L498 538 L520 680 L40 680 Z" fill="url(#podiumBody)" stroke="#0f172a" stroke-width="4"/>
+                    <rect x="85" y="558" width="390" height="102" rx="12" fill="#0f172a" stroke="#475569" stroke-width="3"/>
+
+                    <!-- Аналоговий вольтметр на пульті вченого -->
+                    <g transform="translate(165, 608)">
+                        <circle cx="0" cy="0" r="36" fill="url(#podiumBrass)" stroke="#451a03" stroke-width="3"/>
+                        <circle cx="0" cy="0" r="28" fill="#fef3c7" stroke="#78350f" stroke-width="2"/>
+                        <path d="M-18 10 A20 20 0 1 1 18 10" fill="none" stroke="#dc2626" stroke-width="3.5" stroke-dasharray="5 3"/>
+                        <line id="desk-gauge-needle" x1="0" y1="3" x2="-12" y2="-14" stroke="#0f172a" stroke-width="3.5" stroke-linecap="round"/>
+                        <circle cx="0" cy="0" r="4.5" fill="#451a03"/>
+                    </g>
+
+                    <!-- Світлові індикатори та тумблери на пульті вченого -->
+                    <circle id="desk-lamp-1" cx="265" cy="590" r="11" fill="#22c55e" stroke="#052e16" stroke-width="2.5"/>
+                    <circle id="desk-lamp-2" cx="310" cy="590" r="11" fill="#eab308" stroke="#422006" stroke-width="2.5"/>
+                    <circle id="desk-lamp-3" cx="355" cy="590" r="11" fill="#ef4444" stroke="#450a0a" stroke-width="2.5"/>
+
+                    <rect x="255" y="620" width="110" height="18" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+                    <line x1="275" y1="620" x2="275" y2="638" stroke="#38bdf8" stroke-width="3"/>
+                    <line x1="298" y1="620" x2="298" y2="638" stroke="#38bdf8" stroke-width="3"/>
+                    <line x1="321" y1="620" x2="321" y2="638" stroke="#38bdf8" stroke-width="3"/>
+                    <line x1="344" y1="620" x2="344" y2="638" stroke="#38bdf8" stroke-width="3"/>
+
+                    <!-- Великий круглий вентиль-регулятор на пульті -->
+                    <g id="desk-dial-wheel" transform="translate(418, 608)">
+                        <circle cx="0" cy="0" r="28" fill="#1e293b" stroke="#94a3b8" stroke-width="4"/>
+                        <line x1="-22" y1="0" x2="22" y2="0" stroke="#94a3b8" stroke-width="3.5"/>
+                        <line x1="0" y1="-22" x2="0" y2="22" stroke="#94a3b8" stroke-width="3.5"/>
+                        <circle cx="0" cy="0" r="9" fill="#f59e0b" stroke="#451a03" stroke-width="2"/>
+                    </g>
+                </g>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ==================== ПРАВА ЗОНА: ТАБЛО ПИТАННЯ ТА СТІЛ ЗІ СЛОВАМИ ==================== -->
+    <div id="right-console-zone">
+        <!-- Верхній ламповий апарат із питанням -->
+        <div id="question-apparatus">
+            <!-- Сяючі радіолампи зверху -->
+            <div class="vacuum-tubes-row">
+                <svg width="38" height="46" viewBox="0 0 38 46">
+                    <path d="M7 38 L7 16 A12 12 0 0 1 31 16 L31 38 Z" fill="rgba(251, 191, 36, 0.25)" stroke="#fde68a" stroke-width="2"/>
+                    <path d="M14 34 L14 18 L24 18 L24 34" fill="none" stroke="#f97316" stroke-width="2.5"/>
+                    <circle cx="19" cy="22" r="6" fill="#fde047" opacity="0.75"/>
+                    <rect x="4" y="36" width="30" height="8" rx="3" fill="#78350f" stroke="#451a03" stroke-width="2"/>
+                </svg>
+                <svg width="44" height="52" viewBox="0 0 44 52">
+                    <path d="M8 42 L8 18 A14 14 0 0 1 36 18 L36 42 Z" fill="rgba(56, 189, 248, 0.25)" stroke="#bae6fd" stroke-width="2"/>
+                    <path d="M16 38 L16 20 L28 20 L28 38" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+                    <circle cx="22" cy="24" r="7" fill="#67e8f9" opacity="0.8"/>
+                    <rect x="5" y="40" width="34" height="9" rx="3" fill="#78350f" stroke="#451a03" stroke-width="2"/>
+                </svg>
+                <svg width="38" height="46" viewBox="0 0 38 46">
+                    <path d="M7 38 L7 16 A12 12 0 0 1 31 16 L31 38 Z" fill="rgba(251, 191, 36, 0.25)" stroke="#fde68a" stroke-width="2"/>
+                    <path d="M14 34 L14 18 L24 18 L24 34" fill="none" stroke="#f97316" stroke-width="2.5"/>
+                    <circle cx="19" cy="22" r="6" fill="#fde047" opacity="0.75"/>
+                    <rect x="4" y="36" width="30" height="8" rx="3" fill="#78350f" stroke="#451a03" stroke-width="2"/>
+                </svg>
+            </div>
+
+            <div class="question-frame">
+                <div class="rivet tl"></div>
+                <div class="rivet tr"></div>
+                <div class="rivet bl"></div>
+                <div class="rivet br"></div>
+
+                <div class="question-screen">
+                    <!-- Жива синусоїда осцилографа на фоні екрана -->
+                    <svg id="oscilloscope-wave-svg" viewBox="0 0 400 100" preserveAspectRatio="none">
+                        <path id="osc-wave-path" d="M0 50 Q 50 20, 100 50 T 200 50 T 300 50 T 400 50" fill="none" stroke="#2dd4bf" stroke-width="2.5"/>
+                    </svg>
+
+                    <!-- Графічна схема з'єднання без слів: Клема 1 -> Пружинка зі стрілкою -> Клема 2 -->
+                    <svg class="direction-schema" width="168" height="24" viewBox="0 0 168 24">
+                        <circle id="schema-dot-1" cx="16" cy="12" r="7.5" fill="#38bdf8" stroke="#bae6fd" stroke-width="2"/>
+                        <path d="M28 12 C34 3, 40 21, 46 12 C52 3, 58 21, 64 12 C70 3, 76 21, 82 12 C88 3, 94 21, 100 12 C106 3, 112 21, 118 12 C124 3, 130 21, 136 12 L142 12"
+                              fill="none" stroke="#94a3b8" stroke-width="2.6" stroke-linecap="round"/>
+                        <polygon points="145,12 134,6 134,18" fill="#5eead4"/>
+                        <circle id="schema-dot-2" cx="155" cy="12" r="7.5" fill="#0f172a" stroke="#5eead4" stroke-width="2"/>
+                    </svg>
+                    <div id="question-text">що робить?</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Нижній дубово-латунний стенд зі словами речення -->
+        <div id="console-workbench-area">
+            <div id="words-console-board">
+                <div class="rivet tl"></div>
+                <div class="rivet tr"></div>
+                <div class="rivet bl"></div>
+                <div class="rivet br"></div>
+                <div class="console-copper-rail"></div>
+
+                <!-- Сюди рендеряться блоки-ізолятори зі словами -->
+                <div id="words-rack" class="w-full flex flex-wrap justify-center items-center gap-x-5 gap-y-7 z-10"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Канвас для реалістичної 3D-пружини, блискавок, іскор та диму -->
+    <canvas id="spring-fx-canvas"></canvas>
+
+    <!-- Мінімалістична кнопка "Далі" (механічний тумблер зі стрілкою без тексту) -->
+    <button id="next-btn" aria-label="Next">
+        <svg width="34" height="34" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 7L21 18L8 29V7Z" fill="#fef08a" stroke="#451a03" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M19 7L32 18L19 29V7Z" fill="#fde047" stroke="#451a03" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>
+    </button>
+
+    <!-- Дуже малопомітний перемикач мови в кутку -->
+    <div id="lang-toggle">
+        <button class="lang-btn active" data-lang="uk">укр</button>
+        <span class="text-slate-600 text-[10px]">|</span>
+        <button class="lang-btn" data-lang="ru">рус</button>
+    </div>
+</div>
+
+<script>
+/**
+ * БАЗА ДАНИХ РЕЧЕНЬ І ПИТАНЬ (ПОНАД 25 РЕЧЕНЬ НА КОЖНІЙ МОВІ — ПОНАД 100 ЗАВДАНЬ НА МОВУ)
+ * from: індекс слова, ВІД якого ставиться питання
+ * to: індекс слова-відповіді
+ */
+const SENTENCE_DB = {
+    uk: [
+        {
+            words: ["Рудий", "кіт", "солодко", "спить", "на", "килимі"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "де?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Маленька", "білочка", "гризе", "смачний", "горішок"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 2 },
+                { q: "яка?", from: 1, to: 0 },
+                { q: "що?", from: 2, to: 4 },
+                { q: "який?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Веселий", "художник", "малює", "фарбами", "пейзаж"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "чим?", from: 2, to: 3 },
+                { q: "що?", from: 2, to: 4 }
+            ]
+        },
+        {
+            words: ["Теплий", "вітер", "тихо", "гойдає", "зелені", "гілки"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "що?", from: 3, to: 5 },
+                { q: "які?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Вправний", "кухар", "зварив", "смачний", "борщ"],
+            tasks: [
+                { q: "що зробив?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "що?", from: 2, to: 4 },
+                { q: "який?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Швидкий", "поїзд", "мчить", "до", "великого", "міста"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "куди?", from: 2, to: 5 },
+                { q: "якого?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Лісові", "пташки", "голосно", "співають", "навесні"],
+            tasks: [
+                { q: "що роблять?", from: 1, to: 3 },
+                { q: "які?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "коли?", from: 3, to: 4 }
+            ]
+        },
+        {
+            words: ["Добра", "бабуся", "спекла", "рум'яні", "пиріжки"],
+            tasks: [
+                { q: "що зробила?", from: 1, to: 2 },
+                { q: "яка?", from: 1, to: 0 },
+                { q: "що?", from: 2, to: 4 },
+                { q: "які?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Срібляста", "рибка", "швидко", "пливе", "у", "річці"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "яка?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "де?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Допитливий", "хлопчик", "читає", "цікаву", "книжку"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "що?", from: 2, to: 4 },
+                { q: "яку?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Ранкове", "сонце", "яскраво", "освітлює", "високі", "гори"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "яке?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "що?", from: 3, to: 5 },
+                { q: "які?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Працьовиті", "бджоли", "збирають", "солодкий", "нектар"],
+            tasks: [
+                { q: "що роблять?", from: 1, to: 2 },
+                { q: "які?", from: 1, to: 0 },
+                { q: "що?", from: 2, to: 4 },
+                { q: "який?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Маленьке", "кошеня", "грається", "клубочком", "ниток"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 2 },
+                { q: "яке?", from: 1, to: 0 },
+                { q: "чим?", from: 2, to: 3 },
+                { q: "чого?", from: 3, to: 4 }
+            ]
+        },
+        {
+            words: ["Густий", "туман", "оповив", "широке", "поле"],
+            tasks: [
+                { q: "що зробив?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "що?", from: 2, to: 4 },
+                { q: "яке?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Старий", "дуб", "росте", "біля", "лісової", "стежки"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "де?", from: 2, to: 5 },
+                { q: "якої?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Дзвінкий", "струмок", "весело", "біжить", "з", "гори"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "звідки?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Мудра", "сова", "уважно", "слухає", "нічний", "ліс"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "яка?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "що?", from: 3, to: 5 },
+                { q: "який?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Сміливий", "капітан", "впевнено", "керує", "великим", "кораблем"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "чим?", from: 3, to: 5 },
+                { q: "яким?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Осінній", "дощ", "тихо", "стукає", "у", "вікно"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "куди?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Пухнастий", "зайчик", "сховався", "під", "густим", "кущем"],
+            tasks: [
+                { q: "що зробив?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "де?", from: 2, to: 5 },
+                { q: "яким?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Дівчинка", "старанно", "поливає", "запашні", "квіти"],
+            tasks: [
+                { q: "що робить?", from: 0, to: 2 },
+                { q: "як?", from: 2, to: 1 },
+                { q: "що?", from: 2, to: 4 },
+                { q: "які?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Білі", "хмаринки", "повільно", "пливуть", "по", "небу"],
+            tasks: [
+                { q: "що роблять?", from: 1, to: 3 },
+                { q: "які?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "де?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Майстер", "вирізав", "ножем", "дерев'яну", "іграшку"],
+            tasks: [
+                { q: "що зробив?", from: 0, to: 1 },
+                { q: "чим?", from: 1, to: 2 },
+                { q: "що?", from: 1, to: 4 },
+                { q: "яку?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Зелена", "жабка", "високо", "стрибає", "в", "очереті"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 3 },
+                { q: "яка?", from: 1, to: 0 },
+                { q: "як?", from: 3, to: 2 },
+                { q: "де?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Молодий", "садівник", "посадив", "восени", "яблуню"],
+            tasks: [
+                { q: "що зробив?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "коли?", from: 2, to: 3 },
+                { q: "що?", from: 2, to: 4 }
+            ]
+        },
+        {
+            words: ["Прудкий", "їжачок", "несе", "на", "голках", "грибочок"],
+            tasks: [
+                { q: "що робить?", from: 1, to: 2 },
+                { q: "який?", from: 1, to: 0 },
+                { q: "де?", from: 2, to: 4 },
+                { q: "що?", from: 2, to: 5 }
+            ]
+        }
+    ],
+    ru: [
+        {
+            words: ["Рыжий", "кот", "сладко", "спит", "на", "ковре"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "где?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Маленькая", "белочка", "грызёт", "вкусный", "орешек"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 2 },
+                { q: "какая?", from: 1, to: 0 },
+                { q: "что?", from: 2, to: 4 },
+                { q: "какой?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Весёлый", "художник", "рисует", "красками", "пейзаж"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "чем?", from: 2, to: 3 },
+                { q: "что?", from: 2, to: 4 }
+            ]
+        },
+        {
+            words: ["Тёплый", "ветер", "тихо", "качает", "зелёные", "ветки"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "что?", from: 3, to: 5 },
+                { q: "какие?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Умелый", "повар", "сварил", "вкусный", "суп"],
+            tasks: [
+                { q: "что сделал?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "что?", from: 2, to: 4 },
+                { q: "какой?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Быстрый", "поезд", "мчится", "к", "большому", "городу"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "куда?", from: 2, to: 5 },
+                { q: "какому?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Лесные", "птички", "громко", "поют", "весной"],
+            tasks: [
+                { q: "что делают?", from: 1, to: 3 },
+                { q: "какие?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "когда?", from: 3, to: 4 }
+            ]
+        },
+        {
+            words: ["Добрая", "бабушка", "испекла", "румяные", "пирожки"],
+            tasks: [
+                { q: "что сделала?", from: 1, to: 2 },
+                { q: "какая?", from: 1, to: 0 },
+                { q: "что?", from: 2, to: 4 },
+                { q: "какие?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Серебристая", "рыбка", "быстро", "плывёт", "в", "реке"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какая?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "где?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Любознательный", "мальчик", "читает", "интересную", "книгу"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "что?", from: 2, to: 4 },
+                { q: "какую?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Утреннее", "солнце", "ярко", "освещает", "высокие", "горы"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какое?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "что?", from: 3, to: 5 },
+                { q: "какие?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Трудолюбивые", "пчёлы", "собирают", "сладкий", "нектар"],
+            tasks: [
+                { q: "что делают?", from: 1, to: 2 },
+                { q: "какие?", from: 1, to: 0 },
+                { q: "что?", from: 2, to: 4 },
+                { q: "какой?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Маленький", "котёнок", "играет", "клубочком", "ниток"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "чем?", from: 2, to: 3 },
+                { q: "чего?", from: 3, to: 4 }
+            ]
+        },
+        {
+            words: ["Густой", "туман", "окутал", "широкое", "поле"],
+            tasks: [
+                { q: "что сделал?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "что?", from: 2, to: 4 },
+                { q: "какое?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Старый", "дуб", "растёт", "возле", "лесной", "тропинки"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "где?", from: 2, to: 5 },
+                { q: "какой?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Звонкий", "ручей", "весело", "бежит", "с", "горы"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "откуда?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Мудрая", "сова", "внимательно", "слушает", "ночной", "лес"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какая?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "что?", from: 3, to: 5 },
+                { q: "какой?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Смелый", "капитан", "уверенно", "управляет", "большим", "кораблём"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "чем?", from: 3, to: 5 },
+                { q: "каким?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Осенний", "дождь", "тихо", "стучит", "в", "окно"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "куда?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Пушистый", "зайчик", "спрятался", "под", "густым", "кустом"],
+            tasks: [
+                { q: "что сделал?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "где?", from: 2, to: 5 },
+                { q: "каким?", from: 5, to: 4 }
+            ]
+        },
+        {
+            words: ["Девочка", "старательно", "поливает", "душистые", "цветы"],
+            tasks: [
+                { q: "что делает?", from: 0, to: 2 },
+                { q: "как?", from: 2, to: 1 },
+                { q: "что?", from: 2, to: 4 },
+                { q: "какие?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Белые", "облака", "медленно", "плывут", "по", "небу"],
+            tasks: [
+                { q: "что делают?", from: 1, to: 3 },
+                { q: "какие?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "где?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Мастер", "вырезал", "ножом", "деревянную", "игрушку"],
+            tasks: [
+                { q: "что сделал?", from: 0, to: 1 },
+                { q: "чем?", from: 1, to: 2 },
+                { q: "что?", from: 1, to: 4 },
+                { q: "какую?", from: 4, to: 3 }
+            ]
+        },
+        {
+            words: ["Зелёная", "лягушка", "высоко", "прыгает", "в", "камышах"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 3 },
+                { q: "какая?", from: 1, to: 0 },
+                { q: "как?", from: 3, to: 2 },
+                { q: "где?", from: 3, to: 5 }
+            ]
+        },
+        {
+            words: ["Молодой", "садовник", "посадил", "осенью", "яблоню"],
+            tasks: [
+                { q: "что сделал?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "когда?", from: 2, to: 3 },
+                { q: "что?", from: 2, to: 4 }
+            ]
+        },
+        {
+            words: ["Шустрый", "ёжик", "несёт", "на", "иголках", "грибочек"],
+            tasks: [
+                { q: "что делает?", from: 1, to: 2 },
+                { q: "какой?", from: 1, to: 0 },
+                { q: "где?", from: 2, to: 4 },
+                { q: "что?", from: 2, to: 5 }
+            ]
+        }
+    ]
+};
+
+/**
+ * СИНТЕЗАТОР ЗВУКОВИХ ЕФЕКТІВ ЛАБОРАТОРІЇ (Web Audio API)
+ */
+class LabAudioEngine {
+    constructor() {
+        this.ctx = null;
+    }
+
+    init() {
+        if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
+
+    // Механічний клац + гудіння трансформатора при зачепленні першого слова
+    playLatchSound(pitchMultiplier = 1.0) {
+        this.init();
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(320 * pitchMultiplier, now);
+        osc.frequency.exponentialRampToValueAtTime(780 * pitchMultiplier, now + 0.06);
+        osc.frequency.exponentialRampToValueAtTime(190 * pitchMultiplier, now + 0.19);
+
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.21);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.21);
+    }
+
+    // Коротке замикання + пружне "боііінг" відстрілювання пружини при помилці
+    playWrongSpringRecoil() {
+        this.init();
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+        const mainGain = this.ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(185, now);
+        osc.frequency.exponentialRampToValueAtTime(78, now + 0.52);
+
+        lfo.frequency.setValueAtTime(28, now);
+        lfoGain.gain.setValueAtTime(70, now);
+
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+
+        mainGain.gain.setValueAtTime(0.26, now);
+        mainGain.gain.exponentialRampToValueAtTime(0.001, now + 0.54);
+
+        osc.connect(mainGain);
+        mainGain.connect(this.ctx.destination);
+
+        osc.start(now);
+        lfo.start(now);
+        osc.stop(now + 0.54);
+        lfo.stop(now + 0.54);
+    }
+
+    // Високовольтна дуга, лабораторний вибух та радісна електрична фанфара!
+    playElectricExplosion() {
+        this.init();
+        const now = this.ctx.currentTime;
+
+        // 1. Електричний тріск дуги
+        const zapOsc = this.ctx.createOscillator();
+        const zapMod = this.ctx.createOscillator();
+        const zapModGain = this.ctx.createGain();
+        const zapGain = this.ctx.createGain();
+
+        zapOsc.type = 'sawtooth';
+        zapOsc.frequency.setValueAtTime(150, now);
+        zapOsc.frequency.linearRampToValueAtTime(560, now + 0.24);
+
+        zapMod.type = 'square';
+        zapMod.frequency.setValueAtTime(60, now);
+        zapModGain.gain.setValueAtTime(195, now);
+
+        zapMod.connect(zapModGain);
+        zapModGain.connect(zapOsc.frequency);
+
+        zapGain.gain.setValueAtTime(0.28, now);
+        zapGain.gain.exponentialRampToValueAtTime(0.01, now + 0.36);
+
+        zapOsc.connect(zapGain);
+        zapGain.connect(this.ctx.destination);
+        zapOsc.start(now);
+        zapMod.start(now);
+        zapOsc.stop(now + 0.36);
+        zapMod.stop(now + 0.36);
+
+        // 2. Гучний комічний "БАБАХ!"
+        const boomTime = now + 0.16;
+        const bufferSize = this.ctx.sampleRate * 0.95;
+        const noiseBuffer = this.ctx.sampleRate ? this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate) : null;
+        if (noiseBuffer) {
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            const whiteNoise = this.ctx.createBufferSource();
+            whiteNoise.buffer = noiseBuffer;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1000, boomTime);
+            filter.frequency.exponentialRampToValueAtTime(85, boomTime + 0.88);
+
+            const noiseGain = this.ctx.createGain();
+            noiseGain.gain.setValueAtTime(0.68, boomTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, boomTime + 0.9);
+
+            whiteNoise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(this.ctx.destination);
+            whiteNoise.start(boomTime);
+            whiteNoise.stop(boomTime + 0.92);
+        }
+
+        const subOsc = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        subOsc.type = 'sine';
+        subOsc.frequency.setValueAtTime(135, boomTime);
+        subOsc.frequency.exponentialRampToValueAtTime(26, boomTime + 0.58);
+
+        subGain.gain.setValueAtTime(0.62, boomTime);
+        subGain.gain.exponentialRampToValueAtTime(0.001, boomTime + 0.62);
+
+        subOsc.connect(subGain);
+        subGain.connect(this.ctx.destination);
+        subOsc.start(boomTime);
+        subOsc.stop(boomTime + 0.62);
+
+        // 3. Радісна фанфара відкриття
+        const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+        notes.forEach((freq, idx) => {
+            const t = boomTime + 0.24 + idx * 0.075;
+            const bell = this.ctx.createOscillator();
+            const bGain = this.ctx.createGain();
+            bell.type = 'triangle';
+            bell.frequency.setValueAtTime(freq, t);
+            bGain.gain.setValueAtTime(0.18, t);
+            bGain.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+            bell.connect(bGain);
+            bGain.connect(this.ctx.destination);
+            bell.start(t);
+            bell.stop(t + 0.36);
+        });
+    }
+
+    playSwitchClick() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(540, now);
+        osc.frequency.exponentialRampToValueAtTime(250, now + 0.08);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+    }
+}
+
+const audio = new LabAudioEngine();
+
+/**
+ * КОНТРОЛЕР АНІМАЦІЙ ТА ЕМОЦІЙ ВЧЕНОГО (у власній лівій зоні)
+ */
+class ScientistController {
+    constructor() {
+        this.upperTorso = document.getElementById('sci-upper-torso');
+        this.headGroup = document.getElementById('sci-head-group');
+        this.armL = document.getElementById('sci-arm-l');
+        this.armR = document.getElementById('sci-arm-r');
+        this.handRNormal = document.getElementById('sci-hand-r-normal');
+        this.handRThumb = document.getElementById('sci-hand-r-thumb');
+        this.leverStick = document.getElementById('control-lever-stick');
+
+        this.hairNormal = document.getElementById('sci-hair-normal');
+        this.hairShocked = document.getElementById('sci-hair-shocked');
+        this.pupils = document.getElementById('sci-pupils');
+        this.eyelidL = document.getElementById('sci-eyelid-l');
+        this.eyelidR = document.getElementById('sci-eyelid-r');
+        this.eyebrowL = document.getElementById('sci-eyebrow-l');
+        this.eyebrowR = document.getElementById('sci-eyebrow-r');
+        this.glasses = document.getElementById('sci-glasses-group');
+
+        this.mouthSmile = document.getElementById('mouth-smile');
+        this.mouthHmm = document.getElementById('mouth-hmm');
+        this.mouthO = document.getElementById('mouth-o');
+        this.mouthZigzag = document.getElementById('mouth-zigzag');
+        this.mouthBoom = document.getElementById('mouth-boom-happy');
+
+        this.sootLayers = document.querySelectorAll('.soot-layer');
+        this.state = 'idle'; // 'idle', 'attentive', 'shocked-happy', 'puzzled'
+        this.reactionIndex = 0;
+
+        this.startRandomEmotions();
+    }
+
+    showMouth(type) {
+        this.mouthSmile.setAttribute('opacity', type === 'smile' ? '1' : '0');
+        this.mouthHmm.setAttribute('opacity', type === 'hmm' ? '1' : '0');
+        this.mouthO.setAttribute('opacity', type === 'o' ? '1' : '0');
+        this.mouthZigzag.setAttribute('opacity', type === 'zigzag' ? '1' : '0');
+        this.mouthBoom.setAttribute('opacity', type === 'boom' ? '1' : '0');
+    }
+
+    resetToCleanIdle() {
+        this.state = 'idle';
+        this.hairNormal.setAttribute('opacity', '1');
+        this.hairShocked.setAttribute('opacity', '0');
+        this.sootLayers.forEach(el => el.setAttribute('opacity', '0'));
+        this.glasses.style.transform = 'rotate(0deg) translateY(0px)';
+        this.upperTorso.style.transform = 'rotate(0deg) translate(0px, 0px)';
+        this.headGroup.style.transform = 'rotate(0deg) translate(0px, 0px)';
+        this.armL.style.transform = 'rotate(0deg)';
+        this.armR.style.transform = 'rotate(0deg)';
+        this.handRNormal.setAttribute('opacity', '1');
+        this.handRThumb.setAttribute('opacity', '0');
+        this.leverStick.style.transform = 'rotate(-14deg)';
+        this.eyebrowL.style.transform = 'translateY(0px) rotate(0deg)';
+        this.eyebrowR.style.transform = 'translateY(0px) rotate(0deg)';
+        this.eyelidL.style.transform = 'scale(1, 0)';
+        this.eyelidR.style.transform = 'scale(1, 0)';
+        this.showMouth('smile');
+    }
+
+    // Коли дитина клікає на перше слово: вчений нахиляється вперед до консолі, натискає важіль і зацікавлено дивиться!
+    triggerFirstWordSelected() {
+        if (this.state === 'shocked-happy') return;
+        this.state = 'attentive';
+        this.upperTorso.style.transform = 'rotate(3.5deg) translateX(8px)';
+        this.headGroup.style.transform = 'rotate(4deg) translateY(-4px)';
+        this.leverStick.style.transform = 'rotate(18deg)';
+        this.armL.style.transform = 'rotate(-10deg)';
+        this.eyebrowL.style.transform = 'translateY(-9px) rotate(-6deg)';
+        this.eyebrowR.style.transform = 'translateY(2px) rotate(5deg)';
+        this.showMouth('o');
+    }
+
+    // Різноманітні кумедні реакції вченого після вибуху (брудний у сажі, волосся дибки, щасливий!)
+    triggerExplosionSuccess() {
+        this.state = 'shocked-happy';
+        this.hairNormal.setAttribute('opacity', '0');
+        this.hairShocked.setAttribute('opacity', '1');
+        this.sootLayers.forEach(el => el.setAttribute('opacity', '1'));
+        this.showMouth('boom');
+
+        const variant = this.reactionIndex % 3;
+        this.reactionIndex++;
+
+        if (variant === 0) {
+            // Варіант 1: Перекошені окуляри + показує великий палець вгору ("Супер!")
+            this.glasses.style.transform = 'rotate(-13deg) translateY(6px)';
+            this.headGroup.style.transform = 'rotate(-5deg) translateY(-6px)';
+            this.upperTorso.style.transform = 'rotate(-2deg)';
+            this.armR.style.transform = 'rotate(-36deg) translate(-12px, -18px)';
+            this.handRNormal.setAttribute('opacity', '0');
+            this.handRThumb.setAttribute('opacity', '1');
+        } else if (variant === 1) {
+            // Варіант 2: Тріумфально піднімає обидві руки вгору ("Еврика!") + окуляри набік
+            this.glasses.style.transform = 'rotate(12deg) translateY(5px)';
+            this.headGroup.style.transform = 'rotate(5deg) translateY(-8px)';
+            this.armL.style.transform = 'rotate(48deg) translate(-10px, -20px)';
+            this.armR.style.transform = 'rotate(-48deg) translate(10px, -20px)';
+            this.handRNormal.setAttribute('opacity', '0');
+            this.handRThumb.setAttribute('opacity', '1');
+        } else {
+            // Варіант 3: Смішно поправляє рукою перекошені димлячі окуляри
+            this.glasses.style.transform = 'rotate(-15deg) translateY(7px)';
+            this.headGroup.style.transform = 'rotate(6deg)';
+            this.armR.style.transform = 'rotate(-62deg) translate(-25px, -35px)';
+            setTimeout(() => {
+                if (this.state === 'shocked-happy') {
+                    this.glasses.style.transform = 'rotate(-3deg) translateY(1px)';
+                }
+            }, 650);
+        }
+
+        this.eyebrowL.style.transform = 'translateY(-11px) rotate(-8deg)';
+        this.eyebrowR.style.transform = 'translateY(-11px) rotate(8deg)';
+    }
+
+    // Кумедна реакція на помилку: чухає потилицю або знизує плечима з хвилястою гримасою
+    triggerPuzzled() {
+        if (this.state === 'shocked-happy') return;
+        this.state = 'puzzled';
+        this.leverStick.style.transform = 'rotate(-14deg)';
+        this.upperTorso.style.transform = 'rotate(-3deg)';
+        this.headGroup.style.transform = 'rotate(-8deg)';
+        this.eyebrowL.style.transform = 'translateY(-10px) rotate(-12deg)';
+        this.eyebrowR.style.transform = 'translateY(4px) rotate(-6deg)';
+        this.armR.style.transform = 'rotate(-28deg) translate(-8px, -10px)';
+        this.showMouth(Math.random() < 0.5 ? 'zigzag' : 'hmm');
+
+        setTimeout(() => {
+            if (this.state === 'puzzled') {
+                this.resetToCleanIdle();
+            }
+        }, 1150);
+    }
+
+    lookAt(x, y) {
+        const rect = document.getElementById('scientist-stage-box').getBoundingClientRect();
+        const cx = rect.left + rect.width * 0.5;
+        const cy = rect.top + rect.height * 0.35;
+        const dx = x - cx;
+        const dy = y - cy;
+        const dist = Math.hypot(dx, dy) || 1;
+        const maxOffset = 7.5;
+        const factor = Math.min(dist / 260, 1) * maxOffset;
+        const px = (dx / dist) * factor;
+        const py = (dy / dist) * factor;
+        this.pupils.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
+    }
+
+    blink() {
+        this.eyelidL.style.transform = 'scale(1, 1)';
+        this.eyelidR.style.transform = 'scale(1, 1)';
+        setTimeout(() => {
+            this.eyelidL.style.transform = 'scale(1, 0)';
+            this.eyelidR.style.transform = 'scale(1, 0)';
+        }, 130);
+    }
+
+    startRandomEmotions() {
+        setInterval(() => {
+            if (Math.random() < 0.78) this.blink();
+        }, 2700);
+
+        setInterval(() => {
+            if (this.state !== 'idle') return;
+            const roll = Math.random();
+            if (roll < 0.25) {
+                this.eyebrowL.style.transform = 'translateY(-8px) rotate(-8deg)';
+                this.eyebrowR.style.transform = 'translateY(2px) rotate(4deg)';
+                this.headGroup.style.transform = 'rotate(4deg)';
+                this.showMouth('hmm');
+            } else if (roll < 0.5) {
+                this.eyelidL.style.transform = 'scale(1, 0.42)';
+                this.eyelidR.style.transform = 'scale(1, 0.42)';
+                this.eyebrowL.style.transform = 'translateY(4px)';
+                this.eyebrowR.style.transform = 'translateY(4px)';
+                this.headGroup.style.transform = 'rotate(-4deg)';
+                this.showMouth('hmm');
+                setTimeout(() => {
+                    if (this.state === 'idle') {
+                        this.eyelidL.style.transform = 'scale(1, 0)';
+                        this.eyelidR.style.transform = 'scale(1, 0)';
+                    }
+                }, 1300);
+            } else if (roll < 0.75) {
+                this.eyebrowL.style.transform = 'translateY(-7px)';
+                this.eyebrowR.style.transform = 'translateY(-7px)';
+                this.glasses.style.transform = 'translateY(-4px)';
+                this.showMouth('o');
+                setTimeout(() => {
+                    if (this.state === 'idle') {
+                        this.glasses.style.transform = 'translateY(0px)';
+                        this.showMouth('smile');
+                    }
+                }, 850);
+            } else {
+                this.eyebrowL.style.transform = 'translateY(0px) rotate(0deg)';
+                this.eyebrowR.style.transform = 'translateY(0px) rotate(0deg)';
+                this.headGroup.style.transform = 'rotate(0deg)';
+                this.showMouth('smile');
+            }
+        }, 3000);
+    }
+}
+
+/**
+ * ФОНОВА ЖИВА ЛАБОРАТОРІЯ (Бульбашки в колбах, пилинки у променях світла, осцилограф, манометри, плазма)
+ */
+class BackgroundEffects {
+    constructor() {
+        this.canvas = document.getElementById('bg-effects-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.bubbles = [];
+        this.dustMotes = [];
+        this.time = 0;
+        this.gaugeSpinBoost = 0;
+
+        this.oscWavePath = document.getElementById('osc-wave-path');
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.initParticles();
+    }
+
+    resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    }
+
+    initParticles() {
+        // Координати 4 колб на полицях у пропорціях SVG (1920x1080)
+        const emitters = [
+            { x: 802 / 1920, y: 355 / 1080, color: 'rgba(134, 239, 172, 0.78)', rMax: 5.5 },
+            { x: 917 / 1920, y: 375 / 1080, color: 'rgba(253, 230, 138, 0.78)', rMax: 5 },
+            { x: 1639 / 1920, y: 365 / 1080, color: 'rgba(186, 230, 253, 0.82)', rMax: 5 },
+            { x: 1748 / 1920, y: 355 / 1080, color: 'rgba(251, 207, 232, 0.78)', rMax: 5.5 }
+        ];
+
+        for (let i = 0; i < 40; i++) {
+            const em = emitters[i % emitters.length];
+            this.bubbles.push({
+                emitter: em,
+                offsetX: (Math.random() - 0.5) * 22,
+                progress: Math.random(),
+                speed: 0.005 + Math.random() * 0.006,
+                r: 2 + Math.random() * em.rMax
+            });
+        }
+
+        // Атмосферні пилинки/іскорки у світлі лабораторії
+        for (let i = 0; i < 35; i++) {
+            this.dustMotes.push({
+                x: Math.random(),
+                y: Math.random(),
+                vx: (Math.random() - 0.5) * 0.0003,
+                vy: -0.0002 - Math.random() * 0.0003,
+                r: 1 + Math.random() * 2.2,
+                alpha: 0.15 + Math.random() * 0.35
+            });
+        }
+    }
+
+    triggerGaugeSpin() {
+        this.gaugeSpinBoost = 18;
+    }
+
+    updateAndDraw() {
+        this.time += 0.035;
+        if (this.gaugeSpinBoost > 0.1) {
+            this.gaugeSpinBoost *= 0.94;
+        } else {
+            this.gaugeSpinBoost = 0;
+        }
+
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        this.ctx.clearRect(0, 0, w, h);
+
+        // 1. Пилинки у променях світла
+        for (const m of this.dustMotes) {
+            m.x += m.vx;
+            m.y += m.vy;
+            if (m.y < 0) m.y = 1;
+            if (m.x < 0) m.x = 1;
+            if (m.x > 1) m.x = 0;
+
+            this.ctx.save();
+            this.ctx.globalAlpha = m.alpha * (0.6 + 0.4 * Math.sin(this.time * 2 + m.x * 10));
+            this.ctx.fillStyle = '#fef08a';
+            this.ctx.beginPath();
+            this.ctx.arc(m.x * w, m.y * h, m.r, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.restore();
+        }
+
+        // 2. Бульбашки в алхімічних колбах
+        for (const b of this.bubbles) {
+            b.progress += b.speed;
+            if (b.progress > 1) {
+                b.progress = 0;
+                b.offsetX = (Math.random() - 0.5) * 22;
+            }
+            const bx = b.emitter.x * w + b.offsetX + Math.sin(this.time * 2 + b.progress * 8) * 2.5;
+            const by = b.emitter.y * h - b.progress * (h * 0.06);
+            const alpha = Math.sin(b.progress * Math.PI);
+
+            this.ctx.save();
+            this.ctx.globalAlpha = alpha;
+            this.ctx.fillStyle = b.emitter.color;
+            this.ctx.beginPath();
+            this.ctx.arc(bx, by, b.r, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.restore();
+        }
+
+        // 3. Плазмова дуга в колоні Тесли біля вченого
+        this.drawTeslaColumnArc(w * (610 / 1920), h * (255 / 1080), h * (495 / 1080));
+
+        // 4. Жива синусоїда на екрані питання
+        if (this.oscWavePath) {
+            let d = 'M 0 50';
+            const amp = 14 + this.gaugeSpinBoost * 2.2;
+            for (let x = 0; x <= 400; x += 16) {
+                const y = 50 + Math.sin(x * 0.045 + this.time * 3.2) * amp * Math.sin(x / 400 * Math.PI);
+                d += ` L ${x} ${y.toFixed(1)}`;
+            }
+            this.oscWavePath.setAttribute('d', d);
+        }
+
+        // 5. Стрілки манометрів та індикатори на пульті вченого
+        const spinAngle = this.gaugeSpinBoost * 65;
+        const n1 = document.getElementById('gauge-needle-1');
+        const n2 = document.getElementById('gauge-needle-2');
+        const dn = document.getElementById('desk-gauge-needle');
+        const vw = document.getElementById('valve-wheel-1');
+        const dw = document.getElementById('desk-dial-wheel');
+
+        if (n1) n1.setAttribute('transform', `rotate(${Math.sin(this.time * 1.8) * 35 + spinAngle})`);
+        if (n2) n2.setAttribute('transform', `rotate(${Math.cos(this.time * 2.2) * 40 - spinAngle})`);
+        if (dn) dn.setAttribute('transform', `rotate(${Math.sin(this.time * 2.6) * 42 + spinAngle * 1.2})`);
+        if (vw) vw.setAttribute('transform', `translate(75, 365) rotate(${Math.sin(this.time * 0.6) * 28 + spinAngle * 0.5})`);
+        if (dw) dw.setAttribute('transform', `translate(418, 608) rotate(${Math.cos(this.time * 0.8) * 35 - spinAngle * 0.5})`);
+    }
+
+    drawTeslaColumnArc(x, yTop, yBottom) {
+        this.ctx.save();
+        this.ctx.strokeStyle = 'rgba(103, 232, 249, 0.78)';
+        this.ctx.shadowColor = '#22d3ee';
+        this.ctx.shadowBlur = 12;
+        this.ctx.lineWidth = 2.2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, yBottom);
+        const steps = 12;
+        for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            const py = yBottom - (yBottom - yTop) * t;
+            const px = x + (i === steps ? 0 : (Math.random() - 0.5) * 24);
+            this.ctx.lineTo(px, py);
+        }
+        this.ctx.stroke();
+        this.ctx.restore();
+    }
+}
+
+/**
+ * ФІЗИКА РЕАЛІСТИЧНОЇ МЕТАЛЕВОЇ 3D-ПРУЖИНИ, ВИСОКОВОЛЬТНОЇ ДУГИ, ІСКОР ТА ДИМУ
+ */
+class SpringAndFXRenderer {
+    constructor() {
+        this.canvas = document.getElementById('spring-fx-canvas');
+        this.ctx = this.canvas.getContext('2d');
+
+        this.active = false;
+        this.state = 'none'; // 'dragging', 'connected-electric', 'recoiling'
+        this.startPos = { x: 0, y: 0 };
+        this.endPos = { x: 0, y: 0 };
+        this.targetEndPos = { x: 0, y: 0 };
+        this.endVel = { x: 0, y: 0 };
+
+        this.archLift = 0;
+        this.archVel = 0;
+
+        this.sparks = [];
+        this.smokePuffs = [];
+        this.hairSparks = [];
+
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+    }
+
+    resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    }
+
+    attachStart(x, y) {
+        this.active = true;
+        this.state = 'dragging';
+        this.startPos = { x, y };
+        this.endPos = { x, y };
+        this.targetEndPos = { x, y };
+        this.endVel = { x: 0, y: 0 };
+        this.archLift = -25;
+        this.archVel = 0;
+        this.spawnTerminalSparks(x, y, 12, '#38bdf8');
+    }
+
+    moveTarget(x, y) {
+        if (!this.active || this.state !== 'dragging') return;
+        this.targetEndPos.x = x;
+        this.targetEndPos.y = y;
+    }
+
+    latchToTarget(x, y, isCorrect) {
+        this.targetEndPos = { x, y };
+        this.endPos = { x, y };
+        this.archVel = -18;
+
+        if (isCorrect) {
+            this.state = 'connected-electric';
+            this.spawnTerminalSparks(x, y, 28, '#67e8f9');
+        } else {
+            // При помилці — клуб фіолетового диму на клемі та пружне відстрілювання назад
+            this.spawnTerminalSparks(x, y, 16, '#f87171');
+            this.spawnPurpleErrorSmoke(x, y);
+            this.state = 'recoiling';
+            this.targetEndPos = { x: this.startPos.x, y: this.startPos.y };
+        }
+    }
+
+    cancelSpring() {
+        if (!this.active) return;
+        this.state = 'recoiling';
+        this.targetEndPos = { x: this.startPos.x, y: this.startPos.y };
+    }
+
+    spawnPurpleErrorSmoke(x, y) {
+        for (let i = 0; i < 12; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 1 + Math.random() * 4;
+            this.smokePuffs.push({
+                x: x + (Math.random() - 0.5) * 16,
+                y: y + (Math.random() - 0.5) * 16,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1.8,
+                r: 14 + Math.random() * 18,
+                grow: 0.45,
+                alpha: 0.75,
+                decay: 0.022 + Math.random() * 0.015,
+                color: 'rgb(126, 34, 206)'
+            });
+        }
+    }
+
+    triggerLabExplosion() {
+        const mx = (this.startPos.x + this.endPos.x) * 0.5;
+        const my = (this.startPos.y + this.endPos.y) * 0.5 - 35;
+
+        const sciRect = document.getElementById('scientist-stage-box').getBoundingClientRect();
+        const sx = sciRect.left + sciRect.width * 0.5;
+        const sy = sciRect.top + sciRect.height * 0.36;
+
+        const centers = [
+            { x: mx, y: my, count: 26 },
+            { x: sx, y: sy, count: 30 }
+        ];
+
+        centers.forEach(c => {
+            for (let i = 0; i < c.count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 9;
+                const shade = Math.floor(38 + Math.random() * 68);
+                this.smokePuffs.push({
+                    x: c.x + (Math.random() - 0.5) * 40,
+                    y: c.y + (Math.random() - 0.5) * 40,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 1.5,
+                    r: 22 + Math.random() * 36,
+                    grow: 0.65 + Math.random() * 0.75,
+                    alpha: 0.85,
+                    decay: 0.013 + Math.random() * 0.012,
+                    color: `rgb(${shade}, ${shade + 6}, ${shade + 14})`
+                });
+            }
+        });
+
+        for (let i = 0; i < 85; i++) {
+            const origin = i % 2 === 0 ? { x: mx, y: my } : { x: sx, y: sy };
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 4 + Math.random() * 17;
+            const colors = ['#fef08a', '#38bdf8', '#f97316', '#ffffff', '#5eead4'];
+            this.sparks.push({
+                x: origin.x,
+                y: origin.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 3,
+                len: 8 + Math.random() * 16,
+                alpha: 1,
+                decay: 0.016 + Math.random() * 0.02,
+                color: colors[i % colors.length]
+            });
+        }
+
+        for (let i = 0; i < 16; i++) {
+            this.hairSparks.push({
+                angle: Math.random() * Math.PI * 2,
+                radius: 75 + Math.random() * 48,
+                life: 85 + Math.random() * 45
+            });
+        }
+    }
+
+    spawnTerminalSparks(x, y, count, color) {
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 2 + Math.random() * 7;
+            this.sparks.push({
+                x, y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1,
+                len: 5 + Math.random() * 9,
+                alpha: 1,
+                decay: 0.035 + Math.random() * 0.025,
+                color
+            });
+        }
+    }
+
+    updateAndDraw() {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // 1. Фізика 3D-пружини (вигинається красивою аркою над словами на консолі)
+        if (this.active) {
+            const stiffness = this.state === 'recoiling' ? 0.25 : 0.28;
+            const damping = this.state === 'recoiling' ? 0.72 : 0.68;
+
+            const ax = (this.targetEndPos.x - this.endPos.x) * stiffness;
+            const ay = (this.targetEndPos.y - this.endPos.y) * stiffness;
+            this.endVel.x = (this.endVel.x + ax) * damping;
+            this.endVel.y = (this.endVel.y + ay) * damping;
+            this.endPos.x += this.endVel.x;
+            this.endPos.y += this.endVel.y;
+
+            const dist = Math.hypot(this.endPos.x - this.startPos.x, this.endPos.y - this.startPos.y);
+            // Піднімаємо арку пружини вгору над словами, щоб вона виглядала об'ємно і охайно
+            const targetArch = -Math.min(dist * 0.18, 75);
+            const archAccel = (targetArch - this.archLift) * 0.18;
+            this.archVel = (this.archVel + archAccel) * 0.82;
+            this.archLift += this.archVel;
+
+            if (this.state === 'recoiling' && dist < 14) {
+                this.active = false;
+                this.state = 'none';
+            } else {
+                this.drawRealisticCoiledSpring(this.startPos.x, this.startPos.y, this.endPos.x, this.endPos.y);
+                if (this.state === 'connected-electric') {
+                    this.drawHighVoltageArcs(this.startPos.x, this.startPos.y, this.endPos.x, this.endPos.y);
+                }
+            }
+        }
+
+        // 2. Клуби диму
+        for (let i = this.smokePuffs.length - 1; i >= 0; i--) {
+            const p = this.smokePuffs[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= 0.95;
+            p.vy *= 0.95;
+            p.r += p.grow;
+            p.alpha -= p.decay;
+
+            if (p.alpha <= 0) {
+                this.smokePuffs.splice(i, 1);
+                continue;
+            }
+
+            ctx.save();
+            ctx.globalAlpha = p.alpha;
+            const grad = ctx.createRadialGradient(p.x, p.y, p.r * 0.1, p.x, p.y, p.r);
+            grad.addColorStop(0, p.color);
+            grad.addColorStop(0.6, p.color);
+            grad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 3. Іскри
+        for (let i = this.sparks.length - 1; i >= 0; i--) {
+            const s = this.sparks[i];
+            s.x += s.vx;
+            s.y += s.vy;
+            s.vy += 0.35;
+            s.alpha -= s.decay;
+
+            if (s.alpha <= 0) {
+                this.sparks.splice(i, 1);
+                continue;
+            }
+
+            const angle = Math.atan2(s.vy, s.vx);
+            ctx.save();
+            ctx.globalAlpha = s.alpha;
+            ctx.strokeStyle = s.color;
+            ctx.shadowColor = s.color;
+            ctx.shadowBlur = 10;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(s.x, s.y);
+            ctx.lineTo(s.x - Math.cos(angle) * s.len, s.y - Math.sin(angle) * s.len);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 4. Іскорки у волоссі вченого після вибуху
+        if (this.hairSparks.length > 0) {
+            const sciRect = document.getElementById('scientist-stage-box').getBoundingClientRect();
+            const hx = sciRect.left + sciRect.width * 0.5;
+            const hy = sciRect.top + sciRect.height * 0.28;
+
+            for (let i = this.hairSparks.length - 1; i >= 0; i--) {
+                const hs = this.hairSparks[i];
+                hs.life--;
+                if (hs.life <= 0) {
+                    this.hairSparks.splice(i, 1);
+                    continue;
+                }
+                if (Math.random() < 0.45) {
+                    const sx = hx + Math.cos(hs.angle) * hs.radius;
+                    const sy = hy - Math.abs(Math.sin(hs.angle)) * (hs.radius * 0.85);
+                    ctx.save();
+                    ctx.strokeStyle = '#67e8f9';
+                    ctx.shadowColor = '#22d3ee';
+                    ctx.shadowBlur = 8;
+                    ctx.lineWidth = 2.2;
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(sx + (Math.random() - 0.5) * 22, sy + (Math.random() - 0.5) * 22);
+                    ctx.lineTo(sx + (Math.random() - 0.5) * 30, sy + (Math.random() - 0.5) * 30);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }
+    }
+
+    drawRealisticCoiledSpring(x1, y1, x2, y2) {
+        const ctx = this.ctx;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const dist = Math.hypot(dx, dy);
+
+        const coils = 16;
+        const radius = Math.max(9, Math.min(20, 24 - dist * 0.011));
+        const totalSteps = coils * 18;
+
+        const angle = Math.atan2(dy, dx);
+        const nx = -Math.sin(angle);
+        const ny = Math.cos(angle);
+
+        const points = [];
+        for (let i = 0; i <= totalSteps; i++) {
+            const t = i / totalSteps;
+            const arch = Math.sin(t * Math.PI) * this.archLift;
+            const bx = x1 + dx * t;
+            const by = y1 + dy * t + arch;
+
+            let env = 1;
+            if (t < 0.08) env = t / 0.08;
+            else if (t > 0.92) env = (1 - t) / 0.08;
+
+            const phase = t * coils * Math.PI * 2;
+            const coilPerp = Math.sin(phase) * radius * env;
+            const coilAlong = Math.cos(phase) * (radius * 0.38) * env;
+
+            const px = bx + nx * coilPerp + Math.cos(angle) * coilAlong;
+            const py = by + ny * coilPerp + Math.sin(angle) * coilAlong;
+            points.push({ x: px, y: py });
+        }
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Тінь під пружиною
+        ctx.beginPath();
+        points.forEach((p, idx) => {
+            if (idx === 0) ctx.moveTo(p.x + 4, p.y + 9);
+            else ctx.lineTo(p.x + 4, p.y + 9);
+        });
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.lineWidth = 10;
+        ctx.stroke();
+
+        // Темний контур металу
+        ctx.beginPath();
+        points.forEach((p, idx) => {
+            if (idx === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+        });
+        ctx.strokeStyle = this.state === 'connected-electric' ? '#0369a1' : '#334155';
+        ctx.lineWidth = 9;
+        ctx.stroke();
+
+        // Сталево-мідне тіло витків
+        ctx.beginPath();
+        points.forEach((p, idx) => {
+            if (idx === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+        });
+        ctx.strokeStyle = this.state === 'connected-electric' ? '#38bdf8' : '#94a3b8';
+        ctx.lineWidth = 5.5;
+        ctx.stroke();
+
+        // Спекулярний металевий блік
+        ctx.beginPath();
+        points.forEach((p, idx) => {
+            if (idx === 0) ctx.moveTo(p.x - 1.2, p.y - 1.5);
+            else ctx.lineTo(p.x - 1.2, p.y - 1.5);
+        });
+        ctx.strokeStyle = this.state === 'connected-electric' ? '#e0f2fe' : '#f8fafc';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Латунні затискачі на кінцях
+        [{ x: x1, y: y1 }, { x: x2, y: y2 }].forEach(end => {
+            ctx.beginPath();
+            ctx.arc(end.x, end.y, 9, 0, Math.PI * 2);
+            ctx.fillStyle = '#f59e0b';
+            ctx.fill();
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#451a03';
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(end.x - 2.5, end.y - 2.5, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#fef08a';
+            ctx.fill();
+        });
+
+        ctx.restore();
+    }
+
+    drawHighVoltageArcs(x1, y1, x2, y2) {
+        const ctx = this.ctx;
+        for (let branch = 0; branch < 2; branch++) {
+            ctx.save();
+            ctx.strokeStyle = branch === 0 ? '#ffffff' : '#38bdf8';
+            ctx.shadowColor = '#22d3ee';
+            ctx.shadowBlur = 18;
+            ctx.lineWidth = branch === 0 ? 3.5 : 2;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+
+            const segments = 14;
+            for (let i = 1; i < segments; i++) {
+                const t = i / segments;
+                const bx = x1 + (x2 - x1) * t;
+                const by = y1 + (y2 - y1) * t + Math.sin(t * Math.PI) * this.archLift;
+                const jitterX = (Math.random() - 0.5) * 32;
+                const jitterY = (Math.random() - 0.5) * 32;
+                ctx.lineTo(bx + jitterX, by + jitterY);
+            }
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+}
+
+/**
+ * ГОЛОВНИЙ КОНТРОЛЕР ГРИ
+ */
+class GrammarLabGame {
+    constructor() {
+        this.lang = 'uk';
+        this.taskQueue = [];
+        this.currentTask = null;
+        this.selectedWordIdx = null;
+        this.isLocked = false;
+        this.isPointerDragging = false;
+
+        this.wordsRack = document.getElementById('words-rack');
+        this.questionText = document.getElementById('question-text');
+        this.schemaDot1 = document.getElementById('schema-dot-1');
+        this.schemaDot2 = document.getElementById('schema-dot-2');
+        this.flashOverlay = document.getElementById('electric-flash');
+        this.stage = document.getElementById('game-stage');
+
+        this.scientist = new ScientistController();
+        this.bgEffects = new BackgroundEffects();
+        this.springFX = new SpringAndFXRenderer();
+
+        this.initEvents();
+        this.buildQueue();
+        this.loadNextTask();
+        this.startMainLoop();
+    }
+
+    buildQueue() {
+        const list = [];
+        const sentences = SENTENCE_DB[this.lang];
+        sentences.forEach((sObj) => {
+            sObj.tasks.forEach((task) => {
+                list.push({
+                    words: sObj.words,
+                    q: task.q,
+                    from: task.from,
+                    to: task.to
+                });
+            });
+        });
+
+        for (let i = list.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [list[i], list[j]] = [list[j], list[i]];
+        }
+        this.taskQueue = list;
+    }
+
+    loadNextTask() {
+        this.isLocked = false;
+        this.selectedWordIdx = null;
+        this.springFX.active = false;
+        this.springFX.state = 'none';
+        this.scientist.resetToCleanIdle();
+
+        if (this.taskQueue.length === 0) {
+            this.buildQueue();
+        }
+        this.currentTask = this.taskQueue.pop();
+
+        this.questionText.style.transform = 'scale(0.84)';
+        this.questionText.textContent = this.currentTask.q;
+        setTimeout(() => {
+            this.questionText.style.transform = 'scale(1)';
+        }, 50);
+
+        this.updateSchemaIndicator(false);
+        this.renderSentenceNodes();
+    }
+
+    updateSchemaIndicator(firstSelected) {
+        if (!firstSelected) {
+            this.schemaDot1.setAttribute('fill', '#38bdf8');
+            this.schemaDot2.setAttribute('fill', '#0f172a');
+        } else {
+            this.schemaDot1.setAttribute('fill', '#34d399');
+            this.schemaDot2.setAttribute('fill', '#38bdf8');
+        }
+    }
+
+    getNodeTerminalCoords(idx) {
+        const nodeEl = this.wordsRack.querySelector(`.word-node[data-idx="${idx}"]`);
+        if (!nodeEl) return { x: window.innerWidth * 0.65, y: window.innerHeight * 0.7 };
+        const cap = nodeEl.querySelector('.terminal-cap-target');
+        const rect = (cap || nodeEl).getBoundingClientRect();
+        return {
+            x: rect.left + rect.width * 0.5,
+            y: rect.top + rect.height * 0.5
+        };
+    }
+
+    renderSentenceNodes() {
+        this.wordsRack.innerHTML = '';
+
+        this.currentTask.words.forEach((word, idx) => {
+            const node = document.createElement('div');
+            node.className = 'word-node';
+            node.dataset.idx = idx;
+
+            node.innerHTML = `
+                <div class="terminal-assembly">
+                    <svg viewBox="0 0 56 46" width="56" height="46">
+                        <defs>
+                            <linearGradient id="insulGrad_${idx}" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#0369a1"/>
+                                <stop offset="45%" stop-color="#38bdf8"/>
+                                <stop offset="75%" stop-color="#0284c7"/>
+                                <stop offset="100%" stop-color="#0c4a6e"/>
+                            </linearGradient>
+                            <radialGradient id="brassKnob_${idx}" cx="35%" cy="35%" r="65%">
+                                <stop offset="0%" stop-color="#fef08a"/>
+                                <stop offset="50%" stop-color="#eab308"/>
+                                <stop offset="100%" stop-color="#78350f"/>
+                            </radialGradient>
+                        </defs>
+                        <rect x="13" y="29" width="30" height="14" rx="4" fill="url(#insulGrad_${idx})" stroke="#082f49" stroke-width="2"/>
+                        <rect x="17" y="19" width="22" height="11" rx="4" fill="url(#insulGrad_${idx})" stroke="#082f49" stroke-width="2"/>
+                        <circle class="terminal-cap-target" cx="28" cy="11" r="9.5" fill="url(#brassKnob_${idx})" stroke="#451a03" stroke-width="2.2"/>
+                        <circle cx="25" cy="8" r="2.6" fill="#ffffff" opacity="0.82"/>
+                    </svg>
+                </div>
+
+                <div class="word-casing">
+                    <div class="rivet tl"></div>
+                    <div class="rivet tr"></div>
+                    <div class="rivet bl"></div>
+                    <div class="rivet br"></div>
+                    <div class="word-plate">
+                        <span class="word-label">${word}</span>
+                    </div>
+                </div>
+            `;
+
+            node.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                this.handleWordPointerDown(idx, e);
+            });
+
+            this.wordsRack.appendChild(node);
+        });
+    }
+
+    handleWordPointerDown(idx, e) {
+        if (this.isLocked) return;
+
+        if (this.selectedWordIdx === null) {
+            this.selectedWordIdx = idx;
+            this.isPointerDragging = true;
+            const nodeEl = this.wordsRack.querySelector(`.word-node[data-idx="${idx}"]`);
+            if (nodeEl) nodeEl.classList.add('selected-source');
+
+            const coords = this.getNodeTerminalCoords(idx);
+            this.springFX.attachStart(coords.x, coords.y);
+            this.springFX.moveTarget(e.clientX, e.clientY);
+            audio.playLatchSound(1.0);
+            this.scientist.triggerFirstWordSelected();
+            this.updateSchemaIndicator(true);
+            return;
+        }
+
+        if (this.selectedWordIdx === idx) {
+            this.clearSelection();
+            audio.playSwitchClick();
+            return;
+        }
+
+        this.evaluateConnection(this.selectedWordIdx, idx);
+    }
+
+    clearSelection() {
+        this.selectedWordIdx = null;
+        this.isPointerDragging = false;
+        this.wordsRack.querySelectorAll('.word-node').forEach(el => {
+            el.classList.remove('selected-source');
+        });
+        this.springFX.cancelSpring();
+        this.scientist.resetToCleanIdle();
+        this.updateSchemaIndicator(false);
+    }
+
+    evaluateConnection(fromIdx, toIdx) {
+        const targetCoords = this.getNodeTerminalCoords(toIdx);
+        const isCorrect = (fromIdx === this.currentTask.from && toIdx === this.currentTask.to);
+
+        const fromEl = this.wordsRack.querySelector(`.word-node[data-idx="${fromIdx}"]`);
+        const toEl = this.wordsRack.querySelector(`.word-node[data-idx="${toIdx}"]`);
+
+        if (isCorrect) {
+            this.isLocked = true;
+            this.isPointerDragging = false;
+            audio.playLatchSound(1.3);
+
+            this.springFX.latchToTarget(targetCoords.x, targetCoords.y, true);
+
+            if (fromEl) {
+                fromEl.classList.remove('selected-source');
+                fromEl.classList.add('connected-success');
+            }
+            if (toEl) {
+                toEl.classList.add('connected-success');
+            }
+
+            audio.playElectricExplosion();
+            this.bgEffects.triggerGaugeSpin();
+
+            setTimeout(() => {
+                this.flashOverlay.style.opacity = '1';
+                this.stage.classList.remove('screen-shake');
+                void this.stage.offsetWidth;
+                this.stage.classList.add('screen-shake');
+
+                this.springFX.triggerLabExplosion();
+                this.scientist.triggerExplosionSuccess();
+
+                setTimeout(() => {
+                    this.flashOverlay.style.opacity = '0';
+                }, 140);
+            }, 160);
+
+            setTimeout(() => {
+                if (this.isLocked) {
+                    this.loadNextTask();
+                }
+            }, 2650);
+
+        } else {
+            audio.playWrongSpringRecoil();
+            this.springFX.latchToTarget(targetCoords.x, targetCoords.y, false);
+            this.scientist.triggerPuzzled();
+
+            if (fromEl) {
+                fromEl.classList.remove('selected-source');
+                fromEl.classList.add('connected-error');
+            }
+            if (toEl) {
+                toEl.classList.add('connected-error');
+            }
+
+            setTimeout(() => {
+                if (fromEl) fromEl.classList.remove('connected-error');
+                if (toEl) toEl.classList.remove('connected-error');
+            }, 480);
+
+            this.selectedWordIdx = null;
+            this.isPointerDragging = false;
+            this.updateSchemaIndicator(false);
+        }
+    }
+
+    initEvents() {
+        window.addEventListener('pointermove', (e) => {
+            this.scientist.lookAt(e.clientX, e.clientY);
+            if (this.selectedWordIdx !== null && !this.isLocked) {
+                this.springFX.moveTarget(e.clientX, e.clientY);
+            }
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            if (!this.isPointerDragging || this.selectedWordIdx === null || this.isLocked) return;
+            this.isPointerDragging = false;
+
+            const elUnderPointer = document.elementFromPoint(e.clientX, e.clientY);
+            const targetNode = elUnderPointer ? elUnderPointer.closest('.word-node') : null;
+            if (targetNode) {
+                const targetIdx = parseInt(targetNode.dataset.idx, 10);
+                if (!isNaN(targetIdx) && targetIdx !== this.selectedWordIdx) {
+                    this.evaluateConnection(this.selectedWordIdx, targetIdx);
+                }
+            }
+        });
+
+        window.addEventListener('pointerdown', (e) => {
+            if (this.selectedWordIdx !== null && !this.isLocked) {
+                const clickedNode = e.target.closest('.word-node');
+                const clickedNext = e.target.closest('#next-btn');
+                const clickedLang = e.target.closest('#lang-toggle');
+                if (!clickedNode && !clickedNext && !clickedLang) {
+                    this.clearSelection();
+                }
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (this.selectedWordIdx !== null) {
+                const c = this.getNodeTerminalCoords(this.selectedWordIdx);
+                this.springFX.startPos = c;
+            }
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            audio.playSwitchClick();
+            this.loadNextTask();
+        });
+
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const newLang = btn.dataset.lang;
+                if (newLang === this.lang) return;
+                this.lang = newLang;
+                document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b === btn));
+                audio.playSwitchClick();
+                this.buildQueue();
+                this.loadNextTask();
+            });
+        });
+    }
+
+    startMainLoop() {
+        const loop = () => {
+            this.bgEffects.updateAndDraw();
+            this.springFX.updateAndDraw();
+            requestAnimationFrame(loop);
+        };
+        requestAnimationFrame(loop);
+    }
+}
+
+window.onload = () => {
+    new GrammarLabGame();
+};
+</script>
+
+</body>
+</html>
