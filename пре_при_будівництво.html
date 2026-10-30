@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Будівельний майданчик: ПРЕ та ПРИ</title>
+  <style>
+    /* Скидання стандартних відступів та заборона виділення тексту для зручності дітей */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #1e293b;
+      font-family: 'Segoe UI', 'Arial Rounded MT Bold', system-ui, sans-serif;
+    }
+
+    /* Головний контейнер гри на весь екран */
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Основне SVG-полотно гри */
+    #scene {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Інтерактивні зони техніки */
+    .vehicle-hitbox {
+      cursor: pointer;
+      transition: filter 0.25s ease;
+    }
+
+    .vehicle-hitbox:hover {
+      filter: drop-shadow(0 0 16px rgba(255, 230, 100, 0.75)) brightness(1.06);
+    }
+
+    .vehicle-hitbox:active {
+      filter: brightness(0.95);
+    }
+
+    /* Фонові анімації природи та будівництва */
+    @keyframes sunRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes cloudDrift1 {
+      0% { transform: translateX(-250px); }
+      100% { transform: translateX(1950px); }
+    }
+
+    @keyframes cloudDrift2 {
+      0% { transform: translateX(1950px); }
+      100% { transform: translateX(-300px); }
+    }
+
+    @keyframes distantCraneSwing {
+      0%, 100% { transform: rotate(-4deg); }
+      50% { transform: rotate(5deg); }
+    }
+
+    @keyframes beaconFlash {
+      0%, 100% { opacity: 0.25; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.25); }
+    }
+
+    @keyframes characterBreathe {
+      0%, 100% { transform: translateY(0px) scaleY(1); }
+      50% { transform: translateY(-3px) scaleY(1.015); }
+    }
+
+    @keyframes tailWag {
+      0%, 100% { transform: rotate(-12deg); }
+      50% { transform: rotate(18deg); }
+    }
+
+    @keyframes earTwitch {
+      0%, 88%, 100% { transform: rotate(0deg); }
+      92% { transform: rotate(-14deg); }
+      96% { transform: rotate(8deg); }
+    }
+
+    @keyframes engineIdle {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(1.5px); }
+    }
+
+    @keyframes hookSway {
+      0%, 100% { transform: rotate(-1.2deg); }
+      50% { transform: rotate(1.2deg); }
+    }
+
+    .sun-rays {
+      transform-origin: 1650px 140px;
+      animation: sunRotate 55s linear infinite;
+    }
+
+    .cloud-1 {
+      animation: cloudDrift1 65s linear infinite;
+    }
+
+    .cloud-2 {
+      animation: cloudDrift2 85s linear infinite;
+    }
+
+    .cloud-3 {
+      animation: cloudDrift1 50s linear infinite;
+      animation-delay: -25s;
+    }
+
+    .bg-crane-boom {
+      transform-origin: 330px 260px;
+      animation: distantCraneSwing 14s ease-in-out infinite;
+    }
+
+    .beacon-glow {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: beaconFlash 0.9s ease-in-out infinite;
+    }
+
+    .char-body-anim {
+      transform-origin: 960px 960px;
+      animation: characterBreathe 2.6s ease-in-out infinite;
+    }
+
+    .char-tail {
+      transform-origin: 915px 915px;
+      animation: tailWag 1.1s ease-in-out infinite;
+    }
+
+    .char-ear-l {
+      transform-origin: 932px 795px;
+      animation: earTwitch 4.5s ease-in-out infinite;
+    }
+
+    .excavator-idle {
+      animation: engineIdle 0.35s ease-in-out infinite;
+    }
+
+    /* Кнопки навігації (мінімалістичні, стилізовані під дорожні знаки/металеві жетони) */
+    .nav-btn {
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    .nav-btn:hover {
+      transform: scale(1.12);
+      filter: drop-shadow(0 0 12px rgba(251, 191, 36, 0.85));
+    }
+
+    .nav-btn:active {
+      transform: scale(0.94);
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <!-- Головне ігрове SVG-полотно 1920x1080 (співвідношення 16:9) -->
+  <svg id="scene" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Градієнти неба, землі та гір -->
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#38bdf8" />
+        <stop offset="55%" stop-color="#bae6fd" />
+        <stop offset="100%" stop-color="#fef3c7" />
+      </linearGradient>
+
+      <linearGradient id="cityGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#64748b" />
+        <stop offset="100%" stop-color="#94a3b8" />
+      </linearGradient>
+
+      <linearGradient id="hillGrad1" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#84cc16" />
+        <stop offset="100%" stop-color="#4d7c0f" />
+      </linearGradient>
+
+      <linearGradient id="groundGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#d97706" />
+        <stop offset="35%" stop-color="#b45309" />
+        <stop offset="100%" stop-color="#78350f" />
+      </linearGradient>
+
+      <linearGradient id="roadGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#475569" />
+        <stop offset="50%" stop-color="#334155" />
+        <stop offset="100%" stop-color="#1e293b" />
+      </linearGradient>
+
+      <!-- Металеві та будівельні градієнти для техніки -->
+      <linearGradient id="yellowMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fde047" />
+        <stop offset="45%" stop-color="#facc15" />
+        <stop offset="100%" stop-color="#ca8a04" />
+      </linearGradient>
+
+      <linearGradient id="orangeMetal" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fb923c" />
+        <stop offset="50%" stop-color="#f97316" />
+        <stop offset="100%" stop-color="#c2410c" />
+      </linearGradient>
+
+      <linearGradient id="craneRedMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fb7185" />
+        <stop offset="50%" stop-color="#e11d48" />
+        <stop offset="100%" stop-color="#9f1239" />
+      </linearGradient>
+
+      <linearGradient id="steelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#e2e8f0" />
+        <stop offset="50%" stop-color="#94a3b8" />
+        <stop offset="100%" stop-color="#475569" />
+      </linearGradient>
+
+      <linearGradient id="darkSteel" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#475569" />
+        <stop offset="50%" stop-color="#334155" />
+        <stop offset="100%" stop-color="#0f172a" />
+      </linearGradient>
+
+      <linearGradient id="chromeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#cbd5e1" />
+        <stop offset="40%" stop-color="#f8fafc" />
+        <stop offset="60%" stop-color="#94a3b8" />
+        <stop offset="100%" stop-color="#e2e8f0" />
+      </linearGradient>
+
+      <linearGradient id="glassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#e0f2fe" stop-opacity="0.9" />
+        <stop offset="45%" stop-color="#38bdf8" stop-opacity="0.75" />
+        <stop offset="100%" stop-color="#0284c7" stop-opacity="0.85" />
+      </linearGradient>
+
+      <!-- Градієнти для блоків префіксів та головного слова -->
+      <linearGradient id="priBlockGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#34d399" />
+        <stop offset="50%" stop-color="#10b981" />
+        <stop offset="100%" stop-color="#047857" />
+      </linearGradient>
+
+      <linearGradient id="preBlockGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#60a5fa" />
+        <stop offset="50%" stop-color="#3b82f6" />
+        <stop offset="100%" stop-color="#1d4ed8" />
+      </linearGradient>
+
+      <linearGradient id="wordBeamGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fef08a" />
+        <stop offset="15%" stop-color="#f59e0b" />
+        <stop offset="85%" stop-color="#d97706" />
+        <stop offset="100%" stop-color="#92400e" />
+      </linearGradient>
+
+      <linearGradient id="wordPlateGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#312e81" />
+        <stop offset="50%" stop-color="#1e1b4b" />
+        <stop offset="100%" stop-color="#0f172a" />
+      </linearGradient>
+
+      <!-- Патерн чорно-жовтої будівельної стрічки безпеки -->
+      <pattern id="hazardStripes" width="40" height="40" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+        <rect x="0" y="0" width="20" height="40" fill="#facc15" />
+        <rect x="20" y="0" width="20" height="40" fill="#1e293b" />
+      </pattern>
+
+      <!-- Патерн рифленого металу -->
+      <pattern id="diamondPlate" width="24" height="24" patternUnits="userSpaceOnUse">
+        <rect width="24" height="24" fill="none" />
+        <polygon points="12,3 16,12 12,21 8,12" fill="rgba(255,255,255,0.14)" />
+        <polygon points="0,12 4,16 0,20" fill="rgba(0,0,0,0.15)" />
+      </pattern>
+
+      <!-- Патерн цегляної кладки -->
+      <pattern id="brickPattern" width="48" height="24" patternUnits="userSpaceOnUse">
+        <rect width="48" height="24" fill="#b91c1c" />
+        <rect x="2" y="2" width="20" height="8" rx="1" fill="#ef4444" />
+        <rect x="26" y="2" width="20" height="8" rx="1" fill="#dc2626" />
+        <rect x="-10" y="14" width="20" height="8" rx="1" fill="#dc2626" />
+        <rect x="14" y="14" width="20" height="8" rx="1" fill="#f87171" />
+        <rect x="38" y="14" width="20" height="8" rx="1" fill="#ef4444" />
+      </pattern>
+
+      <!-- Тіні для об'ємності -->
+      <filter id="dropShadow" x="-15%" y="-15%" width="130%" height="135%">
+        <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.45" />
+      </filter>
+
+      <filter id="softShadow" x="-10%" y="-10%" width="120%" height="125%">
+        <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.3" />
+      </filter>
+
+      <filter id="glowEffect" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="8" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+    </defs>
+
+    <!-- ==================== 1. ЖИВИЙ СЮЖЕТНИЙ ФОН ==================== -->
+    <g id="background-layer">
+      <!-- Небо -->
+      <rect width="1920" height="1080" fill="url(#skyGrad)" />
+
+      <!-- Сонце з променями -->
+      <g class="sun-rays" opacity="0.45">
+        <polygon points="1650,20 1665,140 1635,140" fill="#fde047" />
+        <polygon points="1650,260 1665,140 1635,140" fill="#fde047" />
+        <polygon points="1530,140 1650,155 1650,125" fill="#fde047" />
+        <polygon points="1770,140 1650,155 1650,125" fill="#fde047" />
+        <polygon points="1565,55 1660,130 1640,150" fill="#fde047" />
+        <polygon points="1735,225 1660,130 1640,150" fill="#fde047" />
+        <polygon points="1735,55 1640,130 1660,150" fill="#fde047" />
+        <polygon points="1565,225 1640,130 1660,150" fill="#fde047" />
+      </g>
+      <circle cx="1650" cy="140" r="68" fill="#fef08a" opacity="0.5" />
+      <circle cx="1650" cy="140" r="52" fill="#facc15" />
+
+      <!-- Хмари, що пливуть -->
+      <g class="cloud-1" opacity="0.88">
+        <path d="M 100,150 Q 120,115 160,125 Q 195,90 245,115 Q 285,105 305,140 Q 335,150 325,180 L 90,180 Q 70,160 100,150 Z" fill="#ffffff" />
+        <path d="M 110,165 Q 200,155 315,172 L 95,180 Z" fill="#e0f2fe" />
+      </g>
+
+      <g class="cloud-2" opacity="0.75" transform="scale(0.85)">
+        <path d="M 200,220 Q 225,180 270,195 Q 310,160 360,190 Q 400,185 415,225 L 185,225 Z" fill="#ffffff" />
+      </g>
+
+      <g class="cloud-3" opacity="0.82" transform="translate(0, -40) scale(1.1)">
+        <path d="M 50,130 Q 80,95 120,110 Q 160,80 205,110 Q 240,105 255,140 L 40,140 Z" fill="#ffffff" />
+      </g>
+
+      <!-- Силуети міста та будівництва на дальньому плані -->
+      <g opacity="0.45">
+        <rect x="80" y="340" width="110" height="320" fill="url(#cityGrad)" />
+        <rect x="210" y="390" width="90" height="270" fill="url(#cityGrad)" />
+        <rect x="520" y="320" width="130" height="340" fill="url(#cityGrad)" />
+        <!-- Вікна в будинках -->
+        <g fill="#e0f2fe" opacity="0.6">
+          <rect x="100" y="365" width="20" height="28" />
+          <rect x="145" y="365" width="20" height="28" />
+          <rect x="100" y="410" width="20" height="28" />
+          <rect x="145" y="410" width="20" height="28" />
+          <rect x="100" y="455" width="20" height="28" />
+          <rect x="145" y="455" width="20" height="28" />
+          <rect x="545" y="350" width="24" height="24" />
+          <rect x="595" y="350" width="24" height="24" />
+          <rect x="545" y="395" width="24" height="24" />
+          <rect x="595" y="395" width="24" height="24" />
+        </g>
+
+        <!-- Далекий фоновий кран, що крутиться -->
+        <g stroke="#64748b" stroke-width="5" fill="none">
+          <line x1="330" y1="600" x2="330" y2="250" stroke-width="10" />
+          <g class="bg-crane-boom">
+            <line x1="250" y1="260" x2="490" y2="260" stroke-width="7" />
+            <line x1="330" y1="220" x2="260" y2="260" stroke-width="3" />
+            <line x1="330" y1="220" x2="460" y2="260" stroke-width="3" />
+            <line x1="440" y1="260" x2="440" y2="350" stroke-width="3" />
+            <rect x="425" y="350" width="30" height="18" fill="#475569" />
+          </g>
+        </g>
+      </g>
+
+      <!-- Зелені пагорби за будівельним майданчиком -->
+      <path d="M -50,620 Q 320,510 720,585 Q 1180,650 1560,540 Q 1780,490 1980,580 L 1980,720 L -50,720 Z" fill="url(#hillGrad1)" />
+      <path d="M -50,650 Q 480,570 980,610 Q 1450,660 1980,595 L 1980,740 L -50,740 Z" fill="#65a30d" opacity="0.7" />
+
+      <!-- Будівельний паркан на задньому плані -->
+      <g id="fence" transform="translate(0, 585)">
+        <rect x="0" y="25" width="1920" height="55" fill="#334155" />
+        <rect x="0" y="30" width="1920" height="8" fill="#475569" />
+        <rect x="0" y="65" width="1920" height="12" fill="url(#hazardStripes)" opacity="0.75" />
+      </g>
+
+      <!-- Основний ґрунт будівельного майданчика -->
+      <path d="M 0,655 L 1920,655 L 1920,1080 L 0,1080 Z" fill="url(#groundGrad)" />
+
+      <!-- Гори піску та щебеню на середньому плані -->
+      <path d="M 620,665 Q 725,555 835,665 Z" fill="#f59e0b" />
+      <path d="M 675,665 Q 745,585 835,665 Z" fill="#d97706" opacity="0.6" />
+      <path d="M 1180,670 Q 1270,580 1375,670 Z" fill="#64748b" />
+      <path d="M 1225,670 Q 1295,600 1375,670 Z" fill="#475569" opacity="0.7" />
+
+      <!-- Палета з цеглою та бетонні труби для атмосфери -->
+      <g transform="translate(1090, 625)">
+        <rect x="0" y="38" width="105" height="10" rx="2" fill="#92400e" />
+        <rect x="8" y="2" width="88" height="36" rx="3" fill="url(#brickPattern)" stroke="#7f1d1d" stroke-width="2" />
+      </g>
+
+      <!-- Асфальтована робоча смуга та гравійна подушка -->
+      <path d="M 0,765 Q 960,745 1920,765 L 1920,965 Q 960,985 0,965 Z" fill="url(#roadGrad)" />
+      <path d="M 0,768 Q 960,748 1920,768" stroke="#94a3b8" stroke-width="4" fill="none" opacity="0.4" />
+      <!-- Дорожня розмітка -->
+      <path d="M 60,865 Q 960,850 1860,865" stroke="#facc15" stroke-width="6" stroke-dasharray="45 35" fill="none" opacity="0.65" />
+
+      <!-- Нижня брівка майданчика -->
+      <path d="M 0,955 Q 960,975 1920,955 L 1920,1080 L 0,1080 Z" fill="#78350f" />
+      <path d="M 0,955 Q 960,975 1920,955" stroke="#92400e" stroke-width="8" fill="none" />
+
+      <!-- Декоративні дорожні конуси -->
+      <g transform="translate(520, 725)">
+        <ellipse cx="22" cy="44" rx="22" ry="6" fill="rgba(0,0,0,0.3)" />
+        <polygon points="4,42 40,42 36,36 8,36" fill="#ea580c" />
+        <polygon points="10,36 34,36 26,4 18,4" fill="#f97316" />
+        <polygon points="13,24 31,24 29,15 15,15" fill="#f8fafc" />
+      </g>
+      <g transform="translate(1395, 730)">
+        <ellipse cx="22" cy="44" rx="22" ry="6" fill="rgba(0,0,0,0.3)" />
+        <polygon points="4,42 40,42 36,36 8,36" fill="#ea580c" />
+        <polygon points="10,36 34,36 26,4 18,4" fill="#f97316" />
+        <polygon points="13,24 31,24 29,15 15,15" fill="#f8fafc" />
+      </g>
+    </g>
+
+    <!-- ==================== 2. ПІДЙОМНИЙ КРАН (ПРАВОРУЧ/ЗВЕРХУ — ПРЕФІКС «ПРЕ») ==================== -->
+    <g id="tower-crane-system">
+      <!-- Бетонна основа баштового крана -->
+      <g transform="translate(1545, 690)" filter="url(#softShadow)">
+        <polygon points="0,85 210,85 190,35 20,35" fill="#64748b" stroke="#334155" stroke-width="4" />
+        <rect x="20" y="55" width="170" height="18" fill="url(#hazardStripes)" />
+        <rect x="45" y="10" width="120" height="30" rx="4" fill="#475569" stroke="#1e293b" stroke-width="3" />
+      </g>
+
+      <!-- Вертикальна решітчаста башта крана -->
+      <g id="crane-mast" transform="translate(1612, 145)">
+        <!-- Головні кутові стійки -->
+        <rect x="0" y="0" width="14" height="560" fill="url(#craneRedMetal)" stroke="#881337" stroke-width="2" />
+        <rect x="62" y="0" width="14" height="560" fill="url(#craneRedMetal)" stroke="#881337" stroke-width="2" />
+        <!-- Діагональні розкоси ферми -->
+        <path d="M 10,0 L 66,55 L 10,110 L 66,165 L 10,220 L 66,275 L 10,330 L 66,385 L 10,440 L 66,495 L 10,550
+                 M 66,0 L 10,55 L 66,110 L 10,165 L 66,220 L 10,275 L 66,330 L 10,385 L 66,440 L 10,495 L 66,550"
+              stroke="#e11d48" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        <!-- Горизонтальні перемички -->
+        <path d="M 6,55 H 70 M 6,110 H 70 M 6,165 H 70 M 6,220 H 70 M 6,275 H 70 M 6,330 H 70 M 6,385 H 70 M 6,440 H 70 M 6,495 H 70"
+              stroke="#9f1239" stroke-width="6" />
+      </g>
+
+      <!-- Верхня поворотна частина, стріла та противага -->
+      <g id="crane-upper" filter="url(#softShadow)">
+        <!-- Оголовок башти та ванти (троси-розтяжки) -->
+        <polygon points="1610,145 1690,145 1662,48 1638,48" fill="url(#craneRedMetal)" stroke="#881337" stroke-width="3" />
+        <line x1="1645" y1="55" x2="760" y2="125" stroke="#334155" stroke-width="5" />
+        <line x1="1645" y1="55" x2="1180" y2="125" stroke="#334155" stroke-width="4" />
+        <line x1="1655" y1="55" x2="1855" y2="125" stroke="#334155" stroke-width="5" />
+
+        <!-- Задня консоль з бетонними противагами -->
+        <rect x="1675" y="122" width="210" height="24" rx="4" fill="url(#craneRedMetal)" stroke="#881337" stroke-width="3" />
+        <g transform="translate(1755, 78)">
+          <rect x="0" y="0" width="34" height="65" rx="4" fill="#64748b" stroke="#1e293b" stroke-width="3" />
+          <rect x="38" y="-8" width="34" height="73" rx="4" fill="#475569" stroke="#1e293b" stroke-width="3" />
+          <rect x="76" y="0" width="34" height="65" rx="4" fill="#64748b" stroke="#1e293b" stroke-width="3" />
+          <rect x="5" y="45" width="100" height="12" fill="url(#hazardStripes)" />
+        </g>
+
+        <!-- Довга горизонтальна стріла крана (простягається над центром майданчика) -->
+        <g id="crane-jib">
+          <!-- Нижня направляюча балка для каретки -->
+          <rect x="640" y="146" width="1040" height="14" rx="4" fill="url(#yellowMetal)" stroke="#a16207" stroke-width="2.5" />
+          <!-- Верхня балка стріли -->
+          <path d="M 655,122 L 1680,115 L 1680,126 L 655,132 Z" fill="url(#craneRedMetal)" stroke="#881337" stroke-width="2" />
+          <!-- Решітка стріли -->
+          <path d="M 665,130 L 705,148 L 745,129 L 785,148 L 825,128 L 865,148 L 905,127 L 945,148 L 985,126 L 1025,148 L 1065,125 L 1105,148 L 1145,124 L 1185,148 L 1225,123 L 1265,148 L 1305,122 L 1345,148 L 1385,121 L 1425,148 L 1465,120 L 1505,148 L 1545,119 L 1585,148 L 1625,118"
+                stroke="#facc15" stroke-width="5" stroke-linejoin="round" fill="none" />
+          <!-- Носовий ролик стріли -->
+          <circle cx="645" cy="145" r="14" fill="#ef4444" stroke="#7f1d1d" stroke-width="3" />
+          <circle cx="645" cy="145" r="5" fill="#fef08a" />
+        </g>
+
+        <!-- Інтерактивна частина КРАНА (кабіна + каретка + підвішений блок «ПРЕ») -->
+        <g id="crane-interactive" class="vehicle-hitbox">
+          <!-- Кабіна кранівника -->
+          <g id="crane-cabin" transform="translate(1545, 152)">
+            <!-- Корпус кабіни -->
+            <path d="M 20,0 L 115,0 L 115,92 L 5,92 L -12,48 Z" fill="url(#yellowMetal)" stroke="#854d0e" stroke-width="4" stroke-linejoin="round" />
+            <!-- Панорамне скло -->
+            <path d="M 24,10 L 82,10 L 82,76 L 14,76 L 0,46 Z" fill="url(#glassGrad)" stroke="#0369a1" stroke-width="3" />
+            <!-- Відблиск на склі -->
+            <polygon points="28,15 48,15 22,70 12,70" fill="#ffffff" opacity="0.4" />
+            <!-- Сидіння та важелі всередині -->
+            <rect x="52" y="42" width="22" height="30" rx="5" fill="#334155" />
+            <line x1="34" y1="74" x2="26" y2="48" stroke="#1e293b" stroke-width="4" stroke-linecap="round" />
+            <circle cx="26" cy="46" r="5" fill="#ef4444" />
+            <!-- Проблисковий маячок на кабіні -->
+            <circle cx="95" cy="-12" r="16" fill="#fb923c" opacity="0.4" class="beacon-glow" />
+            <rect x="86" y="-12" width="18" height="12" rx="5" fill="#f97316" stroke="#9a3412" stroke-width="2" />
+            <!-- Бейдж-підказка «ПРЕ» на борту крана -->
+            <rect x="28" y="98" width="90" height="36" rx="8" fill="url(#preBlockGrad)" stroke="#eff6ff" stroke-width="3" />
+            <text x="73" y="124" text-anchor="middle" fill="#ffffff" font-size="24" font-weight="900" letter-spacing="1">ПРЕ</text>
+          </g>
+
+          <!-- Рухома вантажна каретка (візок) на стрілі крана -->
+          <!-- Початкова координата X = 1360 (справа вгорі), при доставці їде до X = 685 (точно перед словом) -->
+          <g id="crane-trolley" transform="translate(1360, 146)">
+            <!-- Колеса каретки -->
+            <circle cx="-28" cy="-2" r="9" fill="#334155" stroke="#0f172a" stroke-width="2" />
+            <circle cx="28" cy="-2" r="9" fill="#334155" stroke="#0f172a" stroke-width="2" />
+            <!-- Рама каретки -->
+            <rect x="-42" y="2" width="84" height="26" rx="6" fill="url(#orangeMetal)" stroke="#7c2d12" stroke-width="3" />
+            <rect x="-30" y="8" width="60" height="10" rx="3" fill="url(#hazardStripes)" />
+
+            <!-- Сталеві троси лебідки (довжина змінюється динамічно у JS) -->
+            <line id="crane-cable-left" x1="-18" y1="28" x2="-18" y2="155" stroke="#1e293b" stroke-width="4" />
+            <line id="crane-cable-right" x1="18" y1="28" x2="18" y2="155" stroke="#1e293b" stroke-width="4" />
+
+            <!-- Гак з поліспастом та підвішеним блоком «ПРЕ» -->
+            <g id="crane-hook-assembly" transform="translate(0, 155)">
+              <!-- Корпус поліспаста (блока гака) -->
+              <polygon points="-28,-12 28,-12 22,22 -22,22" fill="url(#yellowMetal)" stroke="#713f12" stroke-width="3" />
+              <polygon points="-22,-6 22,-6 18,16 -18,16" fill="url(#hazardStripes)" />
+              <circle cx="0" cy="5" r="7" fill="#334155" stroke="#f8fafc" stroke-width="2" />
+              <!-- Сталевий гак -->
+              <path d="M 0,22 L 0,38 C 0,52 18,52 16,38" stroke="url(#steelGrad)" stroke-width="8" stroke-linecap="round" fill="none" />
+              <!-- Стропи до контейнера -->
+              <line id="sling-left" x1="0" y1="36" x2="-65" y2="62" stroke="#475569" stroke-width="5" stroke-linecap="round" />
+              <line id="sling-right" x1="0" y1="36" x2="65" y2="62" stroke="#475569" stroke-width="5" stroke-linecap="round" />
+
+              <!-- Блок префікса «ПРЕ» (поки висить на гаку) -->
+              <g id="pre-block" transform="translate(-95, 58)" filter="url(#dropShadow)">
+                <!-- Металевий каркас блока -->
+                <rect x="0" y="0" width="190" height="118" rx="16" fill="url(#preBlockGrad)" stroke="#1e3a8a" stroke-width="5" />
+                <rect x="8" y="8" width="174" height="102" rx="11" fill="url(#diamondPlate)" stroke="#93c5fd" stroke-width="2.5" />
+                <!-- Кутові сталеві накладки із заклепками -->
+                <path d="M 0,28 L 28,0 H 0 Z M 190,28 L 162,0 H 190 Z M 0,90 L 28,118 H 0 Z M 190,90 L 162,118 H 190 Z" fill="#facc15" opacity="0.85" />
+                <circle cx="16" cy="16" r="4" fill="#1e3a8a" />
+                <circle cx="174" cy="16" r="4" fill="#1e3a8a" />
+                <circle cx="16" cy="102" r="4" fill="#1e3a8a" />
+                <circle cx="174" cy="102" r="4" fill="#1e3a8a" />
+                <!-- Монтажні вушка зверху -->
+                <path d="M 22,0 C 22,-14 42,-14 42,0 M 148,0 C 148,-14 168,-14 168,0" stroke="#94a3b8" stroke-width="6" fill="none" />
+                <!-- Великий чіткий напис ПРЕ -->
+                <text x="95" y="79" text-anchor="middle" fill="#0f172a" font-size="64" font-weight="900" opacity="0.35">ПРЕ</text>
+                <text x="95" y="75" text-anchor="middle" fill="#ffffff" font-size="64" font-weight="900" stroke="#1e3a8a" stroke-width="2">ПРЕ</text>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <!-- ==================== 3. ЦЕНТРАЛЬНИЙ П'ЄДЕСТАЛ ЗІ СЛОВОМ ==================== -->
+    <g id="word-stage" transform="translate(590, 505)" filter="url(#dropShadow)">
+      <!-- Масивні бетонно-сталеві опори фундаменту -->
+      <polygon points="30,175 110,175 95,280 45,280" fill="url(#darkSteel)" stroke="#0f172a" stroke-width="4" />
+      <polygon points="620,175 700,175 685,280 635,280" fill="url(#darkSteel)" stroke="#0f172a" stroke-width="4" />
+      <rect x="15" y="265" width="705" height="28" rx="8" fill="#475569" stroke="#1e293b" stroke-width="4" />
+      <rect x="25" y="271" width="685" height="16" rx="4" fill="url(#hazardStripes)" />
+
+      <!-- Горизонтальна монтажна платформа (рейка, куди стає префікс і де лежить слово) -->
+      <rect x="-15" y="148" width="765" height="34" rx="10" fill="url(#steelGrad)" stroke="#1e293b" stroke-width="4" />
+      <rect x="0" y="156" width="735" height="10" rx="4" fill="#334155" />
+
+      <!-- Посадкове гніздо (слот) для блока префікса ліворуч від слова (X: 0..190, Y: 30..148) -->
+      <g id="prefix-target-slot" transform="translate(0, 30)">
+        <rect x="0" y="0" width="192" height="118" rx="16" fill="rgba(15, 23, 42, 0.38)" stroke="#facc15" stroke-width="4" stroke-dasharray="14 10" />
+        <!-- Напрямні кутники слота -->
+        <path d="M -6,28 V -6 H 28 M -6,90 V 124 H 28" stroke="#facc15" stroke-width="6" stroke-linecap="round" fill="none" />
+        <!-- Світловий індикатор стикування -->
+        <circle id="slot-beacon" cx="96" cy="59" r="18" fill="#facc15" opacity="0.25" />
+        <path d="M 86,59 H 106 M 96,49 V 69" stroke="#fef08a" stroke-width="4" stroke-linecap="round" opacity="0.5" />
+      </g>
+
+      <!-- Група для розміщення доставленого блока префікса (коли він став у слот) -->
+      <g id="docked-prefix-container" transform="translate(0, 30)"></g>
+
+      <!-- Головний будівельний блок з основою слова (праворуч від слота префікса, X: 194) -->
+      <g id="root-word-block" transform="translate(194, 30)">
+        <!-- Зовнішня сталева рама балки -->
+        <rect id="word-frame" x="0" y="0" width="540" height="118" rx="16" fill="url(#wordBeamGrad)" stroke="#78350f" stroke-width="5" />
+        <!-- Внутрішня контрастна панель з текстурою -->
+        <rect id="word-inner-plate" x="12" y="12" width="516" height="94" rx="10" fill="url(#wordPlateGrad)" stroke="#fbbf24" stroke-width="3" />
+        <rect id="word-texture" x="12" y="12" width="516" height="94" rx="10" fill="url(#diamondPlate)" />
+
+        <!-- Декоративні болти по кутах панелі -->
+        <circle cx="28" cy="28" r="5" fill="#fbbf24" />
+        <circle cx="28" cy="90" r="5" fill="#fbbf24" />
+        <circle id="bolt-tr" cx="512" cy="28" r="5" fill="#fbbf24" />
+        <circle id="bolt-br" cx="512" cy="90" r="5" fill="#fbbf24" />
+
+        <!-- Магнітний замок ліворуч (місце з'єднання з префіксом) -->
+        <rect x="-6" y="36" width="12" height="46" rx="4" fill="#facc15" stroke="#713f12" stroke-width="2" />
+
+        <!-- Текст основи слова -->
+        <text id="word-shadow" x="270" y="79" text-anchor="middle" fill="#000000" font-size="60" font-weight="900" opacity="0.45" letter-spacing="2">ГАРНИЙ</text>
+        <text id="word-text" x="270" y="75" text-anchor="middle" fill="#fef08a" font-size="60" font-weight="900" letter-spacing="2">ГАРНИЙ</text>
+      </g>
+    </g>
+
+    <!-- ==================== 4. ЕКСКАВАТОР (ЛІВОРУЧ — ПРЕФІКС «ПРИ») ==================== -->
+    <!-- Вся група екскаватора може рухатися вперед по майданчику, підсовуючи блок «ПРИ» -->
+    <g id="excavator-system" transform="translate(55, 535)" filter="url(#dropShadow)">
+      <!-- Інтерактивна зона екскаватора -->
+      <g id="excavator-interactive" class="vehicle-hitbox">
+        <!-- Вихлопні кільця диму (генеруються/анімуються) -->
+        <g id="exhaust-smoke-group"></g>
+
+        <!-- Рухоме шасі екскаватора -->
+        <g id="excavator-machine" transform="translate(0, 0)">
+          <!-- Гусеничний візок -->
+          <g id="excavator-tracks" transform="translate(15, 195)">
+            <!-- Зовнішній гусеничний трак -->
+            <rect x="0" y="0" width="265" height="68" rx="34" fill="#1e293b" stroke="#0f172a" stroke-width="6" />
+            <rect x="8" y="8" width="249" height="52" rx="26" fill="#334155" stroke="#64748b" stroke-width="2" stroke-dasharray="16 10" id="track-treads" />
+            <!-- Опорні котки та ведучі зірочки -->
+            <g id="wheel-1" transform="translate(42, 34)">
+              <circle r="22" fill="#475569" stroke="#1e293b" stroke-width="4" />
+              <circle r="9" fill="#facc15" />
+              <line x1="-18" y1="0" x2="18" y2="0" stroke="#1e293b" stroke-width="4" />
+              <line x1="0" y1="-18" x2="0" y2="18" stroke="#1e293b" stroke-width="4" />
+            </g>
+            <g id="wheel-2" transform="translate(105, 38)">
+              <circle r="16" fill="#475569" stroke="#1e293b" stroke-width="3" />
+              <circle r="6" fill="#94a3b8" />
+            </g>
+            <g id="wheel-3" transform="translate(160, 38)">
+              <circle r="16" fill="#475569" stroke="#1e293b" stroke-width="3" />
+              <circle r="6" fill="#94a3b8" />
+            </g>
+            <g id="wheel-4" transform="translate(223, 34)">
+              <circle r="22" fill="#475569" stroke="#1e293b" stroke-width="4" />
+              <circle r="9" fill="#facc15" />
+              <line x1="-18" y1="0" x2="18" y2="0" stroke="#1e293b" stroke-width="4" />
+              <line x1="0" y1="-18" x2="0" y2="18" stroke="#1e293b" stroke-width="4" />
+            </g>
+            <!-- Центральна балка рами гусениць -->
+            <rect x="52" y="18" width="160" height="22" rx="8" fill="url(#darkSteel)" stroke="#0f172a" stroke-width="3" />
+          </g>
+
+          <!-- Бульдозерний відвал спереду (допомагає штовхати та вирівнювати блок) -->
+          <g id="dozer-blade" transform="translate(260, 195)">
+            <line x1="-15" y1="35" x2="40" y2="48" stroke="url(#steelGrad)" stroke-width="12" stroke-linecap="round" />
+            <path d="M 32,8 Q 52,35 35,65 L 48,65 Q 64,35 45,8 Z" fill="url(#orangeMetal)" stroke="#7c2d12" stroke-width="3" />
+          </g>
+
+          <!-- Корпус екскаватора з моторним відсіком та кабіною -->
+          <g class="excavator-idle">
+            <!-- Поворотна платформа -->
+            <rect x="95" y="180" width="115" height="18" rx="4" fill="#334155" stroke="#0f172a" stroke-width="3" />
+
+            <!-- Вихлопна труба -->
+            <path d="M 62,115 L 62,68 Q 62,55 48,52" stroke="#334155" stroke-width="11" stroke-linecap="round" fill="none" />
+            <rect x="54" y="82" width="16" height="28" rx="4" fill="#64748b" stroke="#1e293b" stroke-width="2" />
+
+            <!-- Моторний відсік і противага -->
+            <path d="M 15,120 Q 15,95 45,95 L 145,95 L 145,182 L 22,182 Q 10,182 15,145 Z" fill="url(#yellowMetal)" stroke="#854d0e" stroke-width="4" />
+            <path d="M 16,148 L 145,148 L 145,172 L 16,172 Z" fill="url(#hazardStripes)" />
+            <!-- Вентиляційна решітка радіатора -->
+            <rect x="35" y="108" width="52" height="30" rx="4" fill="#1e293b" />
+            <path d="M 42,115 H 80 M 42,123 H 80 M 42,131 H 80" stroke="#64748b" stroke-width="3" />
+
+            <!-- Бейдж «ПРИ» на борту екскаватора -->
+            <rect x="95" y="104" width="84" height="36" rx="8" fill="url(#priBlockGrad)" stroke="#ecfdf5" stroke-width="3" />
+            <text x="137" y="130" text-anchor="middle" fill="#ffffff" font-size="24" font-weight="900" letter-spacing="1">ПРИ</text>
+
+            <!-- Кабіна оператора -->
+            <path d="M 135,52 L 228,52 L 252,118 L 252,182 L 135,182 Z" fill="url(#yellowMetal)" stroke="#854d0e" stroke-width="4" stroke-linejoin="round" />
+            <!-- Скло кабіни -->
+            <path d="M 148,64 L 218,64 L 238,118 L 238,166 L 148,166 Z" fill="url(#glassGrad)" stroke="#0369a1" stroke-width="3" />
+            <polygon points="155,70 185,70 162,158 150,158" fill="#ffffff" opacity="0.4" />
+            <!-- Крісло та важелі -->
+            <path d="M 165,120 L 165,155 L 195,155" stroke="#1e293b" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+            <line x1="212" y1="162" x2="222" y2="128" stroke="#1e293b" stroke-width="5" stroke-linecap="round" />
+            <circle cx="222" cy="126" r="6" fill="#10b981" />
+            <!-- Проблисковий маячок на даху екскаватора -->
+            <circle cx="180" cy="38" r="15" fill="#fb923c" opacity="0.4" class="beacon-glow" />
+            <rect x="171" y="38" width="18" height="13" rx="5" fill="#f97316" stroke="#9a3412" stroke-width="2" />
+
+            <!-- СКЛАДНА ТРИСЕКЦІЙНА ГІДРАВЛІЧНА СТРІЛА ЕКСКАВАТОРА -->
+            <!-- Перша секція (головна стріла, шарнір у точці 230, 145) -->
+            <g id="excavator-boom" transform="translate(230, 145) rotate(-18)">
+              <!-- Гідроциліндр підйому стріли -->
+              <line x1="-18" y1="22" x2="55" y2="-38" stroke="#334155" stroke-width="14" stroke-linecap="round" />
+              <line x1="15" y1="-5" x2="68" y2="-48" stroke="url(#chromeGrad)" stroke-width="8" stroke-linecap="round" />
+              <!-- Тіло головної стріли -->
+              <path d="M -12,12 L 45,-68 L 145,-58 L 152,-36 L 62,-32 L 10,20 Z" fill="url(#orangeMetal)" stroke="#7c2d12" stroke-width="4" stroke-linejoin="round" />
+              <!-- Гідроциліндр рукояті зверху стріли -->
+              <line x1="55" y1="-72" x2="132" y2="-65" stroke="#1e293b" stroke-width="11" stroke-linecap="round" />
+              <line x1="95" y1="-68" x2="155" y2="-62" stroke="url(#chromeGrad)" stroke-width="6" stroke-linecap="round" />
+              <!-- Шарнірний палець основи -->
+              <circle cx="0" cy="0" r="12" fill="#475569" stroke="#0f172a" stroke-width="3" />
+              <circle cx="0" cy="0" r="5" fill="#facc15" />
+
+              <!-- Друга секція (рукоять ковша, шарнір у точці 142, -46) -->
+              <g id="excavator-stick" transform="translate(142, -46) rotate(26)">
+                <!-- Тіло рукояті -->
+                <path d="M -10,-15 L 15,-12 L 48,95 L 26,102 L -8,10 Z" fill="url(#yellowMetal)" stroke="#854d0e" stroke-width="4" stroke-linejoin="round" />
+                <!-- Гідроциліндр ковша -->
+                <line x1="14" y1="5" x2="36" y2="62" stroke="#1e293b" stroke-width="10" stroke-linecap="round" />
+                <line x1="26" y1="36" x2="42" y2="85" stroke="url(#chromeGrad)" stroke-width="6" stroke-linecap="round" />
+                <!-- Шарнірний палець ліктя -->
+                <circle cx="0" cy="0" r="10" fill="#475569" stroke="#0f172a" stroke-width="3" />
+                <circle cx="0" cy="0" r="4" fill="#facc15" />
+
+                <!-- Третя секція (ківш екскаватора, шарнір у точці 36, 95) -->
+                <g id="excavator-bucket" transform="translate(36, 95) rotate(-8)">
+                  <path d="M -12,-8 L 24,-12 C 42,10 38,48 10,62 L -22,55 C -10,35 -8,15 -12,-8 Z" fill="url(#darkSteel)" stroke="#0f172a" stroke-width="4" />
+                  <!-- Зубці ковша -->
+                  <polygon points="22,-6 36,-4 24,6" fill="#facc15" />
+                  <polygon points="26,14 40,18 25,26" fill="#facc15" />
+                  <polygon points="22,35 36,42 18,48" fill="#facc15" />
+                  <!-- Шарнір ковша -->
+                  <circle cx="0" cy="0" r="9" fill="#facc15" stroke="#0f172a" stroke-width="3" />
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+
+        <!-- Блок префікса «ПРИ», який стоїть перед екскаватором на монтажній рейці -->
+        <!-- Початкова позиція відносно екскаватора: X = 325, Y = 0 (що на сцені відповідає X=380, Y=535) -->
+        <!-- Цільова позиція слота на сцені: X=590, Y=535 (тобто зсув вправо рівно на +210 пікселів!) -->
+        <g id="pri-block" transform="translate(325, 0)" filter="url(#dropShadow)">
+          <!-- Ходові ролики знизу блока -->
+          <circle cx="38" cy="122" r="9" fill="#334155" stroke="#0f172a" stroke-width="3" />
+          <circle cx="152" cy="122" r="9" fill="#334155" stroke="#0f172a" stroke-width="3" />
+          <!-- Металевий каркас блока «ПРИ» -->
+          <rect x="0" y="0" width="190" height="118" rx="16" fill="url(#priBlockGrad)" stroke="#064e3b" stroke-width="5" />
+          <rect x="8" y="8" width="174" height="102" rx="11" fill="url(#diamondPlate)" stroke="#6ee7b7" stroke-width="2.5" />
+          <!-- Кутові сталеві накладки із заклепками -->
+          <path d="M 0,28 L 28,0 H 0 Z M 190,28 L 162,0 H 190 Z M 0,90 L 28,118 H 0 Z M 190,90 L 162,118 H 190 Z" fill="#facc15" opacity="0.85" />
+          <circle cx="16" cy="16" r="4" fill="#064e3b" />
+          <circle cx="174" cy="16" r="4" fill="#064e3b" />
+          <circle cx="16" cy="102" r="4" fill="#064e3b" />
+          <circle cx="174" cy="102" r="4" fill="#064e3b" />
+          <!-- Буферна пластина ліворуч для ковша екскаватора -->
+          <rect x="-8" y="24" width="10" height="70" rx="4" fill="#f97316" stroke="#7c2d12" stroke-width="2" />
+          <!-- Великий чіткий напис ПРИ -->
+          <text x="95" y="79" text-anchor="middle" fill="#0f172a" font-size="64" font-weight="900" opacity="0.35">ПРИ</text>
+          <text x="95" y="75" text-anchor="middle" fill="#ffffff" font-size="64" font-weight="900" stroke="#064e3b" stroke-width="2">ПРИ</text>
+        </g>
+      </g>
+    </g>
+
+    <!-- ==================== 5. ЖИВИЙ ПЕРСОНАЖ: БОБЕР-ВИКОНРОБ ==================== -->
+    <g id="character-foreman" filter="url(#dropShadow)">
+      <g id="char-jump-wrapper" transform="translate(0, 0)">
+        <g class="char-body-anim">
+          <!-- Тінь під персонажем -->
+          <ellipse cx="960" cy="995" rx="68" ry="16" fill="rgba(15, 23, 42, 0.4)" />
+
+          <!-- Широкий рельєфний бобровий хвіст (махає) -->
+          <g class="char-tail">
+            <ellipse cx="890" cy="942" rx="45" ry="22" transform="rotate(-18 890 942)" fill="#78350f" stroke="#451a03" stroke-width="4" />
+            <path d="M 865,940 L 910,930 M 870,952 L 915,942 M 875,928 L 905,955 M 890,925 L 918,950" stroke="#451a03" stroke-width="2.5" opacity="0.6" />
+          </g>
+
+          <!-- Лапи/черевики будівельника -->
+          <ellipse cx="932" cy="985" rx="24" ry="13" fill="#d97706" stroke="#78350f" stroke-width="3.5" />
+          <ellipse cx="988" cy="985" rx="24" ry="13" fill="#d97706" stroke="#78350f" stroke-width="3.5" />
+
+          <!-- Тулуб у яскравому світловідбивному жилеті -->
+          <path d="M 910,875 Q 902,935 914,978 L 1006,978 Q 1018,935 1010,875 Z" fill="#b45309" stroke="#78350f" stroke-width="4" />
+          <!-- Помаранчевий будівельний жилет -->
+          <path d="M 912,880 L 1008,880 L 1012,962 L 908,962 Z" fill="url(#orangeMetal)" stroke="#9a3412" stroke-width="3.5" stroke-linejoin="round" />
+          <!-- Світловідбивні смуги на жилеті -->
+          <rect x="910" y="925" width="100" height="12" fill="#fde047" />
+          <rect x="932" y="880" width="12" height="82" fill="#fde047" />
+          <rect x="976" y="880" width="12" height="82" fill="#fde047" />
+          <!-- Пояс з інструментами -->
+          <rect x="906" y="955" width="108" height="14" rx="4" fill="#451a03" stroke="#1e293b" stroke-width="2" />
+          <rect x="948" y="952" width="24" height="20" rx="4" fill="#facc15" stroke="#713f12" stroke-width="2" />
+
+          <!-- Ліва лапа з рацією (рухається під час емоцій) -->
+          <g id="char-arm-left" transform="translate(912, 895) rotate(12)">
+            <ellipse cx="-18" cy="18" rx="24" ry="13" transform="rotate(-25 -18 18)" fill="#b45309" stroke="#78350f" stroke-width="3.5" />
+            <!-- Рація в лапі -->
+            <g transform="translate(-42, -8) rotate(-15)">
+              <line x1="12" y1="0" x2="12" y2="-22" stroke="#1e293b" stroke-width="4" stroke-linecap="round" />
+              <circle cx="12" cy="-22" r="4" fill="#ef4444" />
+              <rect x="0" y="0" width="24" height="38" rx="5" fill="#334155" stroke="#0f172a" stroke-width="2.5" />
+              <rect x="4" y="6" width="16" height="12" rx="2" fill="#38bdf8" />
+            </g>
+          </g>
+
+          <!-- Права лапа зі згорнутим кресленням -->
+          <g id="char-arm-right" transform="translate(1008, 895) rotate(-12)">
+            <ellipse cx="18" cy="18" rx="24" ry="13" transform="rotate(25 18 18)" fill="#b45309" stroke="#78350f" stroke-width="3.5" />
+            <!-- Рулон синього креслення -->
+            <g transform="translate(24, 2) rotate(22)">
+              <rect x="0" y="0" width="16" height="46" rx="5" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2.5" />
+              <ellipse cx="8" cy="0" rx="8" ry="4" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2" />
+              <rect x="-1" y="18" width="18" height="6" fill="#ef4444" />
+            </g>
+          </g>
+
+          <!-- Голова бобра -->
+          <g id="char-head" transform="translate(960, 835)">
+            <!-- Вушка -->
+            <g class="char-ear-l">
+              <circle cx="-42" cy="-32" r="14" fill="#92400e" stroke="#451a03" stroke-width="3.5" />
+              <circle cx="-42" cy="-32" r="7" fill="#fcd34d" opacity="0.6" />
+            </g>
+            <circle cx="42" cy="-32" r="14" fill="#92400e" stroke="#451a03" stroke-width="3.5" />
+            <circle cx="42" cy="-32" r="7" fill="#fcd34d" opacity="0.6" />
+
+            <!-- Округла мордочка -->
+            <ellipse cx="0" cy="0" rx="52" ry="44" fill="#b45309" stroke="#78350f" stroke-width="4" />
+            <!-- Світлі щічки -->
+            <ellipse cx="-20" cy="12" rx="22" ry="16" fill="#fde68a" />
+            <ellipse cx="20" cy="12" rx="22" ry="16" fill="#fde68a" />
+
+            <!-- Очі (з рухомими зіницями, що стежать за вибором) -->
+            <g id="char-eyes">
+              <ellipse cx="-18" cy="-8" rx="12" ry="14" fill="#ffffff" stroke="#451a03" stroke-width="2.5" />
+              <ellipse cx="18" cy="-8" rx="12" ry="14" fill="#ffffff" stroke="#451a03" stroke-width="2.5" />
+              <g id="char-pupils" transform="translate(0, 0)">
+                <circle cx="-18" cy="-8" r="6.5" fill="#0f172a" />
+                <circle cx="-20" cy="-11" r="2.5" fill="#ffffff" />
+                <circle cx="18" cy="-8" r="6.5" fill="#0f172a" />
+                <circle cx="16" cy="-11" r="2.5" fill="#ffffff" />
+              </g>
+            </g>
+
+            <!-- Брови для вираження емоцій -->
+            <path id="brow-l" d="M -30,-24 Q -18,-30 -8,-24" stroke="#451a03" stroke-width="4" stroke-linecap="round" fill="none" />
+            <path id="brow-r" d="M 8,-24 Q 18,-30 30,-24" stroke="#451a03" stroke-width="4" stroke-linecap="round" fill="none" />
+
+            <!-- Фірмові білі боброві зубки та усмішка -->
+            <g id="char-mouth">
+              <rect x="-11" y="18" width="10" height="14" rx="2" fill="#ffffff" stroke="#451a03" stroke-width="2" />
+              <rect x="1" y="18" width="10" height="14" rx="2" fill="#ffffff" stroke="#451a03" stroke-width="2" />
+              <path id="mouth-curve" d="M -24,14 Q 0,26 24,14" stroke="#451a03" stroke-width="3.5" stroke-linecap="round" fill="none" />
+            </g>
+
+            <!-- Великий темний носик -->
+            <ellipse cx="0" cy="4" rx="12" ry="8" fill="#1e293b" />
+            <ellipse cx="-3" cy="2" rx="4" ry="2" fill="#94a3b8" />
+
+            <!-- Будівельна каска на голові (підстрибує під час емоцій) -->
+            <g id="char-helmet" transform="translate(0, -30)">
+              <path d="M -52,6 C -52,-32 52,-32 52,6 Z" fill="url(#yellowMetal)" stroke="#854d0e" stroke-width="4" />
+              <path d="M -60,4 Q 0,14 60,4 L 56,12 Q 0,22 -56,12 Z" fill="#eab308" stroke="#854d0e" stroke-width="3.5" />
+              <!-- Ліхтарик на касці -->
+              <rect x="-14" y="-22" width="28" height="16" rx="5" fill="#334155" stroke="#0f172a" stroke-width="2.5" />
+              <circle id="helmet-light" cx="0" cy="-14" r="6" fill="#fef08a" />
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <!-- ==================== 6. ШАР АКТИВНИХ ЕФЕКТІВ (ІСКРИ, ПИЛ, ЗІРКИ) ==================== -->
+    <g id="fx-layer"></g>
+
+    <!-- ==================== 7. МІНІМАЛІСТИЧНІ КНОПКИ «НАЗАД» ТА «ДАЛІ» ==================== -->
+    <!-- Кнопка «Назад» (попередній рівень) — стилізована під будівельний дорожній шеврон -->
+    <g id="btn-prev" class="nav-btn" transform="translate(75, 995)" filter="url(#softShadow)">
+      <polygon points="25,-34 55,-17 55,17 25,34 -25,34 -55,17 -55,-17 -25,-34" fill="url(#yellowMetal)" stroke="#78350f" stroke-width="4" />
+      <polygon points="21,-26 46,-12 46,12 21,26 -21,26 -46,12 -46,-12 -21,-26" fill="#1e293b" />
+      <path d="M 14,-15 L -14,0 L 14,15" stroke="#facc15" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      <circle cx="-35" cy="0" r="3.5" fill="#facc15" />
+      <circle cx="35" cy="0" r="3.5" fill="#facc15" />
+    </g>
+
+    <!-- Кнопка «Далі» (миттєвий перехід на наступне завдання) -->
+    <g id="btn-next" class="nav-btn" transform="translate(1845, 995)" filter="url(#softShadow)">
+      <polygon points="25,-34 55,-17 55,17 25,34 -25,34 -55,17 -55,-17 -25,-34" fill="url(#yellowMetal)" stroke="#78350f" stroke-width="4" />
+      <polygon points="21,-26 46,-12 46,12 21,26 -21,26 -46,12 -46,-12 -21,-26" fill="#1e293b" />
+      <path d="M -14,-15 L 14,0 L -14,15" stroke="#facc15" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      <circle cx="-35" cy="0" r="3.5" fill="#facc15" />
+      <circle cx="35" cy="0" r="3.5" fill="#facc15" />
+    </g>
+  </svg>
+</div>
+
+<script>
+  // ============================================================================
+  // 1. БАЗА СЛІВ (22 СЛОВА З «ПРЕ» ТА 22 СЛОВА З «ПРИ» = 44 СЛОВА)
+  // Щоб легко редагувати список, достатньо змінити або додати об'єкт у масив:
+  // root — основа слова на центральному блоці, prefix — правильний префікс ('ПРЕ' або 'ПРИ')
+  // ============================================================================
+  const RAW_WORDS = [
+    // --- Слова з префіксом ПРЕ- (22 слова: найвищий ступінь ознаки) ---
+    { root: "ГАРНИЙ", prefix: "ПРЕ" },
+    { root: "ДОБРИЙ", prefix: "ПРЕ" },
+    { root: "МУДРИЙ", prefix: "ПРЕ" },
+    { root: "ЧУДОВИЙ", prefix: "ПРЕ" },
+    { root: "ВЕЛИКИЙ", prefix: "ПРЕ" },
+    { root: "СЛАВНИЙ", prefix: "ПРЕ" },
+    { root: "СВІТЛИЙ", prefix: "ПРЕ" },
+    { root: "МИЛИЙ", prefix: "ПРЕ" },
+    { root: "ТИХИЙ", prefix: "ПРЕ" },
+    { root: "ДОВГИЙ", prefix: "ПРЕ" },
+    { root: "СМАЧНИЙ", prefix: "ПРЕ" },
+    { root: "ЧИСТИЙ", prefix: "ПРЕ" },
+    { root: "ШИРОКИЙ", prefix: "ПРЕ" },
+    { root: "ГЛИБОКИЙ", prefix: "ПРЕ" },
+    { root: "ВИСОКИЙ", prefix: "ПРЕ" },
+    { root: "ДИВНИЙ", prefix: "ПРЕ" },
+    { root: "КРАСНИЙ", prefix: "ПРЕ" },
+    { root: "БАГАТИЙ", prefix: "ПРЕ" },
+    { root: "СОЛОДКИЙ", prefix: "ПРЕ" },
+    { root: "ВЕСЕЛИЙ", prefix: "ПРЕ" },
+    { root: "ПИШНИЙ", prefix: "ПРЕ" },
+    { root: "ДОРОГИЙ", prefix: "ПРЕ" },
+
+    // --- Слова з префіксом ПРИ- (22 слова: наближення, приєднання, неповна дія, місце) ---
+    { root: "СІСТИ", prefix: "ПРИ" },
+    { root: "ЇХАТИ", prefix: "ПРИ" },
+    { root: "БІГТИ", prefix: "ПРИ" },
+    { root: "ЛЕТІТИ", prefix: "ПРИ" },
+    { root: "КЛЕЇТИ", prefix: "ПРИ" },
+    { root: "ШИТИ", prefix: "ПРИ" },
+    { root: "НЕСТИ", prefix: "ПРИ" },
+    { root: "ВЕСТИ", prefix: "ПРИ" },
+    { root: "В'ЯЗАТИ", prefix: "ПРИ" },
+    { root: "КРУТИТИ", prefix: "ПРИ" },
+    { root: "ТРИМАТИ", prefix: "ПРИ" },
+    { root: "ВІДЧИНИТИ", prefix: "ПРИ" },
+    { root: "ГАЛЬМУВАТИ", prefix: "ПРИ" },
+    { root: "ШКІЛЬНИЙ", prefix: "ПРИ" },
+    { root: "МОРСЬКИЙ", prefix: "ПРИ" },
+    { root: "БЕРЕЖНИЙ", prefix: "ПРИ" },
+    { root: "КОРДОННИЙ", prefix: "ПРИ" },
+    { root: "МІСЬКИЙ", prefix: "ПРИ" },
+    { root: "ТУЛИТИ", prefix: "ПРИ" },
+    { root: "ГОТУВАТИ", prefix: "ПРИ" },
+    { root: "ДУМАТИ", prefix: "ПРИ" },
+    { root: "ВІТАТИ", prefix: "ПРИ" }
+  ];
+
+  // Функція перемішування масиву (алгоритм Фішера-Єйтса)
+  function shuffleWords(array) {
+    const arr = [...array];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // Перемішаний список завдань та поточний індекс
+  const tasks = shuffleWords(RAW_WORDS);
+  let currentIndex = 0;
+  let isAnimating = false;
+  let activeAnimId = null;
+  let nextLevelTimer = null;
+
+  // ============================================================================
+  // 2. СИНТЕЗАТОР БУДІВЕЛЬНИХ ЗВУКІВ (WEB AUDIO API — БЕЗ СЛІВ ТА ЗОВНІШНІХ ФАЙЛІВ)
+  // ============================================================================
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    // Звук роботи лебідки та електромотора підйомного крана
+    playCraneMotor(duration = 1.2) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const sub = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      sub.type = 'triangle';
+
+      osc.frequency.setValueAtTime(115, now);
+      osc.frequency.linearRampToValueAtTime(165, now + duration * 0.45);
+      osc.frequency.linearRampToValueAtTime(130, now + duration);
+
+      sub.frequency.setValueAtTime(58, now);
+      sub.frequency.linearRampToValueAtTime(82, now + duration * 0.45);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.08, now + 0.1);
+      gain.gain.setValueAtTime(0.08, now + duration - 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(gain);
+      sub.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      sub.start(now);
+      osc.stop(now + duration);
+      sub.stop(now + duration);
+    }
+
+    // Звук дизельного двигуна та гідравліки екскаватора
+    playExcavatorPush(duration = 1.1) {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      // Низький рокіт дизеля
+      const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(62, now);
+      osc.frequency.linearRampToValueAtTime(95, now + duration * 0.6);
+      osc.frequency.linearRampToValueAtTime(70, now + duration);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(280, now);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.14, now + 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    // Потужний металевий звук стикування двох блоків + переможний акорд
+    playDockSuccess() {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      // 1. Металевий удар замка
+      const thud = this.ctx.createOscillator();
+      const thudGain = this.ctx.createGain();
+      thud.type = 'triangle';
+      thud.frequency.setValueAtTime(140, now);
+      thud.frequency.exponentialRampToValueAtTime(38, now + 0.22);
+
+      thudGain.gain.setValueAtTime(0.32, now);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+      thud.connect(thudGain);
+      thudGain.connect(this.ctx.destination);
+      thud.start(now);
+      thud.stop(now + 0.25);
+
+      // 2. Яскравий мажорний переспів (різноманітний на кожному рівні)
+      const chords = [
+        [523.25, 659.25, 783.99, 1046.50], // До мажор
+        [587.33, 739.99, 880.00, 1174.66], // Ре мажор
+        [440.00, 554.37, 659.25, 880.00],  // Ля мажор
+        [659.25, 830.61, 987.77, 1318.51]  // Мі мажор
+      ];
+      const notes = chords[currentIndex % chords.length];
+
+      notes.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        const start = now + 0.08 + idx * 0.075;
+        osc.frequency.setValueAtTime(freq, start);
+
+        g.gain.setValueAtTime(0.001, start);
+        g.gain.linearRampToValueAtTime(0.16, start + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.001, start + 0.55);
+
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.58);
+      });
+    }
+
+    // Кумедний звук помилки (пробуксовка мотора + пружина)
+    playWrongBounce() {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'square';
+
+      osc1.frequency.setValueAtTime(190, now);
+      osc1.frequency.exponentialRampToValueAtTime(85, now + 0.22);
+      osc1.frequency.exponentialRampToValueAtTime(140, now + 0.34);
+      osc1.frequency.exponentialRampToValueAtTime(65, now + 0.55);
+
+      osc2.frequency.setValueAtTime(95, now);
+      osc2.frequency.exponentialRampToValueAtTime(52, now + 0.55);
+
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.6);
+      osc2.stop(now + 0.6);
+    }
+
+    // Короткий клік для кнопок навігації
+    playNavClick() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(480, now);
+      osc.frequency.exponentialRampToValueAtTime(720, now + 0.08);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  // ============================================================================
+  // 3. ПОСИЛАННЯ НА ЕЛЕМЕНТИ DOM / SVG
+  // ============================================================================
+  const wordTextEl = document.getElementById('word-text');
+  const wordShadowEl = document.getElementById('word-shadow');
+  const wordFrameEl = document.getElementById('word-frame');
+  const wordInnerPlateEl = document.getElementById('word-inner-plate');
+  const wordTextureEl = document.getElementById('word-texture');
+  const boltTrEl = document.getElementById('bolt-tr');
+  const boltBrEl = document.getElementById('bolt-br');
+
+  const craneTrolley = document.getElementById('crane-trolley');
+  const craneCableLeft = document.getElementById('crane-cable-left');
+  const craneCableRight = document.getElementById('crane-cable-right');
+  const craneHookAssembly = document.getElementById('crane-hook-assembly');
+  const preBlock = document.getElementById('pre-block');
+
+  const excavatorMachine = document.getElementById('excavator-machine');
+  const excavatorBoom = document.getElementById('excavator-boom');
+  const excavatorStick = document.getElementById('excavator-stick');
+  const excavatorBucket = document.getElementById('excavator-bucket');
+  const priBlock = document.getElementById('pri-block');
+  const wheels = [
+    document.getElementById('wheel-1'),
+    document.getElementById('wheel-2'),
+    document.getElementById('wheel-3'),
+    document.getElementById('wheel-4')
+  ];
+  const exhaustSmokeGroup = document.getElementById('exhaust-smoke-group');
+
+  const charJumpWrapper = document.getElementById('char-jump-wrapper');
+  const charPupils = document.getElementById('char-pupils');
+  const charArmLeft = document.getElementById('char-arm-left');
+  const charArmRight = document.getElementById('char-arm-right');
+  const charHelmet = document.getElementById('char-helmet');
+  const mouthCurve = document.getElementById('mouth-curve');
+  const browL = document.getElementById('brow-l');
+  const browR = document.getElementById('brow-r');
+
+  const fxLayer = document.getElementById('fx-layer');
+
+  // ============================================================================
+  // 4. КЕРУВАННЯ ПОЗИЦІЯМИ КРАНА ТА ЕКСКАВАТОРА
+  // ============================================================================
+  // Початкові координати каретки крана: trolleyX = 1360, cableLen = 155
+  // Координати точки скидання блока «ПРЕ» точно в слот (X слота = 590, центр блока = 685, Y блока = 535):
+  // TrolleyX = 685, hookY = 331 (бо 146 + 331 + 58 = 535!)
+  function setCraneKinematics(trolleyX, cableLength, blockSwingDeg = 0) {
+    craneTrolley.setAttribute('transform', `translate(${trolleyX}, 146)`);
+    craneCableLeft.setAttribute('y2', cableLength);
+    craneCableRight.setAttribute('y2', cableLength);
+    craneHookAssembly.setAttribute('transform', `translate(0, ${cableLength}) rotate(${blockSwingDeg})`);
+  }
+
+  // Налаштування кінематики екскаватора:
+  // machineX — виїзд усього екскаватора вправо
+  // blockX — положення блока «ПРИ» (старт: 325, фініш у слоті: 535)
+  function setExcavatorKinematics(machineX, blockX, boomDeg, stickDeg, bucketDeg) {
+    excavatorMachine.setAttribute('transform', `translate(${machineX}, 0)`);
+    priBlock.setAttribute('transform', `translate(${blockX}, 0)`);
+    excavatorBoom.setAttribute('transform', `translate(230, 145) rotate(${boomDeg})`);
+    excavatorStick.setAttribute('transform', `translate(142, -46) rotate(${stickDeg})`);
+    excavatorBucket.setAttribute('transform', `translate(36, 95) rotate(${bucketDeg})`);
+
+    // Обертання коліс гусениць пропорційно руху
+    const wheelAngle = machineX * 2.4;
+    wheels[0].setAttribute('transform', `translate(42, 34) rotate(${wheelAngle})`);
+    wheels[3].setAttribute('transform', `translate(223, 34) rotate(${wheelAngle})`);
+  }
+
+  // Скидання всієї техніки та персонажа у вихідне положення
+  function resetPositions() {
+    if (activeAnimId) {
+      cancelAnimationFrame(activeAnimId);
+      activeAnimId = null;
+    }
+    if (nextLevelTimer) {
+      clearTimeout(nextLevelTimer);
+      nextLevelTimer = null;
+    }
+    isAnimating = false;
+
+    // Вихідне положення крана та блока «ПРЕ»
+    preBlock.setAttribute('transform', 'translate(-95, 58)');
+    setCraneKinematics(1360, 155, 0);
+
+    // Вихідне положення екскаватора та блока «ПРИ»
+    setExcavatorKinematics(0, 325, -18, 26, -8);
+
+    // Очищення ефектів та повернення нейтральної радісної емоції персонажа
+    fxLayer.innerHTML = '';
+    exhaustSmokeGroup.innerHTML = '';
+    resetCharacterPose();
+  }
+
+  // ============================================================================
+  // 5. ВІДОБРАЖЕННЯ ПОТОЧНОГО СЛОВА ТА АДАПТАЦІЯ ШИРИНИ БАЛКИ
+  // ============================================================================
+  function renderCurrentWord() {
+    resetPositions();
+    const currentTask = tasks[currentIndex];
+    const word = currentTask.root;
+
+    wordTextEl.textContent = word;
+    wordShadowEl.textContent = word;
+
+    // Підбираємо розмір шрифту та ширину балки для довгих слів (наприклад, ГАЛЬМУВАТИ)
+    const charCount = word.length;
+    const fontSize = charCount > 9 ? 50 : 60;
+    const beamWidth = Math.max(460, charCount * (fontSize * 0.68) + 95);
+
+    wordTextEl.setAttribute('font-size', fontSize);
+    wordShadowEl.setAttribute('font-size', fontSize);
+    wordTextEl.setAttribute('x', beamWidth / 2);
+    wordShadowEl.setAttribute('x', beamWidth / 2);
+
+    wordFrameEl.setAttribute('width', beamWidth);
+    wordInnerPlateEl.setAttribute('width', beamWidth - 24);
+    wordTextureEl.setAttribute('width', beamWidth - 24);
+    boltTrEl.setAttribute('cx', beamWidth - 28);
+    boltBrEl.setAttribute('cx', beamWidth - 28);
+  }
+
+  // ============================================================================
+  // 6. ЖИВІ ЕМОЦІЇ ПЕРСОНАЖА (БОБЕР-ВИКОНРОБ)
+  // ============================================================================
+  function resetCharacterPose() {
+    charJumpWrapper.setAttribute('transform', 'translate(0, 0)');
+    charArmLeft.setAttribute('transform', 'translate(912, 895) rotate(12)');
+    charArmRight.setAttribute('transform', 'translate(1008, 895) rotate(-12)');
+    charHelmet.setAttribute('transform', 'translate(0, -30) rotate(0)');
+    mouthCurve.setAttribute('d', 'M -24,14 Q 0,26 24,14');
+    browL.setAttribute('d', 'M -30,-24 Q -18,-30 -8,-24');
+    browR.setAttribute('d', 'M 8,-24 Q 18,-30 30,-24');
+  }
+
+  // Стеження очима за тим транспортом, куди дитина навела курсор
+  document.getElementById('excavator-interactive').addEventListener('mouseenter', () => {
+    charPupils.setAttribute('transform', 'translate(-5, -2)');
+  });
+  document.getElementById('crane-interactive').addEventListener('mouseenter', () => {
+    charPupils.setAttribute('transform', 'translate(5, -5)');
+  });
+  document.getElementById('scene').addEventListener('mouseleave', () => {
+    charPupils.setAttribute('transform', 'translate(0, 0)');
+  });
+
+  // Святковий танець бобра-виконроба при правильній відповіді
+  function animateCharacterCelebration(progress) {
+    const jump = Math.abs(Math.sin(progress * Math.PI * 4)) * 34;
+    const armWave = Math.sin(progress * Math.PI * 8) * 38;
+    const helmetHop = Math.abs(Math.sin(progress * Math.PI * 4)) * 12;
+
+    charJumpWrapper.setAttribute('transform', `translate(0, ${-jump})`);
+    charArmLeft.setAttribute('transform', `translate(912, 895) rotate(${45 + armWave})`);
+    charArmRight.setAttribute('transform', `translate(1008, 895) rotate(${-45 - armWave})`);
+    charHelmet.setAttribute('transform', `translate(0, ${-30 - helmetHop}) rotate(${Math.sin(progress * Math.PI * 4) * 6})`);
+    mouthCurve.setAttribute('d', 'M -28,12 Q 0,34 28,12');
+  }
+
+  // Здивування персонажа при помилці (каска з'їжджає набік, лапи вгору)
+  function animateCharacterOops(progress) {
+    const shake = Math.sin(progress * Math.PI * 10) * 10 * (1 - progress);
+    charJumpWrapper.setAttribute('transform', `translate(${shake}, 0)`);
+    charArmLeft.setAttribute('transform', `translate(912, 895) rotate(65)`);
+    charArmRight.setAttribute('transform', `translate(1008, 895) rotate(-65)`);
+    charHelmet.setAttribute('transform', `translate(6, -34) rotate(${16 * (1 - progress * 0.5)})`);
+    mouthCurve.setAttribute('d', 'M -18,22 Q 0,10 18,22');
+    browL.setAttribute('d', 'M -30,-20 Q -18,-32 -8,-28');
+    browR.setAttribute('d', 'M 8,-28 Q 18,-32 30,-20');
+  }
+
+  // ============================================================================
+  // 7. ВІЗУАЛЬНІ СПЕЦЕФЕКТИ (ІСКРИ ЗВАРЮВАННЯ, ПИЛ, ЗІРКИ, КІЛЬЦЯ ДИМУ)
+  // ============================================================================
+  function spawnWeldingSparksAndStars(centerX, centerY) {
+    const colors = ['#fde047', '#38bdf8', '#4ade80', '#fb7185', '#fb923c', '#ffffff'];
+    const particles = [];
+
+    for (let i = 0; i < 36; i++) {
+      const isStar = i % 3 === 0;
+      const el = document.createElementNS('http://www.w3.org/2000/svg', isStar ? 'polygon' : 'circle');
+      const color = colors[i % colors.length];
+
+      if (isStar) {
+        el.setAttribute('points', '0,-12 3.5,-3.5 12,-3.5 5,2 7.5,11 0,6 -7.5,11 -5,2 -12,-3.5 -3.5,-3.5');
+        el.setAttribute('fill', color);
+        el.setAttribute('stroke', '#0f172a');
+        el.setAttribute('stroke-width', '1.5');
+      } else {
+        el.setAttribute('r', String(4 + Math.random() * 6));
+        el.setAttribute('fill', color);
+      }
+
+      fxLayer.appendChild(el);
+
+      const angle = (Math.PI * 2 * i) / 36 + (Math.random() - 0.5) * 0.3;
+      const speed = 4 + Math.random() * 9;
+      particles.push({
+        el,
+        x: centerX,
+        y: centerY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 4,
+        rot: Math.random() * 360,
+        vRot: (Math.random() - 0.5) * 14,
+        life: 1
+      });
+    }
+
+    // Світлове кільце ударної хвилі на місці стикування
+    const shockwave = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    shockwave.setAttribute('cx', centerX);
+    shockwave.setAttribute('cy', centerY);
+    shockwave.setAttribute('r', '15');
+    shockwave.setAttribute('fill', 'none');
+    shockwave.setAttribute('stroke', '#fef08a');
+    shockwave.setAttribute('stroke-width', '10');
+    fxLayer.appendChild(shockwave);
+
+    let frame = 0;
+    function tickParticles() {
+      frame++;
+      const waveRadius = 15 + frame * 7;
+      shockwave.setAttribute('r', String(waveRadius));
+      shockwave.setAttribute('opacity', String(Math.max(0, 1 - frame / 22)));
+
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.32; // гравітація
+        p.rot += p.vRot;
+        p.life -= 0.024;
+        p.el.setAttribute('transform', `translate(${p.x}, ${p.y}) rotate(${p.rot}) scale(${Math.max(0, p.life)})`);
+        p.el.setAttribute('opacity', String(Math.max(0, p.life)));
+      });
+
+      if (frame < 42) {
+        requestAnimationFrame(tickParticles);
+      }
+    }
+    requestAnimationFrame(tickParticles);
+  }
+
+  // Хмарка диму при роботі або пробуксовці техніки
+  function spawnSmokePuff(x, y, dark = false) {
+    for (let i = 0; i < 6; i++) {
+      const puff = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      puff.setAttribute('cx', x);
+      puff.setAttribute('cy', y);
+      puff.setAttribute('r', String(12 + i * 4));
+      puff.setAttribute('fill', dark ? '#475569' : '#cbd5e1');
+      puff.setAttribute('opacity', '0.75');
+      fxLayer.appendChild(puff);
+
+      const vx = (Math.random() - 0.5) * 3.5;
+      const vy = -2.2 - Math.random() * 2.5;
+      let step = 0;
+
+      function animPuff() {
+        step++;
+        const curX = x + vx * step;
+        const curY = y + vy * step;
+        const scale = 1 + step * 0.08;
+        const op = Math.max(0, 0.75 - step * 0.03);
+        puff.setAttribute('transform', `translate(${curX - x}, ${curY - y}) scale(${scale})`);
+        puff.setAttribute('opacity', String(op));
+        if (step < 25) {
+          requestAnimationFrame(animPuff);
+        } else {
+          puff.remove();
+        }
+      }
+      requestAnimationFrame(animPuff);
+    }
+  }
+
+  // ============================================================================
+  // 8. РЕАЛІСТИЧНІ АНІМАЦІЇ КРАНА ТА ЕКСКАВАТОРА
+  // ============================================================================
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  // Анімація ПІДЙОМНОГО КРАНА (префікс «ПРЕ»)
+  function triggerCraneAction() {
+    if (isAnimating) return;
+    isAnimating = true;
+
+    const currentTask = tasks[currentIndex];
+    const isCorrect = currentTask.prefix === 'ПРЕ';
+
+    if (isCorrect) {
+      sound.playCraneMotor(1.25);
+      const startTime = performance.now();
+      const totalDuration = 1280;
+
+      function animateCraneSuccess(now) {
+        const elapsed = now - startTime;
+        const p = Math.min(1, elapsed / totalDuration);
+
+        // Фаза 1 (0..0.22): Підйом блока вгору лебідкою
+        // Фаза 2 (0.22..0.72): Рух каретки по стрілі вліво до посадкового гнізда (X: 1360 -> 685) з легким гойданням вантажу
+        // Фаза 3 (0.72..1.0): Точне опускання блока «ПРЕ» у слот перед словом (cableLen: 95 -> 331)
+        let trolleyX = 1360;
+        let cableLen = 155;
+        let swing = 0;
+
+        if (p < 0.22) {
+          const sp = easeInOutCubic(p / 0.22);
+          cableLen = 155 - sp * 60; // піднімаємо до 95
+          swing = Math.sin(sp * Math.PI) * 3;
+        } else if (p < 0.72) {
+          const sp = easeInOutCubic((p - 0.22) / 0.50);
+          trolleyX = 1360 - sp * (1360 - 685);
+          cableLen = 95;
+          swing = Math.sin(sp * Math.PI * 2) * 5.5;
+        } else {
+          const sp = easeInOutCubic((p - 0.72) / 0.28);
+          trolleyX = 685;
+          cableLen = 95 + sp * (331 - 95);
+          swing = (1 - sp) * 2;
+        }
+
+        setCraneKinematics(trolleyX, cableLen, swing);
+        animateCharacterCelebration(p);
+
+        if (p < 1) {
+          activeAnimId = requestAnimationFrame(animateCraneSuccess);
+        } else {
+          // Фіксація блока в слоті, відведення гака трохи вгору та феєрверк!
+          sound.playDockSuccess();
+          spawnWeldingSparksAndStars(780, 595);
+
+          // Відчіплюємо гак і трохи піднімаємо його над поставленим блоком
+          const releaseStart = performance.now();
+          function liftHookAfterDrop(tNow) {
+            const rp = Math.min(1, (tNow - releaseStart) / 420);
+            const liftOffset = easeInOutCubic(rp) * 75;
+            craneCableLeft.setAttribute('y2', 331 - liftOffset);
+            craneCableRight.setAttribute('y2', 331 - liftOffset);
+            craneHookAssembly.setAttribute('transform', `translate(0, ${331 - liftOffset})`);
+            // Компенсуємо зсув для самого блока «ПРЕ», щоб він лишався нерухомо у слоті!
+            preBlock.setAttribute('transform', `translate(-95, ${58 + liftOffset})`);
+            animateCharacterCelebration(rp);
+
+            if (rp < 1) {
+              activeAnimId = requestAnimationFrame(liftHookAfterDrop);
+            } else {
+              nextLevelTimer = setTimeout(() => {
+                goToNextWord();
+              }, 950);
+            }
+          }
+          activeAnimId = requestAnimationFrame(liftHookAfterDrop);
+        }
+      }
+      activeAnimId = requestAnimationFrame(animateCraneSuccess);
+    } else {
+      // Неправильний вибір: кран сіпає трос, каретка буксує, блок «ПРЕ» хитається
+      sound.playWrongBounce();
+      spawnSmokePuff(1360, 160, true);
+      const startTime = performance.now();
+      const duration = 680;
+
+      function animateCraneWrong(now) {
+        const p = Math.min(1, (now - startTime) / duration);
+        const shakeX = Math.sin(p * Math.PI * 8) * 22 * (1 - p);
+        const cableJerk = Math.abs(Math.sin(p * Math.PI * 4)) * 28 * (1 - p);
+        const swing = Math.sin(p * Math.PI * 6) * 11 * (1 - p);
+
+        setCraneKinematics(1360 - shakeX, 155 - cableJerk, swing);
+        animateCharacterOops(p);
+
+        if (p < 1) {
+          activeAnimId = requestAnimationFrame(animateCraneWrong);
+        } else {
+          setCraneKinematics(1360, 155, 0);
+          resetCharacterPose();
+          isAnimating = false;
+        }
+      }
+      activeAnimId = requestAnimationFrame(animateCraneWrong);
+    }
+  }
+
+  // Анімація ЕКСКАВАТОРА (префікс «ПРИ»)
+  function triggerExcavatorAction() {
+    if (isAnimating) return;
+    isAnimating = true;
+
+    const currentTask = tasks[currentIndex];
+    const isCorrect = currentTask.prefix === 'ПРИ';
+
+    if (isCorrect) {
+      sound.playExcavatorPush(1.2);
+      spawnSmokePuff(105, 585, false);
+
+      const startTime = performance.now();
+      const totalDuration = 1180;
+
+      function animateExcavatorSuccess(now) {
+        const elapsed = now - startTime;
+        const p = Math.min(1, elapsed / totalDuration);
+
+        // Фаза 1 (0..0.78): Екскаватор їде вперед, витягуючи гідравлічну стрілу, і плавно підсовує блок «ПРИ» у слот (325 -> 535)
+        // Фаза 2 (0.78..1.0): Блок «ПРИ» стикується зі словом, а екскаватор трохи відводить ківш назад
+        let machineX = 0;
+        let blockX = 325;
+        let boomDeg = -18;
+        let stickDeg = 26;
+        let bucketDeg = -8;
+
+        if (p < 0.78) {
+          const sp = easeInOutCubic(p / 0.78);
+          machineX = sp * 155;
+          blockX = 325 + sp * 210; // 325 + 210 = 535 (точно в слоті X=590 на головній сцені!)
+          boomDeg = -18 + sp * 14;
+          stickDeg = 26 - sp * 32;
+          bucketDeg = -8 - sp * 12;
+        } else {
+          const sp = easeInOutCubic((p - 0.78) / 0.22);
+          machineX = 155 - sp * 45;
+          blockX = 535; // блок залишається пристикованим до слова
+          boomDeg = -4 - sp * 12;
+          stickDeg = -6 + sp * 22;
+          bucketDeg = -20 + sp * 12;
+        }
+
+        setExcavatorKinematics(machineX, blockX, boomDeg, stickDeg, bucketDeg);
+        animateCharacterCelebration(p);
+
+        if (p >= 0.78 && !animateExcavatorSuccess.dockedTriggered) {
+          animateExcavatorSuccess.dockedTriggered = true;
+          sound.playDockSuccess();
+          spawnWeldingSparksAndStars(780, 595);
+        }
+
+        if (p < 1) {
+          activeAnimId = requestAnimationFrame(animateExcavatorSuccess);
+        } else {
+          nextLevelTimer = setTimeout(() => {
+            goToNextWord();
+          }, 950);
+        }
+      }
+      animateExcavatorSuccess.dockedTriggered = false;
+      activeAnimId = requestAnimationFrame(animateExcavatorSuccess);
+    } else {
+      // Неправильний вибір: екскаватор чмихає димом, штовхає блок, але той пружинить назад
+      sound.playWrongBounce();
+      spawnSmokePuff(105, 585, true);
+
+      const startTime = performance.now();
+      const duration = 680;
+
+      function animateExcavatorWrong(now) {
+        const p = Math.min(1, (now - startTime) / duration);
+        const pushAttempt = Math.sin(p * Math.PI * 3) * 28 * (1 - p);
+        const boomShake = -18 + Math.sin(p * Math.PI * 6) * 8 * (1 - p);
+
+        setExcavatorKinematics(pushAttempt * 0.5, 325 + pushAttempt, boomShake, 26, -8);
+        animateCharacterOops(p);
+
+        if (p < 1) {
+          activeAnimId = requestAnimationFrame(animateExcavatorWrong);
+        } else {
+          setExcavatorKinematics(0, 325, -18, 26, -8);
+          resetCharacterPose();
+          isAnimating = false;
+        }
+      }
+      activeAnimId = requestAnimationFrame(animateExcavatorWrong);
+    }
+  }
+
+  // ============================================================================
+  // 9. ПЕРЕХІД МІЖ ЗАВДАННЯМИ (КНОПКИ «ДАЛІ» ТА «НАЗАД»)
+  // ============================================================================
+  function goToNextWord() {
+    currentIndex = (currentIndex + 1) % tasks.length;
+    renderCurrentWord();
+  }
+
+  function goToPrevWord() {
+    currentIndex = (currentIndex - 1 + tasks.length) % tasks.length;
+    renderCurrentWord();
+  }
+
+  // Обробники кліків на техніку
+  document.getElementById('crane-interactive').addEventListener('click', triggerCraneAction);
+  document.getElementById('excavator-interactive').addEventListener('click', triggerExcavatorAction);
+
+  // Обробники кнопок навігації (миттєвий перехід без обов'язкового проходження)
+  document.getElementById('btn-next').addEventListener('click', () => {
+    sound.playNavClick();
+    goToNextWord();
+  });
+
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    sound.playNavClick();
+    goToPrevWord();
+  });
+
+  // Підтримка клавіатури (стрілки вліво/вправо для вчителя)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') {
+      sound.playNavClick();
+      goToNextWord();
+    } else if (e.key === 'ArrowLeft') {
+      sound.playNavClick();
+      goToPrevWord();
+    }
+  });
+
+  // Перший запуск гри
+  renderCurrentWord();
+</script>
+</body>
+</html>
