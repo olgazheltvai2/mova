@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Лісові Монстрики</title>
+<style>
+  /* Скидання стилів та базові налаштування сцени */
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; margin: 0; padding: 0; }
+  body, html {
+    width: 100vw; height: 100vh; overflow: hidden;
+    font-family: 'Comic Sans MS', 'Chalkboard SE', 'Trebuchet MS', sans-serif;
+    background: #0d2b24;
+  }
+
+  /* Контейнер живого сюжетного фону (Тропічні джунглі) */
+  #scene {
+    position: relative; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: 12px 20px 18px;
+  }
+  #bg-svg {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 0; pointer-events: none;
+  }
+
+  /* Canvas для святкових частинок (феєрверки, іскри, листочки) */
+  #fx-canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 25; pointer-events: none;
+  }
+
+  /* Верхня панель керування: навігація та єдина кнопка зміни мови */
+  .hud {
+    position: relative; z-index: 10; width: 100%; max-width: 1180px;
+    display: flex; justify-content: space-between; align-items: center;
+    pointer-events: none;
+  }
+  .hud-btn {
+    pointer-events: auto; cursor: pointer;
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 3px solid #f9d976;
+    background: radial-gradient(circle at 30% 30%, #3ab795, #135446);
+    box-shadow: 0 6px 0 #0a2e26, 0 8px 18px rgba(0,0,0,0.45), inset 0 2px 6px rgba(255,255,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s cubic-bezier(.34,1.56,.64,1), filter 0.15s;
+    color: #fff8d6; font-weight: 900; font-size: 20px; letter-spacing: 1px;
+    text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+  }
+  .hud-btn:hover { transform: scale(1.1) translateY(-2px); filter: brightness(1.12); }
+  .hud-btn:active { transform: scale(0.95) translateY(3px); box-shadow: 0 2px 0 #0a2e26; }
+  .nav-group { display: flex; gap: 14px; }
+
+  /* Таблиця-ключ із 10 монстриками та складами (стилізована дерев'яно-смарагдова дошка) */
+  #cipher-board {
+    position: relative; z-index: 5;
+    width: 100%; max-width: 1080px;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(255,230,120,0.14), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(80,255,190,0.14), transparent 45%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 8px, transparent 8px, transparent 16px),
+      linear-gradient(180deg, #275c4c 0%, #183d33 100%);
+    border: 5px solid #d49b4b;
+    border-radius: 30px;
+    box-shadow: 0 10px 0 #7b4f1d, 0 16px 32px rgba(0,0,0,0.55), inset 0 0 25px rgba(0,0,0,0.45);
+    padding: 14px 20px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px 16px;
+  }
+
+  /* Картка окремого монстрика у ключі */
+  .key-card {
+    background: linear-gradient(145deg, rgba(255,245,200,0.16), rgba(20,65,50,0.55));
+    border: 2px solid rgba(249,217,118,0.45);
+    border-radius: 20px;
+    padding: 6px 8px 8px;
+    display: flex; flex-direction: column; align-items: center;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(.34,1.56,.64,1), border-color 0.2s, box-shadow 0.2s;
+    position: relative;
+  }
+  .key-card:hover {
+    transform: translateY(-5px) scale(1.04);
+    border-color: #ffe875;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.35), 0 0 15px rgba(255,232,117,0.4);
+  }
+  .key-card:active { transform: scale(0.95); }
+  .key-monster { width: 68px; height: 68px; filter: drop-shadow(0 4px 5px rgba(0,0,0,0.4)); }
+
+  /* Плашка зі складом (дерев'яний медальйон із золотою облямівкою) */
+  .syllable-pill {
+    margin-top: 4px;
+    min-width: 78px; padding: 4px 12px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #f6cf71 0%, #d8952b 100%);
+    border: 2px solid #754408;
+    box-shadow: 0 4px 0 #6b3c07, inset 0 2px 2px rgba(255,255,255,0.65);
+    color: #3b1d00;
+    font-size: 22px; font-weight: 900; text-align: center; letter-spacing: 1.5px;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+  }
+
+  /* Центральна ігрова зона поточного завдання (1 завдання на слайд) */
+  #stage-area {
+    position: relative; z-index: 6;
+    width: 100%; max-width: 1050px; flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    gap: 28px; margin-top: 8px;
+  }
+
+  /* Головний подіум завдання */
+  #task-board {
+    background:
+      radial-gradient(circle at 50% 25%, rgba(255,236,153,0.22), transparent 65%),
+      repeating-radial-gradient(circle at 0 0, rgba(255,255,255,0.03) 0, rgba(255,255,255,0.03) 10px, transparent 10px, transparent 20px),
+      linear-gradient(180deg, #3c245c 0%, #221238 100%);
+    border: 5px solid #e6a94c;
+    border-radius: 36px;
+    box-shadow: 0 12px 0 #6e4411, 0 20px 38px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.5);
+    padding: 20px 34px;
+    display: flex; align-items: center; gap: 34px;
+    position: relative;
+  }
+
+  .pair-wrap { display: flex; gap: 28px; align-items: center; }
+
+  /* Слот монстрика у завданні */
+  .target-unit {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .target-monster {
+    width: 135px; height: 135px;
+    filter: drop-shadow(0 8px 10px rgba(0,0,0,0.5));
+    animation: floatMonster 3s ease-in-out infinite;
+  }
+  .target-unit:nth-child(2) .target-monster { animation-delay: -1.5s; }
+
+  @keyframes floatMonster {
+    0%, 100% { transform: translateY(0px) rotate(-1deg); }
+    50% { transform: translateY(-9px) rotate(1.5deg); }
+  }
+
+  /* Комірка для вставлення складу */
+  .slot-box {
+    width: 138px; height: 60px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #1b0f2e 0%, #2f1b4e 100%);
+    border: 3px dashed #c896ff;
+    box-shadow: inset 0 5px 12px rgba(0,0,0,0.7), 0 4px 10px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; font-weight: 900; color: #3b1d00;
+    cursor: pointer; transition: all 0.25s cubic-bezier(.34,1.56,.64,1);
+    position: relative;
+  }
+  .slot-box.active-slot {
+    border-style: solid; border-color: #ffe66d;
+    box-shadow: 0 0 20px rgba(255,230,109,0.65), inset 0 3px 8px rgba(255,230,109,0.3);
+    transform: scale(1.06);
+  }
+  .slot-box.filled {
+    border-style: solid; border-color: #8b5109;
+    background: linear-gradient(180deg, #ffe27a 0%, #e09829 100%);
+    box-shadow: 0 6px 0 #703f07, 0 0 22px rgba(255,215,90,0.7);
+    animation: popIn 0.35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .slot-box.wrong { animation: shakeErr 0.45s ease; border-color: #ff4d6d; }
+
+  @keyframes popIn {
+    0% { transform: scale(0.4); }
+    70% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  @keyframes shakeErr {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-10px) rotate(-4deg); }
+    40%, 80% { transform: translateX(10px) rotate(4deg); }
+  }
+
+  /* Медальйон із картинкою-відгадкою, який розкривається після складання слова */
+  #reward-panel {
+    width: 185px; height: 185px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #488b76, #1b4338 75%);
+    border: 5px solid #f7ca65;
+    box-shadow: 0 8px 0 #7b4f1d, inset 0 6px 18px rgba(0,0,0,0.55), 0 0 25px rgba(247,202,101,0.35);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; cursor: pointer;
+    transition: transform 0.3s cubic-bezier(.34,1.56,.64,1), box-shadow 0.3s;
+  }
+  #reward-panel.unlocked {
+    background: radial-gradient(circle at 50% 40%, #fff3b0, #f3a833 70%, #b85d19 100%);
+    box-shadow: 0 8px 0 #7b4f1d, 0 0 42px rgba(255,230,105,0.95);
+    animation: rewardPulse 2s infinite ease-in-out;
+  }
+  @keyframes rewardPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+  }
+  #reward-svg-holder {
+    width: 145px; height: 145px;
+    transform: scale(0) rotate(-25deg);
+    transition: transform 0.55s cubic-bezier(.34,1.56,.64,1);
+  }
+  #reward-panel.unlocked #reward-svg-holder {
+    transform: scale(1) rotate(0deg);
+  }
+  /* Таємничий листочок-завіса до відгадування */
+  #mystery-cover {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.4s, transform 0.4s;
+  }
+  #reward-panel.unlocked #mystery-cover {
+    opacity: 0; transform: scale(1.5) rotate(20deg); pointer-events: none;
+  }
+
+  /* Живий персонаж-помічник (Хамелеон Чіко) */
+  #companion-box {
+    width: 195px; height: 215px;
+    position: relative; cursor: pointer;
+    filter: drop-shadow(0 10px 14px rgba(0,0,0,0.5));
+    transition: transform 0.25s;
+  }
+  #companion-box.happy { animation: companionJump 0.6s ease 3; }
+  #companion-box.oops { animation: shakeErr 0.5s ease; }
+  @keyframes companionJump {
+    0%, 100% { transform: translateY(0) scale(1); }
+    40% { transform: translateY(-22px) scale(1.08, 0.94); }
+    70% { transform: translateY(-6px) scale(0.96, 1.05); }
+  }
+
+  /* Адаптивність для менших екранів */
+  @media (max-width: 900px) {
+    #cipher-board { padding: 8px 10px; gap: 8px; }
+    .key-monster { width: 50px; height: 50px; }
+    .syllable-pill { font-size: 17px; min-width: 60px; }
+    #task-board { padding: 14px 18px; gap: 16px; }
+    .target-monster { width: 95px; height: 95px; }
+    .slot-box { width: 105px; height: 48px; font-size: 22px; }
+    #reward-panel { width: 135px; height: 135px; }
+    #reward-svg-holder { width: 105px; height: 105px; }
+    #companion-box { width: 135px; height: 150px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <!-- Деталізований сюжетний SVG-фон тропічної лагуни -->
+  <svg id="bg-svg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#0f382f"/>
+        <stop offset="55%" stop-color="#1f6f58"/>
+        <stop offset="100%" stop-color="#103329"/>
+      </linearGradient>
+      <linearGradient id="waterGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#4ef2d2"/>
+        <stop offset="100%" stop-color="#157a6e"/>
+      </linearGradient>
+      <linearGradient id="leafG1" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#4ad66d"/>
+        <stop offset="100%" stop-color="#1b6b36"/>
+      </linearGradient>
+      <linearGradient id="leafG2" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#9ef01a"/>
+        <stop offset="100%" stop-color="#2b9348"/>
+      </linearGradient>
+      <radialGradient id="sunGlow" cx="50%" cy="30%" r="50%">
+        <stop offset="0%" stop-color="#fff3b0" stop-opacity="0.45"/>
+        <stop offset="100%" stop-color="#fff3b0" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+
+    <!-- Небо та сонячне сяйво крізь крони -->
+    <rect width="1440" height="900" fill="url(#skyGrad)"/>
+    <circle cx="720" cy="260" r="550" fill="url(#sunGlow)"/>
+
+    <!-- Сонячні промені -->
+    <g opacity="0.14" fill="#fff8c4">
+      <polygon points="650,0 780,0 1050,900 420,900"/>
+      <polygon points="350,0 460,0 620,900 180,900"/>
+      <polygon points="980,0 1080,0 1350,900 890,900"/>
+    </g>
+
+    <!-- Далекі пагорби та ліс -->
+    <path d="M0,560 Q260,430 550,520 T1120,500 T1440,550 L1440,900 L0,900 Z" fill="#164a3b"/>
+    <path d="M0,650 Q380,540 760,630 T1440,610 L1440,900 L0,900 Z" fill="#11382d"/>
+
+    <!-- Тропічний водоспад та лагуна -->
+    <path d="M1180,420 Q1230,420 1250,550 L1290,780 L1130,780 Z" fill="url(#waterGrad)" opacity="0.75"/>
+    <ellipse cx="1210" cy="785" rx="190" ry="42" fill="url(#waterGrad)" opacity="0.65"/>
+    <path d="M1200,430 L1215,770 M1230,460 L1250,760 M1175,470 L1165,765" stroke="#ffffff" stroke-width="4" stroke-dasharray="18 14" opacity="0.5">
+      <animate attributeName="stroke-dashoffset" from="0" to="-64" dur="1.2s" repeatCount="indefinite"/>
+    </path>
+
+    <!-- Ліани та тропічне листя по краях -->
+    <g fill="url(#leafG1)">
+      <path d="M-40,0 Q140,90 220,260 Q90,220 -40,120 Z"/>
+      <path d="M1480,0 Q1300,110 1210,270 Q1340,230 1480,130 Z"/>
+      <path d="M-50,920 Q120,730 290,790 Q160,890 -50,920 Z"/>
+      <path d="M1490,920 Q1310,720 1140,790 Q1280,890 1490,920 Z"/>
+    </g>
+    <g fill="url(#leafG2)">
+      <path d="M0,180 Q150,210 190,340 Q80,310 0,260 Z"/>
+      <path d="M1440,190 Q1290,220 1250,350 Q1360,320 1440,270 Z"/>
+      <!-- Квіти гібіскуса -->
+      <g transform="translate(110,780)">
+        <circle cx="0" cy="-22" r="18" fill="#ff4d6d"/><circle cx="22" cy="-6" r="18" fill="#ff4d6d"/>
+        <circle cx="14" cy="20" r="18" fill="#ff4d6d"/><circle cx="-14" cy="20" r="18" fill="#ff4d6d"/>
+        <circle cx="-22" cy="-6" r="18" fill="#ff4d6d"/><circle cx="0" cy="0" r="10" fill="#ffd166"/>
+      </g>
+      <g transform="translate(1340,760) scale(0.85)">
+        <circle cx="0" cy="-22" r="18" fill="#ff9f1c"/><circle cx="22" cy="-6" r="18" fill="#ff9f1c"/>
+        <circle cx="14" cy="20" r="18" fill="#ff9f1c"/><circle cx="-14" cy="20" r="18" fill="#ff9f1c"/>
+        <circle cx="-22" cy="-6" r="18" fill="#ff9f1c"/><circle cx="0" cy="0" r="10" fill="#fff3b0"/>
+      </g>
+    </g>
+
+    <!-- Живі світлячки -->
+    <g fill="#fff89e">
+      <circle cx="220" cy="420" r="5" opacity="0.8"><animate attributeName="cy" values="420;390;420" dur="4s" repeatCount="indefinite"/></circle>
+      <circle cx="1280" cy="380" r="6" opacity="0.7"><animate attributeName="cy" values="380;415;380" dur="3.5s" repeatCount="indefinite"/></circle>
+      <circle cx="480" cy="760" r="4" opacity="0.85"><animate attributeName="cy" values="760;725;760" dur="5s" repeatCount="indefinite"/></circle>
+      <circle cx="960" cy="720" r="5" opacity="0.75"><animate attributeName="cy" values="720;690;720" dur="4.2s" repeatCount="indefinite"/></circle>
+    </g>
+  </svg>
+
+  <canvas id="fx-canvas"></canvas>
+
+  <!-- Верхня панель із кнопками "Назад", "Далі" та однією кнопкою перемикання мови -->
+  <div class="hud">
+    <div class="nav-group">
+      <!-- Кнопка Назад -->
+      <button class="hud-btn" id="btn-prev" aria-label="prev">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff8d6" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
+      <!-- Кнопка Далі -->
+      <button class="hud-btn" id="btn-next" aria-label="next">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff8d6" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18l6-6-6-6"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Єдина кнопка перемикання мови (UA / RU) -->
+    <button class="hud-btn" id="btn-lang">UA</button>
+  </div>
+
+  <!-- Таблиця-ключ із 10 монстриками -->
+  <div id="cipher-board"></div>
+
+  <!-- Ігрова сцена: завдання + вікно картинки-відгадки + живий персонаж -->
+  <div id="stage-area">
+    <div id="task-board">
+      <div class="pair-wrap" id="pair-container"></div>
+
+      <!-- Круглий медальйон, де з'являється SVG-картинка прочитаного слова -->
+      <div id="reward-panel">
+        <div id="mystery-cover">
+          <svg width="110" height="110" viewBox="0 0 100 100">
+            <path d="M50,10 C80,10 90,45 50,90 C10,45 20,10 50,10 Z" fill="#2ec4b6" stroke="#cbf3f0" stroke-width="3"/>
+            <path d="M50,20 L50,80 M50,40 L68,28 M50,55 L32,42 M50,65 L66,54" stroke="#cbf3f0" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="50" cy="50" r="16" fill="#ffbe0b" stroke="#fb5607" stroke-width="3"/>
+            <path d="M45,43 Q50,36 55,43 Q58,48 50,52 L50,56 M50,63 L50,64" stroke="#3a0ca3" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          </svg>
+        </div>
+        <div id="reward-svg-holder"></div>
+      </div>
+    </div>
+
+    <!-- Живий персонаж-помічник: Хамелеон Чіко, який стежить очима та реагує емоціями -->
+    <div id="companion-box">
+      <svg viewBox="0 0 220 240" width="100%" height="100%">
+        <defs>
+          <linearGradient id="chamBody" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#80ed99"/>
+            <stop offset="55%" stop-color="#38b000"/>
+            <stop offset="100%" stop-color="#007200"/>
+          </linearGradient>
+          <linearGradient id="chamBelly" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ffea79"/>
+            <stop offset="100%" stop-color="#ff9f1c"/>
+          </linearGradient>
+        </defs>
+        <!-- Гілка дерева -->
+        <path d="M10,195 Q110,175 215,205" stroke="#7f4f24" stroke-width="18" stroke-linecap="round" fill="none"/>
+        <path d="M35,190 Q15,165 8,170" stroke="#582f0e" stroke-width="6" stroke-linecap="round" fill="none"/>
+        <path d="M12,168 C0,150 20,140 28,162 Z" fill="#52b788"/>
+        <!-- Закручений хвіст -->
+        <path d="M155,165 C205,165 210,225 165,225 C135,225 135,190 160,190 C178,190 175,210 162,208" stroke="url(#chamBody)" stroke-width="18" stroke-linecap="round" fill="none"/>
+        <!-- Тулуб хамелеона -->
+        <path d="M55,155 C50,95 155,85 170,160 C150,180 75,180 55,155 Z" fill="url(#chamBody)" stroke="#004b23" stroke-width="3"/>
+        <path d="M70,158 C88,138 135,138 152,162 C130,175 90,175 70,158 Z" fill="url(#chamBelly)"/>
+        <!-- Гребінець на спині -->
+        <polygon points="85,105 92,90 100,103 110,88 118,103 128,92 135,108" fill="#ffbe0b" stroke="#d97706" stroke-width="2"/>
+        <!-- Смужки на тілі -->
+        <path d="M95,112 Q90,132 98,145 M120,112 Q118,132 125,145 M142,120 Q142,136 148,148" stroke="#006400" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.6"/>
+        <!-- Лапки -->
+        <path d="M72,165 L64,190 M82,168 L76,190 M138,166 L142,190 M148,164 L154,190" stroke="#2b9348" stroke-width="9" stroke-linecap="round"/>
+        <!-- Голова з гребенем -->
+        <path d="M25,118 C20,65 85,42 108,82 C118,100 105,142 62,144 C35,144 26,132 25,118 Z" fill="url(#chamBody)" stroke="#004b23" stroke-width="3"/>
+        <!-- Ротик (змінюється при емоціях) -->
+        <path id="cham-mouth" d="M32,126 Q52,138 72,122" stroke="#003519" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+        <!-- Язичок (вилітає при перемозі) -->
+        <path id="cham-tongue" d="M40,127 Q10,125 5,115" stroke="#ff4d6d" stroke-width="0" stroke-linecap="round" fill="none"/>
+        <!-- Великі рухливі очі -->
+        <g transform="translate(52,92)">
+          <circle r="20" fill="#d9ed92" stroke="#004b23" stroke-width="3"/>
+          <circle r="13" fill="#ffffff"/>
+          <circle class="cham-pupil" cx="0" cy="0" r="7" fill="#1b1b1e"/>
+          <circle cx="-3" cy="-3" r="2.5" fill="#ffffff"/>
+        </g>
+        <g transform="translate(86,90)">
+          <circle r="17" fill="#d9ed92" stroke="#004b23" stroke-width="3"/>
+          <circle r="11" fill="#ffffff"/>
+          <circle class="cham-pupil" cx="0" cy="0" r="6" fill="#1b1b1e"/>
+          <circle cx="-2" cy="-2" r="2" fill="#ffffff"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   1. ДАНІ ГРИ НА ДВОХ МОВАХ (УКРАЇНСЬКА ТА РОСІЙСЬКА)
+   10 унікальних монстриків відповідають 10 складам та утворюють 9 слів.
+   ============================================================================ */
+const GAME_DATA = {
+  UA: {
+    code: 'UA',
+    // Склади для кожного з 10 монстриків українською
+    syllables: ['ВУН', 'КАЧ', 'НИТ', 'КА', 'НА', 'КАС', 'СОС', 'КВІ', 'ТИ', 'НАТ'],
+    // 9 завдань (індекси монстриків 0..9 та код ілюстрації)
+    words: [
+      { pair: [4, 6], icon: 'pump' },       // НА + СОС = НАСОС
+      { pair: [5, 3], icon: 'helmet' },     // КАС + КА = КАСКА
+      { pair: [6, 3], icon: 'pacifier' },   // СОС + КА = СОСКА
+      { pair: [3, 0], icon: 'watermelon' }, // КА + ВУН = КАВУН
+      { pair: [2, 3], icon: 'thread' },     // НИТ + КА = НИТКА
+      { pair: [6, 4], icon: 'pine' },       // СОС + НА = СОСНА
+      { pair: [1, 3], icon: 'duck' },       // КАЧ + КА = КАЧКА
+      { pair: [7, 8], icon: 'flowers' },    // КВІ + ТИ = КВІТИ
+      { pair: [3, 9], icon: 'rope' }        // КА + НАТ = КАНАТ
+    ]
+  },
+  RU: {
+    code: 'RU',
+    // Склади для кожного з 10 монстриків російською (як на зразку)
+    syllables: ['ТОК', 'УТ', 'НИТ', 'КА', 'НА', 'КАС', 'СОС', 'КИС', 'ТИ', 'НАТ'],
+    words: [
+      { pair: [4, 6], icon: 'pump' },       // НА + СОС = НАСОС
+      { pair: [5, 3], icon: 'helmet' },     // КАС + КА = КАСКА
+      { pair: [6, 3], icon: 'pacifier' },   // СОС + КА = СОСКА
+      { pair: [3, 0], icon: 'skate' },      // КА + ТОК = КАТОК
+      { pair: [2, 3], icon: 'thread' },     // НИТ + КА = НИТКА
+      { pair: [6, 4], icon: 'pine' },       // СОС + НА = СОСНА
+      { pair: [1, 3], icon: 'duck' },       // УТ + КА = УТКА
+      { pair: [7, 8], icon: 'brushes' },    // КИС + ТИ = КИСТИ
+      { pair: [3, 9], icon: 'rope' }        // КА + НАТ = КАНАТ
+    ]
+  }
+};
+
+/* ============================================================================
+   2. ГЕНЕРАТОР СКЛАДНИХ SVG-МОНСТРИКІВ (10 ХАРАКТЕРНИХ ПЕРСОНАЖІВ)
+   ============================================================================ */
+function getMonsterSVG(idx) {
+  switch (idx) {
+    case 0: // 1. Синьо-фіолетовий пухнастий циклоп із ріжками та гострими зубками
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m0" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#7b5cff"/><stop offset="100%" stop-color="#311b92"/></radialGradient></defs>
+        <path d="M25,22 L18,6 L38,18 Z M95,22 L102,6 L82,18 Z" fill="#4a148c"/>
+        <path d="M22,30 Q60,12 98,30 Q110,65 95,98 Q60,108 25,98 Q10,65 22,30 Z" fill="url(#m0)" stroke="#1a0954" stroke-width="3"/>
+        <g fill="#9d85ff" opacity="0.5"><circle cx="32" cy="45" r="3"/><circle cx="88" cy="48" r="3.5"/><circle cx="28" cy="75" r="3"/><circle cx="92" cy="76" r="3"/></g>
+        <circle cx="60" cy="46" r="16" fill="#fff" stroke="#1a0954" stroke-width="2.5"/>
+        <circle cx="60" cy="46" r="8" fill="#1f1037"/><circle cx="57" cy="43" r="3" fill="#fff"/>
+        <path d="M36,72 Q60,92 84,72 Z" fill="#1a0954"/>
+        <polygon points="43,74 47,82 51,74 56,83 60,75 64,83 69,74 73,82 77,74" fill="#fff"/>
+        <ellipse cx="42" cy="103" rx="10" ry="6" fill="#311b92"/><ellipse cx="78" cy="103" rx="10" ry="6" fill="#311b92"/>
+      </svg>`;
+    case 1: // 2. Рожевий колючий пухнастик на двох ніжках
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m1" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#ff75b5"/><stop offset="100%" stop-color="#b51763"/></radialGradient></defs>
+        <path d="M52,78 L46,108 L36,108 M68,78 L74,108 L84,108" stroke="#9e1455" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <polygon points="60,8 68,22 84,12 82,28 102,26 90,42 108,52 90,62 100,78 82,74 76,90 60,80 44,90 38,74 20,78 30,62 12,52 30,42 18,26 38,28 36,12 52,22" fill="url(#m1)" stroke="#800f45" stroke-width="2.5"/>
+        <circle cx="60" cy="50" r="19" fill="#ffe5f1" stroke="#800f45" stroke-width="2.5"/>
+        <circle cx="60" cy="50" r="11" fill="#2b091c"/><circle cx="56" cy="46" r="4" fill="#fff"/>
+      </svg>`;
+    case 2: // 3. Зелений веселий монстрик із двома очима на стеблинках і піднятими лапками
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m2" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#b5e48c"/><stop offset="100%" stop-color="#52b788"/></radialGradient></defs>
+        <path d="M26,65 Q8,42 18,25 M94,65 Q112,42 102,25" stroke="#52b788" stroke-width="9" stroke-linecap="round" fill="none"/>
+        <path d="M46,36 L40,18 M74,36 L80,18" stroke="#52b788" stroke-width="7" stroke-linecap="round"/>
+        <circle cx="39" cy="16" r="11" fill="#fff" stroke="#2d6a4f" stroke-width="2.5"/><circle cx="39" cy="16" r="5" fill="#1b4332"/>
+        <circle cx="81" cy="16" r="11" fill="#fff" stroke="#2d6a4f" stroke-width="2.5"/><circle cx="81" cy="16" r="5" fill="#1b4332"/>
+        <path d="M30,45 Q60,32 90,45 Q102,85 88,102 Q60,110 32,102 Q18,85 30,45 Z" fill="url(#m2)" stroke="#2d6a4f" stroke-width="3"/>
+        <ellipse cx="60" cy="84" rx="22" ry="15" fill="#d9ed92"/>
+        <path d="M44,58 Q60,78 76,58 Z" fill="#7209b7"/>
+        <ellipse cx="60" cy="66" rx="10" ry="5" fill="#ff758f"/>
+        <polygon points="50,59 54,65 58,59 63,65 67,59" fill="#fff"/>
+      </svg>`;
+    case 3: // 4. Коралово-червоний одноокий бешкетник із зеленими ріжками
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m3" cx="35%" cy="30%" r="65%"><stop offset="0%" stop-color="#ff8fa3"/><stop offset="100%" stop-color="#c9184a"/></radialGradient></defs>
+        <path d="M38,26 Q30,10 22,16 Q26,28 34,32 Z M82,26 Q90,10 98,16 Q94,28 86,32 Z" fill="#80ed99" stroke="#2b9348" stroke-width="2"/>
+        <path d="M26,64 Q10,56 14,44 M94,64 Q110,56 106,44" stroke="#c9184a" stroke-width="9" stroke-linecap="round" fill="none"/>
+        <ellipse cx="60" cy="60" rx="34" ry="38" fill="url(#m3)" stroke="#800f2f" stroke-width="3"/>
+        <path d="M45,94 L40,110 M75,94 L80,110" stroke="#c9184a" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="60" cy="46" r="16" fill="#fff" stroke="#800f2f" stroke-width="2.5"/>
+        <circle cx="60" cy="46" r="8" fill="#2b091c"/><circle cx="57" cy="43" r="3" fill="#fff"/>
+        <path d="M46,72 Q60,82 74,72" stroke="#590d22" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <polygon points="50,74 54,80 58,74" fill="#fff"/>
+      </svg>`;
+    case 4: // 5. Сонячно-жовтий монстрик зі смугастими вигнутими рогами
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m4" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#ffea79"/><stop offset="100%" stop-color="#f77f00"/></radialGradient></defs>
+        <path d="M44,28 C25,8 12,24 18,40 C24,28 32,26 40,34 Z" fill="#e63946" stroke="#9b2226" stroke-width="2"/>
+        <path d="M76,28 C95,8 108,24 102,40 C96,28 88,26 80,34 Z" fill="#e63946" stroke="#9b2226" stroke-width="2"/>
+        <path d="M36,42 C32,22 88,22 84,42 C96,68 92,98 60,100 C28,98 24,68 36,42 Z" fill="url(#m4)" stroke="#b55400" stroke-width="3"/>
+        <ellipse cx="60" cy="78" rx="18" ry="16" fill="#fff3b0" opacity="0.65"/>
+        <circle cx="60" cy="44" r="13" fill="#fff" stroke="#b55400" stroke-width="2.5"/>
+        <circle cx="60" cy="44" r="6" fill="#222"/><circle cx="58" cy="42" r="2.2" fill="#fff"/>
+        <path d="M52,62 Q60,68 68,62" stroke="#7f3900" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        <ellipse cx="44" cy="102" rx="8" ry="6" fill="#d66800"/><ellipse cx="76" cy="102" rx="8" ry="6" fill="#d66800"/>
+      </svg>`;
+    case 5: // 6. Круглий жовтий двоокий друзяка, що привітно махає лапкою
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m5" cx="35%" cy="30%" r="65%"><stop offset="0%" stop-color="#fff07c"/><stop offset="100%" stop-color="#f4a261"/></radialGradient></defs>
+        <path d="M36,24 L28,8 L46,20 Z M84,24 L92,8 L74,20 Z" fill="#ffe5d9" stroke="#d4813b" stroke-width="2"/>
+        <path d="M22,66 Q8,76 14,86 M96,60 Q112,44 106,30" stroke="#f4a261" stroke-width="9" stroke-linecap="round" fill="none"/>
+        <circle cx="60" cy="60" r="36" fill="url(#m5)" stroke="#b5651d" stroke-width="3"/>
+        <path d="M48,94 L46,110 L36,110 M72,94 L74,110 L84,110" stroke="#e0873c" stroke-width="8" stroke-linecap="round" fill="none"/>
+        <circle cx="46" cy="52" r="13" fill="#fff" stroke="#b5651d" stroke-width="2"/><circle cx="46" cy="52" r="7" fill="#1d1e2c"/><circle cx="43" cy="49" r="2.5" fill="#fff"/>
+        <circle cx="74" cy="52" r="13" fill="#fff" stroke="#b5651d" stroke-width="2"/><circle cx="74" cy="52" r="7" fill="#1d1e2c"/><circle cx="71" cy="49" r="2.5" fill="#fff"/>
+        <path d="M46,74 Q60,86 74,74 Z" fill="#6b2d5c"/>
+        <polygon points="52,75 55,80 58,75 62,80 66,75" fill="#fff"/>
+      </svg>`;
+    case 6: // 7. Зелений динозаврик-грушка з гребінцем на спині
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m6" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#b7e4c7"/><stop offset="100%" stop-color="#40916c"/></radialGradient></defs>
+        <polygon points="62,18 72,24 66,32 80,38 74,48 90,56 82,66 98,76 86,86" fill="#2d6a4f"/>
+        <path d="M48,18 C72,18 82,56 96,86 C100,100 80,106 52,106 C24,106 20,86 26,56 C30,30 36,18 48,18 Z" fill="url(#m6)" stroke="#1b4332" stroke-width="3"/>
+        <circle cx="50" cy="52" r="16" fill="#fff" stroke="#1b4332" stroke-width="2.5"/>
+        <circle cx="48" cy="52" r="9" fill="#102a1e"/><circle cx="45" cy="49" r="3" fill="#fff"/>
+        <path d="M36,76 Q52,86 66,74" stroke="#1b4332" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <circle cx="72" cy="84" r="4" fill="#74c69d"/><circle cx="82" cy="92" r="3" fill="#74c69d"/><circle cx="64" cy="94" r="3.5" fill="#74c69d"/>
+      </svg>`;
+    case 7: // 8. Ніжно-рожевий триокий фантазер
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m7" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#ffc2d1"/><stop offset="100%" stop-color="#fb6f92"/></radialGradient></defs>
+        <path d="M40,42 L32,18 M60,38 L60,14 M80,42 L88,18" stroke="#fb6f92" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="31" cy="16" r="9" fill="#fff" stroke="#c9184a" stroke-width="2"/><circle cx="31" cy="16" r="4.5" fill="#222"/>
+        <circle cx="60" cy="12" r="9" fill="#fff" stroke="#c9184a" stroke-width="2"/><circle cx="60" cy="12" r="4.5" fill="#222"/>
+        <circle cx="89" cy="16" r="9" fill="#fff" stroke="#c9184a" stroke-width="2"/><circle cx="89" cy="16" r="4.5" fill="#222"/>
+        <path d="M26,56 Q60,34 94,56 Q106,82 88,98 Q60,106 32,98 Q14,82 26,56 Z" fill="url(#m7)" stroke="#c9184a" stroke-width="3"/>
+        <path d="M46,96 L42,110 M74,96 L78,110" stroke="#fb6f92" stroke-width="9" stroke-linecap="round"/>
+        <circle cx="42" cy="68" r="3" fill="#ff4d6d"/><circle cx="78" cy="68" r="3" fill="#ff4d6d"/>
+        <path d="M54,74 Q60,82 66,74" stroke="#800f2f" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      </svg>`;
+    case 8: // 9. Фіолетовий краплинкоподібний монстрик із двома очима-антенками
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m8" cx="35%" cy="35%" r="65%"><stop offset="0%" stop-color="#e0aaff"/><stop offset="100%" stop-color="#7b2cbf"/></radialGradient></defs>
+        <path d="M48,38 L40,18 M72,38 L80,18" stroke="#9d4edd" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="38" cy="16" r="10" fill="#fff" stroke="#5a189a" stroke-width="2.5"/><circle cx="38" cy="16" r="5" fill="#240046"/>
+        <circle cx="82" cy="16" r="10" fill="#fff" stroke="#5a189a" stroke-width="2.5"/><circle cx="82" cy="16" r="5" fill="#240046"/>
+        <path d="M45,36 Q60,28 75,36 Q92,66 96,94 Q60,110 24,94 Q28,66 45,36 Z" fill="url(#m8)" stroke="#3c096c" stroke-width="3"/>
+        <circle cx="46" cy="76" r="5" fill="#5a189a" opacity="0.45"/><circle cx="76" cy="70" r="6" fill="#5a189a" opacity="0.45"/><circle cx="64" cy="86" r="4" fill="#5a189a" opacity="0.45"/>
+        <path d="M54,54 Q60,60 66,54" stroke="#240046" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      </svg>`;
+    case 9: // 10. Лаймово-золотий чотириногий чудик із високим оком-антеною
+      return `<svg viewBox="0 0 120 120">
+        <defs><radialGradient id="m9" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#e9ff70"/><stop offset="100%" stop-color="#aacc00"/></radialGradient></defs>
+        <path d="M60,48 L60,20" stroke="#aacc00" stroke-width="7" stroke-linecap="round"/>
+        <circle cx="60" cy="16" r="12" fill="#fff" stroke="#55a630" stroke-width="2.5"/><circle cx="60" cy="16" r="6" fill="#1b4332"/><circle cx="58" cy="14" r="2" fill="#fff"/>
+        <path d="M22,56 Q10,46 16,36 M98,56 Q110,46 104,36" stroke="#aacc00" stroke-width="7" stroke-linecap="round" fill="none"/>
+        <ellipse cx="60" cy="68" rx="34" ry="26" fill="url(#m9)" stroke="#55a630" stroke-width="3"/>
+        <path d="M36,90 L32,108 M52,92 L50,108 M68,92 L70,108 M84,90 L88,108" stroke="#80b918" stroke-width="6.5" stroke-linecap="round"/>
+        <circle cx="44" cy="66" r="3" fill="#55a630"/><circle cx="76" cy="66" r="3" fill="#55a630"/>
+        <path d="M54,72 Q60,79 66,72" stroke="#2b9348" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      </svg>`;
+  }
+}
+
+/* ============================================================================
+   3. ГЕНЕРАТОР СКЛАДНИХ SVG-КАРТИНОК ВІДГАДАНИХ СЛІВ (11 ПРЕДМЕТІВ)
+   ============================================================================ */
+function getWordIllustrationSVG(icon) {
+  switch (icon) {
+    case 'pump': // НАСОС
+      return `<svg viewBox="0 0 140 140">
+        <rect x="26" y="18" width="52" height="12" rx="6" fill="#e63946" stroke="#780000" stroke-width="3"/>
+        <rect x="48" y="30" width="8" height="26" fill="#adb5bd" stroke="#495057" stroke-width="2.5"/>
+        <rect x="34" y="52" width="36" height="62" rx="8" fill="#457b9d" stroke="#1d3557" stroke-width="3"/>
+        <rect x="40" y="58" width="10" height="50" rx="4" fill="#a8dadc" opacity="0.6"/>
+        <rect x="24" y="112" width="56" height="10" rx="5" fill="#1d3557"/>
+        <path d="M70,98 Q106,98 104,64 Q102,42 118,46" stroke="#2b2d42" stroke-width="7" stroke-linecap="round" fill="none"/>
+        <circle cx="118" cy="46" r="7" fill="#ffb703" stroke="#fb8500" stroke-width="2.5"/>
+      </svg>`;
+    case 'helmet': // КАСКА
+      return `<svg viewBox="0 0 140 140">
+        <defs><radialGradient id="helmG" cx="35%" cy="30%" r="70%"><stop offset="0%" stop-color="#fff3b0"/><stop offset="50%" stop-color="#ffb703"/><stop offset="100%" stop-color="#fb8500"/></radialGradient></defs>
+        <path d="M22,84 C22,36 118,36 118,84 Z" fill="url(#helmG)" stroke="#9b5100" stroke-width="3.5"/>
+        <path d="M62,38 L78,38 L82,82 L58,82 Z" fill="#ffd166" stroke="#9b5100" stroke-width="2.5"/>
+        <path d="M12,82 Q70,96 128,82 Q132,92 116,96 Q70,106 24,96 Q8,92 12,82 Z" fill="#f77f00" stroke="#7f3900" stroke-width="3"/>
+        <circle cx="70" cy="62" r="10" fill="#e63946" stroke="#fff" stroke-width="2.5"/>
+      </svg>`;
+    case 'pacifier': // СОСКА
+      return `<svg viewBox="0 0 140 140">
+        <ellipse cx="70" cy="42" rx="20" ry="26" fill="#ffd166" stroke="#cb7a00" stroke-width="3"/>
+        <ellipse cx="64" cy="34" rx="5" ry="9" fill="#fff" opacity="0.65"/>
+        <ellipse cx="70" cy="74" rx="44" ry="22" fill="#ff758f" stroke="#a4133c" stroke-width="3.5"/>
+        <circle cx="44" cy="74" r="6" fill="#ffccd5"/><circle cx="96" cy="74" r="6" fill="#ffccd5"/>
+        <circle cx="70" cy="72" r="12" fill="#c9184a" stroke="#800f2f" stroke-width="2.5"/>
+        <circle cx="70" cy="96" r="22" fill="none" stroke="#4cc9f0" stroke-width="8"/>
+      </svg>`;
+    case 'watermelon': // КАВУН (UA)
+      return `<svg viewBox="0 0 140 140">
+        <circle cx="62" cy="64" r="44" fill="#2b9348" stroke="#1b4332" stroke-width="3.5"/>
+        <path d="M42,24 Q52,64 42,104 M62,20 Q74,64 62,108 M82,24 Q92,64 82,104" stroke="#004b23" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <path d="M36,78 A46,46 0 0,0 126,78 Z" fill="#2b9348" stroke="#1b4332" stroke-width="3"/>
+        <path d="M42,78 A40,40 0 0,0 120,78 Z" fill="#d9ed92"/>
+        <path d="M46,78 A36,36 0 0,0 116,78 Z" fill="#ff4d6d"/>
+        <g fill="#1b1b1e"><ellipse cx="68" cy="92" rx="2.5" ry="4"/><ellipse cx="82" cy="96" rx="2.5" ry="4"/><ellipse cx="94" cy="90" rx="2.5" ry="4"/><ellipse cx="75" cy="104" rx="2.5" ry="4"/></g>
+      </svg>`;
+    case 'skate': // КАТОК (RU)
+      return `<svg viewBox="0 0 140 140">
+        <ellipse cx="70" cy="108" rx="54" ry="18" fill="#90e0ef" stroke="#0077b6" stroke-width="3"/>
+        <path d="M34,96 L106,96 M40,88 L40,96 M92,88 L92,96" stroke="#adb5bd" stroke-width="5" stroke-linecap="round"/>
+        <path d="M38,88 L38,34 L72,34 L76,62 L104,70 C112,74 110,88 98,88 Z" fill="#ffffff" stroke="#3a0ca3" stroke-width="3.5"/>
+        <path d="M58,42 L74,42 M60,52 L75,52 M62,62 L78,62" stroke="#f72585" stroke-width="4" stroke-linecap="round"/>
+        <path d="M38,34 L72,34 L72,26 L38,26 Z" fill="#f72585"/>
+      </svg>`;
+    case 'thread': // НИТКА
+      return `<svg viewBox="0 0 140 140">
+        <rect x="38" y="24" width="56" height="12" rx="5" fill="#d4a373" stroke="#7f4f24" stroke-width="3"/>
+        <rect x="44" y="36" width="44" height="64" fill="#e63946" stroke="#800f2f" stroke-width="3"/>
+        <path d="M44,48 L88,48 M44,60 L88,60 M44,72 L88,72 M44,84 L88,84" stroke="#ff8fa3" stroke-width="3"/>
+        <rect x="38" y="100" width="56" height="12" rx="5" fill="#d4a373" stroke="#7f4f24" stroke-width="3"/>
+        <path d="M88,66 Q122,52 114,88 Q106,118 126,112" stroke="#e63946" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <line x1="96" y1="30" x2="122" y2="82" stroke="#ced4da" stroke-width="4" stroke-linecap="round"/>
+      </svg>`;
+    case 'pine': // СОСНА
+      return `<svg viewBox="0 0 140 140">
+        <rect x="60" y="92" width="20" height="32" rx="4" fill="#9c6644" stroke="#582f0e" stroke-width="3"/>
+        <polygon points="70,14 28,56 112,56" fill="#52b788" stroke="#1b4332" stroke-width="3" stroke-linejoin="round"/>
+        <polygon points="70,36 22,80 118,80" fill="#40916c" stroke="#1b4332" stroke-width="3" stroke-linejoin="round"/>
+        <polygon points="70,58 16,102 124,102" fill="#2d6a4f" stroke="#1b4332" stroke-width="3" stroke-linejoin="round"/>
+        <ellipse cx="52" cy="78" rx="6" ry="9" fill="#b08968" stroke="#582f0e" stroke-width="2"/>
+        <ellipse cx="88" cy="90" rx="6" ry="9" fill="#b08968" stroke="#582f0e" stroke-width="2"/>
+      </svg>`;
+    case 'duck': // КАЧКА / УТКА
+      return `<svg viewBox="0 0 140 140">
+        <ellipse cx="70" cy="112" rx="52" ry="14" fill="#48cae4" opacity="0.7"/>
+        <path d="M32,78 C24,58 58,56 76,64 C96,64 114,52 118,68 C122,94 94,108 58,108 C36,108 26,94 32,78 Z" fill="#ffd166" stroke="#ca6702" stroke-width="3.5"/>
+        <circle cx="48" cy="48" r="22" fill="#ffd166" stroke="#ca6702" stroke-width="3.5"/>
+        <path d="M28,48 Q10,44 12,54 Q16,62 30,56 Z" fill="#fb8500" stroke="#9b2226" stroke-width="2.5"/>
+        <circle cx="42" cy="44" r="5" fill="#1d1e2c"/><circle cx="40" cy="42" r="1.8" fill="#fff"/>
+        <path d="M58,76 Q82,68 92,84 Q76,96 58,86 Z" fill="#ffb703" stroke="#ca6702" stroke-width="2.5"/>
+      </svg>`;
+    case 'flowers': // КВІТИ (UA)
+      return `<svg viewBox="0 0 140 140">
+        <path d="M70,122 L44,58 M70,122 L70,46 M70,122 L96,60" stroke="#2b9348" stroke-width="6" stroke-linecap="round"/>
+        <path d="M54,96 Q32,84 38,72 Q56,78 62,94 Z M84,96 Q106,84 100,72 Q82,78 76,94 Z" fill="#52b788"/>
+        <g transform="translate(44,54)"><circle cx="0" cy="-14" r="11" fill="#ff4d6d"/><circle cx="14" cy="0" r="11" fill="#ff4d6d"/><circle cx="0" cy="14" r="11" fill="#ff4d6d"/><circle cx="-14" cy="0" r="11" fill="#ff4d6d"/><circle r="8" fill="#ffd166"/></g>
+        <g transform="translate(96,56)"><circle cx="0" cy="-14" r="11" fill="#9d4edd"/><circle cx="14" cy="0" r="11" fill="#9d4edd"/><circle cx="0" cy="14" r="11" fill="#9d4edd"/><circle cx="-14" cy="0" r="11" fill="#9d4edd"/><circle r="8" fill="#fff3b0"/></g>
+        <g transform="translate(70,40)"><circle cx="0" cy="-15" r="12" fill="#ff9f1c"/><circle cx="15" cy="0" r="12" fill="#ff9f1c"/><circle cx="0" cy="15" r="12" fill="#ff9f1c"/><circle cx="-15" cy="0" r="12" fill="#ff9f1c"/><circle r="9" fill="#fff"/></g>
+      </svg>`;
+    case 'brushes': // КИСТИ (RU)
+      return `<svg viewBox="0 0 140 140">
+        <g transform="rotate(-24 70 70)">
+          <rect x="62" y="54" width="12" height="66" rx="6" fill="#e07a5f" stroke="#7f4f24" stroke-width="2.5"/>
+          <rect x="60" y="42" width="16" height="14" fill="#adb5bd" stroke="#495057" stroke-width="2"/>
+          <path d="M58,42 C56,22 68,14 68,14 C68,14 80,22 78,42 Z" fill="#f72585" stroke="#7209b7" stroke-width="2.5"/>
+        </g>
+        <g transform="rotate(22 70 70)">
+          <rect x="66" y="54" width="12" height="66" rx="6" fill="#f2cc8f" stroke="#7f4f24" stroke-width="2.5"/>
+          <rect x="64" y="42" width="16" height="14" fill="#adb5bd" stroke="#495057" stroke-width="2"/>
+          <path d="M62,42 C60,22 72,14 72,14 C72,14 84,22 82,42 Z" fill="#4cc9f0" stroke="#0077b6" stroke-width="2.5"/>
+        </g>
+      </svg>`;
+    case 'rope': // КАНАТ
+      return `<svg viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r="42" fill="none" stroke="#bc6c25" stroke-width="18"/>
+        <circle cx="70" cy="70" r="42" fill="none" stroke="#dda15e" stroke-width="12" stroke-dasharray="14 10"/>
+        <circle cx="70" cy="70" r="26" fill="none" stroke="#bc6c25" stroke-width="14"/>
+        <circle cx="70" cy="70" r="26" fill="none" stroke="#fefae0" stroke-width="8" stroke-dasharray="10 8"/>
+        <path d="M98,98 L122,116" stroke="#dda15e" stroke-width="12" stroke-linecap="round"/>
+      </svg>`;
+  }
+}
+
+/* ============================================================================
+   4. СИНТЕЗАТОР ЗВУКІВ (WEB AUDIO API) — АКТИВНІ МУЗИЧНІ ФІДБЕКИ БЕЗ СЛІВ
+   ============================================================================ */
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playTone(freq, type, duration, delay = 0, vol = 0.18) {
+  initAudio();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime + delay);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(audioCtx.currentTime + delay);
+  osc.stop(audioCtx.currentTime + delay + duration);
+}
+
+// Звук правильного вставлення складу (дзвінкий булькаючий акорд)
+function sfxCorrectSlot() {
+  playTone(523.25, 'sine', 0.14, 0, 0.22);
+  playTone(659.25, 'triangle', 0.18, 0.07, 0.22);
+  playTone(783.99, 'sine', 0.22, 0.14, 0.24);
+}
+
+// Звук помилки (кумедна пружинка)
+function sfxWrong() {
+  initAudio();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(95, audioCtx.currentTime + 0.28);
+  gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+}
+
+// Переможна фанфара при розшифруванні всього слова
+function sfxWinWord() {
+  const notes = [523.25, 659.25, 783.99, 1046.50, 987.77, 1046.50];
+  const times = [0, 0.09, 0.18, 0.27, 0.40, 0.52];
+  notes.forEach((n, i) => playTone(n, 'triangle', 0.26, times[i], 0.24));
+}
+
+// Легкий клік для кнопок навігації
+function sfxClick() {
+  playTone(440, 'sine', 0.08, 0, 0.14);
+}
+
+/* ============================================================================
+   5. СИСТЕМА СВЯТКОВИХ ЧАСТИНОК (ФЕЄРВЕРК ЗІРОЧОК ТА КОНФЕТІ)
+   ============================================================================ */
+const canvas = document.getElementById('fx-canvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function spawnBurst(x, y, count = 45) {
+  const colors = ['#ffe66d', '#ff4d6d', '#4cc9f0', '#80ed99', '#ff9f1c', '#c77dff'];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 9;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      size: 5 + Math.random() * 7,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1,
+      decay: 0.015 + Math.random() * 0.018,
+      rot: Math.random() * 6,
+      vrot: (Math.random() - 0.5) * 0.25
+    });
+  }
+}
+
+function animateParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.22; // гравітація
+    p.rot += p.vrot;
+    p.life -= p.decay;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.roundRect(-p.size / 2, -p.size / 2, p.size, p.size, 3);
+    ctx.fill();
+    ctx.restore();
+  }
+  requestAnimationFrame(animateParticles);
+}
+animateParticles();
+
+/* ============================================================================
+   6. ЛОГІКА ГРИ, РЕНДЕРИНГ СЛАЙДІВ ТА ЖИВОГО ПЕРСОНАЖА
+   ============================================================================ */
+let currentLang = 'UA';
+let currentSlide = 0;
+let filledSlots = [false, false];
+let activeSlotIndex = 0;
+
+const cipherBoard = document.getElementById('cipher-board');
+const pairContainer = document.getElementById('pair-container');
+const rewardPanel = document.getElementById('reward-panel');
+const rewardSvgHolder = document.getElementById('reward-svg-holder');
+const companionBox = document.getElementById('companion-box');
+const chamMouth = document.getElementById('cham-mouth');
+const chamTongue = document.getElementById('cham-tongue');
+
+// Побудова верхньої таблиці-ключа з 10 монстриками
+function renderCipherBoard() {
+  const data = GAME_DATA[currentLang];
+  cipherBoard.innerHTML = '';
+  data.syllables.forEach((syl, idx) => {
+    const card = document.createElement('div');
+    card.className = 'key-card';
+    card.innerHTML = `
+      <div class="key-monster">${getMonsterSVG(idx)}</div>
+      <div class="syllable-pill">${syl}</div>
+    `;
+    card.addEventListener('click', (e) => handleSelectMonster(idx, e));
+    cipherBoard.appendChild(card);
+  });
+}
+
+// Побудова поточного слайда з одним словом із двох монстриків
+function renderSlide() {
+  const data = GAME_DATA[currentLang];
+  const wordObj = data.words[currentSlide];
+  filledSlots = [false, false];
+  activeSlotIndex = 0;
+
+  rewardPanel.classList.remove('unlocked');
+  rewardSvgHolder.innerHTML = getWordIllustrationSVG(wordObj.icon);
+
+  pairContainer.innerHTML = '';
+  wordObj.pair.forEach((monsterIdx, slotIdx) => {
+    const unit = document.createElement('div');
+    unit.className = 'target-unit';
+    unit.innerHTML = `
+      <div class="target-monster">${getMonsterSVG(monsterIdx)}</div>
+      <div class="slot-box ${slotIdx === 0 ? 'active-slot' : ''}" data-slot="${slotIdx}"></div>
+    `;
+    const slotBox = unit.querySelector('.slot-box');
+    slotBox.addEventListener('click', () => {
+      if (!filledSlots[slotIdx]) {
+        activeSlotIndex = slotIdx;
+        updateActiveSlotHighlight();
+        sfxClick();
+      }
+    });
+    pairContainer.appendChild(unit);
+  });
+}
+
+function updateActiveSlotHighlight() {
+  document.querySelectorAll('.slot-box').forEach((el, idx) => {
+    el.classList.toggle('active-slot', idx === activeSlotIndex && !filledSlots[idx]);
+  });
+}
+
+// Обробка вибору складу дитиною
+function handleSelectMonster(chosenMonsterIdx, event) {
+  if (filledSlots[0] && filledSlots[1]) return;
+
+  const data = GAME_DATA[currentLang];
+  const wordObj = data.words[currentSlide];
+  const expectedMonsterIdx = wordObj.pair[activeSlotIndex];
+  const slotElements = document.querySelectorAll('.slot-box');
+  const targetSlot = slotElements[activeSlotIndex];
+
+  // Перевіряємо, чи збігається монстрик (або сам склад)
+  if (chosenMonsterIdx === expectedMonsterIdx) {
+    filledSlots[activeSlotIndex] = true;
+    targetSlot.textContent = data.syllables[chosenMonsterIdx];
+    targetSlot.classList.remove('active-slot', 'wrong');
+    targetSlot.classList.add('filled');
+
+    const rect = targetSlot.getBoundingClientRect();
+    spawnBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, 28);
+    sfxCorrectSlot();
+    triggerCompanionEmotion('happy');
+
+    // Переходимо до іншого вільного слота або відкриваємо картинку слова
+    if (!filledSlots[0]) {
+      activeSlotIndex = 0;
+      updateActiveSlotHighlight();
+    } else if (!filledSlots[1]) {
+      activeSlotIndex = 1;
+      updateActiveSlotHighlight();
+    } else {
+      // Обидва склади розшифровано — показуємо картинку прочитаного слова!
+      setTimeout(() => {
+        rewardPanel.classList.add('unlocked');
+        const rRect = rewardPanel.getBoundingClientRect();
+        spawnBurst(rRect.left + rRect.width / 2, rRect.top + rRect.height / 2, 70);
+        sfxWinWord();
+      }, 220);
+    }
+  } else {
+    // Помилка — активний візуальний і звуковий фідбек без слів
+    targetSlot.classList.remove('wrong');
+    void targetSlot.offsetWidth;
+    targetSlot.classList.add('wrong');
+    sfxWrong();
+    triggerCompanionEmotion('oops');
+  }
+}
+
+// Живі реакції Хамелеона Чіко
+function triggerCompanionEmotion(state) {
+  companionBox.classList.remove('happy', 'oops');
+  void companionBox.offsetWidth;
+  if (state === 'happy') {
+    companionBox.classList.add('happy');
+    chamMouth.setAttribute('d', 'M30,122 Q52,148 74,120');
+    chamTongue.setAttribute('stroke-width', '7');
+    setTimeout(() => {
+      chamTongue.setAttribute('stroke-width', '0');
+      chamMouth.setAttribute('d', 'M32,126 Q52,138 72,122');
+    }, 900);
+  } else {
+    companionBox.classList.add('oops');
+    chamMouth.setAttribute('d', 'M38,132 Q52,120 66,132');
+    setTimeout(() => {
+      chamMouth.setAttribute('d', 'M32,126 Q52,138 72,122');
+    }, 700);
+  }
+}
+
+// Очі Хамелеона стежать за курсором мишки
+window.addEventListener('mousemove', (e) => {
+  document.querySelectorAll('.cham-pupil').forEach((pupil) => {
+    const rect = pupil.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const angle = Math.atan2(e.clientY - cy, e.clientX - cx);
+    const dist = Math.min(5, Math.hypot(e.clientX - cx, e.clientY - cy) / 25);
+    pupil.setAttribute('cx', (Math.cos(angle) * dist).toFixed(1));
+    pupil.setAttribute('cy', (Math.sin(angle) * dist).toFixed(1));
+  });
+});
+
+// Клік по Хамелеону або відкритій картинці тішить дітей додатковим салютом
+companionBox.addEventListener('click', (e) => {
+  sfxCorrectSlot();
+  triggerCompanionEmotion('happy');
+  spawnBurst(e.clientX, e.clientY, 30);
+});
+
+rewardPanel.addEventListener('click', (e) => {
+  if (rewardPanel.classList.contains('unlocked')) {
+    sfxWinWord();
+    spawnBurst(e.clientX, e.clientY, 55);
+    triggerCompanionEmotion('happy');
+  }
+});
+
+// Кнопки навігації: Назад, Далі та Перемикання мови (одна кнопка)
+document.getElementById('btn-prev').addEventListener('click', () => {
+  sfxClick();
+  const total = GAME_DATA[currentLang].words.length;
+  currentSlide = (currentSlide - 1 + total) % total;
+  renderSlide();
+});
+
+document.getElementById('btn-next').addEventListener('click', () => {
+  sfxClick();
+  const total = GAME_DATA[currentLang].words.length;
+  currentSlide = (currentSlide + 1) % total;
+  renderSlide();
+});
+
+const btnLang = document.getElementById('btn-lang');
+btnLang.addEventListener('click', () => {
+  sfxClick();
+  currentLang = currentLang === 'UA' ? 'RU' : 'UA';
+  btnLang.textContent = currentLang;
+  renderCipherBoard();
+  renderSlide();
+});
+
+// Запуск гри
+renderCipherBoard();
+renderSlide();
+</script>
+</body>
+</html>
