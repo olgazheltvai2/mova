@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Песик-Детектив</title>
+<style>
+  /* Скидання стилів та базові налаштування сцени */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'Comic Sans MS', 'Trebuchet MS', sans-serif;
+    background: #0d1326;
+  }
+
+  /* Головний контейнер гри */
+  #game-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2vh 5vw;
+  }
+
+  /* Фонове полотно SVG на весь екран */
+  #scene-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Контейнер персонажа (Песик-Детектив під ліхтарем) */
+  #character-zone {
+    position: relative;
+    z-index: 3;
+    width: 42%;
+    height: 88%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  #detective-svg {
+    width: 100%;
+    max-width: 500px;
+    height: auto;
+    max-height: 92vh;
+    overflow: visible;
+    filter: drop-shadow(0 14px 25px rgba(0, 0, 0, 0.65));
+  }
+
+  /* Плавний рух зіниць без кліпання */
+  #pupils-group {
+    transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  /* Анімації деталей персонажа */
+  #dog-tail {
+    transform-origin: 185px 410px;
+    animation: tailWagSlow 2.4s ease-in-out infinite alternate;
+  }
+  .emotion-happy #dog-tail,
+  .emotion-proud #dog-tail {
+    animation: tailWagFast 0.28s ease-in-out infinite alternate;
+  }
+
+  #dog-ear-left {
+    transform-origin: 205px 195px;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #dog-ear-right {
+    transform-origin: 310px 195px;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .emotion-surprised #dog-ear-left { transform: rotate(-18deg) translateY(-6px); }
+  .emotion-surprised #dog-ear-right { transform: rotate(22deg) translateY(-6px); }
+  .emotion-happy #dog-ear-left { transform: rotate(-10deg); }
+  .emotion-happy #dog-ear-right { transform: rotate(10deg); }
+
+  #dog-head-group {
+    transform-origin: 260px 265px;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .emotion-surprised #dog-head-group { transform: rotate(-8deg) scale(1.03); }
+  .emotion-curious #dog-head-group { transform: rotate(5deg); }
+  .emotion-happy #dog-head-group { transform: translateY(-6px) rotate(-3deg); }
+  .emotion-proud #dog-head-group { transform: translateY(-10px) scale(1.04); }
+
+  #magnifier-arm {
+    transform-origin: 315px 345px;
+    animation: searchSweep 3.8s ease-in-out infinite alternate;
+  }
+  .emotion-happy #magnifier-arm {
+    animation: magnifyCelebrate 0.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes tailWagSlow {
+    0% { transform: rotate(-8deg); }
+    100% { transform: rotate(12deg); }
+  }
+  @keyframes tailWagFast {
+    0% { transform: rotate(-22deg); }
+    100% { transform: rotate(25deg); }
+  }
+  @keyframes searchSweep {
+    0% { transform: rotate(-6deg) translateY(0); }
+    100% { transform: rotate(8deg) translateY(-8px); }
+  }
+  @keyframes magnifyCelebrate {
+    0% { transform: rotate(-15deg) scale(1.05); }
+    100% { transform: rotate(15deg) scale(1.05); }
+  }
+
+  /* Сяйво вуличного ліхтаря */
+  .lantern-glow {
+    animation: lanternPulse 3.5s ease-in-out infinite alternate;
+  }
+  @keyframes lanternPulse {
+    0% { opacity: 0.78; transform: scale(0.98); }
+    100% { opacity: 0.96; transform: scale(1.03); }
+  }
+
+  /* Нічні світлячки біля ліхтаря */
+  .firefly {
+    animation: floatFly 4.5s ease-in-out infinite alternate;
+  }
+  .firefly:nth-child(2) { animation-duration: 5.5s; animation-delay: -1.5s; }
+  .firefly:nth-child(3) { animation-duration: 3.8s; animation-delay: -2.7s; }
+  @keyframes floatFly {
+    0% { transform: translate(0, 0) scale(0.8); opacity: 0.4; }
+    50% { transform: translate(18px, -14px) scale(1.25); opacity: 1; }
+    100% { transform: translate(-14px, 10px) scale(0.9); opacity: 0.6; }
+  }
+
+  /* Права частина екрана: Детективна дошка зі словами */
+  #board-zone {
+    position: relative;
+    z-index: 4;
+    width: 54%;
+    max-width: 660px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+
+  /* Дерев'яний планшет детектива з латунним обрамленням та текстурою */
+  #clue-board {
+    position: relative;
+    width: 100%;
+    padding: 28px 32px;
+    border-radius: 28px;
+    background:
+      radial-gradient(circle at 18% 15%, rgba(255, 214, 128, 0.16), transparent 55%),
+      repeating-linear-gradient(
+        12deg,
+        #4e321f 0px,
+        #4e321f 14px,
+        #5a3a24 14px,
+        #5a3a24 28px
+      );
+    border: 5px solid #d49b3b;
+    box-shadow:
+      0 20px 45px rgba(0, 0, 0, 0.7),
+      inset 0 0 28px rgba(20, 10, 4, 0.85),
+      inset 0 2px 3px rgba(255, 232, 175, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* Декоративні латунні кутики на планшеті */
+  #clue-board::before,
+  #clue-board::after {
+    content: '';
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff2b2, #c68628 70%, #6e440c);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.6);
+    pointer-events: none;
+  }
+  #clue-board::before { top: 12px; left: 14px; }
+  #clue-board::after { top: 12px; right: 14px; }
+
+  /* Смужка одного слова (пергаментний доказ з візерунком) */
+  .word-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 18px;
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at 85% 30%, rgba(255, 236, 179, 0.35), transparent 60%),
+      repeating-linear-gradient(
+        -45deg,
+        #f3d59b,
+        #f3d59b 12px,
+        #ecc986 12px,
+        #ecc986 24px
+      );
+    border: 3px solid #9c6727;
+    box-shadow:
+      0 6px 14px rgba(0, 0, 0, 0.4),
+      inset 0 2px 0 rgba(255, 250, 220, 0.7);
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s;
+  }
+
+  .word-row:hover {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(255, 206, 84, 0.35);
+  }
+
+  .word-row.word-solved {
+    background:
+      repeating-linear-gradient(
+        -45deg,
+        #ffd97d,
+        #ffd97d 12px,
+        #f7c552 12px,
+        #f7c552 24px
+      );
+    border-color: #f39c12;
+    box-shadow: 0 6px 18px rgba(255, 193, 7, 0.45), inset 0 2px 4px rgba(255, 255, 255, 0.8);
+  }
+
+  /* Звичайні літери у слові */
+  .letter-char {
+    font-size: clamp(1.9rem, 3.6vw, 2.75rem);
+    font-weight: 900;
+    color: #2c1810;
+    text-transform: lowercase;
+    letter-spacing: 2px;
+    text-shadow: 0 2px 0 rgba(255, 245, 214, 0.8);
+    padding: 0 3px;
+  }
+
+  /* Віконце для пропущеної голосної літери (жодних білих прямокутників!) */
+  .letter-slot {
+    width: clamp(44px, 5vw, 58px);
+    height: clamp(48px, 5.4vw, 62px);
+    border-radius: 13px;
+    background:
+      radial-gradient(circle at 50% 35%, #3a2312, #1f1107 85%);
+    border: 3px dashed #f5b942;
+    box-shadow:
+      inset 0 4px 8px rgba(0, 0, 0, 0.75),
+      0 0 10px rgba(245, 185, 66, 0.35);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(1.9rem, 3.6vw, 2.7rem);
+    font-weight: 900;
+    color: #ffe699;
+    text-transform: lowercase;
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Легкий пульсуючий слід лупи у порожньому слоті */
+  .letter-slot:not(.filled)::after {
+    content: '';
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(245, 185, 66, 0.45);
+    animation: slotPulse 1.6s ease-in-out infinite alternate;
+  }
+
+  @keyframes slotPulse {
+    0% { transform: scale(0.75); opacity: 0.4; }
+    100% { transform: scale(1.25); opacity: 0.9; }
+  }
+
+  /* Заповнений слот */
+  .letter-slot.filled {
+    background: linear-gradient(145deg, #cf3a24, #9c2010);
+    border: 3px solid #ffe082;
+    color: #fff6d6;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
+    box-shadow:
+      0 4px 12px rgba(207, 58, 36, 0.6),
+      inset 0 2px 3px rgba(255, 255, 255, 0.4);
+    animation: popSlot 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes popSlot {
+    0% { transform: scale(0.3) rotate(-15deg); }
+    70% { transform: scale(1.18) rotate(5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* Панель голосних літер (жетони-підказки) */
+  #vowels-tray {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 14px;
+    padding: 14px 22px;
+    border-radius: 26px;
+    background:
+      linear-gradient(135deg, #273252 0%, #192138 100%);
+    border: 3px solid #7f9cf5;
+    box-shadow:
+      0 12px 28px rgba(0, 0, 0, 0.65),
+      inset 0 2px 4px rgba(255, 255, 255, 0.2);
+  }
+
+  .vowel-btn {
+    width: clamp(56px, 6vw, 70px);
+    height: clamp(56px, 6vw, 70px);
+    border-radius: 50%;
+    border: 4px solid #ffd166;
+    background:
+      radial-gradient(circle at 32% 28%, #ff9f43, #d9534f 68%, #8f2424 100%);
+    color: #fff8e7;
+    font-size: clamp(1.7rem, 3vw, 2.3rem);
+    font-weight: 900;
+    text-transform: lowercase;
+    cursor: pointer;
+    box-shadow:
+      0 7px 0 #661717,
+      0 12px 20px rgba(0, 0, 0, 0.55),
+      inset 0 3px 5px rgba(255, 255, 255, 0.45);
+    transition: transform 0.15s, filter 0.2s, box-shadow 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .vowel-btn:hover {
+    transform: translateY(-4px) scale(1.06);
+    filter: brightness(1.12);
+    box-shadow:
+      0 10px 0 #661717,
+      0 16px 26px rgba(255, 183, 77, 0.45),
+      inset 0 3px 5px rgba(255, 255, 255, 0.6);
+  }
+
+  .vowel-btn:active {
+    transform: translateY(4px) scale(0.96);
+    box-shadow: 0 2px 0 #661717, 0 5px 10px rgba(0,0,0,0.5);
+  }
+
+  .vowel-btn.wrong-shake {
+    animation: shakeWrong 0.45s ease-in-out;
+    background: radial-gradient(circle at 30% 30%, #7f8c8d, #34495e);
+    border-color: #95a5a6;
+  }
+
+  @keyframes shakeWrong {
+    0%, 100% { transform: translateX(0) rotate(0); }
+    20% { transform: translateX(-10px) rotate(-10deg); }
+    40% { transform: translateX(10px) rotate(10deg); }
+    60% { transform: translateX(-7px) rotate(-6deg); }
+    80% { transform: translateX(7px) rotate(6deg); }
+  }
+
+  /* Верхня панель керування: одна кнопка мови + кнопки Назад / Далі */
+  #top-controls {
+    position: fixed;
+    top: 18px;
+    right: 24px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ctrl-btn {
+    height: 52px;
+    min-width: 52px;
+    padding: 0 14px;
+    border-radius: 16px;
+    border: 3px solid #f5b942;
+    background: linear-gradient(145deg, #34495e, #1e293b);
+    color: #ffe8a3;
+    font-size: 1.25rem;
+    font-weight: 900;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow:
+      0 5px 0 #0f172a,
+      0 8px 16px rgba(0, 0, 0, 0.5),
+      inset 0 2px 2px rgba(255, 255, 255, 0.25);
+    transition: transform 0.15s, filter 0.15s;
+  }
+
+  .ctrl-btn:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.15);
+  }
+
+  .ctrl-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 #0f172a;
+  }
+
+  .ctrl-btn svg {
+    width: 26px;
+    height: 26px;
+    fill: none;
+    stroke: #ffe8a3;
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Індикатор точок рівнів (без цифр та слів) */
+  #level-dots {
+    display: flex;
+    gap: 7px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 2px solid rgba(245, 185, 66, 0.5);
+  }
+
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #475569;
+    transition: all 0.3s;
+  }
+
+  .dot.active {
+    background: #ffd166;
+    transform: scale(1.3);
+    box-shadow: 0 0 10px #ffd166;
+  }
+
+  .dot.done {
+    background: #38ef7d;
+    box-shadow: 0 0 8px #38ef7d;
+  }
+
+  /* Шар для ефектів частинок (зірочки, сліди лапок, іскри) */
+  #fx-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 30;
+    overflow: hidden;
+  }
+
+  .particle {
+    position: absolute;
+    pointer-events: none;
+    animation: particleFly 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes particleFly {
+    0% {
+      transform: translate(0, 0) scale(0.4) rotate(0deg);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(var(--dx), var(--dy)) scale(1.25) rotate(var(--rot));
+      opacity: 0;
+    }
+  }
+
+  /* Адаптивність для менших екранів */
+  @media (max-width: 900px) {
+    #game-stage {
+      flex-direction: column;
+      justify-content: center;
+      padding: 12px;
+    }
+    #character-zone {
+      width: 48%;
+      height: 36%;
+    }
+    #board-zone {
+      width: 95%;
+    }
+    #clue-board {
+      padding: 16px 18px;
+      gap: 9px;
+    }
+    .word-row {
+      padding: 7px 12px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Верхні кнопки: Перемикач мови (одна кнопка) + Назад і Далі -->
+<div id="top-controls">
+  <button id="lang-btn" class="ctrl-btn" title="Змінити мову">
+    <svg viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+    </svg>
+    <span id="lang-label">UA</span>
+  </button>
+
+  <div id="level-dots"></div>
+
+  <button id="prev-btn" class="ctrl-btn" aria-label="Попередній стовпчик">
+    <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <button id="next-btn" class="ctrl-btn" aria-label="Наступний стовпчик">
+    <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+  </button>
+</div>
+
+<!-- Головна сцена гри -->
+<div id="game-stage">
+
+  <!-- Деталізований сюжетний SVG-фон: вечірня вулиця, будинки, бруківка, ліхтар -->
+  <svg id="scene-bg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Градієнт вечірнього неба -->
+      <linearGradient id="nightSky" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#090d1e"/>
+        <stop offset="45%" stop-color="#162044"/>
+        <stop offset="85%" stop-color="#2b3363"/>
+        <stop offset="100%" stop-color="#3c3866"/>
+      </linearGradient>
+
+      <!-- Світловий конус від вуличного ліхтаря -->
+      <radialGradient id="lampHalo" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffea85" stop-opacity="0.95"/>
+        <stop offset="35%" stop-color="#ffae34" stop-opacity="0.45"/>
+        <stop offset="70%" stop-color="#ff8c1a" stop-opacity="0.12"/>
+        <stop offset="100%" stop-color="#ff8c1a" stop-opacity="0"/>
+      </radialGradient>
+
+      <linearGradient id="lightCone" x1="50%" y1="0%" x2="50%" y2="100%">
+        <stop offset="0%" stop-color="#ffe57f" stop-opacity="0.45"/>
+        <stop offset="60%" stop-color="#ffb74d" stop-opacity="0.16"/>
+        <stop offset="100%" stop-color="#ffb74d" stop-opacity="0"/>
+      </linearGradient>
+
+      <!-- Тепле світло у вікнах будинків -->
+      <linearGradient id="winGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ffe082"/>
+        <stop offset="100%" stop-color="#ff9800"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Небо -->
+    <rect width="1600" height="900" fill="url(#nightSky)"/>
+
+    <!-- Зірки та півмісяць -->
+    <g opacity="0.85">
+      <path d="M1320 95 A52 52 0 1 0 1385 165 A42 42 0 1 1 1320 95 Z" fill="#fff3b0"/>
+      <circle cx="220" cy="90" r="2.5" fill="#fff9c4"/>
+      <circle cx="480" cy="65" r="3" fill="#ffe082"/>
+      <circle cx="750" cy="110" r="2" fill="#ffffff"/>
+      <circle cx="1040" cy="70" r="3" fill="#fff9c4"/>
+      <circle cx="1180" cy="140" r="2" fill="#ffffff"/>
+      <circle cx="610" cy="160" r="2.5" fill="#ffe082"/>
+      <circle cx="890" cy="55" r="2" fill="#fff9c4"/>
+    </g>
+
+    <!-- Силуети далеких старих європейських/українських будиночків -->
+    <g fill="#121833">
+      <polygon points="0,650 0,340 90,260 180,340 180,650"/>
+      <rect x="175" y="310" width="170" height="340"/>
+      <polygon points="165,310 260,220 355,310"/>
+      <rect x="640" y="330" width="190" height="320"/>
+      <polygon points="630,330 735,235 840,330"/>
+      <rect x="825" y="290" width="210" height="360"/>
+      <polygon points="815,290 930,195 1045,290"/>
+      <rect x="1030" y="350" width="180" height="300"/>
+      <polygon points="1020,350 1120,265 1220,350"/>
+      <rect x="1210" y="300" width="220" height="350"/>
+      <polygon points="1200,300 1320,200 1440,300"/>
+      <rect x="1430" y="340" width="170" height="310"/>
+    </g>
+
+    <!-- Ближчі затишні будинки з черепичними дахами та вікнами -->
+    <g>
+      <!-- Лівий будинок -->
+      <rect x="40" y="370" width="230" height="300" fill="#1c2547" stroke="#10152b" stroke-width="4"/>
+      <polygon points="25,370 155,255 285,370" fill="#3a233b"/>
+      <rect x="75" y="410" width="46" height="65" rx="8" fill="url(#winGlow)"/>
+      <rect x="175" y="410" width="46" height="65" rx="8" fill="url(#winGlow)"/>
+      <line x1="98" y1="410" x2="98" y2="475" stroke="#1c2547" stroke-width="4"/>
+      <line x1="75" y1="442" x2="121" y2="442" stroke="#1c2547" stroke-width="4"/>
+      <line x1="198" y1="410" x2="198" y2="475" stroke="#1c2547" stroke-width="4"/>
+      <line x1="175" y1="442" x2="221" y2="442" stroke="#1c2547" stroke-width="4"/>
+
+      <!-- Центральний будинок -->
+      <rect x="470" y="350" width="220" height="320" fill="#21294e" stroke="#10152b" stroke-width="4"/>
+      <polygon points="455,350 580,240 705,350" fill="#472936"/>
+      <rect x="515" y="400" width="45" height="62" rx="22" fill="url(#winGlow)"/>
+      <rect x="600" y="400" width="45" height="62" rx="22" fill="url(#winGlow)"/>
+      <rect x="550" y="520" width="60" height="110" rx="10" fill="#3b2316" stroke="#f5b942" stroke-width="2"/>
+
+      <!-- Правий будинок -->
+      <rect x="1150" y="330" width="260" height="340" fill="#1a2242" stroke="#0d1226" stroke-width="4"/>
+      <polygon points="1135,330 1280,210 1425,330" fill="#382230"/>
+      <rect x="1200" y="385" width="50" height="68" rx="6" fill="url(#winGlow)"/>
+      <rect x="1310" y="385" width="50" height="68" rx="6" fill="url(#winGlow)"/>
+      <rect x="1310" y="495" width="50" height="68" rx="6" fill="url(#winGlow)"/>
+    </g>
+
+    <!-- Вечірня бруківка та тротуар -->
+    <path d="M0 645 Q800 615 1600 650 L1600 900 L0 900 Z" fill="#1b1f38"/>
+    <path d="M0 665 Q800 635 1600 670 L1600 684 Q800 649 0 679 Z" fill="#323859"/>
+
+    <!-- Камінці бруківки з відблисками ліхтаря -->
+    <g fill="#252b4a" stroke="#14182e" stroke-width="2">
+      <ellipse cx="160" cy="735" rx="48" ry="14"/>
+      <ellipse cx="275" cy="740" rx="54" ry="15"/>
+      <ellipse cx="400" cy="732" rx="50" ry="14" fill="#463f52"/>
+      <ellipse cx="520" cy="742" rx="55" ry="15" fill="#4e4454"/>
+      <ellipse cx="645" cy="735" rx="48" ry="14"/>
+      <ellipse cx="220" cy="785" rx="58" ry="16" fill="#3a3752"/>
+      <ellipse cx="355" cy="792" rx="62" ry="17" fill="#5e4f56"/>
+      <ellipse cx="490" cy="786" rx="56" ry="16" fill="#544754"/>
+      <ellipse cx="620" cy="795" rx="54" ry="16"/>
+      <ellipse cx="290" cy="845" rx="66" ry="18" fill="#4c4354"/>
+      <ellipse cx="440" cy="852" rx="68" ry="18" fill="#635358"/>
+      <ellipse cx="590" cy="846" rx="64" ry="17"/>
+      <ellipse cx="860" cy="760" rx="56" ry="15"/>
+      <ellipse cx="1020" cy="790" rx="62" ry="17"/>
+      <ellipse cx="1220" cy="755" rx="55" ry="15"/>
+      <ellipse cx="1380" cy="820" rx="66" ry="18"/>
+    </g>
+
+    <!-- Кований вуличний ліхтар біля песика-детектива -->
+    <g id="street-lamp">
+      <!-- Конус теплого світла до землі -->
+      <polygon class="lantern-glow" points="355,215 95,890 665,890 405,215" fill="url(#lightCone)"/>
+      <!-- Світлова пляма на бруківці під песиком -->
+      <ellipse class="lantern-glow" cx="380" cy="815" rx="250" ry="62" fill="url(#lampHalo)" opacity="0.55"/>
+
+      <!-- Стовп ліхтаря -->
+      <rect x="118" y="180" width="16" height="560" rx="6" fill="#1b262c" stroke="#0d1317" stroke-width="3"/>
+      <path d="M104 720 L148 720 L162 765 L90 765 Z" fill="#273740" stroke="#0d1317" stroke-width="3"/>
+      <rect x="110" y="430" width="32" height="14" rx="5" fill="#d49b3b"/>
+      <rect x="112" y="260" width="28" height="12" rx="4" fill="#d49b3b"/>
+
+      <!-- Кована дуга кронштейна -->
+      <path d="M130 205 Q240 95 380 155" fill="none" stroke="#1b262c" stroke-width="12" stroke-linecap="round"/>
+      <path d="M132 235 Q215 160 315 160" fill="none" stroke="#d49b3b" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="235" cy="168" r="14" fill="none" stroke="#d49b3b" stroke-width="4"/>
+
+      <!-- Сяйво навколо плафона -->
+      <circle class="lantern-glow" cx="380" cy="210" r="155" fill="url(#lampHalo)"/>
+
+      <!-- Ліхтарний плафон -->
+      <polygon points="350,165 410,165 426,185 334,185" fill="#263238" stroke="#d49b3b" stroke-width="3"/>
+      <polygon points="340,185 420,185 408,245 352,245" fill="#fff59d" stroke="#d49b3b" stroke-width="4"/>
+      <circle cx="380" cy="212" r="16" fill="#ffffff"/>
+      <polygon points="352,245 408,245 380,264" fill="#263238" stroke="#d49b3b" stroke-width="3"/>
+
+      <!-- Нічні метелики/світлячки навколо ліхтаря -->
+      <circle class="firefly" cx="320" cy="195" r="4.5" fill="#fff9c4"/>
+      <circle class="firefly" cx="435" cy="220" r="5" fill="#ffe082"/>
+      <circle class="firefly" cx="365" cy="145" r="4" fill="#fff59d"/>
+    </g>
+  </svg>
+
+  <!-- Зона живого персонажа: Песик-Детектив -->
+  <div id="character-zone">
+    <svg id="detective-svg" class="emotion-curious" viewBox="0 0 520 560">
+      <defs>
+        <linearGradient id="coatGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#c88a4b"/>
+          <stop offset="100%" stop-color="#8c5523"/>
+        </linearGradient>
+        <linearGradient id="capeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#d99b56"/>
+          <stop offset="100%" stop-color="#9e632b"/>
+        </linearGradient>
+        <linearGradient id="furGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#f2b872"/>
+          <stop offset="100%" stop-color="#c47d38"/>
+        </linearGradient>
+        <linearGradient id="hatGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#8d4925"/>
+          <stop offset="100%" stop-color="#542811"/>
+        </linearGradient>
+        <radialGradient id="lensGlass" cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stop-color="#e0f7fa" stop-opacity="0.85"/>
+          <stop offset="65%" stop-color="#80deea" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#26c6da" stop-opacity="0.6"/>
+        </radialGradient>
+      </defs>
+
+      <!-- Тінь під песиком -->
+      <ellipse cx="265" cy="515" rx="135" ry="26" fill="rgba(10, 8, 20, 0.55)"/>
+
+      <!-- Хвіст песика -->
+      <g id="dog-tail">
+        <path d="M185 415 Q115 380 105 325 Q102 302 124 308 Q155 325 195 390 Z" fill="url(#furGrad)" stroke="#5c3312" stroke-width="4.5"/>
+        <path d="M108 328 Q112 306 126 310 Q135 322 122 336 Z" fill="#fff3d6"/>
+      </g>
+
+      <!-- Задні лапки та плащ детектива -->
+      <g id="dog-body">
+        <!-- Черевики детектива -->
+        <ellipse cx="215" cy="500" rx="38" ry="20" fill="#4a2810" stroke="#261305" stroke-width="4"/>
+        <ellipse cx="310" cy="500" rx="38" ry="20" fill="#4a2810" stroke="#261305" stroke-width="4"/>
+        <ellipse cx="205" cy="494" rx="14" ry="6" fill="#7a4924" opacity="0.6"/>
+        <ellipse cx="300" cy="494" rx="14" ry="6" fill="#7a4924" opacity="0.6"/>
+
+        <!-- Тренч-плащ Шерлока -->
+        <path d="M175 305 L155 485 Q262 505 365 485 L340 305 Z" fill="url(#coatGrad)" stroke="#4a2810" stroke-width="4.5"/>
+
+        <!-- Комір та пелерина плаща -->
+        <path d="M152 315 Q140 375 215 390 L260 325 L305 390 Q380 375 368 315 Q315 290 260 295 Q205 290 152 315 Z" fill="url(#capeGrad)" stroke="#4a2810" stroke-width="4.5"/>
+
+        <!-- Краватка-метелик у клітинку -->
+        <polygon points="260,322 232,306 232,338" fill="#c0392b" stroke="#581610" stroke-width="3"/>
+        <polygon points="260,322 288,306 288,338" fill="#c0392b" stroke="#581610" stroke-width="3"/>
+        <circle cx="260" cy="322" r="8" fill="#f39c12" stroke="#581610" stroke-width="2.5"/>
+
+        <!-- Латунні ґудзики на плащі -->
+        <circle cx="242" cy="385" r="7.5" fill="#ffd166" stroke="#5c3312" stroke-width="2.5"/>
+        <circle cx="242" cy="425" r="7.5" fill="#ffd166" stroke="#5c3312" stroke-width="2.5"/>
+        <circle cx="242" cy="465" r="7.5" fill="#ffd166" stroke="#5c3312" stroke-width="2.5"/>
+        <line x1="260" y1="335" x2="260" y2="493" stroke="#4a2810" stroke-width="4"/>
+
+        <!-- Ліва лапка -->
+        <path d="M168 335 Q138 395 170 432 Q192 442 204 420 Q188 385 195 345 Z" fill="url(#capeGrad)" stroke="#4a2810" stroke-width="4"/>
+        <circle cx="182" cy="430" r="18" fill="url(#furGrad)" stroke="#5c3312" stroke-width="4"/>
+      </g>
+
+      <!-- Голова песика-детектива -->
+      <g id="dog-head-group">
+        <!-- Ліве та праве вушка -->
+        <g id="dog-ear-left">
+          <path d="M198 185 Q135 205 132 290 Q135 322 165 312 Q192 290 205 225 Z" fill="#6e3815" stroke="#3d1d08" stroke-width="4.5"/>
+        </g>
+        <g id="dog-ear-right">
+          <path d="M322 185 Q385 205 388 290 Q385 322 355 312 Q328 290 315 225 Z" fill="#6e3815" stroke="#3d1d08" stroke-width="4.5"/>
+        </g>
+
+        <!-- Основа голови та пухнасті щічки -->
+        <path d="M185 205 Q175 145 260 145 Q345 145 335 205 Q365 245 345 288 Q315 320 260 320 Q205 320 175 288 Q155 245 185 205 Z" fill="url(#furGrad)" stroke="#5c3312" stroke-width="4.5"/>
+
+        <!-- Світла маска на мордочці -->
+        <path d="M210 235 Q260 210 310 235 Q335 275 308 304 Q260 320 212 304 Q185 275 210 235 Z" fill="#fff1d0"/>
+
+        <!-- Великі виразні очі (БЕЗ кліпання, лише рух погляду!) -->
+        <g id="eyes-container">
+          <!-- Білки очей -->
+          <ellipse cx="228" cy="222" rx="23" ry="26" fill="#ffffff" stroke="#4a2810" stroke-width="4"/>
+          <ellipse cx="292" cy="222" rx="23" ry="26" fill="#ffffff" stroke="#4a2810" stroke-width="4"/>
+
+          <!-- Група зіниць, яка рандомно переводить погляд -->
+          <g id="pupils-group">
+            <!-- Ліва райдужка та зіниця -->
+            <circle cx="230" cy="224" r="13.5" fill="#5c3312"/>
+            <circle cx="230" cy="224" r="8" fill="#140d06"/>
+            <circle cx="225" cy="218" r="4" fill="#ffffff"/>
+            <circle cx="235" cy="229" r="2" fill="#ffffff"/>
+
+            <!-- Права райдужка та зіниця -->
+            <circle cx="290" cy="224" r="13.5" fill="#5c3312"/>
+            <circle cx="290" cy="224" r="8" fill="#140d06"/>
+            <circle cx="285" cy="218" r="4" fill="#ffffff"/>
+            <circle cx="295" cy="229" r="2" fill="#ffffff"/>
+          </g>
+        </g>
+
+        <!-- Рухливі брови для передачі емоцій -->
+        <path id="brow-left" d="M202 192 Q226 182 246 194" fill="none" stroke="#4a2810" stroke-width="6" stroke-linecap="round"/>
+        <path id="brow-right" d="M274 194 Q294 182 318 192" fill="none" stroke="#4a2810" stroke-width="6" stroke-linecap="round"/>
+
+        <!-- Великий блискучий чорний ніс песика -->
+        <ellipse cx="260" cy="258" rx="22" ry="15" fill="#241914"/>
+        <ellipse cx="253" cy="253" rx="8" ry="4.5" fill="#6e5a53"/>
+
+        <!-- Рот та язичок (змінюються залежно від емоції) -->
+        <path id="dog-mouth" d="M242 282 Q260 294 278 282" fill="none" stroke="#4a2810" stroke-width="4.5" stroke-linecap="round"/>
+        <path id="dog-tongue" d="M251 286 Q260 312 269 286 Z" fill="#ff6b81" stroke="#4a2810" stroke-width="3" opacity="0"/>
+
+        <!-- Вуса-крапочки на мордочці -->
+        <circle cx="218" cy="272" r="2.5" fill="#8c5523"/>
+        <circle cx="208" cy="278" r="2.5" fill="#8c5523"/>
+        <circle cx="302" cy="272" r="2.5" fill="#8c5523"/>
+        <circle cx="312" cy="278" r="2.5" fill="#8c5523"/>
+
+        <!-- Капелюх детектива (кепка Шерлока з ремінцем та значком лупи) -->
+        <g id="detective-hat">
+          <!-- Задній і передній козирки -->
+          <path d="M160 175 Q260 142 360 175 Q335 192 260 185 Q185 192 160 175 Z" fill="#542811" stroke="#2e1406" stroke-width="4"/>
+          <!-- Купол капелюха -->
+          <path d="M180 174 Q190 105 260 105 Q330 105 340 174 Z" fill="url(#hatGrad)" stroke="#2e1406" stroke-width="4"/>
+          <!-- Декоративні лінії клітинки на капелюсі -->
+          <path d="M225 112 Q220 142 218 172" fill="none" stroke="#c88a4b" stroke-width="3" opacity="0.65"/>
+          <path d="M295 112 Q300 142 302 172" fill="none" stroke="#c88a4b" stroke-width="3" opacity="0.65"/>
+          <path d="M190 142 Q260 130 330 142" fill="none" stroke="#c88a4b" stroke-width="3" opacity="0.65"/>
+          <!-- Стрічка і золотий жетон на капелюсі -->
+          <path d="M182 166 Q260 154 338 166" fill="none" stroke="#d49b3b" stroke-width="7"/>
+          <circle cx="260" cy="103" r="8" fill="#d49b3b" stroke="#2e1406" stroke-width="3"/>
+        </g>
+      </g>
+
+      <!-- Права лапа з великою лупою детектива -->
+      <g id="magnifier-arm">
+        <path d="M335 340 Q385 355 405 315 Q418 295 395 282 Q368 295 335 320 Z" fill="url(#capeGrad)" stroke="#4a2810" stroke-width="4"/>
+        <!-- Ручка лупи -->
+        <line x1="398" y1="305" x2="438" y2="235" stroke="#5c3312" stroke-width="14" stroke-linecap="round"/>
+        <line x1="398" y1="305" x2="438" y2="235" stroke="#d49b3b" stroke-width="5" stroke-linecap="round"/>
+        <!-- Лапка, що тримає лупу -->
+        <circle cx="402" cy="296" r="19" fill="url(#furGrad)" stroke="#5c3312" stroke-width="4"/>
+        <!-- Оправа і скло лупи -->
+        <circle cx="452" cy="195" r="46" fill="url(#lensGlass)" stroke="#ffd166" stroke-width="10"/>
+        <circle cx="452" cy="195" r="46" fill="none" stroke="#8c5523" stroke-width="3"/>
+        <!-- Відблиск на склі лупи -->
+        <path d="M425 172 A30 30 0 0 1 462 162" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.85"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Права зона: Дошка доказів зі стовпчиком слів та жетони голосних -->
+  <div id="board-zone">
+    <div id="clue-board"></div>
+    <div id="vowels-tray"></div>
+  </div>
+
+</div>
+
+<!-- Шар для анімованих частинок -->
+<div id="fx-layer"></div>
+
+<script>
+  /* =========================================================================
+     ДАНІ ГРИ НА ДВОХ МОВАХ (УКРАЇНСЬКА ТА РОСІЙСЬКА)
+     Кожен рівень відповідає одному стовпчику (усі пропуски в стовпчику — одна голосна)
+     ========================================================================= */
+  const GAME_DATA = {
+    ua: {
+      vowels: ['а', 'о', 'у', 'е', 'и', 'і'],
+      columns: [
+        { vowel: 'у', words: ['з_б', 'к_щ', 'др_г', 'п_льт', 'б_р_нд_к'] },
+        { vowel: 'о', words: ['сл_н', 'сп_рт', 'б_рщ', 'м_л_к_', 'х_л_д', 'б_л_т_'] },
+        { vowel: 'и', words: ['б_к', 'с_р', 'гр_б_', 'к_л_м', 'с_н_ця'] },
+        { vowel: 'е', words: ['м_д', 'л_в', 'кл_н', 'б_р_г', 'п_р_ць'] },
+        { vowel: 'і', words: ['к_т', 'с_к', 'хл_б', 'п_нгв_н', 'б_скв_т'] },
+        { vowel: 'а', words: ['м_к', 'д_х', 'к_з_н', 'л_мп_', 'б_р_б_н'] }
+      ]
+    },
+    ru: {
+      vowels: ['а', 'о', 'у', 'е', 'ы', 'и'],
+      columns: [
+        { vowel: 'у', words: ['б_к', 'з_б', 'т_л_п', 'с_нд_к', 'б_р_нд_к'] },
+        { vowel: 'о', words: ['б_к', 'г_л', 'с_к_л', 'к_л_с', 'к_л_б_к'] },
+        { vowel: 'ы', words: ['б_к', 'с_р', 'м_ши', 'л_жи', 'в_игр_ш'] },
+        { vowel: 'е', words: ['х_к', 'б_г', 'п_п_л', 'м_б_ль', 'п_р_п_л'] },
+        { vowel: 'и', words: ['к_т', 'р_с', 'п_нгв_н', 'б_скв_т', 'к_рп_ч_'] },
+        { vowel: 'а', words: ['ш_р', 'п_р', 'к_з_к', 'л_мп_', 'к_р_в_й'] }
+      ]
+    }
+  };
+
+  /* Стан гри */
+  let currentLang = 'ua';
+  let currentColIndex = 0;
+  let solvedWords = []; // Масив булевих значень для 5 слів поточного стовпчика
+  let completedCols = { ua: new Set(), ru: new Set() };
+
+  /* Посилання на DOM-елементи */
+  const clueBoard = document.getElementById('clue-board');
+  const vowelsTray = document.getElementById('vowels-tray');
+  const langBtn = document.getElementById('lang-btn');
+  const langLabel = document.getElementById('lang-label');
+  const prevBtn = document.getElementById('prev-btn');
+  const nextBtn = document.getElementById('next-btn');
+  const levelDots = document.getElementById('level-dots');
+  const fxLayer = document.getElementById('fx-layer');
+
+  /* Елементи персонажа для емоцій та погляду */
+  const detectiveSvg = document.getElementById('detective-svg');
+  const pupilsGroup = document.getElementById('pupils-group');
+  const browLeft = document.getElementById('brow-left');
+  const browRight = document.getElementById('brow-right');
+  const dogMouth = document.getElementById('dog-mouth');
+  const dogTongue = document.getElementById('dog-tongue');
+
+  /* =========================================================================
+     СИНТЕЗАТОР ЗВУКІВ (Web Audio API — без зовнішніх файлів і без слів)
+     ========================================================================= */
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  function playSound(type, stepIndex = 0) {
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+
+    if (type === 'pop') {
+      /* Приємний дзвінкий звук відкриття слова у стовпчику */
+      const notes = [392, 440, 493.88, 587.33, 659.25];
+      const freq = notes[stepIndex % notes.length];
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.18);
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    } else if (type === 'wrong') {
+      /* Кумедний пружний звук помилки */
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(210, now);
+      osc.frequency.linearRampToValueAtTime(115, now + 0.28);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.32);
+    } else if (type === 'win') {
+      /* Переможний детективний акорд-фанфара при заповненні всього стовпчика */
+      const chord = [523.25, 659.25, 783.99, 1046.5];
+      chord.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        const start = now + idx * 0.08;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.24, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.55);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.56);
+      });
+    } else if (type === 'click') {
+      /* Легкий звук перемикання */
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(620, now);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+  }
+
+  /* =========================================================================
+     ЖИВИЙ ПЕРСОНАЖ: РАНДОМНИЙ ПОГЛЯД (БЕЗ КЛІПАННЯ) ТА ЗМІНА ЕМОЦІЙ
+     ========================================================================= */
+  function moveGaze(dx, dy) {
+    pupilsGroup.style.transform = `translate(${dx}px, ${dy}px)`;
+  }
+
+  /* Таймер рандомного переведення погляду (песик ніколи не кліпає) */
+  setInterval(() => {
+    const angles = [
+      { x: -7, y: -3 },
+      { x: 8, y: -2 },
+      { x: 6, y: 5 },
+      { x: -6, y: 4 },
+      { x: 0, y: -6 },
+      { x: 9, y: 1 },
+      { x: 0, y: 0 }
+    ];
+    const pick = angles[Math.floor(Math.random() * angles.length)];
+    moveGaze(pick.x, pick.y);
+
+    /* Іноді також змінює базову зацікавлену емоцію під час роздумів */
+    if (!detectiveSvg.classList.contains('emotion-proud')) {
+      const idleEmotions = ['curious', 'thinking'];
+      setDogEmotion(idleEmotions[Math.floor(Math.random() * idleEmotions.length)], false);
+    }
+  }, 1600);
+
+  /* Встановлення емоції песика-детектива */
+  let emotionResetTimer = null;
+  function setDogEmotion(emotion, autoReset = true) {
+    detectiveSvg.className.baseVal = `emotion-${emotion}`;
+
+    if (emotion === 'happy') {
+      browLeft.setAttribute('d', 'M200 184 Q226 172 246 186');
+      browRight.setAttribute('d', 'M274 186 Q294 172 320 184');
+      dogMouth.setAttribute('d', 'M234 278 Q260 308 286 278');
+      dogTongue.setAttribute('opacity', '1');
+      moveGaze(7, -2);
+    } else if (emotion === 'proud') {
+      browLeft.setAttribute('d', 'M200 180 Q226 168 246 184');
+      browRight.setAttribute('d', 'M274 184 Q294 168 320 180');
+      dogMouth.setAttribute('d', 'M230 276 Q260 314 290 276');
+      dogTongue.setAttribute('opacity', '1');
+      moveGaze(5, 0);
+    } else if (emotion === 'surprised') {
+      /* Здивовано піднімає одну брову та округлює рот */
+      browLeft.setAttribute('d', 'M200 175 Q226 162 246 178');
+      browRight.setAttribute('d', 'M274 198 Q294 192 318 198');
+      dogMouth.setAttribute('d', 'M250 286 A10 10 0 1 0 270 286 A10 10 0 1 0 250 286');
+      dogTongue.setAttribute('opacity', '0');
+      moveGaze(-8, -5);
+    } else if (emotion === 'thinking') {
+      browLeft.setAttribute('d', 'M204 194 Q226 188 246 196');
+      browRight.setAttribute('d', 'M274 184 Q294 174 318 186');
+      dogMouth.setAttribute('d', 'M242 284 Q258 280 276 287');
+      dogTongue.setAttribute('opacity', '0');
+    } else {
+      /* curious — уважний пошук */
+      browLeft.setAttribute('d', 'M202 190 Q226 180 246 192');
+      browRight.setAttribute('d', 'M274 192 Q294 180 318 190');
+      dogMouth.setAttribute('d', 'M242 282 Q260 295 278 282');
+      dogTongue.setAttribute('opacity', '0');
+    }
+
+    if (autoReset) {
+      clearTimeout(emotionResetTimer);
+      emotionResetTimer = setTimeout(() => {
+        setDogEmotion('curious', false);
+      }, 1400);
+    }
+  }
+
+  /* =========================================================================
+     ВІЗУАЛЬНІ ЕФЕКТИ ЧАСТИНОК (ЗІРОЧКИ, ЛАПКИ, ДИМОК)
+     ========================================================================= */
+  function spawnParticles(x, y, mode = 'gold') {
+    const count = mode === 'celebrate' ? 22 : 10;
+    for (let i = 0; i < count; i++) {
+      const el = document.createElement('div');
+      el.className = 'particle';
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+      const dist = mode === 'celebrate' ? 90 + Math.random() * 140 : 45 + Math.random() * 65;
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist - (mode === 'celebrate' ? 30 : 10);
+      const rot = (Math.random() - 0.5) * 260;
+
+      el.style.left = `${x - 14}px`;
+      el.style.top = `${y - 14}px`;
+      el.style.setProperty('--dx', `${dx}px`);
+      el.style.setProperty('--dy', `${dy}px`);
+      el.style.setProperty('--rot', `${rot}deg`);
+
+      if (mode === 'smoke') {
+        el.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" fill="#95a5a6" opacity="0.7"/>
+        </svg>`;
+      } else if (i % 2 === 0) {
+        /* Золота зірочка */
+        el.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24">
+          <polygon points="12,2 15,9 22,9.5 16.5,14.5 18.2,22 12,18 5.8,22 7.5,14.5 2,9.5 9,9"
+            fill="#ffd166" stroke="#f39c12" stroke-width="1.5"/>
+        </svg>`;
+      } else {
+        /* Відбиток лапки детектива */
+        el.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24" fill="#ff9f43">
+          <ellipse cx="12" cy="15" rx="5.5" ry="4.5"/>
+          <circle cx="6.5" cy="9.5" r="2.2"/>
+          <circle cx="10" cy="7.5" r="2.2"/>
+          <circle cx="14" cy="7.5" r="2.2"/>
+          <circle cx="17.5" cy="9.5" r="2.2"/>
+        </svg>`;
+      }
+
+      fxLayer.appendChild(el);
+      setTimeout(() => el.remove(), 950);
+    }
+  }
+
+  /* =========================================================================
+     РЕНДЕРИНГ СТОВПЧИКА ТА ГОЛОСНИХ ЛІТЕР
+     ========================================================================= */
+  function renderDots() {
+    levelDots.innerHTML = '';
+    const total = GAME_DATA[currentLang].columns.length;
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      if (i === currentColIndex) dot.classList.add('active');
+      if (completedCols[currentLang].has(i)) dot.classList.add('done');
+      levelDots.appendChild(dot);
+    }
+  }
+
+  function renderSlide() {
+    const langObj = GAME_DATA[currentLang];
+    const colData = langObj.columns[currentColIndex];
+    solvedWords = new Array(colData.words.length).fill(false);
+
+    /* Оновлюємо індикатор точок */
+    renderDots();
+
+    /* Малюємо 5 слів поточного стовпчика */
+    clueBoard.innerHTML = '';
+    colData.words.forEach((pattern, wIdx) => {
+      const row = document.createElement('div');
+      row.className = 'word-row';
+      row.dataset.index = wIdx;
+
+      for (const ch of pattern) {
+        if (ch === '_') {
+          const slot = document.createElement('span');
+          slot.className = 'letter-slot';
+          row.appendChild(slot);
+        } else {
+          const span = document.createElement('span');
+          span.className = 'letter-char';
+          span.textContent = ch;
+          row.appendChild(span);
+        }
+      }
+
+      /* При натисканні на саму картку слова воно підстрибує (зручно для читання з учителем) */
+      row.addEventListener('click', (e) => {
+        const rect = row.getBoundingClientRect();
+        moveGaze(8, (wIdx - 2) * 2);
+        if (solvedWords[wIdx]) {
+          playSound('pop', wIdx);
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, 'gold');
+        }
+      });
+
+      clueBoard.appendChild(row);
+    });
+
+    /* Малюємо кнопки голосних літер */
+    vowelsTray.innerHTML = '';
+    langObj.vowels.forEach((v) => {
+      const btn = document.createElement('button');
+      btn.className = 'vowel-btn';
+      btn.textContent = v;
+      btn.addEventListener('click', (e) => handleVowelClick(v, btn, e));
+      vowelsTray.appendChild(btn);
+    });
+
+    setDogEmotion('curious', false);
+  }
+
+  /* Обробка вибору голосної літери */
+  function handleVowelClick(chosenVowel, btnEl, event) {
+    const colData = GAME_DATA[currentLang].columns[currentColIndex];
+    const btnRect = btnEl.getBoundingClientRect();
+    const clickX = btnRect.left + btnRect.width / 2;
+    const clickY = btnRect.top + btnRect.height / 2;
+
+    if (chosenVowel === colData.vowel) {
+      /* Шукаємо перше ще не заповнене слово у стовпчику */
+      const nextWordIdx = solvedWords.findIndex((s) => !s);
+
+      if (nextWordIdx !== -1) {
+        solvedWords[nextWordIdx] = true;
+        const rowEl = clueBoard.children[nextWordIdx];
+        rowEl.classList.add('word-solved');
+
+        const slots = rowEl.querySelectorAll('.letter-slot');
+        slots.forEach((slot, sIdx) => {
+          setTimeout(() => {
+            slot.textContent = chosenVowel;
+            slot.classList.add('filled');
+          }, sIdx * 90);
+        });
+
+        const rowRect = rowEl.getBoundingClientRect();
+        spawnParticles(rowRect.left + rowRect.width / 2, rowRect.top + rowRect.height / 2, 'gold');
+        playSound('pop', nextWordIdx);
+        setDogEmotion('happy', true);
+
+        /* Перевіряємо, чи весь стовпчик розгадано */
+        if (solvedWords.every(Boolean)) {
+          completedCols[currentLang].add(currentColIndex);
+          renderDots();
+          setTimeout(() => {
+            playSound('win');
+            setDogEmotion('proud', false);
+            const boardRect = clueBoard.getBoundingClientRect();
+            spawnParticles(
+              boardRect.left + boardRect.width / 2,
+              boardRect.top + boardRect.height / 2,
+              'celebrate'
+            );
+          }, 320);
+        }
+      } else {
+        /* Якщо всі слова вже відкриті — повторний салют */
+        playSound('win');
+        setDogEmotion('proud', true);
+        spawnParticles(clickX, clickY, 'celebrate');
+      }
+    } else {
+      /* Неправильна літера: активна реакція без слів */
+      btnEl.classList.remove('wrong-shake');
+      void btnEl.offsetWidth;
+      btnEl.classList.add('wrong-shake');
+      playSound('wrong');
+      spawnParticles(clickX, clickY, 'smoke');
+      setDogEmotion('surprised', true);
+    }
+  }
+
+  /* =========================================================================
+     КНОПКИ НАВІГАЦІЇ ТА ПЕРЕМИКАЧ МОВИ (ОДНА КНОПКА)
+     ========================================================================= */
+  langBtn.addEventListener('click', () => {
+    playSound('click');
+    currentLang = currentLang === 'ua' ? 'ru' : 'ua';
+    langLabel.textContent = currentLang.toUpperCase();
+    currentColIndex = 0;
+    renderSlide();
+  });
+
+  prevBtn.addEventListener('click', () => {
+    playSound('click');
+    const total = GAME_DATA[currentLang].columns.length;
+    currentColIndex = (currentColIndex - 1 + total) % total;
+    renderSlide();
+  });
+
+  nextBtn.addEventListener('click', () => {
+    playSound('click');
+    const total = GAME_DATA[currentLang].columns.length;
+    currentColIndex = (currentColIndex + 1) % total;
+    renderSlide();
+  });
+
+  /* Запуск першого слайда */
+  renderSlide();
+</script>
+</body>
+</html>
