@@ -1,0 +1,2094 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ввічливий Монстрик</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik+Bubbles&family=Nunito:wght@800;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #143628;
+            font-family: 'Nunito', sans-serif;
+        }
+
+        /* Main Widescreen Stage */
+        #game-stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Living Background & FX Canvases */
+        #bg-canvas, #fx-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #bg-canvas {
+            z-index: 1;
+            pointer-events: auto; /* allow clicking interactive background flowers/mushrooms */
+        }
+        #fx-canvas {
+            z-index: 35;
+        }
+
+        /* Main Interactive Content Layout (16:9 friendly) */
+        .stage-content {
+            position: relative;
+            z-index: 15;
+            width: 96%;
+            max-width: 1750px;
+            height: 90%;
+            display: grid;
+            grid-template-columns: 44% 56%;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        @media (max-aspect-ratio: 4/3) {
+            .stage-content {
+                grid-template-columns: 1fr;
+                grid-template-rows: 44% 56%;
+                height: 94%;
+            }
+        }
+
+        /* Monster Container */
+        .monster-zone {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        #monster-wrapper {
+            width: 100%;
+            max-width: 680px;
+            height: 95%;
+            max-height: 680px;
+            cursor: pointer;
+            pointer-events: auto;
+            transform-origin: bottom center;
+            transition: filter 0.3s ease;
+            filter: drop-shadow(0 22px 28px rgba(7, 32, 22, 0.55));
+        }
+
+        #monster-wrapper:hover {
+            filter: drop-shadow(0 26px 34px rgba(255, 196, 54, 0.45));
+        }
+
+        /* Monster Body Idle & Action Animations */
+        @keyframes monsterBreathe {
+            0%, 100% { transform: translateY(0px) scale(1, 1) rotate(0deg); }
+            50% { transform: translateY(-10px) scale(1.02, 0.985) rotate(0.8deg); }
+        }
+        .monster-idle {
+            animation: monsterBreathe 3.4s ease-in-out infinite;
+        }
+
+        @keyframes monsterBounceJoy {
+            0% { transform: scale(1, 1) translateY(0); }
+            20% { transform: scale(1.12, 0.86) translateY(15px); }
+            45% { transform: scale(0.92, 1.14) translateY(-55px) rotate(-4deg); }
+            70% { transform: scale(1.06, 0.94) translateY(8px) rotate(3deg); }
+            85% { transform: scale(0.98, 1.03) translateY(-12px); }
+            100% { transform: scale(1, 1) translateY(0) rotate(0deg); }
+        }
+        .anim-bounce {
+            animation: monsterBounceJoy 0.85s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        @keyframes monsterDanceSway {
+            0% { transform: rotate(0deg) scale(1); }
+            20% { transform: rotate(-9deg) translateX(-18px) scale(1.05, 0.96); }
+            45% { transform: rotate(9deg) translateX(18px) translateY(-20px) scale(0.97, 1.06); }
+            70% { transform: rotate(-6deg) translateX(-12px) scale(1.04, 0.97); }
+            100% { transform: rotate(0deg) scale(1); }
+        }
+        .anim-dance {
+            animation: monsterDanceSway 0.9s ease-in-out;
+        }
+
+        @keyframes monsterPuffProud {
+            0% { transform: scale(1); }
+            35% { transform: scale(1.16, 1.12) translateY(-18px); }
+            70% { transform: scale(1.12, 1.09) translateY(-12px) rotate(2deg); }
+            100% { transform: scale(1); }
+        }
+        .anim-puff {
+            animation: monsterPuffProud 0.9s ease-out;
+        }
+
+        @keyframes monsterJiggle {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            20% { transform: translate(-12px, -15px) rotate(-5deg) scale(1.06); }
+            40% { transform: translate(12px, -25px) rotate(5deg) scale(1.08); }
+            60% { transform: translate(-10px, -10px) rotate(-4deg) scale(1.04); }
+            80% { transform: translate(8px, -5px) rotate(3deg); }
+        }
+        .anim-jiggle {
+            animation: monsterJiggle 0.8s ease-in-out;
+        }
+
+        /* Speech Bubble / Organic Plaque Zone */
+        .speech-zone {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            padding: 1rem;
+        }
+
+        #speech-plaque-container {
+            position: relative;
+            width: 100%;
+            max-width: 960px;
+            aspect-ratio: 16 / 9.2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            pointer-events: auto;
+            transform-origin: left center;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0 24px 32px rgba(9, 30, 22, 0.55));
+        }
+
+        #speech-plaque-container:hover {
+            transform: scale(1.025) rotate(-0.6deg);
+        }
+
+        #speech-plaque-container:active {
+            transform: scale(0.97);
+        }
+
+        @keyframes plaquePopIn {
+            0% { transform: scale(0.65) rotate(-6deg); opacity: 0.3; }
+            60% { transform: scale(1.06) rotate(1.5deg); opacity: 1; }
+            80% { transform: scale(0.98) rotate(-0.5deg); }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .plaque-pop {
+            animation: plaquePopIn 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* Word Text Styling inside Plaque */
+        .word-display-wrapper {
+            position: absolute;
+            inset: 14% 10% 16% 13%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        #word-text {
+            font-family: 'Nunito', sans-serif;
+            font-weight: 900;
+            font-size: clamp(2.8rem, 6.2vw, 6.6rem);
+            line-height: 1.08;
+            letter-spacing: 0.02em;
+            color: #FFF6D6;
+            text-shadow:
+                0 5px 0 #7C2D12,
+                0 10px 0 #451A03,
+                0 14px 24px rgba(0, 0, 0, 0.55);
+            word-break: break-word;
+            transition: transform 0.25s ease;
+        }
+
+        .word-dots {
+            color: #FDE047;
+            display: inline-block;
+            animation: dotsPulse 1.3s ease-in-out infinite;
+            text-shadow:
+                0 5px 0 #854D0E,
+                0 10px 0 #422006,
+                0 0 22px rgba(253, 224, 71, 0.75);
+        }
+
+        .word-revealed-part {
+            color: #67E8F9;
+            display: inline;
+            text-shadow:
+                0 5px 0 #0E7490,
+                0 10px 0 #164E63,
+                0 0 25px rgba(103, 232, 249, 0.8);
+            animation: revealGlow 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes dotsPulse {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-6px) scale(1.08); }
+        }
+
+        @keyframes revealGlow {
+            0% { opacity: 0; transform: scale(0.5); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        /* Single Language Toggle Button (Top Right) */
+        #lang-btn {
+            position: fixed;
+            top: 24px;
+            right: 28px;
+            z-index: 40;
+            width: 118px;
+            height: 68px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+            filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.45));
+        }
+        #lang-btn:hover {
+            transform: scale(1.09) rotate(3deg);
+            filter: drop-shadow(0 14px 22px rgba(251, 191, 36, 0.55));
+        }
+        #lang-btn:active {
+            transform: scale(0.93);
+        }
+
+        /* Minimalist Graphical "Next" Button (Bottom Right / Center-Right) */
+        #next-btn {
+            position: fixed;
+            bottom: 28px;
+            right: 36px;
+            z-index: 40;
+            width: clamp(105px, 11vw, 150px);
+            height: clamp(105px, 11vw, 150px);
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+            transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.28s ease;
+            filter: drop-shadow(0 16px 24px rgba(8, 28, 21, 0.65));
+            animation: nextBtnPulse 2.4s ease-in-out infinite;
+        }
+        #next-btn:hover {
+            transform: scale(1.12) rotate(5deg);
+            filter: drop-shadow(0 20px 30px rgba(250, 204, 21, 0.7));
+        }
+        #next-btn:active {
+            transform: scale(0.9) rotate(-4deg);
+        }
+
+        @keyframes nextBtnPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        /* Smooth transitions for monster facial features */
+        .pupil-group {
+            transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .brow-left, .brow-right {
+            transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .ear-left, .ear-right {
+            transition: transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .arm-left, .arm-right {
+            transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .cheek-blush {
+            transition: opacity 0.35s ease, transform 0.35s ease;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-stage">
+    <!-- Living Tropical Forest Glade Background Canvas -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Main Widescreen Interactive Content -->
+    <div class="stage-content">
+        <!-- Left Column: Huge Expressive Monster -->
+        <div class="monster-zone">
+            <div id="monster-wrapper" class="monster-idle" title="">
+                <svg id="monster-svg" viewBox="0 0 600 620" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <!-- Monster Body Fur Gradient -->
+                        <radialGradient id="monsterBodyGrad" cx="45%" cy="38%" r="62%">
+                            <stop offset="0%" stop-color="#FF8E53"/>
+                            <stop offset="48%" stop-color="#F95738"/>
+                            <stop offset="85%" stop-color="#C81D4E"/>
+                            <stop offset="100%" stop-color="#8A1253"/>
+                        </radialGradient>
+
+                        <!-- Belly Patterned Gradient -->
+                        <radialGradient id="monsterBellyGrad" cx="50%" cy="45%" r="55%">
+                            <stop offset="0%" stop-color="#FFE66D"/>
+                            <stop offset="65%" stop-color="#FFB703"/>
+                            <stop offset="100%" stop-color="#FB8500"/>
+                        </radialGradient>
+
+                        <!-- Horn Striped Gradient -->
+                        <linearGradient id="hornGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#4CC9F0"/>
+                            <stop offset="35%" stop-color="#4895EF"/>
+                            <stop offset="70%" stop-color="#7209B7"/>
+                            <stop offset="100%" stop-color="#3A0CA3"/>
+                        </linearGradient>
+
+                        <!-- Ear Inner Gradient -->
+                        <linearGradient id="earInnerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#FFBE0B"/>
+                            <stop offset="100%" stop-color="#FB5607"/>
+                        </linearGradient>
+
+                        <!-- Sclera Warm Ivory/Amber Gradient (No Stark White!) -->
+                        <radialGradient id="eyeBallGrad" cx="45%" cy="40%" r="58%">
+                            <stop offset="0%" stop-color="#FFFDF0"/>
+                            <stop offset="72%" stop-color="#FEF0BA"/>
+                            <stop offset="100%" stop-color="#F7C873"/>
+                        </radialGradient>
+
+                        <!-- Iris Vibrant Emerald-Turquoise Gradient -->
+                        <radialGradient id="irisGrad" cx="50%" cy="45%" r="55%">
+                            <stop offset="0%" stop-color="#72EFDD"/>
+                            <stop offset="45%" stop-color="#06D6A0"/>
+                            <stop offset="85%" stop-color="#0A9396"/>
+                            <stop offset="100%" stop-color="#005F73"/>
+                        </radialGradient>
+
+                        <!-- Mouth Interior Gradient -->
+                        <linearGradient id="mouthInGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#4A0E2E"/>
+                            <stop offset="100%" stop-color="#800F2F"/>
+                        </linearGradient>
+
+                        <!-- Tongue Gradient -->
+                        <linearGradient id="tongueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#FF758F"/>
+                            <stop offset="100%" stop-color="#FF4D6D"/>
+                        </linearGradient>
+
+                        <!-- Cheek Glow Gradient -->
+                        <radialGradient id="cheekGrad" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stop-color="#FF5D8F" stop-opacity="0.85"/>
+                            <stop offset="60%" stop-color="#FF85A1" stop-opacity="0.45"/>
+                            <stop offset="100%" stop-color="#FF85A1" stop-opacity="0"/>
+                        </radialGradient>
+
+                        <!-- Tooth Warm Cream Gradient -->
+                        <linearGradient id="toothGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#FFF9DB"/>
+                            <stop offset="100%" stop-color="#FDE68A"/>
+                        </linearGradient>
+                    </defs>
+
+                    <!-- Ground Shadow under Monster -->
+                    <ellipse cx="300" cy="585" rx="185" ry="26" fill="rgba(7, 29, 19, 0.55)"/>
+
+                    <!-- Striped Tail Wagging Behind -->
+                    <g id="monster-tail" style="transform-origin: 410px 490px;">
+                        <path d="M 400 495 C 495 510, 560 445, 535 375 C 518 330, 470 355, 488 395 C 500 420, 465 455, 415 455 Z"
+                              fill="url(#hornGrad)" stroke="#3B0764" stroke-width="6" stroke-linejoin="round"/>
+                        <circle cx="532" cy="365" r="24" fill="#FFBE0B" stroke="#7C2D12" stroke-width="5"/>
+                        <circle cx="525" cy="358" r="8" fill="#FDE047"/>
+                    </g>
+
+                    <!-- Left & Right Expressive Fuzzy Ears -->
+                    <g id="ear-left" class="ear-left" style="transform-origin: 145px 210px;">
+                        <path d="M 155 225 C 65 190, 20 120, 55 75 C 85 38, 155 95, 185 175 Z"
+                              fill="url(#monsterBodyGrad)" stroke="#581C87" stroke-width="7" stroke-linejoin="round"/>
+                        <path d="M 142 202 C 85 175, 55 125, 75 95 C 95 70, 140 115, 165 175 Z"
+                              fill="url(#earInnerGrad)"/>
+                        <!-- Ear Tufts -->
+                        <path d="M 52 75 Q 28 55 45 42 Q 62 55 72 65" fill="#FFBE0B" stroke="#581C87" stroke-width="5" stroke-linejoin="round"/>
+                    </g>
+
+                    <g id="ear-right" class="ear-right" style="transform-origin: 455px 210px;">
+                        <path d="M 445 225 C 535 190, 580 120, 545 75 C 515 38, 445 95, 415 175 Z"
+                              fill="url(#monsterBodyGrad)" stroke="#581C87" stroke-width="7" stroke-linejoin="round"/>
+                        <path d="M 458 202 C 515 175, 545 125, 525 95 C 505 70, 460 115, 435 175 Z"
+                              fill="url(#earInnerGrad)"/>
+                        <!-- Ear Tufts -->
+                        <path d="M 548 75 Q 572 55 555 42 Q 538 55 528 65" fill="#FFBE0B" stroke="#581C87" stroke-width="5" stroke-linejoin="round"/>
+                    </g>
+
+                    <!-- Funny Curved Striped Horns -->
+                    <g id="horns-group">
+                        <!-- Left Horn -->
+                        <path d="M 215 125 C 175 45, 110 25, 95 68 C 85 95, 128 112, 142 90 C 155 72, 178 95, 182 140 Z"
+                              fill="url(#hornGrad)" stroke="#311042" stroke-width="6" stroke-linejoin="round"/>
+                        <path d="M 155 62 Q 168 82 152 98" stroke="#FDE047" stroke-width="6" fill="none" stroke-linecap="round"/>
+                        <path d="M 182 82 Q 195 102 178 122" stroke="#FDE047" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+                        <!-- Right Horn -->
+                        <path d="M 385 125 C 425 45, 490 25, 505 68 C 515 95, 472 112, 458 90 C 445 72, 422 95, 418 140 Z"
+                              fill="url(#hornGrad)" stroke="#311042" stroke-width="6" stroke-linejoin="round"/>
+                        <path d="M 445 62 Q 432 82 448 98" stroke="#FDE047" stroke-width="6" fill="none" stroke-linecap="round"/>
+                        <path d="M 418 82 Q 405 102 422 122" stroke="#FDE047" stroke-width="6" fill="none" stroke-linecap="round"/>
+                    </g>
+
+                    <!-- Monster Feet with Cute Claws -->
+                    <g id="feet-group">
+                        <!-- Left Foot -->
+                        <path d="M 155 535 C 125 535, 110 568, 130 582 C 165 592, 225 592, 245 578 C 258 565, 245 535, 210 535 Z"
+                              fill="url(#hornGrad)" stroke="#311042" stroke-width="6"/>
+                        <circle cx="145" cy="575" r="11" fill="#FDE047" stroke="#311042" stroke-width="4"/>
+                        <circle cx="178" cy="580" r="12" fill="#FDE047" stroke="#311042" stroke-width="4"/>
+                        <circle cx="212" cy="577" r="11" fill="#FDE047" stroke="#311042" stroke-width="4"/>
+
+                        <!-- Right Foot -->
+                        <path d="M 390 535 C 355 535, 342 565, 355 578 C 375 592, 435 592, 470 582 C 490 568, 475 535, 445 535 Z"
+                              fill="url(#hornGrad)" stroke="#311042" stroke-width="6"/>
+                        <circle cx="388" cy="577" r="11" fill="#FDE047" stroke="#311042" stroke-width="4"/>
+                        <circle cx="422" cy="580" r="12" fill="#FDE047" stroke="#311042" stroke-width="4"/>
+                        <circle cx="455" cy="575" r="11" fill="#FDE047" stroke="#311042" stroke-width="4"/>
+                    </g>
+
+                    <!-- Main Fluffy Pear-Shaped Monster Body -->
+                    <path id="monster-body"
+                          d="M 300 95
+                             C 415 95, 475 180, 488 305
+                             C 502 435, 468 548, 385 558
+                             C 335 565, 265 565, 215 558
+                             C 132 548, 98 435, 112 305
+                             C 125 180, 185 95, 300 95 Z"
+                          fill="url(#monsterBodyGrad)" stroke="#4A0E2E" stroke-width="8" stroke-linejoin="round"/>
+
+                    <!-- Top Fluffy Hair Crown Tuft -->
+                    <path d="M 255 104 C 260 65, 285 55, 298 85 C 310 50, 342 58, 335 95 C 355 72, 375 88, 355 110 Z"
+                          fill="#FFBE0B" stroke="#4A0E2E" stroke-width="6" stroke-linejoin="round"/>
+
+                    <!-- Decorative Colorful Spots on Monster Fur -->
+                    <g opacity="0.88">
+                        <circle cx="152" cy="295" r="22" fill="#FFBE0B"/>
+                        <circle cx="138" cy="360" r="15" fill="#7209B7"/>
+                        <circle cx="165" cy="435" r="26" fill="#3A86FF"/>
+                        <circle cx="140" cy="490" r="14" fill="#FFBE0B"/>
+
+                        <circle cx="448" cy="295" r="22" fill="#3A86FF"/>
+                        <circle cx="462" cy="365" r="16" fill="#FFBE0B"/>
+                        <circle cx="435" cy="435" r="25" fill="#7209B7"/>
+                        <circle cx="458" cy="492" r="15" fill="#06D6A0"/>
+                    </g>
+
+                    <!-- Patterned Belly Patch with Scalloped Stripes -->
+                    <path d="M 300 345
+                             C 375 345, 412 395, 408 468
+                             C 404 528, 360 550, 300 550
+                             C 240 550, 196 528, 192 468
+                             C 188 395, 225 345, 300 345 Z"
+                          fill="url(#monsterBellyGrad)" stroke="#7C2D12" stroke-width="6"/>
+                    <!-- Belly Chevron Patterns -->
+                    <path d="M 225 415 Q 262 440 300 415 Q 338 440 375 415" fill="none" stroke="#F95738" stroke-width="7" stroke-linecap="round"/>
+                    <path d="M 215 462 Q 258 490 300 462 Q 342 490 385 462" fill="none" stroke="#F95738" stroke-width="7" stroke-linecap="round"/>
+                    <path d="M 235 510 Q 268 532 300 510 Q 332 532 365 510" fill="none" stroke="#F95738" stroke-width="7" stroke-linecap="round"/>
+
+                    <!-- Left & Right Expressive Arms -->
+                    <g id="arm-left" class="arm-left" style="transform-origin: 125px 340px;">
+                        <path d="M 122 325 C 55 345, 25 415, 62 455 C 88 482, 132 450, 125 395 Z"
+                              fill="url(#monsterBodyGrad)" stroke="#4A0E2E" stroke-width="7" stroke-linejoin="round"/>
+                        <circle cx="58" cy="438" r="10" fill="#FDE047" stroke="#4A0E2E" stroke-width="4"/>
+                        <circle cx="76" cy="456" r="10" fill="#FDE047" stroke="#4A0E2E" stroke-width="4"/>
+                    </g>
+
+                    <g id="arm-right" class="arm-right" style="transform-origin: 475px 340px;">
+                        <path d="M 478 325 C 545 345, 575 415, 538 455 C 512 482, 468 450, 475 395 Z"
+                              fill="url(#monsterBodyGrad)" stroke="#4A0E2E" stroke-width="7" stroke-linejoin="round"/>
+                        <circle cx="542" cy="438" r="10" fill="#FDE047" stroke="#4A0E2E" stroke-width="4"/>
+                        <circle cx="524" cy="456" r="10" fill="#FDE047" stroke="#4A0E2E" stroke-width="4"/>
+                    </g>
+
+                    <!-- Cheek Blush Glows -->
+                    <g id="cheeks-group" class="cheek-blush" opacity="0.7">
+                        <ellipse id="cheek-l" cx="172" cy="285" rx="36" ry="22" fill="url(#cheekGrad)"/>
+                        <ellipse id="cheek-r" cx="428" cy="285" rx="36" ry="22" fill="url(#cheekGrad)"/>
+                    </g>
+
+                    <!-- ===================================================== -->
+                    <!-- HUGE EXPRESSIVE EYES (CRITICAL: NEVER BLINKS!)        -->
+                    <!-- Always wide open, constantly shifting gaze smoothly   -->
+                    <!-- ===================================================== -->
+                    <g id="eyes-section">
+                        <!-- Left Eye Socket Rim -->
+                        <circle cx="232" cy="212" r="58" fill="#7C2D12" opacity="0.35"/>
+                        <circle cx="232" cy="208" r="54" fill="url(#eyeBallGrad)" stroke="#4A0E2E" stroke-width="7"/>
+
+                        <!-- Right Eye Socket Rim -->
+                        <circle cx="368" cy="212" r="58" fill="#7C2D12" opacity="0.35"/>
+                        <circle cx="368" cy="208" r="54" fill="url(#eyeBallGrad)" stroke="#4A0E2E" stroke-width="7"/>
+
+                        <!-- Left Moving Iris & Pupil Group -->
+                        <g id="pupil-left" class="pupil-group">
+                            <circle cx="232" cy="208" r="31" fill="url(#irisGrad)" stroke="#003545" stroke-width="3.5"/>
+                            <!-- Iris Radial Detail -->
+                            <circle cx="232" cy="208" r="23" fill="none" stroke="#99F6E4" stroke-width="2" stroke-dasharray="4 6" opacity="0.7"/>
+                            <circle cx="232" cy="208" r="15" fill="#0F172A"/>
+                            <!-- Catchlights (Warm Cream/Gold so it gleams vividly) -->
+                            <circle cx="221" cy="196" r="9" fill="#FFFBEB"/>
+                            <circle cx="242" cy="218" r="4.5" fill="#FDE68A"/>
+                        </g>
+
+                        <!-- Right Moving Iris & Pupil Group -->
+                        <g id="pupil-right" class="pupil-group">
+                            <circle cx="368" cy="208" r="31" fill="url(#irisGrad)" stroke="#003545" stroke-width="3.5"/>
+                            <!-- Iris Radial Detail -->
+                            <circle cx="368" cy="208" r="23" fill="none" stroke="#99F6E4" stroke-width="2" stroke-dasharray="4 6" opacity="0.7"/>
+                            <circle cx="368" cy="208" r="15" fill="#0F172A"/>
+                            <!-- Catchlights -->
+                            <circle cx="357" cy="196" r="9" fill="#FFFBEB"/>
+                            <circle cx="378" cy="218" r="4.5" fill="#FDE68A"/>
+                        </g>
+                    </g>
+
+                    <!-- Cute Button Nose -->
+                    <ellipse cx="300" cy="252" rx="18" ry="12" fill="#7209B7" stroke="#311042" stroke-width="4.5"/>
+                    <ellipse cx="294" cy="248" rx="6" ry="3.5" fill="#C77DFF"/>
+
+                    <!-- Expressive Fluffy Eyebrows -->
+                    <g id="eyebrows-section">
+                        <g id="brow-left" class="brow-left" style="transform-origin: 230px 145px;">
+                            <path d="M 172 152 Q 230 124 275 148" fill="none" stroke="#311042" stroke-width="16" stroke-linecap="round"/>
+                            <path d="M 172 152 Q 230 124 275 148" fill="none" stroke="#FFBE0B" stroke-width="9" stroke-linecap="round"/>
+                        </g>
+                        <g id="brow-right" class="brow-right" style="transform-origin: 370px 145px;">
+                            <path d="M 325 148 Q 370 124 428 152" fill="none" stroke="#311042" stroke-width="16" stroke-linecap="round"/>
+                            <path d="M 325 148 Q 370 124 428 152" fill="none" stroke="#FFBE0B" stroke-width="9" stroke-linecap="round"/>
+                        </g>
+                    </g>
+
+                    <!-- ===================================================== -->
+                    <!-- 8 DISTINCT FACIAL EXPRESSIONS (MOUTHS)                -->
+                    <!-- ===================================================== -->
+                    <g id="mouths-container">
+                        <!-- 0: Big Cheerful Grin -->
+                        <g id="mouth-0" class="mouth-expr">
+                            <path d="M 210 282 Q 300 365 390 282 Q 375 375 300 375 Q 225 375 210 282 Z"
+                                  fill="url(#mouthInGrad)" stroke="#4A0E2E" stroke-width="7" stroke-linejoin="round"/>
+                            <!-- Cute Upper Teeth -->
+                            <path d="M 238 302 L 252 332 L 268 307 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4" stroke-linejoin="round"/>
+                            <path d="M 332 307 L 348 332 L 362 302 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4" stroke-linejoin="round"/>
+                            <!-- Tongue -->
+                            <path d="M 252 350 Q 300 322 348 350 Q 328 374 300 374 Q 272 374 252 350 Z" fill="url(#tongueGrad)"/>
+                        </g>
+
+                        <!-- 1: Surprised "O" Mouth -->
+                        <g id="mouth-1" class="mouth-expr" style="display: none;">
+                            <ellipse cx="300" cy="325" rx="42" ry="48" fill="url(#mouthInGrad)" stroke="#4A0E2E" stroke-width="7"/>
+                            <path d="M 272 352 Q 300 330 328 352 Q 315 372 300 372 Q 285 372 272 352 Z" fill="url(#tongueGrad)"/>
+                            <path d="M 282 280 L 292 298 L 302 280 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="3.5"/>
+                        </g>
+
+                        <!-- 2: Silly Smile with Tongue Sticking Out to the Side -->
+                        <g id="mouth-2" class="mouth-expr" style="display: none;">
+                            <path d="M 215 295 Q 300 345 385 288" fill="none" stroke="#4A0E2E" stroke-width="10" stroke-linecap="round"/>
+                            <!-- Big Playful Side Tongue -->
+                            <path d="M 305 316 C 315 378, 378 382, 372 325 C 368 305, 345 304, 305 316 Z"
+                                  fill="url(#tongueGrad)" stroke="#4A0E2E" stroke-width="6" stroke-linejoin="round"/>
+                            <path d="M 336 315 Q 346 346 342 358" fill="none" stroke="#C9184A" stroke-width="4" stroke-linecap="round"/>
+                            <!-- Single Cute Fang -->
+                            <path d="M 240 307 L 252 332 L 266 314 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                        </g>
+
+                        <!-- 3: Curious / Thoughtful Tilted Mouth -->
+                        <g id="mouth-3" class="mouth-expr" style="display: none;">
+                            <path d="M 235 318 C 275 325, 325 285, 375 302" fill="none" stroke="#4A0E2E" stroke-width="10" stroke-linecap="round"/>
+                            <path d="M 335 296 L 348 320 L 362 299 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4" stroke-linejoin="round"/>
+                        </g>
+
+                        <!-- 4: Proud Beaming Smile with Puffed Cheeks -->
+                        <g id="mouth-4" class="mouth-expr" style="display: none;">
+                            <path d="M 205 292 Q 300 358 395 292" fill="none" stroke="#4A0E2E" stroke-width="10" stroke-linecap="round"/>
+                            <!-- Puffed Cheek Arcs -->
+                            <path d="M 188 275 Q 170 295 192 315" fill="none" stroke="#4A0E2E" stroke-width="7" stroke-linecap="round"/>
+                            <path d="M 412 275 Q 430 295 408 315" fill="none" stroke="#4A0E2E" stroke-width="7" stroke-linecap="round"/>
+                            <!-- Bottom Underbite Tooth -->
+                            <path d="M 268 322 L 280 298 L 294 324 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                            <path d="M 306 324 L 320 298 L 332 322 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                        </g>
+
+                        <!-- 5: Excited Wide Open Laugh with Monster Teeth -->
+                        <g id="mouth-5" class="mouth-expr" style="display: none;">
+                            <path d="M 198 278 C 250 268, 350 268, 402 278 C 412 355, 360 392, 300 392 C 240 392, 188 355, 198 278 Z"
+                                  fill="url(#mouthInGrad)" stroke="#4A0E2E" stroke-width="8" stroke-linejoin="round"/>
+                            <!-- Row of Cute Monster Teeth -->
+                            <path d="M 225 276 L 238 308 L 254 275 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                            <path d="M 285 272 L 300 306 L 315 272 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                            <path d="M 346 275 L 362 308 L 375 276 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                            <!-- Bottom Teeth -->
+                            <path d="M 250 378 L 264 352 L 278 384 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                            <path d="M 322 384 L 336 352 L 350 378 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                            <!-- Big Happy Tongue -->
+                            <path d="M 248 356 Q 300 318 352 356 Q 330 388 300 388 Q 270 388 248 356 Z" fill="url(#tongueGrad)"/>
+                        </g>
+
+                        <!-- 6: Shy / Bashful Wavy Smile -->
+                        <g id="mouth-6" class="mouth-expr" style="display: none;">
+                            <path d="M 228 308 Q 264 335 300 308 Q 336 335 372 308"
+                                  fill="none" stroke="#4A0E2E" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M 255 319 L 266 340 L 278 318 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                        </g>
+
+                        <!-- 7: Playful Crooked Smirk -->
+                        <g id="mouth-7" class="mouth-expr" style="display: none;">
+                            <path d="M 220 318 Q 315 332 392 275 Q 382 342 315 345 Q 255 345 220 318 Z"
+                                  fill="url(#mouthInGrad)" stroke="#4A0E2E" stroke-width="7" stroke-linejoin="round"/>
+                            <path d="M 345 296 L 360 326 L 376 286 Z" fill="url(#toothGrad)" stroke="#4A0E2E" stroke-width="4"/>
+                            <path d="M 285 342 Q 325 320 362 332 Q 342 345 315 345 Z" fill="url(#tongueGrad)"/>
+                        </g>
+                    </g>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Right Column: Stylized Patterned Speech Bubble Plaque (NO WHITE RECTANGLES!) -->
+        <div class="speech-zone">
+            <div id="speech-plaque-container">
+                <svg viewBox="0 0 920 530" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <!-- Outer Leafy/Amber Frame Gradient -->
+                        <linearGradient id="plaqueFrameGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#FFCF33"/>
+                            <stop offset="50%" stop-color="#FF8811"/>
+                            <stop offset="100%" stop-color="#D9381E"/>
+                        </linearGradient>
+
+                        <!-- Inner Rich Berry-Plum & Teal Patterned Surface (Zero White!) -->
+                        <radialGradient id="plaqueInnerGrad" cx="50%" cy="42%" r="65%">
+                            <stop offset="0%" stop-color="#7B2CBF"/>
+                            <stop offset="55%" stop-color="#5A189A"/>
+                            <stop offset="100%" stop-color="#3C096C"/>
+                        </radialGradient>
+
+                        <!-- Decorative Polka/Star Pattern on Speech Bubble -->
+                        <pattern id="plaquePattern" width="70" height="70" patternUnits="userSpaceOnUse">
+                            <circle cx="20" cy="20" r="8" fill="#9D4EDD" opacity="0.32"/>
+                            <circle cx="55" cy="52" r="12" fill="#FF9E00" opacity="0.18"/>
+                            <path d="M 52 12 L 56 20 L 64 22 L 56 26 L 52 34 L 48 26 L 40 22 L 48 20 Z" fill="#4CC9F0" opacity="0.25"/>
+                        </pattern>
+
+                        <!-- Leaf Ornament Gradient -->
+                        <linearGradient id="leafOrnGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#80ED99"/>
+                            <stop offset="100%" stop-color="#10B981"/>
+                        </linearGradient>
+                    </defs>
+
+                    <!-- Speech Bubble Tail Pointing Towards Monster -->
+                    <path d="M 125 320 C 65 340, 28 318, 12 285 C 48 282, 85 268, 125 235 Z"
+                          fill="url(#plaqueFrameGrad)" stroke="#451A03" stroke-width="10" stroke-linejoin="round"/>
+
+                    <!-- Organic Cloud/Wood/Crystal Plaque Outer Border -->
+                    <path d="M 145 72
+                             C 245 25, 415 32, 515 48
+                             C 635 28, 795 38, 848 115
+                             C 898 188, 895 335, 842 418
+                             C 785 495, 625 495, 495 478
+                             C 365 498, 205 492, 138 418
+                             C 82 355, 82 185, 145 72 Z"
+                          fill="url(#plaqueFrameGrad)" stroke="#451A03" stroke-width="11" stroke-linejoin="round"/>
+
+                    <!-- Inner Patterned Colorful Canvas of Plaque -->
+                    <path d="M 168 96
+                             C 258 55, 415 62, 512 76
+                             C 622 58, 768 68, 818 135
+                             C 862 198, 860 325, 812 396
+                             C 762 464, 615 464, 495 448
+                             C 375 466, 225 462, 162 396
+                             C 112 340, 112 195, 168 96 Z"
+                          fill="url(#plaqueInnerGrad)" stroke="#FFBE0B" stroke-width="6"/>
+
+                    <!-- Overlay Pattern on Inner Plaque -->
+                    <path d="M 168 96
+                             C 258 55, 415 62, 512 76
+                             C 622 58, 768 68, 818 135
+                             C 862 198, 860 325, 812 396
+                             C 762 464, 615 464, 495 448
+                             C 375 466, 225 462, 162 396
+                             C 112 340, 112 195, 168 96 Z"
+                          fill="url(#plaquePattern)"/>
+
+                    <!-- Decorative Inner Dashed Gold Stitch -->
+                    <path d="M 188 118
+                             C 272 82, 415 88, 508 100
+                             C 610 85, 742 92, 790 152
+                             C 830 208, 828 315, 785 376
+                             C 740 436, 608 436, 495 422
+                             C 382 438, 242 435, 185 376
+                             C 140 325, 140 205, 188 118 Z"
+                          fill="none" stroke="#FDE047" stroke-width="4" stroke-dasharray="16 14" opacity="0.65"/>
+
+                    <!-- Tropical Leaf & Berry Corner Ornaments -->
+                    <g>
+                        <!-- Top Left Leaves -->
+                        <path d="M 145 92 C 110 55, 155 20, 195 65 C 175 85, 155 92, 145 92 Z" fill="url(#leafOrnGrad)" stroke="#064E3B" stroke-width="5"/>
+                        <path d="M 185 68 C 195 25, 240 30, 225 75 Z" fill="#34D399" stroke="#064E3B" stroke-width="5"/>
+                        <circle cx="178" cy="82" r="11" fill="#F43F5E" stroke="#4C0519" stroke-width="4"/>
+
+                        <!-- Bottom Right Leaves -->
+                        <path d="M 832 412 C 875 435, 845 485, 795 442 Z" fill="url(#leafOrnGrad)" stroke="#064E3B" stroke-width="5"/>
+                        <path d="M 798 442 C 795 488, 745 482, 762 438 Z" fill="#34D399" stroke="#064E3B" stroke-width="5"/>
+                        <circle cx="808" cy="425" r="12" fill="#F43F5E" stroke="#4C0519" stroke-width="4"/>
+                        <circle cx="785" cy="442" r="9" fill="#FBbf24" stroke="#451A03" stroke-width="4"/>
+                    </g>
+                </svg>
+
+                <!-- Truncated Polite Word Display -->
+                <div class="word-display-wrapper">
+                    <div id="word-text"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Single Language Switcher Button (УКР / РУС) -->
+    <button id="lang-btn" aria-label="Switch Language">
+        <svg viewBox="0 0 130 76" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="langBtnGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#06D6A0"/>
+                    <stop offset="100%" stop-color="#118AB2"/>
+                </linearGradient>
+            </defs>
+            <path d="M 22 10 C 52 4, 78 4, 108 10 C 122 18, 125 58, 108 66 C 78 72, 52 72, 22 66 C 5 58, 8 18, 22 10 Z"
+                  fill="url(#langBtnGrad)" stroke="#073B4C" stroke-width="6"/>
+            <path d="M 26 16 C 52 11, 78 11, 104 16" fill="none" stroke="#A7F3D0" stroke-width="4" stroke-linecap="round"/>
+            <text id="lang-label" x="65" y="49" text-anchor="middle" fill="#FFFBEB"
+                  font-family="Nunito, sans-serif" font-weight="900" font-size="30"
+                  stroke="#073B4C" stroke-width="5" paint-order="stroke">УКР</text>
+        </svg>
+    </button>
+
+    <!-- Minimalist Graphical "Next" Button (No Words, Pure Stylized SVG Icon) -->
+    <button id="next-btn" aria-label="Next Polite Word">
+        <svg viewBox="0 0 140 140" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <radialGradient id="nextBtnGrad" cx="40%" cy="35%" r="65%">
+                    <stop offset="0%" stop-color="#FFE66D"/>
+                    <stop offset="55%" stop-color="#FF9F1C"/>
+                    <stop offset="100%" stop-color="#E71D36"/>
+                </radialGradient>
+                <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#FFFBEB"/>
+                    <stop offset="100%" stop-color="#FDE047"/>
+                </linearGradient>
+            </defs>
+            <!-- Scalloped Starburst Outer Ring -->
+            <circle cx="70" cy="70" r="62" fill="#451A03"/>
+            <circle cx="70" cy="70" r="56" fill="url(#nextBtnGrad)" stroke="#FDE047" stroke-width="5"/>
+            <!-- Decorative Dots Around Button Rim -->
+            <circle cx="70" cy="22" r="4.5" fill="#FFFBEB" opacity="0.8"/>
+            <circle cx="118" cy="70" r="4.5" fill="#FFFBEB" opacity="0.8"/>
+            <circle cx="70" cy="118" r="4.5" fill="#FFFBEB" opacity="0.8"/>
+            <circle cx="22" cy="70" r="4.5" fill="#FFFBEB" opacity="0.8"/>
+            <!-- Bold Graphical Forward Arrow Icon -->
+            <path d="M 38 48 L 68 70 L 38 92 Z" fill="url(#arrowGrad)" stroke="#451A03" stroke-width="6" stroke-linejoin="round"/>
+            <path d="M 68 44 L 106 70 L 68 96 Z" fill="url(#arrowGrad)" stroke="#451A03" stroke-width="6" stroke-linejoin="round"/>
+        </svg>
+    </button>
+
+    <!-- Active Celebration Particle & Soundwave Foreground Canvas -->
+    <canvas id="fx-canvas"></canvas>
+</div>
+
+<script>
+/**
+ * ============================================================================
+ * POLITE WORDS DATABASE (25 UKRAINIAN + 25 RUSSIAN)
+ * Truncated prompt + Full word for optional click-to-reveal verification
+ * ============================================================================
+ */
+const POLITE_WORDS = {
+    uk: [
+        { short: "Дяк", full: "Дякую!" },
+        { short: "Будь ла", full: "Будь ласка!" },
+        { short: "Виба", full: "Вибачте!" },
+        { short: "Добрий де", full: "Добрий день!" },
+        { short: "Доброго ра", full: "Доброго ранку!" },
+        { short: "Добрий ве", full: "Добрий вечір!" },
+        { short: "До поба", full: "До побачення!" },
+        { short: "На до", full: "На добраніч!" },
+        { short: "Смач", full: "Смачного!" },
+        { short: "Проба", full: "Пробачте!" },
+        { short: "Віта", full: "Вітаю!" },
+        { short: "Здоро", full: "Здоровенькі були!" },
+        { short: "Щиро дя", full: "Щиро дякую!" },
+        { short: "Перепро", full: "Перепрошую!" },
+        { short: "До зустрі", full: "До зустрічі!" },
+        { short: "Будьте здо", full: "Будьте здорові!" },
+        { short: "Ласкаво про", full: "Ласкаво просимо!" },
+        { short: "Всього най", full: "Всього найкращого!" },
+        { short: "Приєм", full: "Приємного дня!" },
+        { short: "Дякую за до", full: "Дякую за допомогу!" },
+        { short: "Будьте лас", full: "Будьте ласкаві!" },
+        { short: "З пова", full: "З повагою!" },
+        { short: "Щасли", full: "Щасливої дороги!" },
+        { short: "Дозво", full: "Дозвольте!" },
+        { short: "Радий ба", full: "Радий бачити!" }
+    ],
+    ru: [
+        { short: "Спас", full: "Спасибо!" },
+        { short: "Пожа", full: "Пожалуйста!" },
+        { short: "Изви", full: "Извините!" },
+        { short: "Добрый де", full: "Добрый день!" },
+        { short: "Доброе ут", full: "Доброе утро!" },
+        { short: "Добрый ве", full: "Добрый вечер!" },
+        { short: "До сви", full: "До свидания!" },
+        { short: "Спокойной но", full: "Спокойной ночи!" },
+        { short: "Приятного ап", full: "Приятного аппетита!" },
+        { short: "Прос", full: "Простите!" },
+        { short: "Здрав", full: "Здравствуйте!" },
+        { short: "Благо", full: "Благодарю!" },
+        { short: "Всего доб", full: "Всего доброго!" },
+        { short: "До встре", full: "До встречи!" },
+        { short: "Будьте здо", full: "Будьте здоровы!" },
+        { short: "Добро пожа", full: "Добро пожаловать!" },
+        { short: "Всего хоро", full: "Всего хорошего!" },
+        { short: "Большое спа", full: "Большое спасибо!" },
+        { short: "Будьте лю", full: "Будьте любезны!" },
+        { short: "С уваже", full: "С уважением!" },
+        { short: "Счастливого пу", full: "Счастливого пути!" },
+        { short: "Разре", full: "Разрешите!" },
+        { short: "Рад ви", full: "Рад видеть!" },
+        { short: "Хорошего дн", full: "Хорошего дня!" },
+        { short: "Не за ч", full: "Не за что!" }
+    ]
+};
+
+/**
+ * ============================================================================
+ * WEB AUDIO API SYNTHESIZER (6 Distinct Celebrations + Monster Babble/Giggle)
+ * ============================================================================
+ */
+class SoundEngine {
+    constructor() {
+        this.ctx = null;
+    }
+
+    init() {
+        if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
+
+    // Play a single synthesized musical note
+    playTone(freq, type, duration, delay = 0, vol = 0.16, slideFreq = null) {
+        this.init();
+        const now = this.ctx.currentTime + delay;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (slideFreq) {
+            osc.frequency.exponentialRampToValueAtTime(slideFreq, now + duration);
+        }
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(vol, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+    }
+
+    // Funny non-verbal monster babble / purr / giggle when monster is clicked or emotes
+    playMonsterVoice(variant = 0) {
+        this.init();
+        const v = variant % 4;
+        if (v === 0) {
+            // Happy bubbly giggle
+            const notes = [280, 390, 320, 460, 520];
+            notes.forEach((f, i) => {
+                this.playTone(f, 'triangle', 0.11, i * 0.065, 0.18, f * 1.25);
+            });
+        } else if (v === 1) {
+            // Curious "Brrr-oop!"
+            this.playTone(190, 'sawtooth', 0.16, 0, 0.12, 340);
+            this.playTone(340, 'sine', 0.22, 0.14, 0.2, 580);
+        } else if (v === 2) {
+            // Playful bouncy boing
+            this.playTone(220, 'sine', 0.28, 0, 0.22, 620);
+            this.playTone(440, 'triangle', 0.18, 0.12, 0.15, 310);
+        } else {
+            // Silly chortle
+            [350, 290, 420, 360, 510, 640].forEach((f, i) => {
+                this.playTone(f, 'sine', 0.09, i * 0.055, 0.16, f * 1.15);
+            });
+        }
+    }
+
+    // 6 Diverse Celebration Sound Effects for "Next" transitions
+    playCelebration(index) {
+        this.init();
+        const mode = index % 6;
+        switch (mode) {
+            case 0: // Upbeat Star Chime Arpeggio
+                [523.25, 659.25, 783.99, 1046.50, 1318.51].forEach((f, i) => {
+                    this.playTone(f, 'sine', 0.32, i * 0.06, 0.16);
+                    this.playTone(f * 1.5, 'triangle', 0.2, i * 0.06 + 0.03, 0.07);
+                });
+                break;
+            case 1: // Bubbly Bloop Pop Sequence
+                [320, 450, 390, 580, 740, 920].forEach((f, i) => {
+                    this.playTone(f * 0.7, 'sine', 0.14, i * 0.055, 0.2, f * 1.45);
+                });
+                break;
+            case 2: // Tropical Wooden Marimba Dance
+                [392.00, 440.00, 523.25, 659.25, 783.99].forEach((f, i) => {
+                    this.playTone(f, 'triangle', 0.18, i * 0.065, 0.22);
+                });
+                break;
+            case 3: // Cheerful Brass/Flute Fanfare Chord
+                [440, 554.37, 659.25, 880].forEach((f, i) => {
+                    this.playTone(f, 'sawtooth', 0.36, i * 0.04, 0.08);
+                    this.playTone(f, 'triangle', 0.42, i * 0.04, 0.14);
+                });
+                break;
+            case 4: // Magical Harp Glissando
+                [349.23, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50].forEach((f, i) => {
+                    this.playTone(f, 'sine', 0.28, i * 0.038, 0.13);
+                });
+                break;
+            case 5: // Rainbow Purr & Sparkle Bell
+                this.playMonsterVoice(0);
+                [659.25, 880, 1174.66, 1318.51].forEach((f, i) => {
+                    this.playTone(f, 'sine', 0.25, 0.15 + i * 0.05, 0.14);
+                });
+                break;
+        }
+    }
+
+    // Sound when clicking the speech bubble to reveal the full polite word
+    playRevealChime() {
+        this.init();
+        [587.33, 739.99, 880.00, 1174.66].forEach((f, i) => {
+            this.playTone(f, 'triangle', 0.28, i * 0.05, 0.16);
+        });
+    }
+
+    // Sound when switching language
+    playSwitchClick() {
+        this.init();
+        this.playTone(480, 'sine', 0.09, 0, 0.16, 720);
+        this.playTone(720, 'triangle', 0.12, 0.06, 0.16, 960);
+    }
+}
+
+const sound = new SoundEngine();
+
+/**
+ * ============================================================================
+ * MONSTER CONTROLLER (NEVER BLINKS! Constantly shifts gaze & 8 emotions)
+ * ============================================================================
+ */
+class MonsterController {
+    constructor() {
+        this.wrapper = document.getElementById('monster-wrapper');
+        this.pupilLeft = document.getElementById('pupil-left');
+        this.pupilRight = document.getElementById('pupil-right');
+        this.browLeft = document.getElementById('brow-left');
+        this.browRight = document.getElementById('brow-right');
+        this.earLeft = document.getElementById('ear-left');
+        this.earRight = document.getElementById('ear-right');
+        this.armLeft = document.getElementById('arm-left');
+        this.armRight = document.getElementById('arm-right');
+        this.cheeks = document.getElementById('cheeks-group');
+        this.mouths = Array.from(document.querySelectorAll('.mouth-expr'));
+
+        this.currentEmotion = 0;
+        this.gazePresets = [
+            // Look toward the speech plaque (right & slightly up)
+            { lx: 15, ly: -5, rx: 15, ry: -5 },
+            // Look up at the clouds/horns
+            { lx: 0, ly: -16, rx: 0, ry: -16 },
+            // Look curious top-left
+            { lx: -15, ly: -10, rx: -15, ry: -10 },
+            // Look down at its own colorful belly/feet
+            { lx: 2, ly: 15, rx: -2, ry: 15 },
+            // Silly slightly cross-eyed gaze
+            { lx: 13, ly: 3, rx: -13, ry: 3 },
+            // Look wide-eyed wall-eyed silly gaze
+            { lx: -11, ly: -4, rx: 11, ry: -4 },
+            // Look directly at the children/viewer
+            { lx: 0, ly: 0, rx: 0, ry: 0 },
+            // Look bottom-right toward the Next button
+            { lx: 14, ly: 11, rx: 14, ry: 11 },
+            // Look far left at the forest mushrooms
+            { lx: -16, ly: 5, rx: -16, ry: 5 }
+        ];
+
+        this.startAutonomousLife();
+        this.setupInteractions();
+    }
+
+    // Smoothly shift the monster's gaze WITHOUT EVER BLINKING
+    shiftGaze(customGaze = null) {
+        const g = customGaze || this.gazePresets[Math.floor(Math.random() * this.gazePresets.length)];
+        this.pupilLeft.style.transform = `translate(${g.lx}px, ${g.ly}px)`;
+        this.pupilRight.style.transform = `translate(${g.rx}px, ${g.ry}px)`;
+    }
+
+    // Switch between 8 expressive faces (eyebrows, mouths, ears, arms, blush)
+    setEmotion(index = null) {
+        let nextIdx = index;
+        if (nextIdx === null) {
+            do {
+                nextIdx = Math.floor(Math.random() * 8);
+            } while (nextIdx === this.currentEmotion);
+        }
+        this.currentEmotion = nextIdx % 8;
+
+        // Toggle visible mouth SVG group
+        this.mouths.forEach((m, idx) => {
+            m.style.display = idx === this.currentEmotion ? 'block' : 'none';
+        });
+
+        // Apply matching eyebrow, ear, cheek, and arm poses for each of the 8 emotions
+        const configurations = [
+            // 0: Big cheerful grin
+            {
+                bl: 'translateY(-4px) rotate(-4deg)',
+                br: 'translateY(-4px) rotate(4deg)',
+                el: 'rotate(4deg)',
+                er: 'rotate(-4deg)',
+                al: 'rotate(8deg)',
+                ar: 'rotate(-14deg)',
+                cheek: 0.75
+            },
+            // 1: Surprised "O" mouth with high raised brows
+            {
+                bl: 'translateY(-16px) rotate(-10deg)',
+                br: 'translateY(-16px) rotate(10deg)',
+                el: 'rotate(14deg) scale(1.05)',
+                er: 'rotate(-14deg) scale(1.05)',
+                al: 'rotate(24deg)',
+                ar: 'rotate(-24deg)',
+                cheek: 0.55
+            },
+            // 2: Silly smile with tongue sticking out
+            {
+                bl: 'translateY(-10px) rotate(8deg)',
+                br: 'translateY(3px) rotate(12deg)',
+                el: 'rotate(-12deg)',
+                er: 'rotate(16deg)',
+                al: 'rotate(-8deg)',
+                ar: 'rotate(-28deg)',
+                cheek: 0.85
+            },
+            // 3: Curious/thoughtful tilted mouth with one raised eyebrow
+            {
+                bl: 'translateY(5px) rotate(8deg)',
+                br: 'translateY(-15px) rotate(12deg)',
+                el: 'rotate(-8deg)',
+                er: 'rotate(-18deg)',
+                al: 'rotate(4deg)',
+                ar: 'rotate(-32deg)',
+                cheek: 0.45
+            },
+            // 4: Proud/beaming smile with puffed cheeks
+            {
+                bl: 'translateY(-8px) rotate(-6deg)',
+                br: 'translateY(-8px) rotate(6deg)',
+                el: 'rotate(10deg)',
+                er: 'rotate(-10deg)',
+                al: 'rotate(18deg)',
+                ar: 'rotate(-18deg)',
+                cheek: 0.95
+            },
+            // 5: Excited wide open laugh showing monster teeth
+            {
+                bl: 'translateY(-14px) rotate(-12deg)',
+                br: 'translateY(-14px) rotate(12deg)',
+                el: 'rotate(18deg)',
+                er: 'rotate(-18deg)',
+                al: 'rotate(32deg)',
+                ar: 'rotate(-32deg)',
+                cheek: 0.9
+            },
+            // 6: Shy/bashful wavy smile with glowing cheeks & droopy ears
+            {
+                bl: 'translateY(-2px) rotate(-14deg)',
+                br: 'translateY(-2px) rotate(14deg)',
+                el: 'rotate(-18deg)',
+                er: 'rotate(18deg)',
+                al: 'rotate(-12deg)',
+                ar: 'rotate(12deg)',
+                cheek: 1.0
+            },
+            // 7: Playful crooked smirk with asymmetrical ears
+            {
+                bl: 'translateY(-12px) rotate(-8deg)',
+                br: 'translateY(4px) rotate(-6deg)',
+                el: 'rotate(15deg)',
+                er: 'rotate(8deg)',
+                al: 'rotate(15deg)',
+                ar: 'rotate(-22deg)',
+                cheek: 0.7
+            }
+        ];
+
+        const cfg = configurations[this.currentEmotion];
+        this.browLeft.style.transform = cfg.bl;
+        this.browRight.style.transform = cfg.br;
+        this.earLeft.style.transform = cfg.el;
+        this.earRight.style.transform = cfg.er;
+        this.armLeft.style.transform = cfg.al;
+        this.armRight.style.transform = cfg.ar;
+        this.cheeks.style.opacity = cfg.cheek;
+    }
+
+    // Trigger whole-body physical reaction animation
+    triggerBodyAnimation(typeIndex = null) {
+        const animClasses = ['anim-bounce', 'anim-dance', 'anim-puff', 'anim-jiggle'];
+        const chosen = animClasses[(typeIndex !== null ? typeIndex : Math.floor(Math.random() * animClasses.length)) % animClasses.length];
+
+        this.wrapper.classList.remove('monster-idle', ...animClasses);
+        void this.wrapper.offsetWidth; // force reflow
+        this.wrapper.classList.add(chosen);
+
+        clearTimeout(this.animTimeout);
+        this.animTimeout = setTimeout(() => {
+            this.wrapper.classList.remove(...animClasses);
+            this.wrapper.classList.add('monster-idle');
+        }, 900);
+    }
+
+    startAutonomousLife() {
+        // Shift eye gaze every 1.5 - 2.3 seconds (never blinking!)
+        const gazeLoop = () => {
+            this.shiftGaze();
+            setTimeout(gazeLoop, 1500 + Math.random() * 850);
+        };
+        setTimeout(gazeLoop, 1200);
+
+        // Change facial emotion automatically every 2.7 - 3.8 seconds
+        const emotionLoop = () => {
+            this.setEmotion();
+            setTimeout(emotionLoop, 2700 + Math.random() * 1100);
+        };
+        setTimeout(emotionLoop, 2600);
+    }
+
+    setupInteractions() {
+        // Clicking the monster makes it giggle, jump, shift emotion & burst particles
+        this.wrapper.addEventListener('click', (e) => {
+            const rect = this.wrapper.getBoundingClientRect();
+            const cx = e.clientX || (rect.left + rect.width / 2);
+            const cy = e.clientY || (rect.top + rect.height / 2);
+
+            this.setEmotion();
+            this.shiftGaze();
+            this.triggerBodyAnimation();
+            sound.playMonsterVoice(Math.floor(Math.random() * 4));
+            fxEngine.triggerCelebration(cx, cy, Math.floor(Math.random() * 6));
+        });
+
+        // Subtle eye tracking when moving the pointer across the screen
+        window.addEventListener('pointermove', (e) => {
+            if (Math.random() > 0.35) return; // Keep autonomous gaze lively too
+            const rect = this.wrapper.getBoundingClientRect();
+            const centerX = rect.left + rect.width * 0.5;
+            const centerY = rect.top + rect.height * 0.35;
+            const dx = Math.max(-16, Math.min(16, (e.clientX - centerX) / 28));
+            const dy = Math.max(-14, Math.min(14, (e.clientY - centerY) / 28));
+            this.shiftGaze({ lx: dx, ly: dy, rx: dx, ry: dy });
+        });
+    }
+}
+
+/**
+ * ============================================================================
+ * LIVING FOREST GLADE BACKGROUND ENGINE (Canvas 2D)
+ * Swaying ferns, spotted glowing mushrooms, interactive flowers, pond & fireflies
+ * ============================================================================
+ */
+class LivingBackground {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.width = 0;
+        this.height = 0;
+        this.time = 0;
+
+        this.clouds = [];
+        this.fireflies = [];
+        this.flowers = [];
+        this.mushrooms = [];
+        this.ripples = [];
+
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.setupClickInteraction();
+    }
+
+    resize() {
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+        this.initSceneElements();
+    }
+
+    initSceneElements() {
+        // Drifting stylized warm clouds
+        this.clouds = Array.from({ length: 6 }, (_, i) => ({
+            x: (this.width / 6) * i + Math.random() * 120,
+            y: this.height * (0.06 + (i % 3) * 0.07),
+            scale: 0.7 + Math.random() * 0.6,
+            speed: 0.22 + Math.random() * 0.25,
+            hue: i % 2 === 0 ? '#FDE68A' : '#FED7AA'
+        }));
+
+        // Floating glowing pollen & fireflies
+        this.fireflies = Array.from({ length: 34 }, () => ({
+            x: Math.random() * this.width,
+            y: Math.random() * this.height,
+            r: 2.5 + Math.random() * 4.5,
+            vx: (Math.random() - 0.5) * 0.7,
+            vy: -0.25 - Math.random() * 0.5,
+            phase: Math.random() * Math.PI * 2,
+            color: Math.random() > 0.4 ? '#FDE047' : '#5EEAD4'
+        }));
+
+        // Interactive Bouncing Flowers along the glade hills
+        const flowerColors = ['#FF5D8F', '#FFBE0B', '#4CC9F0', '#FB5607', '#A855F7', '#06D6A0'];
+        this.flowers = Array.from({ length: 12 }, (_, i) => ({
+            x: this.width * (0.05 + (i / 12) * 0.9),
+            y: this.height * (0.76 + (i % 3) * 0.06),
+            size: 20 + (i % 3) * 6,
+            color: flowerColors[i % flowerColors.length],
+            centerColor: '#FEF08A',
+            bounce: 0,
+            bounceVel: 0,
+            swayOffset: i * 0.9
+        }));
+
+        // Spotted Glowing Forest Mushrooms
+        this.mushrooms = [
+            { x: this.width * 0.06, y: this.height * 0.84, scale: 1.15, color: '#F43F5E', spots: '#FDE047', bounce: 0 },
+            { x: this.width * 0.12, y: this.height * 0.89, scale: 0.78, color: '#8B5CF6', spots: '#67E8F9', bounce: 0 },
+            { x: this.width * 0.88, y: this.height * 0.82, scale: 1.05, color: '#F97316', spots: '#FEF08A', bounce: 0 },
+            { x: this.width * 0.48, y: this.height * 0.88, scale: 0.85, color: '#EC4899', spots: '#FDE047', bounce: 0 }
+        ];
+
+        // Pond water ripples
+        this.ripples = Array.from({ length: 5 }, (_, i) => ({
+            x: this.width * (0.2 + i * 0.15),
+            y: this.height * (0.93 + (i % 2) * 0.03),
+            rx: 35 + i * 12,
+            phase: i * 1.3
+        }));
+    }
+
+    setupClickInteraction() {
+        this.canvas.addEventListener('pointerdown', (e) => {
+            const mx = e.clientX;
+            const my = e.clientY;
+
+            // Check flower clicks
+            this.flowers.forEach((f, idx) => {
+                const dist = Math.hypot(mx - f.x, my - (f.y - f.size));
+                if (dist < f.size * 1.9) {
+                    f.bounceVel = 0.45;
+                    sound.playTone(440 + idx * 45, 'sine', 0.22, 0, 0.15, 660 + idx * 45);
+                    fxEngine.spawnBurst(f.x, f.y - f.size, 12, f.color);
+                }
+            });
+
+            // Check mushroom clicks
+            this.mushrooms.forEach((m, idx) => {
+                const dist = Math.hypot(mx - m.x, my - (m.y - 35 * m.scale));
+                if (dist < 60 * m.scale) {
+                    m.bounce = 0.5;
+                    sound.playTone(260 + idx * 60, 'triangle', 0.25, 0, 0.18, 520);
+                    fxEngine.spawnBurst(m.x, m.y - 35 * m.scale, 16, m.spots);
+                }
+            });
+        });
+    }
+
+    drawSkyAndSun(ctx) {
+        // Warm Golden-Turquoise Enchanted Glade Sky
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, this.height * 0.75);
+        skyGrad.addColorStop(0, '#0F766E');
+        skyGrad.addColorStop(0.38, '#14B8A6');
+        skyGrad.addColorStop(0.75, '#FBBF24');
+        skyGrad.addColorStop(1, '#F59E0B');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, this.width, this.height);
+
+        // Glowing Sunbeams in top-left/center sky
+        const sunX = this.width * 0.52;
+        const sunY = this.height * 0.16;
+        const sunGlow = ctx.createRadialGradient(sunX, sunY, 15, sunX, sunY, this.width * 0.42);
+        sunGlow.addColorStop(0, 'rgba(254, 240, 138, 0.75)');
+        sunGlow.addColorStop(0.35, 'rgba(253, 224, 71, 0.28)');
+        sunGlow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = sunGlow;
+        ctx.fillRect(0, 0, this.width, this.height);
+
+        // Rotating Sun Rays
+        ctx.save();
+        ctx.translate(sunX, sunY);
+        ctx.rotate(this.time * 0.08);
+        ctx.fillStyle = 'rgba(254, 249, 195, 0.11)';
+        for (let i = 0; i < 12; i++) {
+            ctx.rotate(Math.PI / 6);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-45, this.width * 0.7);
+            ctx.lineTo(45, this.width * 0.7);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    drawClouds(ctx) {
+        this.clouds.forEach(c => {
+            c.x += c.speed;
+            if (c.x > this.width + 180) c.x = -180;
+
+            ctx.save();
+            ctx.translate(c.x, c.y + Math.sin(this.time + c.x * 0.01) * 6);
+            ctx.scale(c.scale, c.scale);
+
+            ctx.fillStyle = c.hue;
+            ctx.globalAlpha = 0.65;
+            ctx.beginPath();
+            ctx.arc(0, 0, 38, 0, Math.PI * 2);
+            ctx.arc(34, -10, 44, 0, Math.PI * 2);
+            ctx.arc(74, -4, 36, 0, Math.PI * 2);
+            ctx.arc(102, 8, 26, 0, Math.PI * 2);
+            ctx.arc(-30, 10, 26, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    drawHillsAndPond(ctx) {
+        // Distant Lush Teal-Emerald Hills
+        const hill1 = ctx.createLinearGradient(0, this.height * 0.45, 0, this.height * 0.85);
+        hill1.addColorStop(0, '#0D9488');
+        hill1.addColorStop(1, '#065F46');
+        ctx.fillStyle = hill1;
+        ctx.beginPath();
+        ctx.moveTo(0, this.height * 0.62);
+        ctx.bezierCurveTo(this.width * 0.25, this.height * 0.46, this.width * 0.55, this.height * 0.68, this.width, this.height * 0.52);
+        ctx.lineTo(this.width, this.height);
+        ctx.lineTo(0, this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Midground Rolling Meadow Hill with Decorative Stripes
+        const hill2 = ctx.createLinearGradient(0, this.height * 0.58, 0, this.height * 0.95);
+        hill2.addColorStop(0, '#10B981');
+        hill2.addColorStop(0.6, '#059669');
+        hill2.addColorStop(1, '#064E3B');
+        ctx.fillStyle = hill2;
+        ctx.beginPath();
+        ctx.moveTo(0, this.height * 0.68);
+        ctx.bezierCurveTo(this.width * 0.35, this.height * 0.78, this.width * 0.68, this.height * 0.58, this.width, this.height * 0.72);
+        ctx.lineTo(this.width, this.height);
+        ctx.lineTo(0, this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Foreground Mossy Glade Bank
+        const hill3 = ctx.createLinearGradient(0, this.height * 0.75, 0, this.height);
+        hill3.addColorStop(0, '#65A30D');
+        hill3.addColorStop(0.5, '#15803D');
+        hill3.addColorStop(1, '#14532D');
+        ctx.fillStyle = hill3;
+        ctx.beginPath();
+        ctx.moveTo(0, this.height * 0.79);
+        ctx.bezierCurveTo(this.width * 0.28, this.height * 0.73, this.width * 0.72, this.height * 0.85, this.width, this.height * 0.77);
+        ctx.lineTo(this.width, this.height);
+        ctx.lineTo(0, this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Sparkling Turquoise Forest Pond at Bottom
+        const pondGrad = ctx.createLinearGradient(0, this.height * 0.88, 0, this.height);
+        pondGrad.addColorStop(0, '#06B6D4');
+        pondGrad.addColorStop(0.5, '#0284C7');
+        pondGrad.addColorStop(1, '#1E3A8A');
+        ctx.fillStyle = pondGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, this.height * 0.91);
+        ctx.bezierCurveTo(this.width * 0.3, this.height * 0.86, this.width * 0.7, this.height * 0.94, this.width, this.height * 0.89);
+        ctx.lineTo(this.width, this.height);
+        ctx.lineTo(0, this.height);
+        ctx.closePath();
+        ctx.fill();
+
+        // Animated Pond Ripples
+        this.ripples.forEach(r => {
+            const pulse = Math.sin(this.time * 2 + r.phase);
+            ctx.strokeStyle = 'rgba(165, 243, 252, 0.38)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.ellipse(r.x, r.y, r.rx + pulse * 10, 6 + pulse * 1.5, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+    }
+
+    drawSwayingFerns(ctx) {
+        // Giant Colorful Tropical Leaves on Left and Right Edges
+        const drawFern = (baseX, baseY, angle, length, color1, color2, dir) => {
+            const sway = Math.sin(this.time * 1.6 + baseX * 0.01) * 0.08;
+            ctx.save();
+            ctx.translate(baseX, baseY);
+            ctx.rotate(angle + sway);
+
+            const grad = ctx.createLinearGradient(0, 0, 0, -length);
+            grad.addColorStop(0, color1);
+            grad.addColorStop(1, color2);
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(dir * 55, -length * 0.5, dir * 15, -length);
+            ctx.quadraticCurveTo(dir * -35, -length * 0.5, 0, 0);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(254, 240, 138, 0.45)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(dir * 12, -length * 0.5, dir * 15, -length * 0.92);
+            ctx.stroke();
+            ctx.restore();
+        };
+
+        // Left Jungle Cluster
+        drawFern(20, this.height * 0.85, 0.32, this.height * 0.42, '#065F46', '#34D399', 1);
+        drawFern(-10, this.height * 0.72, 0.52, this.height * 0.34, '#115E59', '#2DD4BF', 1);
+        drawFern(65, this.height * 0.92, 0.18, this.height * 0.28, '#3F6212', '#A3E635', 1);
+
+        // Right Jungle Cluster
+        drawFern(this.width - 20, this.height * 0.85, -0.32, this.height * 0.42, '#065F46', '#34D399', -1);
+        drawFern(this.width + 10, this.height * 0.70, -0.48, this.height * 0.35, '#115E59', '#2DD4BF', -1);
+        drawFern(this.width - 75, this.height * 0.92, -0.2, this.height * 0.26, '#3F6212', '#A3E635', -1);
+    }
+
+    drawMushroomsAndFlowers(ctx) {
+        // Draw Spotted Mushrooms
+        this.mushrooms.forEach((m, i) => {
+            if (m.bounce > 0) {
+                m.bounce *= 0.88;
+                if (m.bounce < 0.01) m.bounce = 0;
+            }
+            const squash = 1 + Math.sin(this.time * 12) * m.bounce;
+            const sway = Math.sin(this.time * 1.8 + i) * 0.04;
+
+            ctx.save();
+            ctx.translate(m.x, m.y);
+            ctx.scale(m.scale * squash, m.scale * (2 - squash));
+            ctx.rotate(sway);
+
+            // Stem
+            ctx.fillStyle = '#FDE68A';
+            ctx.beginPath();
+            ctx.moveTo(-12, 0);
+            ctx.quadraticCurveTo(-8, -28, -6, -45);
+            ctx.lineTo(6, -45);
+            ctx.quadraticCurveTo(8, -28, 12, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // Cap
+            ctx.fillStyle = m.color;
+            ctx.beginPath();
+            ctx.arc(0, -42, 34, Math.PI, 0, false);
+            ctx.quadraticCurveTo(0, -34, -34, -42);
+            ctx.fill();
+
+            // Spots
+            ctx.fillStyle = m.spots;
+            ctx.beginPath();
+            ctx.arc(-14, -56, 6, 0, Math.PI * 2);
+            ctx.arc(6, -64, 7, 0, Math.PI * 2);
+            ctx.arc(18, -52, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        });
+
+        // Draw Interactive Flowers
+        this.flowers.forEach(f => {
+            if (f.bounceVel !== 0 || f.bounce !== 0) {
+                f.bounce += f.bounceVel;
+                f.bounceVel -= f.bounce * 0.25;
+                f.bounceVel *= 0.84;
+            }
+            const sway = Math.sin(this.time * 2.2 + f.swayOffset) * 6;
+            const headX = f.x + sway;
+            const headY = f.y - f.size * 1.7 - Math.abs(f.bounce) * 30;
+
+            // Stem
+            ctx.strokeStyle = '#15803D';
+            ctx.lineWidth = 4.5;
+            ctx.beginPath();
+            ctx.moveTo(f.x, f.y);
+            ctx.quadraticCurveTo(f.x + sway * 0.5, f.y - f.size, headX, headY);
+            ctx.stroke();
+
+            // Petals
+            ctx.save();
+            ctx.translate(headX, headY);
+            ctx.rotate(this.time * 0.4 + f.swayOffset);
+            const r = f.size * (1 + f.bounce * 0.35);
+            ctx.fillStyle = f.color;
+            for (let p = 0; p < 6; p++) {
+                ctx.rotate(Math.PI / 3);
+                ctx.beginPath();
+                ctx.arc(0, r * 0.65, r * 0.46, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            // Flower Center
+            ctx.fillStyle = f.centerColor;
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.42, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    drawFireflies(ctx) {
+        this.fireflies.forEach(p => {
+            p.x += p.vx + Math.sin(this.time + p.phase) * 0.35;
+            p.y += p.vy;
+            if (p.y < -20) {
+                p.y = this.height + 10;
+                p.x = Math.random() * this.width;
+            }
+            if (p.x < -20) p.x = this.width + 15;
+            if (p.x > this.width + 20) p.x = -15;
+
+            const alpha = 0.45 + 0.45 * Math.sin(this.time * 3 + p.phase);
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    render() {
+        this.time += 0.016;
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        this.drawSkyAndSun(ctx);
+        this.drawClouds(ctx);
+        this.drawHillsAndPond(ctx);
+        this.drawSwayingFerns(ctx);
+        this.drawMushroomsAndFlowers(ctx);
+        this.drawFireflies(ctx);
+    }
+}
+
+/**
+ * ============================================================================
+ * ACTIVE NON-VERBAL CELEBRATION PARTICLE ENGINE (6 Distinct Variations)
+ * 0: Spinning Stars
+ * 1: Iridescent Soap Bubbles
+ * 2: Swirling Tropical Leaves & Petals
+ * 3: Musical Notes & Expanding Soundwaves
+ * 4: Spiral Confetti Ribbons
+ * 5: Expanding Rainbow Rings & Sparkles
+ * ============================================================================
+ */
+class CelebrationFX {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.particles = [];
+        this.rings = [];
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+    }
+
+    resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    }
+
+    spawnBurst(x, y, count = 18, fixedColor = null) {
+        const palette = ['#FFBE0B', '#FB5607', '#FF006E', '#8338EC', '#3A86FF', '#06D6A0'];
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+            const speed = 3 + Math.random() * 8;
+            this.particles.push({
+                type: 'star',
+                x, y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 2,
+                size: 10 + Math.random() * 12,
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.2,
+                color: fixedColor || palette[i % palette.length],
+                alpha: 1,
+                decay: 0.018 + Math.random() * 0.012
+            });
+        }
+    }
+
+    triggerCelebration(originX, originY, modeIndex) {
+        const mode = modeIndex % 6;
+        const palette = ['#FFBE0B', '#FF006E', '#06D6A0', '#4CC9F0', '#FB5607', '#A855F7', '#FDE047'];
+
+        if (mode === 0) {
+            // 0: Burst of Spinning Stars
+            for (let i = 0; i < 36; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 4 + Math.random() * 13;
+                this.particles.push({
+                    type: 'star',
+                    x: originX,
+                    y: originY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 3,
+                    size: 14 + Math.random() * 18,
+                    rot: Math.random() * Math.PI,
+                    vRot: (Math.random() - 0.5) * 0.22,
+                    color: palette[i % palette.length],
+                    alpha: 1,
+                    decay: 0.014 + Math.random() * 0.01
+                });
+            }
+        } else if (mode === 1) {
+            // 1: Rising Iridescent Soap Bubbles
+            for (let i = 0; i < 32; i++) {
+                this.particles.push({
+                    type: 'bubble',
+                    x: originX + (Math.random() - 0.5) * 280,
+                    y: originY + (Math.random() - 0.5) * 140,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: -3 - Math.random() * 7,
+                    size: 16 + Math.random() * 28,
+                    rot: Math.random() * Math.PI,
+                    vRot: 0.05,
+                    color: palette[i % palette.length],
+                    alpha: 0.95,
+                    decay: 0.012 + Math.random() * 0.008
+                });
+            }
+        } else if (mode === 2) {
+            // 2: Explosion of Tropical Leaves & Flower Petals
+            for (let i = 0; i < 38; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 3 + Math.random() * 11;
+                this.particles.push({
+                    type: 'leaf',
+                    x: originX,
+                    y: originY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 4,
+                    size: 15 + Math.random() * 16,
+                    rot: Math.random() * Math.PI * 2,
+                    vRot: (Math.random() - 0.5) * 0.18,
+                    color: ['#34D399', '#10B981', '#FBBF24', '#F43F5E', '#A3E635'][i % 5],
+                    alpha: 1,
+                    decay: 0.013 + Math.random() * 0.009
+                });
+            }
+        } else if (mode === 3) {
+            // 3: Glowing Musical Notes & Soundwaves
+            this.rings.push({ x: originX, y: originY, r: 20, maxR: 380, color: '#4CC9F0', alpha: 0.9 });
+            this.rings.push({ x: originX, y: originY, r: 5, maxR: 260, color: '#FFBE0B', alpha: 0.9 });
+            for (let i = 0; i < 26; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 3 + Math.random() * 9;
+                this.particles.push({
+                    type: 'note',
+                    x: originX,
+                    y: originY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 3,
+                    size: 16 + Math.random() * 14,
+                    rot: (Math.random() - 0.5) * 0.5,
+                    vRot: (Math.random() - 0.5) * 0.06,
+                    color: palette[i % palette.length],
+                    alpha: 1,
+                    decay: 0.015 + Math.random() * 0.008
+                });
+            }
+        } else if (mode === 4) {
+            // 4: Spiral of Colorful Confetti Ribbons
+            for (let i = 0; i < 45; i++) {
+                const angle = (i / 45) * Math.PI * 4;
+                const speed = 4 + (i % 9) * 1.4;
+                this.particles.push({
+                    type: 'ribbon',
+                    x: originX,
+                    y: originY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 4,
+                    size: 14 + Math.random() * 14,
+                    rot: Math.random() * Math.PI * 2,
+                    vRot: 0.15 + Math.random() * 0.15,
+                    color: palette[i % palette.length],
+                    alpha: 1,
+                    decay: 0.014 + Math.random() * 0.008
+                });
+            }
+        } else {
+            // 5: Expanding Rainbow Rings & Sparkle Diamonds
+            palette.slice(0, 4).forEach((col, idx) => {
+                this.rings.push({
+                    x: originX,
+                    y: originY,
+                    r: 10 + idx * 18,
+                    maxR: 420 - idx * 40,
+                    color: col,
+                    alpha: 0.95
+                });
+            });
+            for (let i = 0; i < 32; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 5 + Math.random() * 12;
+                this.particles.push({
+                    type: 'diamond',
+                    x: originX,
+                    y: originY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 12 + Math.random() * 16,
+                    rot: Math.random() * Math.PI,
+                    vRot: 0.12,
+                    color: palette[i % palette.length],
+                    alpha: 1,
+                    decay: 0.016 + Math.random() * 0.01
+                });
+            }
+        }
+    }
+
+    drawStar(ctx, r) {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+            const a1 = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+            const a2 = a1 + Math.PI / 5;
+            ctx.lineTo(Math.cos(a1) * r, Math.sin(a1) * r);
+            ctx.lineTo(Math.cos(a2) * (r * 0.45), Math.sin(a2) * (r * 0.45));
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    render() {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Update & draw expanding celebration rings
+        for (let i = this.rings.length - 1; i >= 0; i--) {
+            const ring = this.rings[i];
+            ring.r += (ring.maxR - ring.r) * 0.11;
+            ring.alpha -= 0.022;
+            if (ring.alpha <= 0) {
+                this.rings.splice(i, 1);
+                continue;
+            }
+            ctx.save();
+            ctx.globalAlpha = ring.alpha;
+            ctx.strokeStyle = ring.color;
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.arc(ring.x, ring.y, ring.r, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Update & draw celebration particles
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            if (p.type !== 'bubble') {
+                p.vy += 0.22; // gentle gravity
+            } else {
+                p.x += Math.sin(p.y * 0.05) * 1.2;
+            }
+            p.rot += p.vRot;
+            p.alpha -= p.decay;
+
+            if (p.alpha <= 0) {
+                this.particles.splice(i, 1);
+                continue;
+            }
+
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, p.alpha);
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.fillStyle = p.color;
+
+            if (p.type === 'star') {
+                this.drawStar(ctx, p.size);
+            } else if (p.type === 'bubble') {
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 3.5;
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(254, 249, 195, 0.65)';
+                ctx.beginPath();
+                ctx.arc(-p.size * 0.32, -p.size * 0.32, p.size * 0.22, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (p.type === 'leaf') {
+                ctx.beginPath();
+                ctx.moveTo(0, -p.size);
+                ctx.quadraticCurveTo(p.size * 0.8, 0, 0, p.size);
+                ctx.quadraticCurveTo(-p.size * 0.8, 0, 0, -p.size);
+                ctx.fill();
+            } else if (p.type === 'note') {
+                ctx.beginPath();
+                ctx.ellipse(-4, 4, p.size * 0.45, p.size * 0.32, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillRect(p.size * 0.2, -p.size * 0.9, 4.5, p.size * 1.2);
+                ctx.fillRect(p.size * 0.2, -p.size * 0.9, p.size * 0.55, 5.5);
+            } else if (p.type === 'ribbon') {
+                ctx.fillRect(-p.size * 0.6, -p.size * 0.25, p.size * 1.2, p.size * 0.5);
+            } else if (p.type === 'diamond') {
+                ctx.beginPath();
+                ctx.moveTo(0, -p.size);
+                ctx.lineTo(p.size * 0.7, 0);
+                ctx.lineTo(0, p.size);
+                ctx.lineTo(-p.size * 0.7, 0);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+    }
+}
+
+/**
+ * ============================================================================
+ * INFINITE GAME GENERATOR & STATE CONTROLLER
+ * ============================================================================
+ */
+class PoliteMonsterGame {
+    constructor() {
+        this.lang = 'uk';
+        this.queues = { uk: [], ru: [] };
+        this.currentIndexInQueue = 0;
+        this.currentItem = null;
+        this.isRevealed = false;
+        this.celebrationCounter = 0;
+
+        this.wordEl = document.getElementById('word-text');
+        this.plaqueEl = document.getElementById('speech-plaque-container');
+        this.langBtn = document.getElementById('lang-btn');
+        this.langLabel = document.getElementById('lang-label');
+        this.nextBtn = document.getElementById('next-btn');
+
+        this.refillQueue('uk');
+        this.refillQueue('ru');
+        this.bindEvents();
+        this.nextWord(false);
+    }
+
+    // Fisher-Yates shuffle for infinite non-repeating generator
+    refillQueue(langKey) {
+        const indices = POLITE_WORDS[langKey].map((_, idx) => idx);
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+        }
+        // Avoid immediate duplicate across reshuffles
+        if (this.currentItem && indices[0] === this.currentItem.index) {
+            const swap = indices[0];
+            indices[0] = indices[indices.length - 1];
+            indices[indices.length - 1] = swap;
+        }
+        this.queues[langKey] = indices;
+    }
+
+    drawNextWordItem() {
+        if (this.queues[this.lang].length === 0) {
+            this.refillQueue(this.lang);
+        }
+        const wordIdx = this.queues[this.lang].pop();
+        return {
+            index: wordIdx,
+            data: POLITE_WORDS[this.lang][wordIdx]
+        };
+    }
+
+    renderWord() {
+        const { short, full } = this.currentItem.data;
+        // Dynamically adjust font size slightly for longer phrases so it always looks huge & clean
+        const len = (this.isRevealed ? full : short).length;
+        if (len > 15) {
+            this.wordEl.style.fontSize = 'clamp(2.3rem, 4.7vw, 4.9rem)';
+        } else if (len > 11) {
+            this.wordEl.style.fontSize = 'clamp(2.6rem, 5.4vw, 5.6rem)';
+        } else {
+            this.wordEl.style.fontSize = 'clamp(3.1rem, 6.4vw, 6.8rem)';
+        }
+
+        if (!this.isRevealed) {
+            this.wordEl.innerHTML = `<span>${short}</span><span class="word-dots">...</span>`;
+        } else {
+            const remainder = full.slice(short.length);
+            this.wordEl.innerHTML = `<span>${short}</span><span class="word-revealed-part">${remainder}</span>`;
+        }
+    }
+
+    nextWord(withFeedback = true) {
+        this.isRevealed = false;
+        this.currentItem = this.drawNextWordItem();
+        this.renderWord();
+
+        // Animate Speech Plaque Pop
+        this.plaqueEl.classList.remove('plaque-pop');
+        void this.plaqueEl.offsetWidth;
+        this.plaqueEl.classList.add('plaque-pop');
+
+        // Monster shifts emotion, looks toward plaque, then back
+        monster.setEmotion();
+        monster.shiftGaze({ lx: 15, ly: -5, rx: 15, ry: -5 });
+
+        if (withFeedback) {
+            const mode = this.celebrationCounter % 6;
+            this.celebrationCounter++;
+
+            monster.triggerBodyAnimation(mode);
+            sound.playCelebration(mode);
+
+            const rect = this.plaqueEl.getBoundingClientRect();
+            const cx = rect.left + rect.width * 0.5;
+            const cy = rect.top + rect.height * 0.5;
+            fxEngine.triggerCelebration(cx, cy, mode);
+        }
+    }
+
+    toggleRevealFullWord(e) {
+        if (!this.isRevealed) {
+            this.isRevealed = true;
+            this.renderWord();
+            sound.playRevealChime();
+            monster.setEmotion(0); // Big proud grin
+            monster.triggerBodyAnimation(2);
+
+            const rect = this.plaqueEl.getBoundingClientRect();
+            const x = (e && e.clientX) ? e.clientX : rect.left + rect.width * 0.5;
+            const y = (e && e.clientY) ? e.clientY : rect.top + rect.height * 0.5;
+            fxEngine.spawnBurst(x, y, 26);
+        } else {
+            // Clicking again on the revealed word moves to the next word smoothly
+            this.nextWord(true);
+        }
+    }
+
+    toggleLanguage() {
+        this.lang = this.lang === 'uk' ? 'ru' : 'uk';
+        this.langLabel.textContent = this.lang === 'uk' ? 'УКР' : 'РУС';
+
+        // Keep the corresponding polite phrase index in the newly selected language
+        if (this.currentItem) {
+            this.currentItem.data = POLITE_WORDS[this.lang][this.currentItem.index];
+            this.renderWord();
+        }
+
+        sound.playSwitchClick();
+        monster.setEmotion();
+        monster.shiftGaze();
+
+        const rect = this.langBtn.getBoundingClientRect();
+        fxEngine.spawnBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, 16);
+    }
+
+    bindEvents() {
+        // Minimalist Next Button
+        this.nextBtn.addEventListener('click', () => {
+            this.nextWord(true);
+        });
+
+        // Clicking the speech bubble reveals the ending of the word (or advances if already revealed)
+        this.plaqueEl.addEventListener('click', (e) => {
+            this.toggleRevealFullWord(e);
+        });
+
+        // Single Language Switcher Button
+        this.langBtn.addEventListener('click', () => {
+            this.toggleLanguage();
+        });
+
+        // Convenient Keyboard Support for Smartboards / Teachers
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowRight' || e.code === 'Space') {
+                e.preventDefault();
+                this.nextWord(true);
+            } else if (e.code === 'Enter') {
+                e.preventDefault();
+                this.toggleRevealFullWord();
+            }
+        });
+    }
+}
+
+/**
+ * ============================================================================
+ * BOOTSTRAP & MAIN ANIMATION LOOP
+ * ============================================================================
+ */
+let bgEngine, fxEngine, monster, game;
+
+window.onload = function () {
+    bgEngine = new LivingBackground(document.getElementById('bg-canvas'));
+    fxEngine = new CelebrationFX(document.getElementById('fx-canvas'));
+    monster = new MonsterController();
+    game = new PoliteMonsterGame();
+
+    function animateLoop() {
+        bgEngine.render();
+        fxEngine.render();
+        requestAnimationFrame(animateLoop);
+    }
+    requestAnimationFrame(animateLoop);
+};
+</script>
+</body>
+</html>
