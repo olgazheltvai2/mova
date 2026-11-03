@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Полювання на корінь слова</title>
+  <style>
+    /* ==========================================================================
+       ОСНОВНІ СТИЛІ ТА СКИДАННЯ (БЕЗ БІЛИХ ПРЯМОКУТНИКІВ ТА ЗАЙВИХ СЛІВ)
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #1a2a1d;
+      font-family: 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+    }
+
+    /* Головна сцена гри */
+    #game-stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Живий сюжетний SVG-фон на весь екран */
+    #scene-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* ==========================================================================
+       НАВІГАЦІЙНІ КНОПКИ (МІНІМАЛІСТИЧНІ, БЕЗ СЛІВ, ДЕРЕВ'ЯНО-МЕТАЛЕВИЙ СТИЛЬ)
+       ========================================================================== */
+    .nav-controls {
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      z-index: 40;
+    }
+
+    .nav-btn {
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      border: 4px solid #5c3818;
+      background: radial-gradient(circle at 30% 30%, #f5b041, #d35400 70%, #873600 100%);
+      box-shadow:
+        0 6px 0 #4a2306,
+        0 10px 18px rgba(0, 0, 0, 0.55),
+        inset 0 3px 6px rgba(255, 255, 255, 0.45);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s;
+    }
+
+    .nav-btn:hover {
+      transform: translateY(-3px) scale(1.06);
+      filter: brightness(1.1);
+    }
+
+    .nav-btn:active {
+      transform: translateY(4px) scale(0.96);
+      box-shadow:
+        0 2px 0 #4a2306,
+        0 4px 8px rgba(0, 0, 0, 0.5),
+        inset 0 3px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .nav-btn svg {
+      width: 34px;
+      height: 34px;
+      filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+    }
+
+    /* Індикатор-крапки прогресу (без цифр і слів) */
+    .level-dots {
+      display: flex;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 30px;
+      background: linear-gradient(180deg, #4e342e 0%, #2d1b14 100%);
+      border: 3px solid #795548;
+      box-shadow: inset 0 2px 5px rgba(0,0,0,0.7), 0 5px 12px rgba(0,0,0,0.45);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #6d4c41;
+      transition: all 0.3s ease;
+    }
+
+    .dot.active {
+      background: #ffeb3b;
+      transform: scale(1.35);
+      box-shadow: 0 0 8px #ffeb3b;
+    }
+
+    .dot.done {
+      background: #76ff03;
+      box-shadow: 0 0 6px #76ff03;
+    }
+
+    /* ==========================================================================
+       ДЕРЕВ'ЯНИЙ СТЕНД ІЗ ДОШКАМИ ДЛЯ СЛІВ (ЖОДНИХ БІЛИХ ПРЯМОКУТНИКІВ)
+       ========================================================================== */
+    #words-board {
+      position: absolute;
+      top: 96px;
+      left: 50%;
+      transform: translateX(-54%);
+      width: min(820px, 76vw);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 20px 26px 26px;
+      border-radius: 28px;
+      /* Реалістична текстура старого дерева з металевою окантовкою */
+      background:
+        repeating-linear-gradient(
+          90deg,
+          rgba(62, 39, 35, 0.14) 0px,
+          rgba(62, 39, 35, 0.14) 3px,
+          transparent 3px,
+          transparent 18px
+        ),
+        linear-gradient(180deg, #6d4124 0%, #4e2c16 50%, #3b200e 100%);
+      border: 6px solid #2b1608;
+      box-shadow:
+        0 14px 0 #1f0f05,
+        0 24px 38px rgba(0, 0, 0, 0.65),
+        inset 0 3px 0 rgba(255, 204, 153, 0.3),
+        inset 0 0 30px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Декоративні металеві заклепки по кутах стенда */
+    #words-board::before,
+    #words-board::after {
+      content: "";
+      position: absolute;
+      top: 12px;
+      width: calc(100% - 28px);
+      height: 14px;
+      pointer-events: none;
+      background-image:
+        radial-gradient(circle, #cfd8dc 30%, #546e7a 70%, #263238 100%),
+        radial-gradient(circle, #cfd8dc 30%, #546e7a 70%, #263238 100%);
+      background-size: 14px 14px;
+      background-repeat: no-repeat;
+      background-position: left center, right center;
+    }
+
+    #words-board::after {
+      top: auto;
+      bottom: 12px;
+    }
+
+    /* Окрема дерев'яна табличка для кожного спільнокореневого слова */
+    .word-plank {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px 28px 10px;
+      border-radius: 18px;
+      /* Фактурна світліша деревина дуба з сучками та градієнтом */
+      background:
+        radial-gradient(ellipse at 20% 50%, rgba(120, 66, 18, 0.25) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 30%, rgba(120, 66, 18, 0.2) 0%, transparent 45%),
+        repeating-linear-gradient(
+          4deg,
+          rgba(141, 85, 36, 0.16) 0px,
+          rgba(141, 85, 36, 0.16) 2px,
+          transparent 2px,
+          transparent 9px
+        ),
+        linear-gradient(180deg, #f0c27b 0%, #d49448 55%, #b5732a 100%);
+      border: 4px solid #5c3311;
+      box-shadow:
+        0 7px 0 #3d210a,
+        0 10px 18px rgba(0, 0, 0, 0.45),
+        inset 0 2px 3px rgba(255, 243, 214, 0.7);
+      transition: transform 0.2s ease;
+    }
+
+    .word-plank:hover {
+      transform: scale(1.02);
+    }
+
+    /* SVG-шар над словом для дужки кореня та плям фарби з бластера */
+    .plank-overlay-svg {
+      position: absolute;
+      inset: -14px -18px -10px -18px;
+      width: calc(100% + 36px);
+      height: calc(100% + 24px);
+      pointer-events: none;
+      z-index: 5;
+      overflow: visible;
+    }
+
+    /* Контейнер літер у слові */
+    .letters-row {
+      position: relative;
+      display: flex;
+      gap: 6px;
+      z-index: 3;
+    }
+
+    /* Окрема крупна літера-плитка */
+    .letter-tile {
+      position: relative;
+      min-width: clamp(38px, 4.4vw, 56px);
+      height: clamp(50px, 5.8vh, 66px);
+      padding: 0 6px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #4a2c11 0%, #2e1907 100%);
+      border: 3px solid #7e4a1e;
+      box-shadow:
+        0 4px 0 #1c0f04,
+        inset 0 2px 3px rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(28px, 3.3vw, 44px);
+      font-weight: 900;
+      color: #fff3d1;
+      text-shadow: 0 3px 0 #1a0d00;
+      cursor: pointer;
+      transition:
+        transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1),
+        background 0.18s,
+        border-color 0.18s,
+        box-shadow 0.18s;
+    }
+
+    .letter-tile:hover {
+      transform: translateY(-3px);
+      border-color: #ffca28;
+    }
+
+    /* Виділена дитиною літера (приціл кореня) */
+    .letter-tile.selected {
+      transform: translateY(-6px) scale(1.06);
+      background: linear-gradient(180deg, #ff9800 0%, #e65100 100%);
+      border-color: #fff59d;
+      color: #ffffff;
+      box-shadow:
+        0 8px 0 #8c2d00,
+        0 0 16px rgba(255, 193, 7, 0.85),
+        inset 0 2px 4px rgba(255, 255, 255, 0.55);
+    }
+
+    /* Зафарбовані бластером літери кореня після правильного влучання */
+    .letter-tile.painted-cyan {
+      background: radial-gradient(circle at 30% 30%, #18ffff, #00b0ff 65%, #006064 100%);
+      border-color: #e0f7fa;
+      color: #002633;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+      transform: translateY(-5px) rotate(-2deg) scale(1.07);
+      box-shadow: 0 6px 0 #004d40, 0 0 22px #00e5ff;
+    }
+
+    .letter-tile.painted-lime {
+      background: radial-gradient(circle at 30% 30%, #ccff90, #76ff03 65%, #33691e 100%);
+      border-color: #f9fbe7;
+      color: #1b3300;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+      transform: translateY(-5px) rotate(2deg) scale(1.07);
+      box-shadow: 0 6px 0 #1b5e20, 0 0 22px #76ff03;
+    }
+
+    .letter-tile.painted-magenta {
+      background: radial-gradient(circle at 30% 30%, #ff80ab, #ff1744 65%, #880e4f 100%);
+      border-color: #fce4ec;
+      color: #ffffff;
+      text-shadow: 0 2px 0 #4a001f;
+      transform: translateY(-5px) rotate(-1.5deg) scale(1.07);
+      box-shadow: 0 6px 0 #560027, 0 0 22px #ff4081;
+    }
+
+    .letter-tile.painted-yellow {
+      background: radial-gradient(circle at 30% 30%, #ffff8d, #ffea00 65%, #f57f17 100%);
+      border-color: #fffde7;
+      color: #3e2723;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.8);
+      transform: translateY(-5px) rotate(1.5deg) scale(1.07);
+      box-shadow: 0 6px 0 #bf360c, 0 0 22px #ffea00;
+    }
+
+    /* Трясіння дошки при помилці */
+    @keyframes plankShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-14px) rotate(-1.5deg); }
+      40% { transform: translateX(12px) rotate(1.5deg); }
+      60% { transform: translateX(-10px) rotate(-1deg); }
+      80% { transform: translateX(8px) rotate(1deg); }
+    }
+
+    .shake-error {
+      animation: plankShake 0.55s ease-in-out;
+    }
+
+    /* ==========================================================================
+       КНОПКА ПОСТРІЛУ З БЛАСТЕРА (ПУЛЬСУЮЧА МІШЕНЬ З ФАРБОЮ, БЕЗ СЛІВ)
+       ========================================================================== */
+    #fire-btn {
+      position: absolute;
+      bottom: 24px;
+      left: 46%;
+      transform: translateX(-50%) scale(0.85);
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: 5px solid #263238;
+      background: radial-gradient(circle at 35% 30%, #76ff03 0%, #00e676 50%, #00796b 100%);
+      box-shadow:
+        0 9px 0 #1b3022,
+        0 14px 28px rgba(0, 0, 0, 0.65),
+        0 0 0 0 rgba(118, 255, 3, 0.7),
+        inset 0 4px 8px rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      z-index: 35;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.45;
+      pointer-events: none;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s, filter 0.2s;
+    }
+
+    #fire-btn.ready {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) scale(1);
+      animation: pulseTarget 1.3s infinite;
+    }
+
+    #fire-btn.ready:hover {
+      transform: translateX(-50%) scale(1.1);
+      filter: brightness(1.12);
+    }
+
+    #fire-btn.ready:active {
+      transform: translateX(-50%) translateY(5px) scale(0.95);
+    }
+
+    @keyframes pulseTarget {
+      0% { box-shadow: 0 9px 0 #1b3022, 0 0 0 0 rgba(118, 255, 3, 0.75); }
+      70% { box-shadow: 0 9px 0 #1b3022, 0 0 0 22px rgba(118, 255, 3, 0); }
+      100% { box-shadow: 0 9px 0 #1b3022, 0 0 0 0 rgba(118, 255, 3, 0); }
+    }
+
+    /* ==========================================================================
+       ПЕРСОНАЖІ: ШКОДНИЙ ХЛОПЧИК ІЗ БЛАСТЕРОМ ТА СУВОРА МАМА
+       ========================================================================== */
+    #boy-container {
+      position: absolute;
+      right: 2vw;
+      bottom: -10px;
+      width: clamp(270px, 27vw, 400px);
+      height: clamp(340px, 56vh, 500px);
+      z-index: 30;
+      pointer-events: none;
+      transform-origin: bottom center;
+      animation: boyIdleBreath 3.2s ease-in-out infinite;
+    }
+
+    @keyframes boyIdleBreath {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-6px) rotate(-0.8deg); }
+    }
+
+    /* Стан хлопчика: регоче після влучання з бластера */
+    #boy-container.laughing {
+      animation: boyLaughBounce 0.28s ease-in-out infinite;
+    }
+
+    @keyframes boyLaughBounce {
+      0%, 100% { transform: translateY(0) rotate(-2deg) scale(1.03); }
+      50% { transform: translateY(-14px) rotate(3deg) scale(1.05); }
+    }
+
+    /* Стан хлопчика: засоромлений, коли мама сварить */
+    #boy-container.scolded {
+      animation: boyGuiltyShiver 0.4s ease-in-out infinite;
+    }
+
+    @keyframes boyGuiltyShiver {
+      0%, 100% { transform: translateY(12px) scaleY(0.94) rotate(2deg); }
+      50% { transform: translateY(14px) scaleY(0.93) rotate(-1deg); }
+    }
+
+    /* Контейнер мами, яка виходить з дверей ліворуч */
+    #mom-container {
+      position: absolute;
+      left: -420px;
+      bottom: -8px;
+      width: clamp(260px, 25vw, 370px);
+      height: clamp(380px, 64vh, 550px);
+      z-index: 32;
+      pointer-events: none;
+      transition: left 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    #mom-container.active {
+      left: 1.5vw;
+    }
+
+    /* Анімація сварячого пальця мами */
+    #mom-container.active #mom-arm-wag {
+      animation: wagFinger 0.26s ease-in-out infinite alternate;
+      transform-origin: 185px 255px;
+    }
+
+    @keyframes wagFinger {
+      0% { transform: rotate(-14deg); }
+      100% { transform: rotate(18deg); }
+    }
+
+    /* Анімація сердитих брів та голови мами */
+    #mom-container.active #mom-head-group {
+      animation: momHeadNod 0.32s ease-in-out infinite alternate;
+      transform-origin: 150px 145px;
+    }
+
+    @keyframes momHeadNod {
+      0% { transform: rotate(-4deg) translateY(0); }
+      100% { transform: rotate(5deg) translateY(4px); }
+    }
+
+    /* Шар для польоту кульок з фарбою та спецефектів */
+    #fx-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 38;
+    }
+
+    /* Анімації живого фону (хмари, дерева, бульбашки в бластері) */
+    .cloud-slow {
+      animation: floatCloud 38s linear infinite;
+    }
+    .cloud-fast {
+      animation: floatCloud 26s linear infinite reverse;
+    }
+    @keyframes floatCloud {
+      0% { transform: translateX(-80px); }
+      50% { transform: translateX(80px); }
+      100% { transform: translateX(-80px); }
+    }
+
+    .tree-sway {
+      transform-origin: bottom center;
+      animation: swayTree 5s ease-in-out infinite alternate;
+    }
+    @keyframes swayTree {
+      0% { transform: skewX(-1.5deg); }
+      100% { transform: skewX(2deg); }
+    }
+
+    /* Адаптивність для менших екранів */
+    @media (max-width: 900px) {
+      #words-board {
+        width: 90vw;
+        transform: translateX(-50%);
+        top: 84px;
+        padding: 14px 14px 18px;
+      }
+      #boy-container {
+        width: 210px;
+        height: 290px;
+        right: -10px;
+      }
+      #mom-container.active {
+        left: -10px;
+        width: 210px;
+        height: 320px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-stage">
+  <!-- ========================================================================
+       1. ДЕТАЛІЗОВАНИЙ СЮЖЕТНИЙ SVG-ФОН: СОНЯЧНЕ ПОДВІР'Я, ЦЕГЛЯНИЙ БУДИНОК,
+          ДЕРЕВА, ПАРКАН ТА ДВЕРІ, З ЯКИХ ВИХОДИТЬ МАМА
+       ======================================================================== -->
+  <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Градієнт теплого літнього неба -->
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#2980b9" />
+        <stop offset="55%" stop-color="#6dd5fa" />
+        <stop offset="100%" stop-color="#fef9d7" />
+      </linearGradient>
+
+      <!-- Сонячне сяйво -->
+      <radialGradient id="sunGlow" cx="85%" cy="16%" r="35%">
+        <stop offset="0%" stop-color="#fffde7" stop-opacity="1" />
+        <stop offset="25%" stop-color="#ffd54f" stop-opacity="0.65" />
+        <stop offset="100%" stop-color="#ffd54f" stop-opacity="0" />
+      </radialGradient>
+
+      <!-- Далекі пагорби -->
+      <linearGradient id="hillFar" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#689f38" />
+        <stop offset="100%" stop-color="#33691e" />
+      </linearGradient>
+
+      <!-- Ближній газон -->
+      <linearGradient id="grassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#7cb342" />
+        <stop offset="45%" stop-color="#558b2f" />
+        <stop offset="100%" stop-color="#2e5718" />
+      </linearGradient>
+
+      <!-- Патерн реалістичної цегляної стіни будинку ліворуч -->
+      <pattern id="brickPattern" width="120" height="64" patternUnits="userSpaceOnUse">
+        <rect width="120" height="64" fill="#6d3b2e" />
+        <rect x="3" y="3" width="54" height="26" rx="3" fill="#a94432" />
+        <rect x="63" y="3" width="54" height="26" rx="3" fill="#923726" />
+        <rect x="-27" y="35" width="54" height="26" rx="3" fill="#873121" />
+        <rect x="33" y="35" width="54" height="26" rx="3" fill="#b34b38" />
+        <rect x="93" y="35" width="54" height="26" rx="3" fill="#9c3b2a" />
+      </pattern>
+
+      <!-- Патерн дерев'яного паркана -->
+      <linearGradient id="fenceWood" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#a1662f" />
+        <stop offset="50%" stop-color="#c68642" />
+        <stop offset="100%" stop-color="#8d5524" />
+      </linearGradient>
+
+      <!-- Крони дерев -->
+      <radialGradient id="foliageGrad1" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#9ccc65" />
+        <stop offset="55%" stop-color="#558b2f" />
+        <stop offset="100%" stop-color="#264d14" />
+      </radialGradient>
+    </defs>
+
+    <!-- Небо та сонце -->
+    <rect width="1920" height="1080" fill="url(#skyGrad)" />
+    <circle cx="1630" cy="170" r="520" fill="url(#sunGlow)" />
+    <circle cx="1630" cy="170" r="85" fill="#fff9c4" />
+
+    <!-- Об'ємні живі хмари -->
+    <g class="cloud-slow" opacity="0.9">
+      <ellipse cx="420" cy="150" rx="130" ry="48" fill="#ffffff" />
+      <circle cx="360" cy="130" r="58" fill="#ffffff" />
+      <circle cx="445" cy="115" r="72" fill="#ffffff" />
+      <circle cx="515" cy="140" r="46" fill="#ffffff" />
+      <ellipse cx="425" cy="166" rx="125" ry="25" fill="#d7ccc8" opacity="0.4" />
+    </g>
+
+    <g class="cloud-fast" opacity="0.85">
+      <ellipse cx="1180" cy="210" rx="150" ry="52" fill="#ffffff" />
+      <circle cx="1110" cy="185" r="64" fill="#ffffff" />
+      <circle cx="1205" cy="170" r="78" fill="#ffffff" />
+      <circle cx="1285" cy="195" r="52" fill="#ffffff" />
+    </g>
+
+    <!-- Далекі зелені пагорби -->
+    <path d="M0,660 Q480,530 980,640 T1920,600 L1920,1080 L0,1080 Z" fill="url(#hillFar)" />
+
+    <!-- Пишні дерева на задньому плані (хитаються від вітру) -->
+    <g class="tree-sway">
+      <rect x="1560" y="380" width="54" height="320" rx="12" fill="#5d4037" />
+      <path d="M1585,460 L1510,390 M1585,430 L1665,365" stroke="#5d4037" stroke-width="18" stroke-linecap="round" />
+      <circle cx="1585" cy="310" r="145" fill="url(#foliageGrad1)" />
+      <circle cx="1475" cy="360" r="110" fill="url(#foliageGrad1)" />
+      <circle cx="1690" cy="355" r="115" fill="url(#foliageGrad1)" />
+      <circle cx="1585" cy="220" r="95" fill="url(#foliageGrad1)" />
+    </g>
+
+    <!-- Дерев'яний паркан уздовж двору -->
+    <g id="backyard-fence">
+      <rect x="260" y="545" width="1660" height="24" fill="#5d3a1a" />
+      <rect x="260" y="695" width="1660" height="24" fill="#5d3a1a" />
+      <!-- Дощечки паркана з гострими верхівками -->
+      <g fill="url(#fenceWood)" stroke="#4a2c11" stroke-width="3">
+        <path d="M320,460 L355,425 L390,460 L390,780 L320,780 Z" />
+        <path d="M405,460 L440,425 L475,460 L475,780 L405,780 Z" />
+        <path d="M490,460 L525,425 L560,460 L560,780 L490,780 Z" />
+        <path d="M575,460 L610,425 L645,460 L645,780 L575,780 Z" />
+        <path d="M660,460 L695,425 L730,460 L730,780 L660,780 Z" />
+        <path d="M745,460 L780,425 L815,460 L815,780 L745,780 Z" />
+        <path d="M830,460 L865,425 L900,460 L900,780 L830,780 Z" />
+        <path d="M915,460 L950,425 L985,460 L985,780 L915,780 Z" />
+        <path d="M1000,460 L1035,425 L1070,460 L1070,780 L1000,780 Z" />
+        <path d="M1085,460 L1120,425 L1155,460 L1155,780 L1085,780 Z" />
+        <path d="M1170,460 L1205,425 L1240,460 L1240,780 L1170,780 Z" />
+        <path d="M1255,460 L1290,425 L1325,460 L1325,780 L1255,780 Z" />
+        <path d="M1340,460 L1375,425 L1410,460 L1410,780 L1340,780 Z" />
+        <path d="M1425,460 L1460,425 L1495,460 L1495,780 L1425,780 Z" />
+        <path d="M1510,460 L1545,425 L1580,460 L1580,780 L1510,780 Z" />
+        <path d="M1595,460 L1630,425 L1665,460 L1665,780 L1595,780 Z" />
+        <path d="M1680,460 L1715,425 L1750,460 L1750,780 L1680,780 Z" />
+        <path d="M1765,460 L1800,425 L1835,460 L1835,780 L1765,780 Z" />
+      </g>
+      <!-- Старі дитячі бризки фарби на паркані (слід від пустощів хлопчика) -->
+      <circle cx="1450" cy="580" r="28" fill="#00e5ff" opacity="0.65" />
+      <circle cx="1485" cy="605" r="12" fill="#00e5ff" opacity="0.65" />
+      <circle cx="1360" cy="650" r="34" fill="#ff4081" opacity="0.6" />
+      <circle cx="460" cy="550" r="24" fill="#76ff03" opacity="0.65" />
+    </g>
+
+    <!-- Соковитий зелений газон двору -->
+    <path d="M0,740 Q960,700 1920,750 L1920,1080 L0,1080 Z" fill="url(#grassGrad)" />
+
+    <!-- Кам'яна доріжка біля ганку -->
+    <ellipse cx="220" cy="920" rx="140" ry="38" fill="#78909c" stroke="#455a64" stroke-width="6" />
+    <ellipse cx="450" cy="965" rx="115" ry="32" fill="#90a4ae" stroke="#455a64" stroke-width="5" />
+    <ellipse cx="670" cy="1005" rx="105" ry="28" fill="#78909c" stroke="#455a64" stroke-width="5" />
+
+    <!-- ЦЕГЛЯНИЙ БУДИНОК ЛІВОРУЧ ІЗ ДВЕРИМА, ЗВІДКИ ВИХОДИТЬ МАМА -->
+    <g id="house-left">
+      <rect x="0" y="80" width="330" height="820" fill="url(#brickPattern)" stroke="#3e1f16" stroke-width="6" />
+      <!-- Дашок над ганком -->
+      <polygon points="0,40 390,120 390,155 0,95" fill="#4e342e" stroke="#271815" stroke-width="5" />
+      <!-- Дверний отвір (темний коридор всередині будинку) -->
+      <rect x="35" y="340" width="235" height="545" rx="12" fill="#1b0f0a" stroke="#d7ccc8" stroke-width="10" />
+      <!-- Дерев'яні двері (відчиняються, коли мама свариться) -->
+      <g id="house-door" style="transition: transform 0.4s ease; transform-origin: 40px 610px;">
+        <rect x="40" y="345" width="225" height="535" rx="8" fill="#8d4925" stroke="#4a2511" stroke-width="5" />
+        <rect x="65" y="375" width="175" height="200" rx="6" fill="#6d3618" stroke="#4a2511" stroke-width="4" />
+        <rect x="65" y="610" width="175" height="230" rx="6" fill="#6d3618" stroke="#4a2511" stroke-width="4" />
+        <!-- Віконце у дверях -->
+        <rect x="82" y="392" width="141" height="166" rx="4" fill="#ffe082" opacity="0.75" />
+        <line x1="152" y1="392" x2="152" y2="558" stroke="#4a2511" stroke-width="5" />
+        <line x1="82" y1="475" x2="223" y2="475" stroke="#4a2511" stroke-width="5" />
+        <!-- Золота дверна ручка -->
+        <circle cx="238" cy="610" r="14" fill="#ffd54f" stroke="#b28900" stroke-width="3" />
+      </g>
+      <!-- Кам'яні сходи ганку -->
+      <rect x="10" y="880" width="300" height="32" rx="6" fill="#90a4ae" stroke="#455a64" stroke-width="4" />
+      <rect x="0" y="912" width="335" height="36" rx="6" fill="#78909c" stroke="#37474f" stroke-width="4" />
+    </g>
+
+    <!-- Пишні кущі та травинки на передньому плані -->
+    <g fill="#33691e">
+      <circle cx="1820" cy="1040" r="120" />
+      <circle cx="1710" cy="1060" r="95" fill="#558b2f" />
+      <circle cx="80" cy="1050" r="110" />
+      <circle cx="210" cy="1070" r="85" fill="#558b2f" />
+    </g>
+  </svg>
+
+  <!-- ========================================================================
+       2. НАВІГАЦІЯ (КНОПКА НАЗАД, ІНДИКАТОР ТОЧОК, КНОПКА ДАЛІ - БЕЗ СЛІВ)
+       ======================================================================== -->
+  <div class="nav-controls">
+    <!-- Кнопка "Попередній рівень" -->
+    <button class="nav-btn" id="prev-btn" aria-label="Попередній">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M15 5L7 12L15 19" stroke="#fff8e1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <!-- Візуальна шкала прогресу без цифр і тексту -->
+    <div class="level-dots" id="level-dots"></div>
+
+    <!-- Кнопка "Наступний рівень" (одразу переходить далі без проходження) -->
+    <button class="nav-btn" id="next-btn" aria-label="Наступний">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M9 5L17 12L9 19" stroke="#fff8e1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ========================================================================
+       3. ДЕРЕВ'ЯНЕ ТАБЛО ЗІ СПІЛЬНОКОРЕНЕВИМИ СЛОВАМИ
+       ======================================================================== -->
+  <div id="words-board"></div>
+
+  <!-- ========================================================================
+       4. КНОПКА ПОСТРІЛУ БЛАСТЕРОМ (АКТИВУЄТЬСЯ КОЛИ ОБРАНО ЛІТЕРИ В СЛОВІ)
+       ======================================================================== -->
+  <button id="fire-btn" aria-label="Постріл">
+    <svg width="64" height="64" viewBox="0 0 64 64">
+      <!-- Приціл та пляма фарби -->
+      <circle cx="32" cy="32" r="22" fill="none" stroke="#1b3022" stroke-width="4" stroke-dasharray="8 5" />
+      <line x1="32" y1="4" x2="32" y2="16" stroke="#1b3022" stroke-width="4" stroke-linecap="round" />
+      <line x1="32" y1="48" x2="32" y2="60" stroke="#1b3022" stroke-width="4" stroke-linecap="round" />
+      <line x1="4" y1="32" x2="16" y2="32" stroke="#1b3022" stroke-width="4" stroke-linecap="round" />
+      <line x1="48" y1="32" x2="60" y2="32" stroke="#1b3022" stroke-width="4" stroke-linecap="round" />
+      <path d="M26,24 C29,18 37,19 39,25 C44,27 45,35 39,38 C37,44 28,44 25,38 C19,35 20,26 26,24 Z" fill="#ff1744" stroke="#ffffff" stroke-width="2" />
+    </svg>
+  </button>
+
+  <!-- ========================================================================
+       5. ДЕТАЛІЗОВАНИЙ SVG-ПЕРСОНАЖ: ШКОДНИЙ ХЛОПЧИК З ФАРБО-БЛАСТЕРОМ
+       ======================================================================== -->
+  <div id="boy-container">
+    <svg viewBox="0 0 380 470" width="100%" height="100%">
+      <defs>
+        <!-- Реалістичний градієнт шкіри -->
+        <radialGradient id="boySkin" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#ffe0bd" />
+          <stop offset="70%" stop-color="#f1c27d" />
+          <stop offset="100%" stop-color="#c68642" />
+        </radialGradient>
+
+        <!-- Джинсовий комбінезон -->
+        <linearGradient id="denimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#1e88e5" />
+          <stop offset="60%" stop-color="#1565c0" />
+          <stop offset="100%" stop-color="#0d47a1" />
+        </linearGradient>
+
+        <!-- Руде скуйовджене волосся -->
+        <linearGradient id="gingerHair" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ff7043" />
+          <stop offset="65%" stop-color="#d84315" />
+          <stop offset="100%" stop-color="#870000" />
+        </linearGradient>
+
+        <!-- Корпус бластера -->
+        <linearGradient id="blasterBody" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ffd600" />
+          <stop offset="55%" stop-color="#ff6d00" />
+          <stop offset="100%" stop-color="#bf360c" />
+        </linearGradient>
+
+        <!-- Неонова фарба в колбі бластера -->
+        <linearGradient id="paintTank" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#76ff03" />
+          <stop offset="50%" stop-color="#00e5ff" />
+          <stop offset="100%" stop-color="#aa00ff" />
+        </linearGradient>
+      </defs>
+
+      <!-- Тінь під ногами -->
+      <ellipse cx="215" cy="445" rx="95" ry="20" fill="rgba(0,0,0,0.4)" />
+
+      <!-- Ноги та кросівки -->
+      <g id="boy-legs">
+        <rect x="165" y="340" width="38" height="82" rx="14" fill="url(#denimGrad)" stroke="#082e6b" stroke-width="3" />
+        <rect x="228" y="340" width="38" height="82" rx="14" fill="url(#denimGrad)" stroke="#082e6b" stroke-width="3" />
+        <!-- Червоні кеди -->
+        <path d="M140,420 Q165,395 205,412 L205,442 L135,442 Q130,430 140,420 Z" fill="#e53935" stroke="#fff" stroke-width="4" />
+        <path d="M225,412 Q265,395 292,420 Q300,430 294,442 L225,442 Z" fill="#e53935" stroke="#fff" stroke-width="4" />
+      </g>
+
+      <!-- Тулуб: смугаста футболка та джинсовий комбінезон -->
+      <g id="boy-torso">
+        <path d="M145,220 Q215,205 280,225 L275,355 L155,355 Z" fill="#fff8e1" stroke="#3e2723" stroke-width="3" />
+        <!-- Червоні смужки на футболці -->
+        <path d="M150,248 L278,248 M152,276 L277,276 M154,304 L276,304" stroke="#d32f2f" stroke-width="11" />
+        <!-- Комбінезон з лямками та золотими ґудзиками -->
+        <path d="M156,285 L274,285 L270,360 L160,360 Z" fill="url(#denimGrad)" stroke="#0d47a1" stroke-width="3" />
+        <rect x="164" y="222" width="20" height="75" rx="6" fill="url(#denimGrad)" stroke="#0d47a1" stroke-width="2.5" />
+        <rect x="244" y="222" width="20" height="75" rx="6" fill="url(#denimGrad)" stroke="#0d47a1" stroke-width="2.5" />
+        <circle cx="174" cy="285" r="7" fill="#ffd54f" stroke="#b28900" stroke-width="2" />
+        <circle cx="254" cy="285" r="7" fill="#ffd54f" stroke="#b28900" stroke-width="2" />
+        <!-- Кишеня з плямою фарби -->
+        <path d="M190,305 L240,305 L235,342 L215,350 L195,342 Z" fill="#0d47a1" stroke="#64b5f6" stroke-width="2" />
+        <circle cx="222" cy="322" r="10" fill="#76ff03" opacity="0.85" />
+      </g>
+
+      <!-- ГОЛОВА ШКОДНОГО ХЛОПЧИКА -->
+      <g id="boy-head">
+        <!-- Шия -->
+        <rect x="196" y="198" width="36" height="32" rx="10" fill="url(#boySkin)" />
+
+        <!-- Вуха (червоніють, коли мама сварить) -->
+        <ellipse id="boy-ear-l" cx="138" cy="145" rx="16" ry="22" fill="url(#boySkin)" stroke="#8d5524" stroke-width="2.5" />
+        <ellipse id="boy-ear-r" cx="288" cy="145" rx="16" ry="22" fill="url(#boySkin)" stroke="#8d5524" stroke-width="2.5" />
+
+        <!-- Обличчя -->
+        <ellipse cx="213" cy="142" rx="74" ry="68" fill="url(#boySkin)" stroke="#8d5524" stroke-width="3" />
+
+        <!-- Рум'янець сорому (з'являється при помилці) -->
+        <g id="boy-blush" opacity="0" style="transition: opacity 0.3s;">
+          <ellipse cx="165" cy="160" rx="22" ry="12" fill="#ff1744" opacity="0.55" />
+          <ellipse cx="255" cy="160" rx="22" ry="12" fill="#ff1744" opacity="0.55" />
+        </g>
+
+        <!-- Ластовиння (веснянки) -->
+        <g fill="#bf6930" opacity="0.75">
+          <circle cx="162" cy="152" r="2.5" /><circle cx="172" cy="157" r="2" /><circle cx="156" cy="160" r="2" />
+          <circle cx="252" cy="152" r="2.5" /><circle cx="262" cy="157" r="2" /><circle cx="246" cy="159" r="2" />
+        </g>
+
+        <!-- Очі (живі, рухаються в бік дошки) -->
+        <g id="boy-eyes-normal">
+          <ellipse cx="182" cy="132" rx="17" ry="20" fill="#ffffff" stroke="#4e342e" stroke-width="2.5" />
+          <ellipse cx="238" cy="132" rx="17" ry="20" fill="#ffffff" stroke="#4e342e" stroke-width="2.5" />
+          <!-- Зелені райдужки та зіниці, спрямовані на слова ліворуч -->
+          <circle id="pupil-l" cx="176" cy="132" r="10" fill="#2e7d32" />
+          <circle cx="176" cy="132" r="5.5" fill="#111" />
+          <circle cx="173" cy="128" r="3" fill="#fff" />
+
+          <circle id="pupil-r" cx="232" cy="132" r="10" fill="#2e7d32" />
+          <circle cx="232" cy="132" r="5.5" fill="#111" />
+          <circle cx="229" cy="128" r="3" fill="#fff" />
+        </g>
+
+        <!-- Очі при сміху (примружені дужки радості) -->
+        <g id="boy-eyes-laugh" opacity="0">
+          <path d="M164,134 Q182,114 198,134" fill="none" stroke="#3e2723" stroke-width="6" stroke-linecap="round" />
+          <path d="M222,134 Q238,114 256,134" fill="none" stroke="#3e2723" stroke-width="6" stroke-linecap="round" />
+        </g>
+
+        <!-- Хитро підняті брови -->
+        <path id="boy-brow-l" d="M162,106 Q182,96 198,108" fill="none" stroke="#bf360c" stroke-width="5.5" stroke-linecap="round" />
+        <path id="boy-brow-r" d="M222,104 Q240,92 258,104" fill="none" stroke="#bf360c" stroke-width="5.5" stroke-linecap="round" />
+
+        <!-- Кирпатий ніс -->
+        <path d="M206,136 Q196,150 212,154" fill="none" stroke="#9c5a25" stroke-width="4" stroke-linecap="round" />
+
+        <!-- Рот: 1) Шкодна усмішка -->
+        <g id="boy-mouth-smirk">
+          <path d="M184,172 Q218,192 248,166" fill="none" stroke="#5d2906" stroke-width="5" stroke-linecap="round" />
+          <path d="M232,175 Q240,188 246,174 Z" fill="#ffffff" stroke="#5d2906" stroke-width="2" />
+        </g>
+
+        <!-- Рот: 2) Гучний регіт -->
+        <g id="boy-mouth-laugh" opacity="0">
+          <path d="M175,166 Q213,212 252,166 Z" fill="#880e4f" stroke="#4a148c" stroke-width="4" />
+          <path d="M183,168 L244,168 L238,178 L189,178 Z" fill="#ffffff" />
+          <ellipse cx="213" cy="188" rx="18" ry="9" fill="#ff4081" />
+        </g>
+
+        <!-- Рот: 3) Засоромлений "ой-ой", коли сварить мама -->
+        <g id="boy-mouth-guilty" opacity="0">
+          <path d="M192,184 Q213,168 234,184" fill="none" stroke="#5d2906" stroke-width="5" stroke-linecap="round" />
+        </g>
+
+        <!-- Рудий чуб та кепка козирком назад -->
+        <path d="M138,118 Q130,68 210,64 Q282,66 285,118 Q265,92 235,102 Q205,82 175,104 Q155,88 138,118 Z" fill="url(#gingerHair)" stroke="#7f1d00" stroke-width="3" />
+        <!-- Кепка козирком назад -->
+        <path d="M144,98 Q212,42 282,98 Z" fill="#d32f2f" stroke="#7f0000" stroke-width="3.5" />
+        <path d="M268,88 Q325,84 332,104 Q325,114 272,106 Z" fill="#1976d2" stroke="#0d47a1" stroke-width="3" />
+        <!-- Пасма рудого чуба спереду -->
+        <path d="M150,96 Q165,122 184,104 Q198,126 218,98 Q232,120 250,98" fill="url(#gingerHair)" stroke="#870000" stroke-width="2.5" />
+      </g>
+
+      <!-- РУКИ ТА ФАНТАСТИЧНИЙ ФАРБО-БЛАСТЕР -->
+      <g id="boy-blaster-group" style="transition: transform 0.25s ease; transform-origin: 210px 265px;">
+        <!-- Задня рука -->
+        <path d="M160,245 Q115,255 95,235" fill="none" stroke="url(#boySkin)" stroke-width="24" stroke-linecap="round" />
+
+        <!-- Корпус фарбо-бластера (спрямований ліворуч вгору на слова) -->
+        <g id="blaster-gun" transform="translate(25, 165) rotate(-14)">
+          <!-- Рукоятка -->
+          <rect x="135" y="72" width="26" height="52" rx="8" transform="rotate(18 135 72)" fill="#37474f" stroke="#102027" stroke-width="3" />
+          <!-- Спусковий гачок -->
+          <path d="M118,82 Q108,95 122,102" fill="none" stroke="#ff1744" stroke-width="6" stroke-linecap="round" />
+
+          <!-- Прозора колба з бульбашками різнокольорової фарби зверху -->
+          <rect x="78" y="2" width="76" height="44" rx="22" fill="url(#paintTank)" stroke="#263238" stroke-width="4" />
+          <circle cx="100" cy="22" r="7" fill="#ffffff" opacity="0.65" />
+          <circle cx="122" cy="16" r="5" fill="#ffff00" opacity="0.8" />
+          <circle cx="136" cy="28" r="6" fill="#ff4081" opacity="0.8" />
+
+          <!-- Основний ствол бластера -->
+          <rect x="32" y="38" width="142" height="46" rx="16" fill="url(#blasterBody)" stroke="#4e1500" stroke-width="3.5" />
+          <!-- Сопло з краплями фарби (точка вильоту пострілу: близько x=20, y=60) -->
+          <polygon points="8,44 34,34 34,88 8,78" fill="#263238" stroke="#000" stroke-width="3" />
+          <ellipse id="blaster-muzzle" cx="8" cy="61" rx="6" ry="18" fill="#76ff03" />
+          <!-- Деталі тиску та манометр -->
+          <circle cx="115" cy="61" r="14" fill="#eceff1" stroke="#263238" stroke-width="3" />
+          <line x1="115" y1="61" x2="122" y2="53" stroke="#d50000" stroke-width="3" stroke-linecap="round" />
+        </g>
+
+        <!-- Передня рука, що тримає бластер -->
+        <path d="M262,248 Q225,285 182,258" fill="none" stroke="url(#boySkin)" stroke-width="25" stroke-linecap="round" />
+        <circle cx="176" cy="255" r="14" fill="url(#boySkin)" stroke="#8d5524" stroke-width="2.5" />
+      </g>
+    </svg>
+  </div>
+
+  <!-- ========================================================================
+       6. ДЕТАЛІЗОВАНИЙ SVG-ПЕРСОНАЖ: МАМА, ЯКА ВИХОДИТЬ І СВАРИТЬ ХЛОПЧИКА
+       ======================================================================== -->
+  <div id="mom-container">
+    <svg viewBox="0 0 340 500" width="100%" height="100%">
+      <defs>
+        <radialGradient id="momSkin" cx="45%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#ffe4c4" />
+          <stop offset="70%" stop-color="#f3c69f" />
+          <stop offset="100%" stop-color="#c98e63" />
+        </radialGradient>
+        <linearGradient id="momDress" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#8e24aa" />
+          <stop offset="100%" stop-color="#4a148c" />
+        </linearGradient>
+        <linearGradient id="momHair" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#5d4037" />
+          <stop offset="100%" stop-color="#271815" />
+        </linearGradient>
+      </defs>
+
+      <!-- Тінь під мамою -->
+      <ellipse cx="155" cy="480" rx="88" ry="16" fill="rgba(0,0,0,0.4)" />
+
+      <!-- Ноги та капці -->
+      <rect x="122" y="385" width="24" height="85" rx="10" fill="url(#momSkin)" />
+      <rect x="166" y="385" width="24" height="85" rx="10" fill="url(#momSkin)" />
+      <ellipse cx="134" cy="472" rx="24" ry="11" fill="#d81b60" stroke="#880e4f" stroke-width="3" />
+      <ellipse cx="178" cy="472" rx="24" ry="11" fill="#d81b60" stroke="#880e4f" stroke-width="3" />
+
+      <!-- Сукня та кухонний фартушок у горошок -->
+      <path d="M102,210 Q155,195 208,210 L238,405 L75,405 Z" fill="url(#momDress)" stroke="#311b92" stroke-width="3.5" />
+      <path d="M114,225 L196,225 L212,385 L98,385 Z" fill="#ffebee" stroke="#ef9a9a" stroke-width="3" />
+      <!-- Горошок на фартушку -->
+      <g fill="#f48fb1">
+        <circle cx="130" cy="260" r="6" /><circle cx="175" cy="265" r="6" />
+        <circle cx="152" cy="300" r="6" /><circle cx="122" cy="335" r="6" />
+        <circle cx="182" cy="340" r="6" /><circle cx="155" cy="365" r="6" />
+      </g>
+
+      <!-- Ліва рука сердито вперта в бік -->
+      <path d="M110,222 Q52,265 98,308" fill="none" stroke="url(#momSkin)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+
+      <!-- ГОЛОВА МАМИ З ЕМОЦІЄЮ СУВОРОСТІ -->
+      <g id="mom-head-group">
+        <!-- Високий пучок волосся -->
+        <circle cx="135" cy="58" r="36" fill="url(#momHair)" stroke="#1b0f0d" stroke-width="3" />
+        <path d="M98,118 Q95,68 155,68 Q215,68 212,118 Z" fill="url(#momHair)" />
+
+        <!-- Шия та обличчя -->
+        <rect x="140" y="182" width="30" height="34" rx="10" fill="url(#momSkin)" />
+        <ellipse cx="156" cy="136" rx="56" ry="60" fill="url(#momSkin)" stroke="#a1663e" stroke-width="3" />
+
+        <!-- Сережки-перлинки -->
+        <circle cx="98" cy="150" r="7" fill="#fff9c4" stroke="#fbc02d" stroke-width="2" />
+        <circle cx="214" cy="150" r="7" fill="#fff9c4" stroke="#fbc02d" stroke-width="2" />
+
+        <!-- Окуляри в стильній оправі -->
+        <rect x="116" y="118" width="36" height="24" rx="8" fill="rgba(255,255,255,0.45)" stroke="#880e4f" stroke-width="4" />
+        <rect x="164" y="118" width="36" height="24" rx="8" fill="rgba(255,255,255,0.45)" stroke="#880e4f" stroke-width="4" />
+        <line x1="152" y1="128" x2="164" y2="128" stroke="#880e4f" stroke-width="4" />
+
+        <!-- Суворі очі, що дивляться на хлопчика праворуч -->
+        <circle cx="138" cy="130" r="6" fill="#271815" />
+        <circle cx="186" cy="130" r="6" fill="#271815" />
+
+        <!-- Зведені сердиті брови -->
+        <line x1="115" y1="104" x2="150" y2="115" stroke="#271815" stroke-width="5.5" stroke-linecap="round" />
+        <line x1="200" y1="104" x2="166" y2="115" stroke="#271815" stroke-width="5.5" stroke-linecap="round" />
+
+        <!-- Ніс та суворий рот, що сварить -->
+        <path d="M158,132 Q168,146 155,150" fill="none" stroke="#a1663e" stroke-width="3.5" stroke-linecap="round" />
+        <ellipse cx="158" cy="170" rx="16" ry="11" fill="#880e4f" stroke="#4a001f" stroke-width="3" />
+
+        <!-- Емоційні блискавки/хвилі обурення без слів -->
+        <g stroke="#ff1744" stroke-width="5" stroke-linecap="round" fill="none">
+          <path d="M235,75 L255,60 L248,82 L272,68" />
+          <path d="M245,108 L278,104" />
+          <path d="M238,135 L268,145" />
+        </g>
+      </g>
+
+      <!-- Права рука мами з піднятим вказівним пальцем (сварить) -->
+      <g id="mom-arm-wag">
+        <path d="M196,225 Q245,250 265,195" fill="none" stroke="url(#momSkin)" stroke-width="22" stroke-linecap="round" />
+        <!-- Долоня та піднятий палець -->
+        <circle cx="268" cy="186" r="14" fill="url(#momSkin)" stroke="#a1663e" stroke-width="2.5" />
+        <rect x="263" y="148" width="11" height="34" rx="5.5" fill="url(#momSkin)" stroke="#a1663e" stroke-width="2.5" />
+      </g>
+    </svg>
+  </div>
+
+  <!-- ========================================================================
+       7. ПОВНОЕКРАННИЙ SVG-ШАР ДЛЯ ПОЛЬОТУ КУЛЬОК ФАРБИ ТА БРИЗОК
+       ======================================================================== -->
+  <svg id="fx-layer" viewBox="0 0 1920 1080" preserveAspectRatio="none"></svg>
+</div>
+
+<script>
+  /* ==========================================================================
+     БАЗА ДАНИХ ІЗ 22 НАБОРІВ СПІЛЬНОКОРЕНЕВИХ СЛІВ (ДЛЯ 3-4 КЛАСУ)
+     Дитина може виділити правильний корінь у БУДЬ-ЯКОМУ ОДНОМУ слові з набору!
+     ========================================================================== */
+  const LEVELS = [
+    { root: "ЛІС",   words: ["ЛІС", "ЛІСНИК", "ЛІСОВИЙ", "ПІДЛІСОК", "ЛІСОЧОК"] },
+    { root: "САД",   words: ["САД", "САДОК", "САДІВНИК", "САДОВИЙ", "ПОСАДКА"] },
+    { root: "ВОД",   words: ["ВОДА", "ВОДНИЙ", "ВОДЯНИЙ", "ПІДВОДНИЙ", "ВОДИЧКА"] },
+    { root: "РИБ",   words: ["РИБА", "РИБКА", "РИБАЛКА", "РИБНИЙ", "РИБОНЬКА"] },
+    { root: "ЗИМ",   words: ["ЗИМА", "ЗИМОВИЙ", "ЗИМУВАТИ", "ЗИМОНЬКА"] },
+    { root: "ДУБ",   words: ["ДУБ", "ДУБОК", "ДУБОВИЙ", "ДУБНЯК", "ДУБОЧОК"] },
+    { root: "ГРИБ",  words: ["ГРИБ", "ГРИБОК", "ГРИБНИЙ", "ГРИБНИЦЯ"] },
+    { root: "МОВ",   words: ["МОВА", "МОВНИЙ", "ВИМОВА", "РОЗМОВА", "ПЕРЕДМОВА"] },
+    { root: "ТРАВ",  words: ["ТРАВА", "ТРАВИЧКА", "ТРАВИНКА", "ТРАВЕНЬ"] },
+    { root: "КВІТ",  words: ["КВІТКА", "КВІТНИК", "КВІТКОВИЙ", "РОЗКВІТ"] },
+    { root: "ХМАР",  words: ["ХМАРА", "ХМАРКА", "ХМАРНИЙ", "ХМАРИНКА", "БЕЗХМАРНИЙ"] },
+    { root: "МОРОЗ", words: ["МОРОЗ", "МОРОЗНИЙ", "МОРОЗИВО", "ЗАМОРОЗКИ"] },
+    { root: "ДОЩ",   words: ["ДОЩ", "ДОЩИК", "ДОЩОВИЙ", "ДОЩОВИК"] },
+    { root: "СТЕП",  words: ["СТЕП", "СТЕПОВИЙ", "СТЕПОК", "СТЕПИК"] },
+    { root: "БЕРЕЗ", words: ["БЕРЕЗА", "БЕРЕЗОВИЙ", "БЕРЕЗНЯК", "БЕРЕЗЕНЬ"] },
+    { root: "КАЛИН", words: ["КАЛИНА", "КАЛИНОВИЙ", "КАЛИНКА", "КАЛИНОНЬКА"] },
+    { root: "ВЕРБ",  words: ["ВЕРБА", "ВЕРБОВИЙ", "ВЕРБИЧКА", "ВЕРБОНЬКА"] },
+    { root: "МОР",   words: ["МОРЕ", "МОРСЬКИЙ", "МОРЯК", "ПРИМОРСЬКИЙ"] },
+    { root: "ЧАС",   words: ["ЧАС", "ЧАСОВИЙ", "ЧАСИНКА", "ВЧАСНИЙ"] },
+    { root: "ПИС",   words: ["ПИСАТИ", "ПИСАНКА", "ЗАПИС", "ПЕРЕПИС", "НАДПИС"] },
+    { root: "ЧИТ",   words: ["ЧИТАТИ", "ЧИТАЧ", "ЧИТАНКА", "ПРОЧИТАТИ"] },
+    { root: "МАЛ",   words: ["МАЛЮВАТИ", "МАЛЮНОК", "МАЛЯР", "ЗАМАЛЬОВКА"] }
+  ];
+
+  // Палітра яскравих фарб для пострілів бластера
+  const PAINT_COLORS = [
+    { cls: "painted-cyan",    hex: "#00e5ff", stroke: "#006064" },
+    { cls: "painted-lime",    hex: "#76ff03", stroke: "#1b5e20" },
+    { cls: "painted-magenta", hex: "#ff1744", stroke: "#880e4f" },
+    { cls: "painted-yellow",  hex: "#ffea00", stroke: "#e65100" }
+  ];
+
+  /* ==========================================================================
+     СИНТЕЗАТОР ЗВУКІВ (WEB AUDIO API - ЖОДНИХ ЗОВНІШНІХ АУДІОФАЙЛІВ)
+     Всі фідбеки звукові, активні, без слів!
+     ========================================================================== */
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === "suspended") {
+        this.ctx.resume();
+      }
+    }
+
+    // Звук вибору дерев'яної літери
+    playTileClick(pitchIndex = 0) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(340 + pitchIndex * 35, now);
+      osc.frequency.exponentialRampToValueAtTime(580 + pitchIndex * 40, now + 0.09);
+
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+
+    // Звук пострілу з бластера + соковитий ляпас фарби
+    playBlasterShot() {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      // Лазерно-пневматичний імпульс
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(920, now);
+      osc.frequency.exponentialRampToValueAtTime(140, now + 0.18);
+
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.19);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.19);
+
+      // Звук ляпаса фарби (фільтрований шум + бульбашка)
+      setTimeout(() => {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const popOsc = this.ctx.createOscillator();
+        const popGain = this.ctx.createGain();
+        popOsc.type = "sine";
+        popOsc.frequency.setValueAtTime(220, t);
+        popOsc.frequency.exponentialRampToValueAtTime(680, t + 0.08);
+        popOsc.frequency.exponentialRampToValueAtTime(180, t + 0.16);
+
+        popGain.gain.setValueAtTime(0.35, t);
+        popGain.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+        popOsc.connect(popGain);
+        popGain.connect(this.ctx.destination);
+        popOsc.start(t);
+        popOsc.stop(t + 0.17);
+      }, 130);
+    }
+
+    // Бешкетний дитячий сміх хлопчика (серія веселих стрибаючих нот "хі-хі-ха-ха!")
+    playBoyLaugh() {
+      this.init();
+      const notes = [520, 660, 580, 740, 640, 820, 880];
+      notes.forEach((freq, idx) => {
+        setTimeout(() => {
+          if (!this.ctx) return;
+          const t = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(freq, t);
+          osc.frequency.exponentialRampToValueAtTime(freq * 1.18, t + 0.06);
+          osc.frequency.exponentialRampToValueAtTime(freq * 0.9, t + 0.12);
+
+          gain.gain.setValueAtTime(0.28, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.13);
+        }, idx * 105);
+      });
+    }
+
+    // Звук відкриття дверей та сердитого бурчання мами ("уа-уа-уа-уааа!")
+    playMomScold() {
+      this.init();
+      const scoldNotes = [
+        { f1: 310, f2: 260, delay: 0,   dur: 0.22 },
+        { f1: 295, f2: 245, delay: 240, dur: 0.22 },
+        { f1: 280, f2: 220, delay: 480, dur: 0.24 },
+        { f1: 250, f2: 155, delay: 740, dur: 0.55 }
+      ];
+
+      scoldNotes.forEach(item => {
+        setTimeout(() => {
+          if (!this.ctx) return;
+          const t = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const filter = this.ctx.createBiquadFilter();
+          const gain = this.ctx.createGain();
+
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(item.f1, t);
+          osc.frequency.linearRampToValueAtTime(item.f2, t + item.dur);
+
+          // Формантний фільтр для імітації сердитої інтонації "уа-уа"
+          filter.type = "bandpass";
+          filter.frequency.setValueAtTime(650, t);
+          filter.frequency.linearRampToValueAtTime(380, t + item.dur);
+          filter.Q.value = 3.5;
+
+          gain.gain.setValueAtTime(0.38, t);
+          gain.gain.exponentialRampToValueAtTime(0.008, t + item.dur);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(t);
+          osc.stop(t + item.dur);
+        }, item.delay);
+      });
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  /* ==========================================================================
+     СТАН ГРИ ТА ОСНОВНІ ЕЛЕМЕНТИ DOM
+     ========================================================================== */
+  let currentLevelIdx = 0;
+  let completedLevels = new Set();
+  let activeWordIdx = null;        // Індекс слова, в якому дитина зараз виділяє корінь
+  let selectedLetterIndices = [];  // Відсортований масив індексів виділених літер у цьому слові
+  let isDragging = false;          // Підтримка протягування мишкою або пальцем по літерах
+  let dragStartIdx = null;
+  let isAnimating = false;         // Блокування під час анімації пострілів або мами
+
+  const wordsBoard = document.getElementById("words-board");
+  const fireBtn = document.getElementById("fire-btn");
+  const prevBtn = document.getElementById("prev-btn");
+  const nextBtn = document.getElementById("next-btn");
+  const levelDots = document.getElementById("level-dots");
+  const boyContainer = document.getElementById("boy-container");
+  const momContainer = document.getElementById("mom-container");
+  const fxLayer = document.getElementById("fx-layer");
+
+  /* ==========================================================================
+     ІНІЦІАЛІЗАЦІЯ КРАПОК ПРОГРЕСУ ТА ЗАВАНТАЖЕННЯ РІВНЯ
+     ========================================================================== */
+  function renderDots() {
+    levelDots.innerHTML = "";
+    LEVELS.forEach((_, idx) => {
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      if (idx === currentLevelIdx) dot.classList.add("active");
+      if (completedLevels.has(idx)) dot.classList.add("done");
+      levelDots.appendChild(dot);
+    });
+  }
+
+  function loadLevel(idx) {
+    isAnimating = false;
+    activeWordIdx = null;
+    selectedLetterIndices = [];
+    resetCharacterStates();
+    updateFireButton();
+
+    currentLevelIdx = (idx + LEVELS.length) % LEVELS.length;
+    renderDots();
+
+    const levelData = LEVELS[currentLevelIdx];
+    wordsBoard.innerHTML = "";
+
+    // Створюємо дерев'яні дошки для кожного спільнокореневого слова
+    levelData.words.forEach((word, wIdx) => {
+      const plank = document.createElement("div");
+      plank.className = "word-plank";
+      plank.dataset.wordIdx = wIdx;
+
+      // SVG-шар над дошкою для малювання дужки кореня та плям фарби
+      const svgOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svgOverlay.setAttribute("class", "plank-overlay-svg");
+      plank.appendChild(svgOverlay);
+
+      const lettersRow = document.createElement("div");
+      lettersRow.className = "letters-row";
+
+      [...word].forEach((char, cIdx) => {
+        const tile = document.createElement("div");
+        tile.className = "letter-tile";
+        tile.textContent = char;
+        tile.dataset.wordIdx = wIdx;
+        tile.dataset.charIdx = cIdx;
+
+        // Початок виділення кліком або протягуванням
+        tile.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          if (isAnimating) return;
+          handlePointerDownOnLetter(wIdx, cIdx);
+        });
+
+        // Продовження виділення при проведенні курсором/пальцем
+        tile.addEventListener("pointerenter", () => {
+          if (!isDragging || isAnimating) return;
+          handlePointerEnterLetter(wIdx, cIdx);
+        });
+
+        lettersRow.appendChild(tile);
+      });
+
+      plank.appendChild(lettersRow);
+      wordsBoard.appendChild(plank);
+    });
+  }
+
+  window.addEventListener("pointerup", () => {
+    isDragging = false;
+  });
+
+  /* ==========================================================================
+     ЛОГІКА ВИДІЛЕННЯ КОРЕНЯ В ОДНОМУ СЛОВІ
+     Дитина може клікати по сусідніх літерах або провести пальцем/мишкою
+     ========================================================================== */
+  function handlePointerDownOnLetter(wIdx, cIdx) {
+    isDragging = true;
+    dragStartIdx = cIdx;
+
+    // Якщо дитина переключилася на інше слово — очищуємо попереднє слово
+    if (activeWordIdx !== wIdx) {
+      activeWordIdx = wIdx;
+      selectedLetterIndices = [cIdx];
+    } else {
+      // Якщо клікнули по літері в тому ж слові: додаємо/прибираємо неперервний діапазон
+      if (selectedLetterIndices.includes(cIdx)) {
+        // Якщо клікнули з краю виділення — скорочуємо, інакше починаємо нове з цієї літери
+        if (selectedLetterIndices.length === 1) {
+          selectedLetterIndices = [];
+          activeWordIdx = null;
+        } else if (cIdx === selectedLetterIndices[0]) {
+          selectedLetterIndices.shift();
+        } else if (cIdx === selectedLetterIndices[selectedLetterIndices.length - 1]) {
+          selectedLetterIndices.pop();
+        } else {
+          selectedLetterIndices = [cIdx];
+        }
+      } else {
+        const minIdx = Math.min(...selectedLetterIndices, cIdx);
+        const maxIdx = Math.max(...selectedLetterIndices, cIdx);
+        selectedLetterIndices = [];
+        for (let i = minIdx; i <= maxIdx; i++) {
+          selectedLetterIndices.push(i);
+        }
+      }
+    }
+
+    sound.playTileClick(selectedLetterIndices.length);
+    refreshSelectionUI();
+  }
+
+  function handlePointerEnterLetter(wIdx, cIdx) {
+    if (wIdx !== activeWordIdx || dragStartIdx === null) return;
+    const minIdx = Math.min(dragStartIdx, cIdx);
+    const maxIdx = Math.max(dragStartIdx, cIdx);
+
+    const newRange = [];
+    for (let i = minIdx; i <= maxIdx; i++) {
+      newRange.push(i);
+    }
+
+    if (newRange.join(",") !== selectedLetterIndices.join(",")) {
+      selectedLetterIndices = newRange;
+      sound.playTileClick(selectedLetterIndices.length);
+      refreshSelectionUI();
+    }
+  }
+
+  // Оновлення підсвітки вибраних літер та малювання класичної дужки кореня ⁀
+  function refreshSelectionUI() {
+    document.querySelectorAll(".word-plank").forEach((plank) => {
+      const wIdx = Number(plank.dataset.wordIdx);
+      const svg = plank.querySelector(".plank-overlay-svg");
+      svg.innerHTML = "";
+
+      plank.querySelectorAll(".letter-tile").forEach((tile) => {
+        const cIdx = Number(tile.dataset.charIdx);
+        const isSelected = wIdx === activeWordIdx && selectedLetterIndices.includes(cIdx);
+        tile.classList.toggle("selected", isSelected);
+      });
+
+      if (wIdx === activeWordIdx && selectedLetterIndices.length > 0) {
+        drawRootArc(plank, selectedLetterIndices[0], selectedLetterIndices[selectedLetterIndices.length - 1], "#fff59d");
+      }
+    });
+
+    updateFireButton();
+  }
+
+  // Малювання шкільної дужки кореня над діапазоном літер
+  function drawRootArc(plankElement, startIdx, endIdx, strokeColor = "#fff59d", splatColor = null) {
+    const svg = plankElement.querySelector(".plank-overlay-svg");
+    const tiles = plankElement.querySelectorAll(".letter-tile");
+    const firstTile = tiles[startIdx];
+    const lastTile = tiles[endIdx];
+    if (!firstTile || !lastTile) return;
+
+    const svgRect = svg.getBoundingClientRect();
+    const firstRect = firstTile.getBoundingClientRect();
+    const lastRect = lastTile.getBoundingClientRect();
+
+    const x1 = firstRect.left - svgRect.left + 4;
+    const x2 = lastRect.right - svgRect.left - 4;
+    const yBase = firstRect.top - svgRect.top + 4;
+    const midX = (x1 + x2) / 2;
+    const archHeight = Math.min(28, Math.max(16, (x2 - x1) * 0.18));
+
+    // Якщо передано колір фарби — додаємо соковиту декоративну пляму під дужкою
+    if (splatColor) {
+      const splat = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const r = 10;
+      splat.setAttribute(
+        "d",
+        `M ${x1},${yBase + 6} Q ${midX},${yBase - archHeight - 10} ${x2},${yBase + 6}`
+      );
+      splat.setAttribute("fill", "none");
+      splat.setAttribute("stroke", splatColor);
+      splat.setAttribute("stroke-width", "12");
+      splat.setAttribute("stroke-linecap", "round");
+      splat.setAttribute("opacity", "0.65");
+      svg.appendChild(splat);
+
+      // Краплі фарби навколо дужки
+      [x1 - 6, midX, x2 + 6].forEach((cx, i) => {
+        const drop = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        drop.setAttribute("cx", cx);
+        drop.setAttribute("cy", i === 1 ? yBase - archHeight * 0.7 : yBase + 4);
+        drop.setAttribute("r", i === 1 ? r * 0.6 : r * 0.5);
+        drop.setAttribute("fill", splatColor);
+        svg.appendChild(drop);
+      });
+    }
+
+    // Сама дужка кореня
+    const arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    arc.setAttribute(
+      "d",
+      `M ${x1},${yBase} Q ${midX},${yBase - archHeight} ${x2},${yBase}`
+    );
+    arc.setAttribute("fill", "none");
+    arc.setAttribute("stroke", strokeColor);
+    arc.setAttribute("stroke-width", "6");
+    arc.setAttribute("stroke-linecap", "round");
+    svg.appendChild(arc);
+  }
+
+  function updateFireButton() {
+    if (activeWordIdx !== null && selectedLetterIndices.length > 0 && !isAnimating) {
+      fireBtn.classList.add("ready");
+    } else {
+      fireBtn.classList.remove("ready");
+    }
+  }
+
+  /* ==========================================================================
+     ПЕРЕВІРКА ВИДІЛЕНОГО КОРЕНЯ ПРИ НАТИСКАННІ КНОПКИ ПОСТРІЛУ
+     ========================================================================== */
+  fireBtn.addEventListener("click", () => {
+    if (isAnimating || activeWordIdx === null || selectedLetterIndices.length === 0) return;
+
+    const levelData = LEVELS[currentLevelIdx];
+    const targetWord = levelData.words[activeWordIdx];
+    const selectedSubstring = selectedLetterIndices.map(i => targetWord[i]).join("");
+
+    // Перевіряємо, чи виділена частина збігається з коренем
+    const expectedStart = targetWord.indexOf(levelData.root);
+    const expectedEnd = expectedStart + levelData.root.length - 1;
+
+    const isExactMatch =
+      selectedSubstring === levelData.root &&
+      selectedLetterIndices[0] === expectedStart &&
+      selectedLetterIndices[selectedLetterIndices.length - 1] === expectedEnd;
+
+    if (isExactMatch) {
+      triggerCorrectBlasterSequence(levelData);
+    } else {
+      triggerWrongMomScoldSequence();
+    }
+  });
+
+  /* ==========================================================================
+     СЦЕНАРІЙ УСПІХУ: ХЛОПЧИК СТРІЛЯЄ З БЛАСТЕРА ПО ВСІХ СЛОВАХ І СМІЄТЬСЯ
+     ========================================================================== */
+  function triggerCorrectBlasterSequence(levelData) {
+    isAnimating = true;
+    updateFireButton();
+    completedLevels.add(currentLevelIdx);
+    renderDots();
+
+    const planks = Array.from(document.querySelectorAll(".word-plank"));
+
+    // Вмикаємо анімацію веселого сміху хлопчика
+    setBoyEmotion("laugh");
+
+    // По черзі стріляємо з бластера у кожне слово на дошці, фарбуючи корені
+    planks.forEach((plank, wIdx) => {
+      setTimeout(() => {
+        const word = levelData.words[wIdx];
+        const rootStart = word.indexOf(levelData.root);
+        const rootEnd = rootStart + levelData.root.length - 1;
+        const paintStyle = PAINT_COLORS[wIdx % PAINT_COLORS.length];
+
+        // Випускаємо струмінь/кульку фарби від бластера до кореня слова
+        shootPaintProjectileToPlank(plank, rootStart, rootEnd, paintStyle, () => {
+          // Фарбуємо літери кореня і малюємо яскраву дужку
+          const tiles = plank.querySelectorAll(".letter-tile");
+          for (let i = rootStart; i <= rootEnd; i++) {
+            tiles[i].classList.remove("selected");
+            tiles[i].classList.add(paintStyle.cls);
+          }
+          drawRootArc(plank, rootStart, rootEnd, "#ffffff", paintStyle.hex);
+        });
+      }, wIdx * 340);
+    });
+
+    // Після зафарбовування всіх коренів хлопчик заливається сміхом
+    setTimeout(() => {
+      sound.playBoyLaugh();
+    }, planks.length * 340);
+
+    // Автоматичний перехід на наступне завдання після святкування
+    setTimeout(() => {
+      loadLevel(currentLevelIdx + 1);
+    }, planks.length * 340 + 1850);
+  }
+
+  // Анімація польоту фарбової кулі та бризок на SVG-шарі спецефектів
+  function shootPaintProjectileToPlank(plank, rootStart, rootEnd, paintStyle, onHitCallback) {
+    sound.playBlasterShot();
+
+    // Віддача бластера при пострілі
+    const blasterGroup = document.getElementById("boy-blaster-group");
+    blasterGroup.style.transform = "rotate(9deg) translateX(8px)";
+    setTimeout(() => {
+      blasterGroup.style.transform = "rotate(0deg) translateX(0)";
+    }, 140);
+
+    // Знаходимо координати дула бластера та центру кореня у слові
+    const muzzle = document.getElementById("blaster-muzzle").getBoundingClientRect();
+    const tiles = plank.querySelectorAll(".letter-tile");
+    const r1 = tiles[rootStart].getBoundingClientRect();
+    const r2 = tiles[rootEnd].getBoundingClientRect();
+
+    const scaleX = 1920 / window.innerWidth;
+    const scaleY = 1080 / window.innerHeight;
+
+    const startX = (muzzle.left + muzzle.width / 2) * scaleX;
+    const startY = (muzzle.top + muzzle.height / 2) * scaleY;
+    const targetX = ((r1.left + r2.right) / 2) * scaleX;
+    const targetY = ((r1.top + r1.bottom) / 2) * scaleY;
+
+    // Створюємо промінь та кульку фарби
+    const beam = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    beam.setAttribute("x1", startX);
+    beam.setAttribute("y1", startY);
+    beam.setAttribute("x2", targetX);
+    beam.setAttribute("y2", targetY);
+    beam.setAttribute("stroke", paintStyle.hex);
+    beam.setAttribute("stroke-width", "14");
+    beam.setAttribute("stroke-linecap", "round");
+    beam.setAttribute("stroke-dasharray", "30 18");
+    fxLayer.appendChild(beam);
+
+    // Створюємо соковитий вибух крапель у точці влучання
+    setTimeout(() => {
+      beam.remove();
+      onHitCallback();
+
+      const splatGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      for (let i = 0; i < 12; i++) {
+        const angle = (Math.PI * 2 * i) / 12;
+        const dist = 35 + Math.random() * 55;
+        const drop = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        drop.setAttribute("cx", targetX + Math.cos(angle) * dist);
+        drop.setAttribute("cy", targetY + Math.sin(angle) * dist);
+        drop.setAttribute("r", 6 + Math.random() * 10);
+        drop.setAttribute("fill", paintStyle.hex);
+        splatGroup.appendChild(drop);
+      }
+      fxLayer.appendChild(splatGroup);
+
+      setTimeout(() => splatGroup.remove(), 650);
+    }, 130);
+  }
+
+  /* ==========================================================================
+     СЦЕНАРІЙ ПОМИЛКИ: ВІДЧИНЯЮТЬСЯ ДВЕРІ, ВИХОДИТЬ МАМА І СВАРИТЬ ХЛОПЧИКА
+     ========================================================================== */
+  function triggerWrongMomScoldSequence() {
+    isAnimating = true;
+    updateFireButton();
+
+    // Трясемо дошку зі словом, де була помилка
+    const activePlank = document.querySelector(`.word-plank[data-word-idx="${activeWordIdx}"]`);
+    if (activePlank) {
+      activePlank.classList.add("shake-error");
+      setTimeout(() => activePlank.classList.remove("shake-error"), 600);
+    }
+
+    // Двері будинку розчиняються
+    const door = document.getElementById("house-door");
+    door.style.transform = "scaleX(0.25)";
+
+    // Виходить мама та сварить хлопчика
+    momContainer.classList.add("active");
+    setBoyEmotion("scolded");
+    sound.playMomScold();
+
+    // Через 2.2 секунди мама повертається в будинок, а дитина може спробувати ще раз
+    setTimeout(() => {
+      momContainer.classList.remove("active");
+      door.style.transform = "scaleX(1)";
+      resetCharacterStates();
+      activeWordIdx = null;
+      selectedLetterIndices = [];
+      refreshSelectionUI();
+      isAnimating = false;
+    }, 2200);
+  }
+
+  /* ==========================================================================
+     КЕРУВАННЯ ЕМОЦІЯМИ ТА РУХАМИ ПЕРСОНАЖА
+     ========================================================================== */
+  function setBoyEmotion(state) {
+    const eyesNormal = document.getElementById("boy-eyes-normal");
+    const eyesLaugh = document.getElementById("boy-eyes-laugh");
+    const mouthSmirk = document.getElementById("boy-mouth-smirk");
+    const mouthLaugh = document.getElementById("boy-mouth-laugh");
+    const mouthGuilty = document.getElementById("boy-mouth-guilty");
+    const blush = document.getElementById("boy-blush");
+    const blasterGroup = document.getElementById("boy-blaster-group");
+
+    boyContainer.classList.remove("laughing", "scolded");
+
+    if (state === "laugh") {
+      boyContainer.classList.add("laughing");
+      eyesNormal.setAttribute("opacity", "0");
+      eyesLaugh.setAttribute("opacity", "1");
+      mouthSmirk.setAttribute("opacity", "0");
+      mouthLaugh.setAttribute("opacity", "1");
+      mouthGuilty.setAttribute("opacity", "0");
+      blush.setAttribute("opacity", "0");
+      blasterGroup.style.transform = "rotate(-6deg)";
+    } else if (state === "scolded") {
+      boyContainer.classList.add("scolded");
+      eyesNormal.setAttribute("opacity", "1");
+      eyesLaugh.setAttribute("opacity", "0");
+      mouthSmirk.setAttribute("opacity", "0");
+      mouthLaugh.setAttribute("opacity", "0");
+      mouthGuilty.setAttribute("opacity", "1");
+      blush.setAttribute("opacity", "1");
+      // Хлопчик винувато опускає бластер донизу
+      blasterGroup.style.transform = "rotate(-32deg) translateY(22px)";
+    } else {
+      eyesNormal.setAttribute("opacity", "1");
+      eyesLaugh.setAttribute("opacity", "0");
+      mouthSmirk.setAttribute("opacity", "1");
+      mouthLaugh.setAttribute("opacity", "0");
+      mouthGuilty.setAttribute("opacity", "0");
+      blush.setAttribute("opacity", "0");
+      blasterGroup.style.transform = "rotate(0deg)";
+    }
+  }
+
+  function resetCharacterStates() {
+    momContainer.classList.remove("active");
+    document.getElementById("house-door").style.transform = "scaleX(1)";
+    setBoyEmotion("normal");
+  }
+
+  // Стеження очима хлопчика за курсором дитини для живої взаємодії
+  window.addEventListener("pointermove", (e) => {
+    const ratioX = (e.clientX / window.innerWidth - 0.5) * 8;
+    const ratioY = (e.clientY / window.innerHeight - 0.5) * 6;
+    const pL = document.getElementById("pupil-l");
+    const pR = document.getElementById("pupil-r");
+    if (pL && pR) {
+      pL.setAttribute("cx", 178 + ratioX);
+      pL.setAttribute("cy", 132 + ratioY);
+      pR.setAttribute("cx", 234 + ratioX);
+      pR.setAttribute("cy", 132 + ratioY);
+    }
+  });
+
+  /* ==========================================================================
+     КНОПКИ МИТТЄВОГО ПЕРЕХОДУ НАЗАД І ДАЛІ (БЕЗ ПРОХОДЖЕННЯ)
+     ========================================================================== */
+  prevBtn.addEventListener("click", () => {
+    sound.playTileClick(2);
+    loadLevel(currentLevelIdx - 1);
+  });
+
+  nextBtn.addEventListener("click", () => {
+    sound.playTileClick(4);
+    loadLevel(currentLevelIdx + 1);
+  });
+
+  // Перемальовування дужки кореня при зміні розміру вікна
+  window.addEventListener("resize", () => {
+    if (!isAnimating) refreshSelectionUI();
+  });
+
+  // Запуск першого рівня
+  loadLevel(0);
+</script>
+</body>
+</html>
