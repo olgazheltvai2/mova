@@ -1,0 +1,2706 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Лісові перегони: Частини мови</title>
+
+<!-- Підключення Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+  /* ================= ОСНОВНІ СТИЛІ ТА СКИДАННЯ ================= */
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #1b4332;
+  }
+
+  /* Контейнер для масштабування лупою */
+  #zoom-wrapper {
+    width: 100vw;
+    height: 100vh;
+    transform-origin: center center;
+    transition: transform 0.2s ease-out;
+  }
+
+  /* Контейнер всієї гри */
+  #game-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* ================= ЖИВИЙ СЮЖЕТНИЙ ФОН (SVG) ================= */
+  #bg-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Анімації фонових елементів */
+  .cloud-anim-1 { animation: floatCloud 38s linear infinite; }
+  .cloud-anim-2 { animation: floatCloud 52s linear infinite reverse; }
+  @keyframes floatCloud {
+    0% { transform: translateX(-150px); }
+    100% { transform: translateX(150px); }
+  }
+
+  .leaf-sway {
+    transform-origin: top center;
+    animation: sway 4s ease-in-out infinite alternate;
+  }
+  .leaf-sway-slow {
+    transform-origin: bottom center;
+    animation: sway 5.5s ease-in-out infinite alternate-reverse;
+  }
+  @keyframes sway {
+    0% { transform: rotate(-4deg); }
+    100% { transform: rotate(5deg); }
+  }
+
+  .waterfall-line {
+    stroke-dasharray: 18 12;
+    animation: waterFlow 0.7s linear infinite;
+  }
+  @keyframes waterFlow {
+    from { stroke-dashoffset: 30; }
+    to { stroke-dashoffset: 0; }
+  }
+
+  /* ================= ВЕРХНЯ ПАНЕЛЬ (СУДДЯ ТА КЕРУВАННЯ) ================= */
+  #top-bar {
+    position: relative;
+    z-index: 10;
+    height: 14vh;
+    min-height: 76px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 8px 20px;
+    pointer-events: none;
+  }
+
+  /* Кнопки керування та режимів */
+  .nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: auto;
+    flex-wrap: wrap;
+  }
+
+  .svg-nav-btn {
+    width: 54px;
+    height: 54px;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    filter: drop-shadow(0 5px 6px rgba(0,0,0,0.45));
+  }
+  .svg-nav-btn:hover {
+    transform: scale(1.1) rotate(-2deg);
+    filter: drop-shadow(0 7px 10px rgba(0,0,0,0.6)) brightness(1.08);
+  }
+  .svg-nav-btn:active {
+    transform: scale(0.92);
+  }
+
+  /* Текстово-іконкова кнопка */
+  .mode-pill-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: linear-gradient(180deg, #9c6644 0%, #582f0e 100%);
+    border: 3px solid #ffd166;
+    color: #fff8e7;
+    font-weight: 900;
+    font-size: clamp(12px, 1.4vw, 16px);
+    padding: 9px 16px;
+    border-radius: 28px;
+    cursor: pointer;
+    box-shadow: 0 5px 10px rgba(0,0,0,0.45);
+    transition: transform 0.18s, filter 0.18s;
+  }
+  .mode-pill-btn:hover {
+    transform: scale(1.05);
+    filter: brightness(1.1);
+  }
+  .mode-pill-btn:active {
+    transform: scale(0.95);
+  }
+  .mode-pill-btn.active-bot {
+    background: linear-gradient(180deg, #2d6a4f 0%, #1b4332 100%);
+    border-color: #8ac926;
+  }
+  .mode-pill-btn.restart-btn {
+    background: linear-gradient(180deg, #e63946 0%, #9d0208 100%);
+    border-color: #ffd166;
+  }
+
+  /* Бейдж поточного користувача */
+  #user-role-badge {
+    background: rgba(27, 67, 50, 0.9);
+    border: 2px solid #ffd166;
+    color: #fff3b0;
+    font-weight: 900;
+    font-size: clamp(12px, 1.3vw, 15px);
+    padding: 7px 13px;
+    border-radius: 20px;
+    cursor: pointer;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+  }
+
+  /* Персонаж-суддя (Тукан на гілці) */
+  #referee-box {
+    width: 175px;
+    height: 125px;
+    pointer-events: auto;
+    cursor: pointer;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,0.4));
+    transition: transform 0.3s;
+  }
+  .ref-jump { animation: refCheer 0.55s ease-in-out 2; }
+  .ref-shock { animation: refShock 0.5s ease-in-out; }
+  @keyframes refCheer {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-16px) rotate(-8deg) scale(1.06); }
+  }
+  @keyframes refShock {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-10px) rotate(-6deg); }
+    40%, 80% { transform: translateX(10px) rotate(6deg); }
+  }
+
+  /* ================= ІГРОВІ ДОРІЖКИ (ДИНАМІЧНІ ТРЕКИ АКТИВНИХ ГРАВЦІВ) ================= */
+  #tracks-area {
+    position: relative;
+    z-index: 5;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    padding: 0 3vw;
+    margin-top: -0.5vh;
+    gap: 6px;
+  }
+
+  .empty-tracks-notice {
+    align-self: center;
+    background: rgba(27, 67, 50, 0.85);
+    border: 3px dashed #ffd166;
+    color: #fff8e7;
+    padding: 18px 32px;
+    border-radius: 24px;
+    font-size: clamp(16px, 2.2vw, 24px);
+    font-weight: 900;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.45);
+  }
+
+  .track-row {
+    position: relative;
+    height: 10.5vh;
+    min-height: 56px;
+    max-height: 92px;
+    display: flex;
+    align-items: center;
+    border-radius: 36px;
+    padding: 0 70px 0 155px;
+    box-shadow: inset 0 5px 10px rgba(0,0,0,0.35), 0 4px 8px rgba(0,0,0,0.3);
+    transition: box-shadow 0.3s, transform 0.3s;
+  }
+
+  /* Індивідуальне оформлення кожної лісової стежки */
+  .track-row:nth-child(odd) {
+    background: repeating-linear-gradient(45deg, #c68b59, #c68b59 25px, #b87d4b 25px, #b87d4b 50px);
+    border: 4px solid #5c3a21;
+  }
+  .track-row:nth-child(even) {
+    background: repeating-linear-gradient(45deg, #b5835a, #b5835a 25px, #a47148 25px, #a47148 50px);
+    border: 4px solid #4a2c11;
+  }
+
+  /* Підсвічування власної доріжки гравця */
+  .track-row.my-track {
+    box-shadow: 0 0 0 4px #ffd166, 0 0 22px rgba(255, 209, 102, 0.8), inset 0 4px 10px rgba(255,215,0,0.35);
+    z-index: 8;
+  }
+
+  /* Табличка з ім'ям гравця та назвою персонажа зліва на доріжці */
+  .track-player-tag {
+    position: absolute;
+    left: 10px;
+    width: 132px;
+    height: 46px;
+    border-radius: 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    color: #fff;
+    font-weight: 900;
+    border: 3px solid #ffd166;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.45);
+    z-index: 12;
+    overflow: hidden;
+    text-align: center;
+  }
+  .track-player-name {
+    font-size: clamp(12px, 1.3vw, 15px);
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+    text-shadow: 0 2px 3px rgba(0,0,0,0.7);
+  }
+  .track-char-sub {
+    font-size: 10px;
+    color: #fff3b0;
+    opacity: 0.95;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+
+  /* Кроки-камінці на доріжці */
+  .steps-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .step-stone {
+    width: 30px;
+    height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #e0c097, #9c7a54);
+    border: 2px solid #5c4028;
+    box-shadow: 0 3px 0 #47301d;
+    opacity: 0.85;
+  }
+  .step-stone.finish-stone {
+    background: repeating-conic-gradient(#111 0% 25%, #ffd166 0% 50%) 50% / 14px 14px;
+    width: 36px;
+    height: 44px;
+    border-radius: 8px;
+    border: 3px solid #ffd166;
+  }
+
+  /* Контейнер персонажа-бігуна */
+  .racer-wrapper {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 78px;
+    height: 78px;
+    transform: translate(-35%, -62%);
+    transition: left 0.65s cubic-bezier(0.34, 1.35, 0.64, 1);
+    z-index: 15;
+    filter: drop-shadow(0 6px 6px rgba(0,0,0,0.45));
+  }
+
+  /* Підпис імені над самим персонажем */
+  .racer-floating-label {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.78);
+    color: #ffd166;
+    border: 2px solid #ffd166;
+    border-radius: 12px;
+    padding: 1px 8px;
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  }
+  .track-row.my-track .racer-floating-label {
+    background: #d62828;
+    color: #ffffff;
+    border-color: #fff3b0;
+  }
+
+  /* Секретний бейдж на доріжці ТІЛЬКИ ДЛЯ ВЧИТЕЛЯ (показує поточне слово і клік учня) */
+  .teacher-track-spy {
+    position: absolute;
+    right: -10px;
+    top: -26px;
+    transform: translateX(100%);
+    background: rgba(15, 23, 42, 0.92);
+    border: 2px solid #4cc9f0;
+    color: #ffffff;
+    border-radius: 12px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: bold;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 25;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.6);
+  }
+
+  /* Анімації руху персонажів: кумедне переминання, стрибок вперед, крок назад */
+  .anim-hop {
+    animation: funnyHop 0.65s ease-out;
+  }
+  .anim-waddle {
+    animation: funnyWaddle 0.68s ease-in-out;
+  }
+  .anim-back {
+    animation: stumbleBack 0.65s ease-in-out;
+  }
+
+  @keyframes funnyHop {
+    0% { transform: translate(-35%, -62%) scale(1, 1); }
+    20% { transform: translate(-35%, -52%) scale(1.18, 0.82); }
+    50% { transform: translate(-35%, -115%) rotate(-12deg) scale(0.92, 1.12); }
+    75% { transform: translate(-35%, -55%) rotate(8deg) scale(1.12, 0.88); }
+    100% { transform: translate(-35%, -62%) scale(1, 1); }
+  }
+
+  @keyframes funnyWaddle {
+    0% { transform: translate(-35%, -62%) rotate(0deg); }
+    20% { transform: translate(-35%, -75%) rotate(-18deg) scale(1.08); }
+    45% { transform: translate(-35%, -60%) rotate(18deg) scale(1.08); }
+    70% { transform: translate(-35%, -78%) rotate(-15deg) scale(1.05); }
+    100% { transform: translate(-35%, -62%) rotate(0deg); }
+  }
+
+  @keyframes stumbleBack {
+    0% { transform: translate(-35%, -62%) rotate(0deg); }
+    25% { transform: translate(-35%, -85%) rotate(-28deg) scale(0.9); }
+    55% { transform: translate(-35%, -50%) rotate(22deg) scale(1.1, 0.85); }
+    80% { transform: translate(-35%, -65%) rotate(-10deg); }
+    100% { transform: translate(-35%, -62%) rotate(0deg); }
+  }
+
+  /* Легке дихання у спокої */
+  .racer-svg {
+    width: 100%;
+    height: 100%;
+    animation: idleBreathe 2.2s ease-in-out infinite alternate;
+  }
+  @keyframes idleBreathe {
+    0% { transform: translateY(0) scaleY(1); }
+    100% { transform: translateY(-3px) scaleY(1.04); }
+  }
+
+  /* ================= НИЖНЯ ПАНЕЛЬ ЗАВДАННЯ ДЛЯ ГРАВЦЯ ================= */
+  #bottom-hud {
+    position: relative;
+    z-index: 12;
+    height: 25vh;
+    min-height: 145px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 1.5vh;
+    gap: 1.2vh;
+  }
+
+  /* Стилізована дерев'яна дошка зі словом */
+  #word-board {
+    position: relative;
+    width: min(560px, 88vw);
+    height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(0 8px 12px rgba(0,0,0,0.5));
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #word-board.pop {
+    transform: scale(1.09);
+  }
+
+  #word-text {
+    position: relative;
+    z-index: 3;
+    font-size: clamp(24px, 3.8vw, 38px);
+    font-weight: 900;
+    color: #fff3b0;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: 0 3px 0 #582f0e, 0 -2px 0 #582f0e, 3px 0 0 #582f0e, -3px 0 0 #582f0e, 0 5px 10px rgba(0,0,0,0.65);
+  }
+
+  /* Контейнер трьох кнопок частин мови */
+  #choices-row {
+    display: flex;
+    gap: 2vw;
+    justify-content: center;
+    align-items: center;
+    width: 94vw;
+    max-width: 920px;
+  }
+
+  .choice-btn {
+    position: relative;
+    flex: 1;
+    height: 70px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(0 7px 8px rgba(0,0,0,0.45));
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+  }
+  .choice-btn:hover {
+    transform: translateY(-5px) scale(1.04);
+    filter: drop-shadow(0 12px 14px rgba(0,0,0,0.55)) brightness(1.08);
+  }
+  .choice-btn:active {
+    transform: translateY(3px) scale(0.95);
+  }
+
+  .choice-btn svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+
+  .choice-label {
+    position: relative;
+    z-index: 2;
+    font-size: clamp(16px, 2.2vw, 26px);
+    font-weight: 900;
+    color: #fff8e7;
+    letter-spacing: 1px;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.55), 2px 0 0 rgba(0,0,0,0.45), -2px 0 0 rgba(0,0,0,0.45);
+    pointer-events: none;
+  }
+
+  /* ================= СЕКРЕТНА ПАНЕЛЬ МОНІТОРИНГУ ТІЛЬКИ ДЛЯ ВЧИТЕЛЯ ================= */
+  #teacher-monitor {
+    position: relative;
+    z-index: 14;
+    width: 96vw;
+    max-width: 1350px;
+    height: 29vh;
+    min-height: 165px;
+    margin: 0 auto 1vh auto;
+    background: rgba(13, 27, 42, 0.92);
+    border: 3px solid #ffd166;
+    border-radius: 22px;
+    padding: 10px 14px;
+    display: none;
+    flex-direction: column;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.65);
+  }
+
+  .teacher-monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 6px;
+    border-bottom: 2px solid rgba(255, 209, 102, 0.35);
+    margin-bottom: 8px;
+    color: #ffd166;
+    font-weight: 900;
+    font-size: clamp(13px, 1.5vw, 17px);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .teacher-cards-grid {
+    flex: 1;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: stretch;
+    padding-bottom: 4px;
+  }
+
+  .teacher-student-card {
+    min-width: 230px;
+    flex: 1;
+    background: rgba(27, 67, 50, 0.85);
+    border: 2px solid #52b788;
+    border-radius: 16px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: #ffffff;
+    position: relative;
+  }
+
+  .tsc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 900;
+    font-size: 14px;
+    color: #ffd166;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    padding-bottom: 4px;
+  }
+
+  .tsc-kick-btn {
+    background: #e63946;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-left: 6px;
+  }
+
+  .tsc-current-word {
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 10px;
+    padding: 5px 8px;
+    margin: 4px 0;
+    font-size: 13px;
+  }
+  .tsc-current-word strong {
+    color: #fff3b0;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+  }
+
+  .tsc-last-click {
+    border-radius: 10px;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-weight: bold;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .tsc-last-click.click-ok {
+    background: rgba(43, 147, 72, 0.55);
+    border: 1px solid #8ac926;
+    color: #e9f5db;
+  }
+  .tsc-last-click.click-err {
+    background: rgba(214, 40, 40, 0.6);
+    border: 1px solid #ff595e;
+    color: #ffe5ec;
+  }
+
+  .tsc-history-strip {
+    font-size: 11px;
+    color: #cbd5e1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 3px;
+  }
+
+  /* ================= МОДАЛЬНЕ ВІКНО ВХОДУ (ІМ'Я ТА ВИБІР ПЕРСОНАЖА) ================= */
+  #login-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 40000;
+    background: radial-gradient(circle at 50% 40%, rgba(27, 67, 50, 0.94), rgba(8, 28, 21, 0.98));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .login-card {
+    width: min(520px, 95vw);
+    background: linear-gradient(180deg, #7f4f24 0%, #582f0e 100%);
+    border: 5px solid #ffd166;
+    border-radius: 32px;
+    padding: 26px 24px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+    text-align: center;
+    color: #fff8e7;
+  }
+
+  .login-title {
+    font-size: clamp(22px, 3.5vw, 30px);
+    font-weight: 900;
+    color: #ffd166;
+    text-shadow: 0 3px 0 #3d2516;
+    margin-bottom: 8px;
+  }
+
+  .login-subtitle {
+    font-size: 15px;
+    color: #fff3b0;
+    margin-bottom: 16px;
+  }
+
+  #player-name-input {
+    width: 100%;
+    padding: 14px 18px;
+    font-size: 20px;
+    font-weight: 900;
+    text-align: center;
+    border-radius: 18px;
+    border: 4px solid #ffd166;
+    background: #fff8e7;
+    color: #3d2516;
+    outline: none;
+    margin-bottom: 14px;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  .char-picker-label {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffd166;
+    margin-bottom: 10px;
+  }
+
+  .char-picker-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+
+  .char-pick-item {
+    width: 78px;
+    height: 92px;
+    background: rgba(0,0,0,0.3);
+    border: 3px solid transparent;
+    border-radius: 18px;
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    transition: transform 0.2s, border-color 0.2s, background 0.2s;
+  }
+  .char-pick-item:hover {
+    transform: scale(1.07);
+  }
+  .char-pick-item.selected {
+    border-color: #ffd166;
+    background: rgba(255, 209, 102, 0.25);
+    transform: scale(1.08);
+  }
+  .char-pick-item span {
+    font-size: 11px;
+    font-weight: 900;
+    color: #fff8e7;
+  }
+
+  #teacher-detected-hint {
+    display: none;
+    background: #1982c4;
+    border: 2px solid #ffd166;
+    color: #ffffff;
+    padding: 10px;
+    border-radius: 14px;
+    font-weight: 900;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+
+  .start-race-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff8e7;
+    background: linear-gradient(180deg, #52b788 0%, #2d6a4f 100%);
+    border: 4px solid #ffd166;
+    border-radius: 20px;
+    cursor: pointer;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.45);
+    transition: transform 0.15s;
+  }
+  .start-race-btn:hover {
+    transform: scale(1.03);
+  }
+  .start-race-btn:active {
+    transform: scale(0.97);
+  }
+
+  /* ================= ІНСТРУМЕНТИ МАСШТАБУВАННЯ (ЛУПА+ ТА ЛУПА-) ================= */
+  #zoom-controls {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    z-index: 35000;
+    display: flex;
+    gap: 8px;
+  }
+
+  .zoom-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #9c6644 0%, #582f0e 100%);
+    border: 3px solid #ffd166;
+    color: #fff8e7;
+    font-size: 20px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    transition: transform 0.15s;
+  }
+  .zoom-btn:hover {
+    transform: scale(1.1);
+  }
+  .zoom-btn:active {
+    transform: scale(0.92);
+  }
+
+  /* ================= ЕФЕКТИ ЧАСТИНОК (ЗІРКИ, ПИЛ, КОНФЕТІ) ================= */
+  #fx-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 30;
+    overflow: hidden;
+  }
+
+  /* ================= СЦЕНА П'ЄДЕСТАЛУ ПЕРЕМОЖЦІВ ================= */
+  #podium-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 25;
+    background: radial-gradient(circle at 50% 35%, rgba(27, 67, 50, 0.9), rgba(8, 28, 21, 0.97));
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 4vh;
+    animation: fadeInPodium 0.6s ease-out;
+  }
+
+  @keyframes fadeInPodium {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  #podium-title-banner {
+    font-size: clamp(22px, 3.6vw, 38px);
+    font-weight: 900;
+    color: #ffd166;
+    text-shadow: 0 4px 0 #582f0e, 0 6px 14px rgba(0,0,0,0.7);
+    margin-bottom: 1.5vh;
+    text-align: center;
+    padding: 0 16px;
+  }
+
+  #podium-stage {
+    position: relative;
+    width: min(950px, 94vw);
+    height: 62vh;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 1.5vw;
+    margin-bottom: 2vh;
+  }
+
+  .podium-column {
+    position: relative;
+    flex: 1;
+    max-width: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .podium-player-name {
+    background: rgba(0,0,0,0.75);
+    border: 2px solid #ffd166;
+    color: #fff8e7;
+    font-weight: 900;
+    font-size: clamp(13px, 1.6vw, 18px);
+    padding: 4px 12px;
+    border-radius: 14px;
+    margin-bottom: 18px;
+    white-space: nowrap;
+    z-index: 6;
+  }
+
+  .podium-racer {
+    width: 115px;
+    height: 115px;
+    margin-bottom: -14px;
+    z-index: 5;
+    filter: drop-shadow(0 8px 10px rgba(0,0,0,0.5));
+    animation: winnerBounce 0.9s ease-in-out infinite alternate;
+  }
+
+  @keyframes winnerBounce {
+    from { transform: translateY(0) scale(1); }
+    to { transform: translateY(-16px) scale(1.06); }
+  }
+
+  .podium-block {
+    width: 100%;
+    border-radius: 18px 18px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 16px;
+    box-shadow: inset 0 6px 12px rgba(255,255,255,0.35), 0 10px 24px rgba(0,0,0,0.6);
+    border: 4px solid #3d2516;
+  }
+
+  /* ================= АДАПТИВНІСТЬ (MOBILE FRIENDLY) ================= */
+  @media (max-width: 768px) {
+    #top-bar {
+      padding: 6px 10px;
+      height: auto;
+    }
+    #referee-box {
+      width: 110px;
+      height: 82px;
+    }
+    .svg-nav-btn {
+      width: 42px;
+      height: 42px;
+    }
+    .track-row {
+      padding: 0 42px 0 110px;
+      min-height: 48px;
+    }
+    .track-player-tag {
+      width: 96px;
+      height: 40px;
+      left: 6px;
+    }
+    .racer-wrapper {
+      width: 60px;
+      height: 60px;
+    }
+    .step-stone {
+      width: 18px;
+      height: 14px;
+    }
+    .step-stone.finish-stone {
+      width: 24px;
+      height: 32px;
+    }
+    #word-board {
+      height: 60px;
+    }
+    .choice-btn {
+      height: 56px;
+    }
+    #zoom-controls {
+      bottom: 8px;
+      left: 8px;
+    }
+    .zoom-btn {
+      width: 38px;
+      height: 38px;
+      font-size: 16px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= МОДАЛЬНЕ ВІКНО ВХОДУ ГРАВЦЯ / ВЧИТЕЛЯ ================= -->
+<div id="login-modal">
+  <div class="login-card">
+    <div class="login-title">🌿 Лісові перегони</div>
+    <div class="login-subtitle">Впиши своє ім'я, щоб вийти на старт!</div>
+
+    <input type="text" id="player-name-input" placeholder="Твоє ім'я..." maxlength="22" autocomplete="off" />
+
+    <div id="teacher-detected-hint">
+      👩‍🏫 Ви входите як <b>ВЧИТЕЛЬ</b>.<br>Ви бачитимете слова та натискання кожного учня наживо!
+    </div>
+
+    <div id="char-picker-section">
+      <div class="char-picker-label">Обери свого бігуна:</div>
+      <div class="char-picker-row" id="char-picker-row"></div>
+    </div>
+
+    <button class="start-race-btn" id="btn-enter-game">🚀 СТАРТ!</button>
+  </div>
+</div>
+
+<!-- ================= ІНСТРУМЕНТИ МАСШТАБУВАННЯ (ЛУПА+ ТА ЛУПА-) ================= -->
+<div id="zoom-controls">
+  <button class="zoom-btn" id="btn-zoom-in" title="Наблизити (Лупа+)">🔍+</button>
+  <button class="zoom-btn" id="btn-zoom-out" title="Віддалити (Лупа-)">🔍-</button>
+</div>
+
+<div id="zoom-wrapper">
+  <div id="game-container">
+
+    <!-- ================= 1. ДЕТАЛІЗОВАНИЙ СЮЖЕТНИЙ SVG-ФОН (ТРОПІЧНІ ДЖУНГЛІ) ================= -->
+    <svg id="bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <!-- Градієнт тропічного неба -->
+        <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#48cae4"/>
+          <stop offset="55%" stop-color="#90e0ef"/>
+          <stop offset="100%" stop-color="#caf0f8"/>
+        </linearGradient>
+        <!-- Градієнти гір та лісу -->
+        <linearGradient id="hillFar" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#52b788"/>
+          <stop offset="100%" stop-color="#2d6a4f"/>
+        </linearGradient>
+        <linearGradient id="hillNear" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#40916c"/>
+          <stop offset="100%" stop-color="#1b4332"/>
+        </linearGradient>
+        <!-- Візерунок дерева для табличок -->
+        <linearGradient id="woodPlank" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#9c6644"/>
+          <stop offset="50%" stop-color="#7f4f24"/>
+          <stop offset="100%" stop-color="#582f0e"/>
+        </linearGradient>
+        <linearGradient id="goldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ffee99"/>
+          <stop offset="50%" stop-color="#ffd166"/>
+          <stop offset="100%" stop-color="#e09f3e"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Небо -->
+      <rect width="1920" height="450" fill="url(#skyGrad)"/>
+
+      <!-- Сонце з променями -->
+      <g transform="translate(260, 110)">
+        <circle r="72" fill="#ffd166" opacity="0.35"/>
+        <circle r="52" fill="#ffea85"/>
+      </g>
+
+      <!-- Живі хмаринки -->
+      <g class="cloud-anim-1" fill="#ffffff" opacity="0.85">
+        <path d="M350,90 Q380,50 430,70 Q470,40 510,75 Q550,80 540,115 L330,115 Q310,95 350,90 Z"/>
+        <path d="M1250,65 Q1280,25 1330,45 Q1370,15 1410,50 Q1450,55 1440,90 L1230,90 Q1210,70 1250,65 Z"/>
+      </g>
+      <g class="cloud-anim-2" fill="#ffffff" opacity="0.7">
+        <path d="M780,120 Q810,85 855,100 Q890,75 925,105 Q955,110 945,140 L765,140 Q750,125 780,120 Z"/>
+      </g>
+
+      <!-- Далекі пагорби та скеля з водоспадом -->
+      <path d="M0,260 Q280,120 620,230 T1320,200 T1920,240 L1920,500 L0,500 Z" fill="url(#hillFar)"/>
+      
+      <!-- Анімований водоспад на скелі зліва -->
+      <path d="M90,175 L165,175 L185,360 L75,360 Z" fill="#48cae4"/>
+      <line x1="110" y1="180" x2="100" y2="350" stroke="#caf0f8" stroke-width="6" stroke-linecap="round" class="waterfall-line"/>
+      <line x1="135" y1="185" x2="135" y2="350" stroke="#ffffff" stroke-width="5" stroke-linecap="round" class="waterfall-line"/>
+      <line x1="155" y1="180" x2="165" y2="350" stroke="#caf0f8" stroke-width="6" stroke-linecap="round" class="waterfall-line"/>
+      <circle cx="95" cy="355" r="18" fill="#e0fbfc" opacity="0.8"/>
+      <circle cx="130" cy="360" r="24" fill="#ffffff" opacity="0.85"/>
+      <circle cx="168" cy="355" r="18" fill="#e0fbfc" opacity="0.8"/>
+
+      <!-- Ближній ліс і галявина для доріжок -->
+      <path d="M0,310 Q420,230 920,295 T1920,275 L1920,1080 L0,1080 Z" fill="url(#hillNear)"/>
+      
+      <!-- Візерункова трава вздовж галявини -->
+      <rect x="0" y="210" width="1920" height="870" fill="#2d6a4f"/>
+      <path d="M0,210 Q960,170 1920,210 L1920,1080 L0,1080 Z" fill="#388e3c" opacity="0.35"/>
+
+      <!-- Декоративні кущі, квіти та папороть -->
+      <g class="leaf-sway-slow" transform="translate(80, 980)">
+        <path d="M0,100 Q-40,20 -90,-10 Q-20,0 0,60 Q20,-20 80,-40 Q40,20 0,100 Z" fill="#1b4332"/>
+        <circle cx="-30" cy="20" r="10" fill="#ff595e"/>
+        <circle cx="35" cy="5" r="12" fill="#ffd166"/>
+      </g>
+      <g class="leaf-sway-slow" transform="translate(1840, 980)">
+        <path d="M0,100 Q-40,20 -90,-20 Q-20,0 0,60 Q30,-10 90,-30 Q40,30 0,100 Z" fill="#1b4332"/>
+        <circle cx="-35" cy="15" r="11" fill="#ff924c"/>
+        <circle cx="25" cy="25" r="9" fill="#ff595e"/>
+      </g>
+
+      <!-- Тропічні ліани зверху -->
+      <g class="leaf-sway" transform="translate(460, 0)">
+        <path d="M0,0 Q25,90 -10,175" stroke="#1b4332" stroke-width="7" fill="none"/>
+        <ellipse cx="12" cy="60" rx="22" ry="10" transform="rotate(25 12 60)" fill="#52b788"/>
+        <ellipse cx="-14" cy="110" rx="22" ry="10" transform="rotate(-30 -14 110)" fill="#74c69d"/>
+        <circle cx="-10" cy="175" r="14" fill="#ff595e"/>
+        <circle cx="-10" cy="175" r="6" fill="#ffd166"/>
+      </g>
+      <g class="leaf-sway" transform="translate(1480, 0)">
+        <path d="M0,0 Q-20,85 15,165" stroke="#1b4332" stroke-width="7" fill="none"/>
+        <ellipse cx="-15" cy="55" rx="22" ry="10" transform="rotate(-25 -15 55)" fill="#52b788"/>
+        <ellipse cx="14" cy="105" rx="22" ry="10" transform="rotate(30 14 105)" fill="#74c69d"/>
+        <circle cx="15" cy="165" r="14" fill="#ff924c"/>
+        <circle cx="15" cy="165" r="6" fill="#fff3b0"/>
+      </g>
+    </svg>
+
+    <!-- ================= 2. ВЕРХНЯ ПАНЕЛЬ: РЕЖИМ З КОМП'ЮТЕРОМ / БЕЗ, СУДДЯ-ТУКАН, КНОПКА ПОЧАТИ ЗАНОВО ================= -->
+    <div id="top-bar">
+      <!-- Ліва група: Режим гри з комп'ютером / без комп'ютера + швидкість -->
+      <div class="nav-controls">
+        <button class="mode-pill-btn" id="btn-toggle-computer" title="Увімкнути або вимкнути суперника-комп'ютера">
+          🚫 Без комп'ютера
+        </button>
+
+        <div class="svg-nav-btn" id="btn-bot-mode" title="Темп комп'ютера: Повільний / Швидкий" style="display:none;">
+          <svg viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="36" fill="url(#woodPlank)" stroke="#ffea85" stroke-width="4"/>
+            <circle cx="40" cy="40" r="29" fill="#2d6a4f"/>
+            <g id="bot-mode-icon">
+              <ellipse cx="29" cy="46" rx="7" ry="10" transform="rotate(-15 29 46)" fill="#ffd166"/>
+              <circle cx="22" cy="32" r="3.5" fill="#ffd166"/>
+              <circle cx="29" cy="29" r="3.5" fill="#ffd166"/>
+              <circle cx="36" cy="32" r="3.5" fill="#ffd166"/>
+              <ellipse cx="51" cy="36" rx="7" ry="10" transform="rotate(15 51 36)" fill="#ff924c"/>
+              <circle cx="44" cy="22" r="3.5" fill="#ff924c"/>
+              <circle cx="51" cy="19" r="3.5" fill="#ff924c"/>
+              <circle cx="58" cy="22" r="3.5" fill="#ff924c"/>
+            </g>
+          </svg>
+        </div>
+
+        <div id="user-role-badge" onclick="openLoginModal()" title="Клікніть, щоб змінити ім'я або персонажа">
+          👤 Гість
+        </div>
+      </div>
+
+      <!-- Центральний живий персонаж-суддя: Тукан на гілці з прапорцем -->
+      <div id="referee-box" onclick="triggerRefereeWave()">
+        <svg viewBox="0 0 220 150" width="100%" height="100%">
+          <!-- Гілка дерева -->
+          <path d="M10,125 Q110,110 210,130" stroke="#582f0e" stroke-width="14" stroke-linecap="round" fill="none"/>
+          <ellipse cx="35" cy="115" rx="16" ry="8" transform="rotate(-25 35 115)" fill="#52b788"/>
+          <ellipse cx="185" cy="120" rx="16" ry="8" transform="rotate(25 185 120)" fill="#52b788"/>
+          
+          <!-- Прапорець фінішу в крилі -->
+          <g id="ref-flag" transform="translate(45, 35) rotate(-15)">
+            <line x1="0" y1="0" x2="0" y2="75" stroke="#e09f3e" stroke-width="5" stroke-linecap="round"/>
+            <rect x="-42" y="0" width="42" height="28" rx="4" fill="#ffffff" stroke="#222" stroke-width="2"/>
+            <rect x="-42" y="0" width="14" height="14" fill="#222"/>
+            <rect x="-14" y="0" width="14" height="14" fill="#222"/>
+            <rect x="-28" y="14" width="14" height="14" fill="#222"/>
+          </g>
+
+          <!-- Тіло Тукана -->
+          <ellipse cx="105" cy="88" rx="34" ry="40" fill="#1d1e2c"/>
+          <ellipse cx="112" cy="82" rx="22" ry="26" fill="#ffd166"/>
+          <path d="M90,104 Q112,115 132,102" fill="none" stroke="#ff595e" stroke-width="5" stroke-linecap="round"/>
+
+          <!-- Величезний яскравий дзьоб -->
+          <g id="ref-beak">
+            <path d="M128,56 Q188,48 196,76 Q170,84 128,78 Z" fill="#ff924c" stroke="#d62828" stroke-width="2"/>
+            <path d="M182,58 Q196,65 196,76 Q184,78 178,74 Z" fill="#1d1e2c"/>
+            <path id="ref-lower-beak" d="M128,78 Q168,82 184,86 Q160,98 126,88 Z" fill="#ff595e"/>
+          </g>
+
+          <!-- Очі Тукана -->
+          <circle cx="116" cy="64" r="13" fill="#48cae4"/>
+          <circle cx="116" cy="64" r="9" fill="#ffffff"/>
+          <circle id="ref-pupil" cx="119" cy="64" r="5" fill="#111"/>
+          <circle cx="121" cy="61" r="2" fill="#ffffff"/>
+
+          <!-- Кепка судді -->
+          <path d="M82,50 Q108,26 134,50 Z" fill="#ffffff" stroke="#111" stroke-width="2"/>
+          <path d="M95,38 L98,50 M108,35 L108,50 M121,38 L118,50" stroke="#111" stroke-width="4"/>
+          <path d="M122,47 Q148,44 152,53 L122,52 Z" fill="#d62828"/>
+
+          <!-- Лапки -->
+          <path d="M95,122 L90,132 M100,122 L100,133 M118,122 L115,132 M123,122 L125,133" stroke="#ff924c" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <!-- Права група: Кнопка "Почати заново" -->
+      <div class="nav-controls">
+        <button class="mode-pill-btn restart-btn" id="btn-restart-game" title="Очистити минулі доріжки та почати гру заново">
+          🔄 Почати заново
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= 3. ДОРІЖКИ АКТИВНИХ ГРАВЦІВ (ЗАЙВІ ПРИБИРАЮТЬСЯ) ================= -->
+    <div id="tracks-area"></div>
+
+    <!-- ================= 4А. НИЖНЯ ПАНЕЛЬ ЗАВДАННЯ ДЛЯ ГРАВЦЯ (ВЛАСНІ СЛОВА) ================= -->
+    <div id="bottom-hud">
+      <!-- Дерев'яна різьблена дошка для індивідуального слова гравця -->
+      <div id="word-board">
+        <svg viewBox="0 0 580 90" width="100%" height="100%" style="position:absolute; top:0; left:0;">
+          <rect x="10" y="8" width="560" height="74" rx="26" fill="url(#woodPlank)" stroke="#ffd166" stroke-width="5"/>
+          <rect x="20" y="16" width="540" height="58" rx="20" fill="#582f0e" opacity="0.45"/>
+          <path d="M18,22 Q5,5 32,10 Q25,25 18,22 Z" fill="#52b788"/>
+          <path d="M562,22 Q575,5 548,10 Q555,25 562,22 Z" fill="#52b788"/>
+          <circle cx="32" cy="45" r="6" fill="#ffd166"/>
+          <circle cx="548" cy="45" r="6" fill="#ffd166"/>
+        </svg>
+        <div id="word-text">ЛИСИЦЯ</div>
+      </div>
+
+      <!-- Три фігурні кнопки вибору частини мови -->
+      <div id="choices-row">
+        <!-- ІМЕННИК -->
+        <div class="choice-btn" onclick="submitAnswer('noun')">
+          <svg viewBox="0 0 300 84" preserveAspectRatio="none">
+            <path d="M22,6 L278,6 Q294,6 294,24 L288,62 Q284,78 268,78 L32,78 Q16,78 12,62 L6,24 Q6,6 22,6 Z" fill="#e63946" stroke="#ffd166" stroke-width="5"/>
+            <path d="M26,14 L274,14 Q282,14 280,28 L276,50 Q150,38 24,50 L20,28 Q18,14 26,14 Z" fill="#ff6b6b" opacity="0.45"/>
+            <circle cx="34" cy="42" r="14" fill="#ffd166" opacity="0.25"/>
+          </svg>
+          <span class="choice-label">ІМЕННИК</span>
+        </div>
+
+        <!-- ПРИКМЕТНИК -->
+        <div class="choice-btn" onclick="submitAnswer('adj')">
+          <svg viewBox="0 0 300 84" preserveAspectRatio="none">
+            <path d="M22,6 L278,6 Q294,6 294,24 L288,62 Q284,78 268,78 L32,78 Q16,78 12,62 L6,24 Q6,6 22,6 Z" fill="#f77f00" stroke="#ffd166" stroke-width="5"/>
+            <path d="M26,14 L274,14 Q282,14 280,28 L276,50 Q150,38 24,50 L20,28 Q18,14 26,14 Z" fill="#fcbf49" opacity="0.45"/>
+            <circle cx="34" cy="42" r="14" fill="#ffd166" opacity="0.25"/>
+          </svg>
+          <span class="choice-label">ПРИКМЕТНИК</span>
+        </div>
+
+        <!-- ДІЄСЛОВО -->
+        <div class="choice-btn" onclick="submitAnswer('verb')">
+          <svg viewBox="0 0 300 84" preserveAspectRatio="none">
+            <path d="M22,6 L278,6 Q294,6 294,24 L288,62 Q284,78 268,78 L32,78 Q16,78 12,62 L6,24 Q6,6 22,6 Z" fill="#1982c4" stroke="#ffd166" stroke-width="5"/>
+            <path d="M26,14 L274,14 Q282,14 280,28 L276,50 Q150,38 24,50 L20,28 Q18,14 26,14 Z" fill="#4cc9f0" opacity="0.45"/>
+            <circle cx="34" cy="42" r="14" fill="#ffd166" opacity="0.25"/>
+          </svg>
+          <span class="choice-label">ДІЄСЛОВО</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 4Б. ПАНЕЛЬ МОНІТОРИНГУ (БАЧИТЬ ЛИШЕ ВЧИТЕЛЬ) ================= -->
+    <div id="teacher-monitor">
+      <div class="teacher-monitor-header">
+        <span>👩‍🏫 Панель вчителя (наживо: у кого яке слово і що натискають)</span>
+        <div style="display:flex; gap:8px;">
+          <button class="mode-pill-btn" style="padding:4px 12px; font-size:13px;" onclick="teacherResetStepsOnly()">⏮ На старт (0 кроків)</button>
+          <button class="mode-pill-btn restart-btn" style="padding:4px 12px; font-size:13px;" onclick="restartFullGame()">🔄 Почати заново (очистити доріжки)</button>
+        </div>
+      </div>
+      <div class="teacher-cards-grid" id="teacher-cards-grid">
+        <div style="color:#cbd5e1; font-size:14px; margin:auto;">Очікування підключення учнів...</div>
+      </div>
+    </div>
+
+    <!-- Шар для салютів, зірочок та пилу з-під лап -->
+    <div id="fx-layer"></div>
+
+    <!-- ================= 5. СЦЕНА П'ЄДЕСТАЛУ ПЕРЕМОЖЦІВ ================= -->
+    <div id="podium-overlay">
+      <div id="podium-title-banner">🏆 ФІНІШ! ПЕРЕМОЖЦІ ПЕРЕГОНІВ 🏆</div>
+      <div id="podium-stage"></div>
+      <button class="mode-pill-btn restart-btn" style="font-size:18px; padding:12px 28px;" onclick="restartFullGame()">
+        🔄 Почати заново
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   НАЛАШТУВАННЯ БАЗИ СЛІВ (ПО 35 СЛІВ КОЖНОЇ ЧАСТИНИ МОВИ = 105 СЛІВ)
+   Ви можете легко додавати або змінювати слова у списках нижче!
+   ============================================================================ */
+const WORD_BANK = {
+  // Іменники (хто? що?) - 35 слів
+  noun: [
+    "ЛИСИЦЯ", "СОНЦЕ", "ДЕРЕВО", "ОЛІВЕЦЬ", "ХМАРИНКА",
+    "ЗОШИТ", "МЕТЕЛИК", "ПОЛУНИЦЯ", "БАРАБАН", "КОРАБЕЛЬ",
+    "ПАРАСОЛЬКА", "ДЕЛЬФІН", "МУРАХА", "ВЕЛОСИПЕД", "МОРОЗИВО",
+    "ГОДИННИК", "ВЕСЕЛКА", "ПОДУШКА", "ЛІТАК", "ЧЕРЕПАХА",
+    "КАВУН", "ПІАНІНО", "КРОСІВКИ", "БІЛОЧКА", "ЛІХТАРИК",
+    "ЦУКЕРКА", "ВОДОСПАД", "КОШЕНЯ", "ТРОЯНДА", "РЮКЗАК",
+    "СНІЖИНКА", "АВТОБУС", "РОМАШКА", "ЖИРАФА", "КАПЕЛЮХ"
+  ],
+  // Прикметники (який? яка? яке? які?) - 35 слів
+  adj: [
+    "СОНЯЧНИЙ", "ПУХНАСТИЙ", "ЗЕЛЕНИЙ", "СОЛОДКИЙ", "ШВИДКИЙ",
+    "ВЕСЕЛИЙ", "ВИСОКИЙ", "КРУГЛИЙ", "ТЕПЛИЙ", "ГОЛОСНИЙ",
+    "ДЕРЕВ'ЯНИЙ", "СРІБНИЙ", "ЛАГІДНИЙ", "ЯСКРАВИЙ", "ГЛИБОКИЙ",
+    "СМІЛИВИЙ", "ЗАПАШНИЙ", "М'ЯКИЙ", "КРИШТАЛЕВИЙ", "РОЗУМНИЙ",
+    "ПРОЗОРИЙ", "ШИРОКА", "ВЕСНЯНИЙ", "БАРВИСТИЙ", "ЛЕГКИЙ",
+    "ЧИСТИЙ", "КУМЕДНИЙ", "СМАЧНИЙ", "ХОЛОДНА", "ДРУЖНІЙ",
+    "РАНКОВИЙ", "ЗОЛОТА", "ВУЗЬКИЙ", "ЧАРІВНИЙ", "ПРУЖНИЙ"
+  ],
+  // Дієслова (що робить? що роблять?) - 35 слів
+  verb: [
+    "СТРИБАЄ", "МАЛЮЄ", "СПІВАЄ", "БІЖИТЬ", "СМІЄТЬСЯ",
+    "ЧИТАЄ", "БУДУЄ", "ПЛАВАЄ", "ТАНЦЮЄ", "СВІТИТЬ",
+    "ШЕПОЧЕ", "ЛІТАЄ", "ГРАЄТЬСЯ", "СЛУХАЄ", "МАНДРУЄ",
+    "РАХУЄ", "ОБІЙМАЄ", "КВІТНЕ", "ШУМИТЬ", "ДОПОМАГАЄ",
+    "МІРКУЄ", "НАЗДОГАНЯЄ", "РАДІЄ", "ДИВУЄТЬСЯ", "ПЛЕСКАЄ",
+    "МАЙСТРУЄ", "СПОСТЕРІГАЄ", "ГОТУЄ", "ПРИКРАШАЄ", "ПЕРЕМАГАЄ",
+    "ХОВАЄТЬСЯ", "КРУЖЛЯЄ", "ВИВЧАЄ", "ТРЕНУЄТЬСЯ", "ПОСМІХАЄТЬСЯ"
+  ]
+};
+
+const TYPE_LABELS_UA = {
+  noun: "ІМЕННИК",
+  adj: "ПРИКМЕТНИК",
+  verb: "ДІЄСЛОВО"
+};
+
+/* ============================================================================
+   ПАРАМЕТРИ ПЕРЕГОНІВ ТА 5 ПЕРСОНАЖІВ
+   ============================================================================ */
+const TOTAL_STEPS = 10; // Кількість кроків до фінішу
+
+const CHARACTER_DEFS = [
+  { id: 0, name: "Лисеня",   color: "#ff6b35" },
+  { id: 1, name: "Єнот",     color: "#4cc9f0" },
+  { id: 2, name: "Лемур",    color: "#ffbe0b" },
+  { id: 3, name: "Капібара", color: "#8ac926" },
+  { id: 4, name: "Панда",    color: "#ff595e" }
+];
+
+// Особисті дані поточного користувача
+let myPlayerName = "";
+let myPlayerKey = "";
+let myCharId = 0;
+let isTeacher = false;
+let selectedPickerCharId = 0;
+
+// Індивідуальна колода слів цього гравця
+let myDeck = [];
+let myDeckIndex = 0;
+let isLocked = false;
+let isRemoteAction = false;
+let lastActionTimestamp = 0;
+
+// Стан гри (синхронізований з Firebase або локальний)
+let playersMap = {};
+let gameConfig = {
+  withComputer: false,
+  botFastMode: false,
+  botStep: 0,
+  botCharId: 1,
+  botAnimToggle: false,
+  status: 'racing', // 'racing' | 'podium'
+  winnerName: ''
+};
+
+let botIntervalTimer = null;
+
+/* ============================================================================
+   ПІДКЛЮЧЕННЯ ДО FIREBASE (ТА РОБОТА БЕЗ FIREBASE)
+   ============================================================================ */
+const firebaseConfig = {
+  databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+  projectId: "lesson-13c44"
+};
+
+let db = null;
+let raceStateRef = null;
+let playersRef = null;
+let configRef = null;
+let actionRef = null;
+const mySenderId = "sender_" + Math.random().toString(36).substr(2, 9) + "_" + Date.now();
+
+try {
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+  db = firebase.database();
+  raceStateRef = db.ref('forest_race_v2');
+  playersRef = raceStateRef.child('players');
+  configRef = raceStateRef.child('config');
+  actionRef = db.ref('game_action');
+} catch (err) {
+  console.warn("Firebase працює в автономному режимі:", err);
+}
+
+/* ============================================================================
+   ЗВУКОВИЙ СИНТЕЗАТОР (Web Audio API - ЖОДНИХ ЗОВНІШНІХ ФАЙЛІВ)
+   ============================================================================ */
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function playSuccessSound(variant = 0) {
+  initAudio();
+  const now = audioCtx.currentTime;
+  if (variant === 0) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(680, now + 0.18);
+    osc.frequency.exponentialRampToValueAtTime(520, now + 0.25);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.42);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.45);
+  } else {
+    [330, 440, 554, 659].forEach((freq, idx) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.25, now + idx * 0.08 + 0.07);
+      gain.gain.setValueAtTime(0.25, now + idx * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.08 + 0.09);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + idx * 0.08);
+      osc.stop(now + idx * 0.08 + 0.09);
+    });
+  }
+}
+
+function playErrorSound() {
+  initAudio();
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(340, now);
+  osc.frequency.linearRampToValueAtTime(220, now + 0.18);
+  osc.frequency.linearRampToValueAtTime(260, now + 0.24);
+  osc.frequency.exponentialRampToValueAtTime(115, now + 0.52);
+
+  gain.gain.setValueAtTime(0.22, now);
+  gain.gain.exponentialRampToValueAtTime(0.01, now + 0.55);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + 0.55);
+}
+
+function playBotStepSound(forward = true) {
+  initAudio();
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(forward ? 300 : 220, now);
+  osc.frequency.exponentialRampToValueAtTime(forward ? 460 : 140, now + 0.12);
+  gain.gain.setValueAtTime(0.14, now);
+  gain.gain.exponentialRampToValueAtTime(0.01, now + 0.13);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + 0.13);
+}
+
+function playFanfareSound() {
+  initAudio();
+  const now = audioCtx.currentTime;
+  const notes = [
+    { f: 523.25, t: 0.0, d: 0.16 },
+    { f: 523.25, t: 0.18, d: 0.16 },
+    { f: 523.25, t: 0.36, d: 0.16 },
+    { f: 659.25, t: 0.54, d: 0.35 },
+    { f: 587.33, t: 0.92, d: 0.25 },
+    { f: 659.25, t: 1.20, d: 0.25 },
+    { f: 783.99, t: 1.48, d: 0.65 }
+  ];
+  notes.forEach(n => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(n.f, now + n.t);
+    gain.gain.setValueAtTime(0.28, now + n.t);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + n.t + n.d);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now + n.t);
+    osc.stop(now + n.t + n.d);
+  });
+}
+
+/* ============================================================================
+   ДЕТАЛІЗОВАНІ SVG-МАЛЮНКИ 5 ПЕРСОНАЖІВ
+   ============================================================================ */
+function getCharacterSVG(id, mood = 'normal') {
+  const renderEyes = (cx1, cx2, cy) => {
+    if (mood === 'happy') {
+      return `
+        <path d="M${cx1-6},${cy} Q${cx1},${cy-9} ${cx1+6},${cy}" stroke="#111" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path d="M${cx2-6},${cy} Q${cx2},${cy-9} ${cx2+6},${cy}" stroke="#111" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      `;
+    } else if (mood === 'dizzy') {
+      return `
+        <circle cx="${cx1}" cy="${cy}" r="6.5" fill="#fff" stroke="#111" stroke-width="2"/>
+        <circle cx="${cx1-2}" cy="${cy-2}" r="2.5" fill="#111"/>
+        <circle cx="${cx2}" cy="${cy}" r="6.5" fill="#fff" stroke="#111" stroke-width="2"/>
+        <circle cx="${cx2+2}" cy="${cy+2}" r="2.5" fill="#111"/>
+        <path d="M${cx2+10},${cy-10} Q${cx2+15},${cy-2} ${cx2+10},${cy+3} Q${cx2+5},${cy-2} ${cx2+10},${cy-10}" fill="#4cc9f0"/>
+      `;
+    }
+    return `
+      <circle cx="${cx1}" cy="${cy}" r="5.5" fill="#111"/>
+      <circle cx="${cx1+1.8}" cy="${cy-1.8}" r="2" fill="#fff"/>
+      <circle cx="${cx2}" cy="${cy}" r="5.5" fill="#111"/>
+      <circle cx="${cx2+1.8}" cy="${cy-1.8}" r="2" fill="#fff"/>
+    `;
+  };
+
+  switch (Number(id) % 5) {
+    case 0: // 1. Руде Лисеня
+      return `
+      <svg class="racer-svg" viewBox="0 0 110 110">
+        <path d="M26,75 Q4,60 10,40 Q22,38 30,52 Z" fill="#f77f00" stroke="#9c4100" stroke-width="2.5"/>
+        <path d="M10,40 Q15,38 20,44 Q13,48 10,40 Z" fill="#fff"/>
+        <ellipse cx="44" cy="95" rx="11" ry="6" fill="#1982c4" stroke="#fff" stroke-width="2"/>
+        <ellipse cx="68" cy="95" rx="11" ry="6" fill="#1982c4" stroke="#fff" stroke-width="2"/>
+        <ellipse cx="55" cy="74" rx="20" ry="18" fill="#f77f00" stroke="#9c4100" stroke-width="2.5"/>
+        <path d="M40,66 Q55,74 70,66 L68,85 Q55,90 42,85 Z" fill="#ffd166"/>
+        <polygon points="32,38 26,12 48,26" fill="#f77f00" stroke="#9c4100" stroke-width="2.5"/>
+        <polygon points="33,34 29,17 44,26" fill="#ffd166"/>
+        <polygon points="78,38 84,12 62,26" fill="#f77f00" stroke="#9c4100" stroke-width="2.5"/>
+        <polygon points="77,34 81,17 66,26" fill="#ffd166"/>
+        <ellipse cx="55" cy="44" rx="26" ry="21" fill="#f77f00" stroke="#9c4100" stroke-width="2.5"/>
+        <path d="M30,46 Q42,38 55,52 Q68,38 80,46 Q72,64 55,64 Q38,64 30,46 Z" fill="#fff"/>
+        <path d="M31,32 Q55,25 79,32" stroke="#1982c4" stroke-width="6" fill="none" stroke-linecap="round"/>
+        ${renderEyes(44, 66, 42)}
+        <ellipse cx="55" cy="51" rx="5" ry="3.5" fill="#222"/>
+        <path d="${mood === 'dizzy' ? 'M49,59 Q55,54 61,59' : 'M48,56 Q55,63 62,56'}" stroke="#222" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>`;
+
+    case 1: // 2. Смугастий Єнот
+      return `
+      <svg class="racer-svg" viewBox="0 0 110 110">
+        <path d="M24,76 Q2,64 8,42 Q22,42 32,62 Z" fill="#8d99ae" stroke="#2b2d42" stroke-width="2.5"/>
+        <path d="M8,52 L22,50 M12,62 L26,58" stroke="#2b2d42" stroke-width="5"/>
+        <ellipse cx="44" cy="95" rx="11" ry="6" fill="#ef233c" stroke="#fff" stroke-width="2"/>
+        <ellipse cx="68" cy="95" rx="11" ry="6" fill="#ef233c" stroke="#fff" stroke-width="2"/>
+        <ellipse cx="55" cy="74" rx="20" ry="18" fill="#8d99ae" stroke="#2b2d42" stroke-width="2.5"/>
+        <ellipse cx="55" cy="75" rx="12" ry="12" fill="#edf2f4"/>
+        <circle cx="34" cy="24" r="10" fill="#8d99ae" stroke="#2b2d42" stroke-width="2.5"/>
+        <circle cx="76" cy="24" r="10" fill="#8d99ae" stroke="#2b2d42" stroke-width="2.5"/>
+        <ellipse cx="55" cy="44" rx="26" ry="21" fill="#8d99ae" stroke="#2b2d42" stroke-width="2.5"/>
+        <ellipse cx="43" cy="43" rx="11" ry="8" transform="rotate(-10 43 43)" fill="#2b2d42"/>
+        <ellipse cx="67" cy="43" rx="11" ry="8" transform="rotate(10 67 43)" fill="#2b2d42"/>
+        <ellipse cx="55" cy="53" rx="14" ry="10" fill="#edf2f4"/>
+        <path d="M36,61 Q55,74 74,61 L64,73 L55,68 L46,73 Z" fill="#52b788" stroke="#1b4332" stroke-width="2"/>
+        ${renderEyes(44, 66, 42)}
+        <ellipse cx="55" cy="50" rx="4.5" ry="3.5" fill="#111"/>
+        <path d="${mood === 'dizzy' ? 'M49,59 Q55,54 61,59' : 'M48,55 Q55,62 62,55'}" stroke="#111" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>`;
+
+    case 2: // 3. Жовтоокий Лемур
+      return `
+      <svg class="racer-svg" viewBox="0 0 110 110">
+        <path d="M24,78 Q6,52 16,22 Q26,22 22,50 Q20,66 32,74" fill="none" stroke="#adb5bd" stroke-width="9" stroke-linecap="round"/>
+        <path d="M24,78 Q6,52 16,22" fill="none" stroke="#212529" stroke-width="9" stroke-dasharray="7 7" stroke-linecap="round"/>
+        <ellipse cx="44" cy="95" rx="11" ry="6" fill="#ffbe0b" stroke="#582f0e" stroke-width="2"/>
+        <ellipse cx="68" cy="95" rx="11" ry="6" fill="#ffbe0b" stroke="#582f0e" stroke-width="2"/>
+        <ellipse cx="55" cy="74" rx="19" ry="18" fill="#adb5bd" stroke="#343a40" stroke-width="2.5"/>
+        <ellipse cx="55" cy="75" rx="12" ry="13" fill="#ffffff"/>
+        <polygon points="30,36 20,18 42,26" fill="#ffffff" stroke="#343a40" stroke-width="2.5"/>
+        <polygon points="80,36 90,18 68,26" fill="#ffffff" stroke="#343a40" stroke-width="2.5"/>
+        <circle cx="55" cy="44" r="22" fill="#adb5bd" stroke="#343a40" stroke-width="2.5"/>
+        <circle cx="45" cy="43" r="9" fill="#212529"/>
+        <circle cx="65" cy="43" r="9" fill="#212529"/>
+        <circle cx="45" cy="43" r="7.5" fill="#ffbe0b"/>
+        <circle cx="65" cy="43" r="7.5" fill="#ffbe0b"/>
+        ${renderEyes(45, 65, 43)}
+        <polygon points="55,48 50,55 60,55" fill="#212529"/>
+        <path d="${mood === 'dizzy' ? 'M50,60 Q55,56 60,60' : 'M49,57 Q55,63 61,57'}" stroke="#212529" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>`;
+
+    case 3: // 4. Кумедна Капібара
+      return `
+      <svg class="racer-svg" viewBox="0 0 110 110">
+        <ellipse cx="43" cy="95" rx="11" ry="6" fill="#8ac926" stroke="#1b4332" stroke-width="2"/>
+        <ellipse cx="67" cy="95" rx="11" ry="6" fill="#8ac926" stroke="#1b4332" stroke-width="2"/>
+        <ellipse cx="55" cy="75" rx="22" ry="18" fill="#a66e38" stroke="#582f0e" stroke-width="2.5"/>
+        <path d="M36,68 Q55,78 74,68" stroke="#4cc9f0" stroke-width="5" fill="none"/>
+        <ellipse cx="35" cy="27" rx="7" ry="5" transform="rotate(-25 35 27)" fill="#7f4f24" stroke="#582f0e" stroke-width="2"/>
+        <ellipse cx="75" cy="27" rx="7" ry="5" transform="rotate(25 75 27)" fill="#7f4f24" stroke="#582f0e" stroke-width="2"/>
+        <rect x="30" y="25" width="50" height="38" rx="19" fill="#b07d4b" stroke="#582f0e" stroke-width="2.5"/>
+        <ellipse cx="55" cy="50" rx="16" ry="11" fill="#7f4f24"/>
+        <circle cx="55" cy="18" r="9" fill="#ff924c" stroke="#d62828" stroke-width="2"/>
+        <ellipse cx="59" cy="10" rx="5" ry="2.5" transform="rotate(-20 59 10)" fill="#52b788"/>
+        ${renderEyes(42, 68, 39)}
+        <circle cx="50" cy="47" r="2.2" fill="#2b1700"/>
+        <circle cx="60" cy="47" r="2.2" fill="#2b1700"/>
+        <path d="${mood === 'dizzy' ? 'M49,57 Q55,52 61,57' : 'M48,54 Q55,60 62,54'}" stroke="#fff3b0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>`;
+
+    case 4: // 5. Червона Панда
+    default:
+      return `
+      <svg class="racer-svg" viewBox="0 0 110 110">
+        <path d="M24,76 Q2,60 12,38 Q26,38 32,58 Z" fill="#d62828" stroke="#6a040f" stroke-width="2.5"/>
+        <path d="M9,48 L23,46 M14,58 L27,54" stroke="#ffd166" stroke-width="4.5"/>
+        <ellipse cx="44" cy="95" rx="11" ry="6" fill="#ffbe0b" stroke="#6a040f" stroke-width="2"/>
+        <ellipse cx="68" cy="95" rx="11" ry="6" fill="#ffbe0b" stroke="#6a040f" stroke-width="2"/>
+        <ellipse cx="55" cy="74" rx="20" ry="18" fill="#d62828" stroke="#6a040f" stroke-width="2.5"/>
+        <ellipse cx="55" cy="76" rx="12" ry="11" fill="#370617"/>
+        <polygon points="30,36 22,14 46,24" fill="#fff" stroke="#6a040f" stroke-width="2.5"/>
+        <polygon points="80,36 88,14 64,24" fill="#fff" stroke="#6a040f" stroke-width="2.5"/>
+        <ellipse cx="55" cy="44" rx="26" ry="21" fill="#d62828" stroke="#6a040f" stroke-width="2.5"/>
+        <ellipse cx="42" cy="48" rx="9" ry="7" fill="#fff"/>
+        <ellipse cx="68" cy="48" rx="9" ry="7" fill="#fff"/>
+        <ellipse cx="45" cy="34" rx="5" ry="3" fill="#fff"/>
+        <ellipse cx="65" cy="34" rx="5" ry="3" fill="#fff"/>
+        <ellipse cx="55" cy="52" rx="11" ry="8" fill="#fff"/>
+        ${renderEyes(45, 65, 42)}
+        <ellipse cx="55" cy="50" rx="4" ry="3" fill="#222"/>
+        <path d="${mood === 'dizzy' ? 'M50,58 Q55,54 60,58' : 'M49,55 Q55,61 61,55'}" stroke="#222" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </svg>`;
+  }
+}
+
+/* ============================================================================
+   ВХІД У ГРУ, ВИДАЛЕННЯ МИНУЛИХ ГРАВЦІВ ТА ВИЗНАЧЕННЯ ВЧИТЕЛЯ
+   ============================================================================ */
+function sanitizeFirebaseKey(str) {
+  return str.trim().toLowerCase().replace(/[.#$\[\]\/]/g, '_');
+}
+
+// Допоміжна функція видалення попередньої доріжки цього користувача (при зміні імені або перезавантаженні)
+function cleanupMyPreviousPlayerTrack(newKeyToKeep = "") {
+  const prevSavedKey = sessionStorage.getItem('myRacePlayerKey');
+  if (prevSavedKey && prevSavedKey !== newKeyToKeep) {
+    delete playersMap[prevSavedKey];
+    if (playersRef) {
+      playersRef.child(prevSavedKey).remove();
+    }
+  }
+  if (myPlayerKey && myPlayerKey !== newKeyToKeep) {
+    delete playersMap[myPlayerKey];
+    if (playersRef) {
+      playersRef.child(myPlayerKey).remove();
+    }
+  }
+}
+
+function buildCharPicker() {
+  const row = document.getElementById('char-picker-row');
+  row.innerHTML = '';
+  CHARACTER_DEFS.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'char-pick-item' + (c.id === selectedPickerCharId ? ' selected' : '');
+    item.innerHTML = `
+      <div style="width:54px; height:54px;">${getCharacterSVG(c.id, 'normal')}</div>
+      <span>${c.name}</span>
+    `;
+    item.onclick = () => {
+      selectedPickerCharId = c.id;
+      buildCharPicker();
+    };
+    row.appendChild(item);
+  });
+}
+
+function checkInputTeacherRole() {
+  const val = document.getElementById('player-name-input').value.trim();
+  const isT = (val.toLowerCase() === 'вчитель');
+  document.getElementById('teacher-detected-hint').style.display = isT ? 'block' : 'none';
+  document.getElementById('char-picker-section').style.display = isT ? 'none' : 'block';
+}
+
+document.getElementById('player-name-input').addEventListener('input', checkInputTeacherRole);
+document.getElementById('player-name-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') enterGameWithName();
+});
+document.getElementById('btn-enter-game').addEventListener('click', enterGameWithName);
+
+function openLoginModal() {
+  const modal = document.getElementById('login-modal');
+  const inp = document.getElementById('player-name-input');
+  if (myPlayerName && !myPlayerName.startsWith('Гість_')) {
+    inp.value = myPlayerName;
+  }
+  checkInputTeacherRole();
+  buildCharPicker();
+  modal.style.display = 'flex';
+  setTimeout(() => inp.focus(), 80);
+}
+
+function enterGameWithName() {
+  initAudio();
+  const inp = document.getElementById('player-name-input');
+  let rawName = inp.value.trim();
+  if (!rawName) {
+    inp.style.borderColor = '#e63946';
+    inp.focus();
+    return;
+  }
+
+  myPlayerName = rawName;
+  sessionStorage.setItem('userName', myPlayerName);
+
+  // Оновлюємо радар з новим введеним ім'ям
+  if (typeof window.updateRadarUserName === 'function') {
+    window.updateRadarUserName(myPlayerName);
+  }
+
+  // Перевірка: чи це вчитель (незалежно від регістру букв)
+  isTeacher = (myPlayerName.toLowerCase() === 'вчитель');
+  document.getElementById('login-modal').style.display = 'none';
+
+  const badge = document.getElementById('user-role-badge');
+  if (isTeacher) {
+    // Якщо на цьому пристрої до того був створений гравець — прибираємо його доріжку
+    cleanupMyPreviousPlayerTrack("");
+    myPlayerKey = "";
+    sessionStorage.removeItem('myRacePlayerKey');
+
+    badge.textContent = `👩‍🏫 Вчитель (${myPlayerName})`;
+    document.getElementById('bottom-hud').style.display = 'none';
+    document.getElementById('teacher-monitor').style.display = 'flex';
+  } else {
+    myCharId = selectedPickerCharId;
+    const charName = CHARACTER_DEFS[myCharId].name;
+    badge.textContent = `🏃 ${myPlayerName} (${charName})`;
+    document.getElementById('bottom-hud').style.display = 'flex';
+    document.getElementById('teacher-monitor').style.display = 'none';
+
+    const newKey = "p_" + sanitizeFirebaseKey(myPlayerName);
+    cleanupMyPreviousPlayerTrack(newKey);
+    myPlayerKey = newKey;
+    sessionStorage.setItem('myRacePlayerKey', myPlayerKey);
+
+    buildMyShuffledDeck();
+    registerOrUpdateMyPlayerInFirebase(true);
+  }
+
+  renderAllTracks();
+  renderTeacherMonitor();
+  playSuccessSound(0);
+}
+
+function registerOrUpdateMyPlayerInFirebase(resetSteps = false) {
+  if (isTeacher || !myPlayerKey) return;
+  const currentItem = myDeck[myDeckIndex] || { word: "ЛИСИЦЯ", type: "noun" };
+  const existing = (!resetSteps && playersMap[myPlayerKey]) ? playersMap[myPlayerKey] : {};
+
+  const playerObj = {
+    id: myPlayerKey,
+    name: myPlayerName,
+    charId: myCharId,
+    step: typeof existing.step === 'number' ? existing.step : 0,
+    currentWord: currentItem.word,
+    currentType: currentItem.type,
+    lastAnswer: existing.lastAnswer || null,
+    history: existing.history || [],
+    correctCount: existing.correctCount || 0,
+    wrongCount: existing.wrongCount || 0,
+    animToggle: existing.animToggle || false,
+    updatedAt: Date.now()
+  };
+
+  playersMap[myPlayerKey] = playerObj;
+  if (playersRef) {
+    const myNode = playersRef.child(myPlayerKey);
+    // Автоматично прибираємо доріжку гравця, якщо він закриє вкладку або перезавантажить сторінку
+    myNode.onDisconnect().remove();
+    myNode.set(playerObj);
+  }
+}
+
+// Миттєве видалення доріжки гравця при закритті чи оновленні вкладки
+window.addEventListener('beforeunload', () => {
+  if (!isTeacher && myPlayerKey && playersRef) {
+    playersRef.child(myPlayerKey).remove();
+  }
+});
+
+/* ============================================================================
+   ІНДИВІДУАЛЬНА КОЛОДА СЛІВ ГРАВЦЯ
+   ============================================================================ */
+function buildMyShuffledDeck() {
+  myDeck = [];
+  Object.keys(WORD_BANK).forEach(type => {
+    WORD_BANK[type].forEach(word => {
+      myDeck.push({ word, type });
+    });
+  });
+  for (let i = myDeck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [myDeck[i], myDeck[j]] = [myDeck[j], myDeck[i]];
+  }
+  myDeckIndex = 0;
+  renderMyCurrentWord();
+}
+
+function renderMyCurrentWord() {
+  if (myDeck.length === 0) return;
+  if (myDeckIndex < 0) myDeckIndex = 0;
+  if (myDeckIndex >= myDeck.length) myDeckIndex = 0;
+
+  const board = document.getElementById('word-board');
+  const textEl = document.getElementById('word-text');
+  textEl.textContent = myDeck[myDeckIndex].word;
+  board.classList.remove('pop');
+  void board.offsetWidth;
+  board.classList.add('pop');
+
+  // Синхронізуємо поточне слово гравця, щоб вчитель бачив його в реальному часі
+  if (!isTeacher && myPlayerKey && playersMap[myPlayerKey]) {
+    playersMap[myPlayerKey].currentWord = myDeck[myDeckIndex].word;
+    playersMap[myPlayerKey].currentType = myDeck[myDeckIndex].type;
+    if (playersRef) {
+      playersRef.child(myPlayerKey).update({
+        currentWord: myDeck[myDeckIndex].word,
+        currentType: myDeck[myDeckIndex].type,
+        updatedAt: Date.now()
+      });
+    }
+  }
+}
+
+/* ============================================================================
+   ПОБУДОВА ДОРІЖОК (ТІЛЬКИ АКТИВНІ ГРАВЦІ + КОМП'ЮТЕР ЯКЩО УВІМКНЕНО)
+   ============================================================================ */
+function getActiveRacersList() {
+  const list = Object.values(playersMap).sort((a, b) => (a.id > b.id ? 1 : -1));
+
+  if (gameConfig.withComputer) {
+    // Вибираємо іконку для комп'ютера, яка найменше зайнята гравцями
+    const usedChars = new Set(list.map(p => Number(p.charId)));
+    let botCId = gameConfig.botCharId ?? 1;
+    if (usedChars.has(botCId)) {
+      for (let i = 0; i < 5; i++) {
+        if (!usedChars.has(i)) {
+          botCId = i;
+          break;
+        }
+      }
+    }
+    const botCharDef = CHARACTER_DEFS[botCId] || CHARACTER_DEFS[1];
+    list.push({
+      id: 'BOT_RACER',
+      name: 'Комп\'ютер',
+      charId: botCId,
+      step: gameConfig.botStep || 0,
+      isBot: true,
+      color: botCharDef.color
+    });
+  }
+  return list;
+}
+
+function renderAllTracks() {
+  const container = document.getElementById('tracks-area');
+  const activeRacers = getActiveRacersList();
+
+  if (activeRacers.length === 0) {
+    container.innerHTML = `
+      <div class="empty-tracks-notice">
+        🐾 Очікуємо гравців на старті...<br>
+        <span style="font-size:0.75em; font-weight:normal; color:#fff3b0;">Щойно учень введе своє ім'я або ви увімкнете «З комп'ютером», з'явиться його доріжка!</span>
+      </div>
+    `;
+    return;
+  }
+
+  // Перевіряємо, чи потрібно перебудувати DOM доріжок (якщо змінився склад учасників)
+  const currentDomIds = Array.from(container.querySelectorAll('.track-row')).map(el => el.dataset.racerId);
+  const newIds = activeRacers.map(r => r.id);
+  const sameStructure = (
+    currentDomIds.length === newIds.length &&
+    currentDomIds.every((id, i) => id === newIds[i])
+  );
+
+  if (!sameStructure) {
+    container.innerHTML = '';
+    activeRacers.forEach((racer) => {
+      const charDef = CHARACTER_DEFS[Number(racer.charId) % 5] || CHARACTER_DEFS[0];
+      const row = document.createElement('div');
+      row.className = 'track-row' + (racer.id === myPlayerKey ? ' my-track' : '');
+      row.id = `track-${racer.id}`;
+      row.dataset.racerId = racer.id;
+
+      // Табличка з ім'ям гравця та підписом персонажа зліва
+      const tag = document.createElement('div');
+      tag.className = 'track-player-tag';
+      tag.style.background = racer.isBot
+        ? 'linear-gradient(180deg, #343a40, #212529)'
+        : `linear-gradient(180deg, ${charDef.color}, #3d2516)`;
+      tag.innerHTML = `
+        <div class="track-player-name" id="tag-name-${racer.id}">${escapeHtml(racer.name)}</div>
+        <div class="track-char-sub" id="tag-sub-${racer.id}">${racer.isBot ? '🤖 Робот-' + charDef.name : '🐾 ' + charDef.name}</div>
+      `;
+      row.appendChild(tag);
+
+      // Камінці кроків
+      const stepsWrap = document.createElement('div');
+      stepsWrap.className = 'steps-container';
+      for (let s = 0; s <= TOTAL_STEPS; s++) {
+        const stone = document.createElement('div');
+        stone.className = 'step-stone' + (s === TOTAL_STEPS ? ' finish-stone' : '');
+        stepsWrap.appendChild(stone);
+      }
+
+      // Персонаж-бігун із підписом імені зверху
+      const racerWrap = document.createElement('div');
+      racerWrap.className = 'racer-wrapper';
+      racerWrap.id = `racer-${racer.id}`;
+      racerWrap.style.left = `${(Math.min(TOTAL_STEPS, racer.step || 0) / TOTAL_STEPS) * 100}%`;
+
+      racerWrap.innerHTML = `
+        <div class="racer-floating-label" id="float-label-${racer.id}">${escapeHtml(racer.name)} (${charDef.name})</div>
+        ${isTeacher && !racer.isBot ? `<div class="teacher-track-spy" id="spy-${racer.id}">📖 ${escapeHtml(racer.currentWord || '...')}</div>` : ''}
+        <div id="racer-art-${racer.id}">${getCharacterSVG(racer.charId, 'normal')}</div>
+      `;
+
+      stepsWrap.appendChild(racerWrap);
+      row.appendChild(stepsWrap);
+      container.appendChild(row);
+    });
+  } else {
+    // Оновлюємо позиції та бейджі без повного перемальовування DOM
+    activeRacers.forEach((racer) => {
+      const charDef = CHARACTER_DEFS[Number(racer.charId) % 5] || CHARACTER_DEFS[0];
+      const tagSub = document.getElementById(`tag-sub-${racer.id}`);
+      if (tagSub) {
+        tagSub.textContent = racer.isBot ? '🤖 Робот-' + charDef.name : '🐾 ' + charDef.name;
+      }
+      const wrap = document.getElementById(`racer-${racer.id}`);
+      if (wrap) {
+        wrap.style.left = `${(Math.min(TOTAL_STEPS, racer.step || 0) / TOTAL_STEPS) * 100}%`;
+      }
+      const floatLbl = document.getElementById(`float-label-${racer.id}`);
+      if (floatLbl) {
+        floatLbl.textContent = `${racer.name} (${charDef.name})`;
+      }
+      const spyEl = document.getElementById(`spy-${racer.id}`);
+      if (spyEl && isTeacher && !racer.isBot) {
+        const lastAns = racer.lastAnswer;
+        const clickInfo = lastAns
+          ? ` | Натиснув: ${TYPE_LABELS_UA[lastAns.chosenType] || ''} ${lastAns.isCorrect ? '✅' : '❌'}`
+          : '';
+        spyEl.textContent = `📖 Слово: ${racer.currentWord || '...'}${clickInfo}`;
+      }
+    });
+  }
+}
+
+/* ============================================================================
+   ПАНЕЛЬ ЖИВОГО МОНІТОРИНГУ ДЛЯ ВЧИТЕЛЯ
+   ============================================================================ */
+function renderTeacherMonitor() {
+  if (!isTeacher) return;
+  const grid = document.getElementById('teacher-cards-grid');
+  const students = Object.values(playersMap).sort((a, b) => (a.id > b.id ? 1 : -1));
+
+  if (students.length === 0) {
+    grid.innerHTML = `<div style="color:#cbd5e1; font-size:15px; margin:auto;">Очікування підключення учнів (коли учні введуть свої імена, тут з'являться їхні картки зі словами)...</div>`;
+    return;
+  }
+
+  grid.innerHTML = '';
+  students.forEach(st => {
+    const charDef = CHARACTER_DEFS[Number(st.charId) % 5] || CHARACTER_DEFS[0];
+    const card = document.createElement('div');
+    card.className = 'teacher-student-card';
+
+    const curWord = st.currentWord || '—';
+    const curTypeUa = TYPE_LABELS_UA[st.currentType] || '';
+
+    let lastClickHtml = `<div class="tsc-last-click">Ще не натискав кнопок</div>`;
+    if (st.lastAnswer) {
+      const la = st.lastAnswer;
+      const chosenUa = TYPE_LABELS_UA[la.chosenType] || la.chosenType;
+      const correctUa = TYPE_LABELS_UA[la.correctType] || la.correctType;
+      if (la.isCorrect) {
+        lastClickHtml = `
+          <div class="tsc-last-click click-ok">
+            ✅ <b>${escapeHtml(la.word)}</b> → натиснув: <b>${chosenUa}</b>
+          </div>
+        `;
+      } else {
+        lastClickHtml = `
+          <div class="tsc-last-click click-err">
+            ❌ <b>${escapeHtml(la.word)}</b> → натиснув: <b>${chosenUa}</b> (треба: ${correctUa})
+          </div>
+        `;
+      }
+    }
+
+    const histArr = Array.isArray(st.history) ? st.history : [];
+    const histText = histArr.length > 0
+      ? histArr.slice(-4).reverse().map(h => `${h.word}:${TYPE_LABELS_UA[h.chosenType]?.slice(0,3)}.${h.isCorrect ? '✅' : '❌'}`).join(' • ')
+      : 'Історія порожня';
+
+    card.innerHTML = `
+      <div class="tsc-top">
+        <span>🐾 ${escapeHtml(st.name)} (${charDef.name})</span>
+        <div>
+          <span>Крок: ${st.step || 0}/${TOTAL_STEPS} (✅${st.correctCount || 0} ❌${st.wrongCount || 0})</span>
+          <button class="tsc-kick-btn" title="Прибрати доріжку гравця" onclick="teacherRemovePlayer('${st.id}')">✕</button>
+        </div>
+      </div>
+      <div class="tsc-current-word">
+        Зараз слово: <strong>${escapeHtml(curWord)}</strong> <span style="color:#8ac926; font-size:12px;">(${curTypeUa})</span>
+      </div>
+      ${lastClickHtml}
+      <div class="tsc-history-strip" title="${escapeHtml(histText)}">
+        Останні: ${escapeHtml(histText)}
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function teacherRemovePlayer(playerId) {
+  delete playersMap[playerId];
+  if (playersRef) {
+    playersRef.child(playerId).remove();
+  }
+  renderAllTracks();
+  renderTeacherMonitor();
+}
+
+// Скидання тільки кроків на 0 без видалення поточних гравців
+function teacherResetStepsOnly() {
+  initAudio();
+  Object.keys(playersMap).forEach(k => {
+    playersMap[k].step = 0;
+    playersMap[k].correctCount = 0;
+    playersMap[k].wrongCount = 0;
+    playersMap[k].lastAnswer = null;
+    playersMap[k].history = [];
+    if (playersRef) {
+      playersRef.child(k).update({
+        step: 0,
+        correctCount: 0,
+        wrongCount: 0,
+        lastAnswer: null,
+        history: []
+      });
+    }
+  });
+  gameConfig.botStep = 0;
+  gameConfig.status = 'racing';
+  gameConfig.winnerName = '';
+  if (configRef) {
+    configRef.update({ botStep: 0, status: 'racing', winnerName: '' });
+  }
+  broadcastAction('reset_steps_only', {});
+  document.getElementById('podium-overlay').style.display = 'none';
+  renderAllTracks();
+  renderTeacherMonitor();
+  playSuccessSound(0);
+}
+
+// Повний перезапуск гри («Почати заново»): прибирає всі минулі доріжки та відкриває старт для активних учасників
+function restartFullGame() {
+  initAudio();
+  playersMap = {};
+  gameConfig.botStep = 0;
+  gameConfig.status = 'racing';
+  gameConfig.winnerName = '';
+
+  if (playersRef) {
+    playersRef.remove();
+  }
+  if (configRef) {
+    configRef.update({
+      botStep: 0,
+      status: 'racing',
+      winnerName: ''
+    });
+  }
+
+  broadcastAction('restart_full_game', {});
+  handleLocalFullRestart();
+  playSuccessSound(0);
+}
+
+function handleLocalFullRestart() {
+  playersMap = {};
+  gameConfig.botStep = 0;
+  gameConfig.status = 'racing';
+  gameConfig.winnerName = '';
+  document.getElementById('podium-overlay').style.display = 'none';
+
+  if (!isTeacher) {
+    myPlayerKey = "";
+    sessionStorage.removeItem('myRacePlayerKey');
+    openLoginModal();
+  }
+
+  renderAllTracks();
+  renderTeacherMonitor();
+}
+
+document.getElementById('btn-restart-game').onclick = () => {
+  restartFullGame();
+};
+
+/* ============================================================================
+   ОБРОБКА ВІДПОВІДІ ГРАВЦЯ (КОЖЕН ПРАЦЮЄ У СВОЄМУ ТЕМПІ)
+   ============================================================================ */
+function submitAnswer(chosenType) {
+  if (isTeacher) return;
+  if (isLocked || gameConfig.status === 'podium') return;
+  if (!myPlayerKey || !playersMap[myPlayerKey]) {
+    openLoginModal();
+    return;
+  }
+
+  initAudio();
+  isLocked = true;
+
+  const me = playersMap[myPlayerKey];
+  const currentItem = myDeck[myDeckIndex];
+  const isCorrect = (chosenType === currentItem.type);
+
+  let animClass = 'anim-back';
+  let mood = 'dizzy';
+
+  if (isCorrect) {
+    me.step = Math.min(TOTAL_STEPS, (me.step || 0) + 1);
+    me.correctCount = (me.correctCount || 0) + 1;
+    me.animToggle = !me.animToggle;
+    animClass = me.animToggle ? 'anim-hop' : 'anim-waddle';
+    mood = 'happy';
+
+    playSuccessSound(me.animToggle ? 0 : 1);
+    animateRacerMove(myPlayerKey, me.charId, me.step, animClass, mood);
+    animateReferee('cheer');
+    spawnParticlesAtRacer(myPlayerKey, true);
+  } else {
+    me.step = Math.max(0, (me.step || 0) - 1);
+    me.wrongCount = (me.wrongCount || 0) + 1;
+
+    playErrorSound();
+    animateRacerMove(myPlayerKey, me.charId, me.step, 'anim-back', 'dizzy');
+    animateReferee('shock');
+    spawnParticlesAtRacer(myPlayerKey, false);
+  }
+
+  // Записуємо інформацію про натискання для вчителя
+  const answerRecord = {
+    word: currentItem.word,
+    chosenType: chosenType,
+    correctType: currentItem.type,
+    isCorrect: isCorrect,
+    timestamp: Date.now()
+  };
+  me.lastAnswer = answerRecord;
+  if (!Array.isArray(me.history)) me.history = [];
+  me.history.push(answerRecord);
+  if (me.history.length > 15) me.history.shift();
+
+  // Наступне слово для цього гравця
+  myDeckIndex = (myDeckIndex + 1) % myDeck.length;
+  const nextItem = myDeck[myDeckIndex];
+  me.currentWord = nextItem.word;
+  me.currentType = nextItem.type;
+  me.updatedAt = Date.now();
+
+  if (playersRef) {
+    const myNode = playersRef.child(myPlayerKey);
+    myNode.onDisconnect().remove();
+    myNode.set(me);
+  }
+
+  // Транслюємо анімацію руху всім іншим учасникам через game_action
+  broadcastAction('player_move', {
+    playerId: myPlayerKey,
+    charId: me.charId,
+    step: me.step,
+    animClass: animClass,
+    mood: mood,
+    isCorrect: isCorrect
+  });
+
+  // Якщо увімкнено режим з комп'ютером і темп покроковий — комп'ютер робить свій хід
+  if (gameConfig.withComputer && !gameConfig.botFastMode && me.step < TOTAL_STEPS) {
+    setTimeout(() => triggerBotMoveStep(), 320);
+  }
+
+  setTimeout(() => {
+    // Перевіряємо, чи досяг гравець фінішу
+    if (me.step >= TOTAL_STEPS) {
+      triggerGlobalWin(me.name);
+      isLocked = false;
+      return;
+    }
+    renderMyCurrentWord();
+    isLocked = false;
+  }, 620);
+}
+
+// Візуальна анімація персонажа на доріжці
+function animateRacerMove(racerId, charId, newStep, animClass, mood) {
+  const wrap = document.getElementById(`racer-${racerId}`);
+  const art = document.getElementById(`racer-art-${racerId}`);
+  if (!wrap || !art) return;
+
+  art.innerHTML = getCharacterSVG(charId, mood);
+  wrap.classList.remove('anim-hop', 'anim-waddle', 'anim-back');
+  void wrap.offsetWidth;
+  wrap.classList.add(animClass);
+  wrap.style.left = `${(Math.min(TOTAL_STEPS, newStep) / TOTAL_STEPS) * 100}%`;
+
+  setTimeout(() => {
+    if (gameConfig.status !== 'podium' && document.getElementById(`racer-art-${racerId}`)) {
+      document.getElementById(`racer-art-${racerId}`).innerHTML = getCharacterSVG(charId, 'normal');
+    }
+  }, 650);
+}
+
+/* ============================================================================
+   ЛОГІКА КОМП'ЮТЕРА-СУПЕРНИКА (РЕЖИМ З КОМП'ЮТЕРОМ / БЕЗ)
+   ============================================================================ */
+function updateComputerModeUI() {
+  const btn = document.getElementById('btn-toggle-computer');
+  const speedBtn = document.getElementById('btn-bot-mode');
+  if (gameConfig.withComputer) {
+    btn.textContent = "🤖 З комп'ютером";
+    btn.classList.add('active-bot');
+    speedBtn.style.display = 'block';
+  } else {
+    btn.textContent = "🚫 Без комп'ютера";
+    btn.classList.remove('active-bot');
+    speedBtn.style.display = 'none';
+  }
+
+  const iconGroup = document.getElementById('bot-mode-icon');
+  if (gameConfig.botFastMode) {
+    iconGroup.innerHTML = `<polygon points="44,16 24,42 39,42 34,64 56,36 41,36" fill="#ffd166" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>`;
+  } else {
+    iconGroup.innerHTML = `
+      <ellipse cx="29" cy="46" rx="7" ry="10" transform="rotate(-15 29 46)" fill="#ffd166"/>
+      <circle cx="22" cy="32" r="3.5" fill="#ffd166"/>
+      <circle cx="29" cy="29" r="3.5" fill="#ffd166"/>
+      <circle cx="36" cy="32" r="3.5" fill="#ffd166"/>
+      <ellipse cx="51" cy="36" rx="7" ry="10" transform="rotate(15 51 36)" fill="#ff924c"/>
+      <circle cx="44" cy="22" r="3.5" fill="#ff924c"/>
+      <circle cx="51" cy="19" r="3.5" fill="#ff924c"/>
+      <circle cx="58" cy="22" r="3.5" fill="#ff924c"/>
+    `;
+  }
+
+  manageBotAutoTimer();
+}
+
+function manageBotAutoTimer() {
+  if (botIntervalTimer) {
+    clearInterval(botIntervalTimer);
+    botIntervalTimer = null;
+  }
+  if (gameConfig.withComputer && gameConfig.botFastMode && gameConfig.status === 'racing') {
+    botIntervalTimer = setInterval(() => {
+      if (gameConfig.status !== 'racing' || !gameConfig.withComputer) return;
+      const sortedKeys = Object.keys(playersMap).sort();
+      const isCoordinator = isTeacher || (sortedKeys.length > 0 && sortedKeys[0] === myPlayerKey);
+      if (isCoordinator) {
+        triggerBotMoveStep();
+      }
+    }, 4500);
+  }
+}
+
+let lastBotStepTime = 0;
+function triggerBotMoveStep() {
+  if (!gameConfig.withComputer || gameConfig.status === 'podium') return;
+  const now = Date.now();
+  if (now - lastBotStepTime < 1800) return;
+  lastBotStepTime = now;
+
+  let bStep = gameConfig.botStep || 0;
+  const roll = Math.random();
+  let animClass = 'anim-hop';
+  let mood = 'happy';
+  let moved = false;
+
+  if (roll < 0.62) {
+    bStep = Math.min(TOTAL_STEPS, bStep + 1);
+    gameConfig.botAnimToggle = !gameConfig.botAnimToggle;
+    animClass = gameConfig.botAnimToggle ? 'anim-hop' : 'anim-waddle';
+    mood = 'happy';
+    moved = true;
+    playBotStepSound(true);
+  } else if (roll > 0.86 && bStep > 0) {
+    bStep = Math.max(0, bStep - 1);
+    animClass = 'anim-back';
+    mood = 'dizzy';
+    moved = true;
+    playBotStepSound(false);
+  }
+
+  if (moved) {
+    gameConfig.botStep = bStep;
+    if (configRef) {
+      configRef.update({ botStep: bStep });
+    }
+    const activeBot = getActiveRacersList().find(r => r.isBot);
+    const botCharId = activeBot ? activeBot.charId : 1;
+
+    animateRacerMove('BOT_RACER', botCharId, bStep, animClass, mood);
+    broadcastAction('bot_move', {
+      step: bStep,
+      charId: botCharId,
+      animClass: animClass,
+      mood: mood
+    });
+
+    if (bStep >= TOTAL_STEPS) {
+      setTimeout(() => triggerGlobalWin("Комп'ютер"), 500);
+    }
+  }
+}
+
+document.getElementById('btn-toggle-computer').onclick = () => {
+  initAudio();
+  gameConfig.withComputer = !gameConfig.withComputer;
+  if (!gameConfig.withComputer) {
+    gameConfig.botStep = 0;
+  }
+  if (configRef) {
+    configRef.update({
+      withComputer: gameConfig.withComputer,
+      botStep: gameConfig.botStep
+    });
+  }
+  updateComputerModeUI();
+  renderAllTracks();
+  playBotStepSound(true);
+};
+
+document.getElementById('btn-bot-mode').onclick = () => {
+  initAudio();
+  gameConfig.botFastMode = !gameConfig.botFastMode;
+  if (configRef) {
+    configRef.update({ botFastMode: gameConfig.botFastMode });
+  }
+  updateComputerModeUI();
+  playSuccessSound(1);
+};
+
+/* ============================================================================
+   РЕАКЦІЇ СУДДІ-ТУКАНА ТА ЧАСТИНКИ ФІДБЕКУ
+   ============================================================================ */
+function animateReferee(type) {
+  const refBox = document.getElementById('referee-box');
+  const flag = document.getElementById('ref-flag');
+  refBox.classList.remove('ref-jump', 'ref-shock');
+  void refBox.offsetWidth;
+
+  if (type === 'cheer') {
+    refBox.classList.add('ref-jump');
+    flag.setAttribute('transform', 'translate(45, 25) rotate(25)');
+    setTimeout(() => flag.setAttribute('transform', 'translate(45, 35) rotate(-15)'), 600);
+  } else {
+    refBox.classList.add('ref-shock');
+  }
+}
+
+function triggerRefereeWave() {
+  initAudio();
+  playSuccessSound(0);
+  animateReferee('cheer');
+}
+
+function spawnParticlesAtRacer(racerId, isPositive) {
+  const wrap = document.getElementById(`racer-${racerId}`);
+  const fxLayer = document.getElementById('fx-layer');
+  if (!wrap || !fxLayer) return;
+
+  const rect = wrap.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+
+  for (let i = 0; i < 10; i++) {
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    p.setAttribute('viewBox', '0 0 24 24');
+    p.style.position = 'absolute';
+    p.style.width = '26px';
+    p.style.height = '26px';
+    p.style.left = `${centerX - 13}px`;
+    p.style.top = `${centerY - 13}px`;
+    p.style.transition = 'all 0.65s cubic-bezier(0.16, 1, 0.3, 1)';
+
+    if (isPositive) {
+      const colors = ['#ffd166', '#ff595e', '#8ac926', '#4cc9f0'];
+      const col = colors[i % colors.length];
+      p.innerHTML = `<polygon points="12,2 15,9 22,9 16,14 18,21 12,17 6,21 8,14 2,9 9,9" fill="${col}"/>`;
+    } else {
+      p.innerHTML = `<circle cx="12" cy="12" r="9" fill="#d8e2dc" opacity="0.8"/>`;
+    }
+
+    fxLayer.appendChild(p);
+    const angle = (Math.PI * 2 * i) / 10;
+    const dist = 45 + Math.random() * 45;
+    requestAnimationFrame(() => {
+      p.style.transform = `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px) scale(0.2) rotate(140deg)`;
+      p.style.opacity = '0';
+    });
+    setTimeout(() => p.remove(), 680);
+  }
+}
+
+/* ============================================================================
+   ПЕРЕМОГА ТА СИНХРОНІЗОВАНИЙ П'ЄДЕСТАЛ ДЛЯ ВСІХ
+   ============================================================================ */
+function triggerGlobalWin(winnerName) {
+  gameConfig.status = 'podium';
+  gameConfig.winnerName = winnerName || '';
+  if (configRef) {
+    configRef.update({
+      status: 'podium',
+      winnerName: gameConfig.winnerName
+    });
+  }
+  broadcastAction('show_podium', { winnerName: gameConfig.winnerName });
+  showPodiumScene(gameConfig.winnerName);
+}
+
+function showPodiumScene(winnerName = '') {
+  playFanfareSound();
+  const overlay = document.getElementById('podium-overlay');
+  const stage = document.getElementById('podium-stage');
+  const banner = document.getElementById('podium-title-banner');
+  stage.innerHTML = '';
+
+  banner.textContent = winnerName
+    ? `🏆 ФІНІШ! ПЕРШИМ ПРИБІГ: ${winnerName.toUpperCase()}! 🏆`
+    : `🏆 ФІНІШ! П'ЄДЕСТАЛ ПЕРЕМОЖЦІВ 🏆`;
+
+  const activeRacers = getActiveRacersList();
+  const ranked = [...activeRacers].sort((a, b) => (b.step || 0) - (a.step || 0));
+
+  ranked.forEach((r, idx) => {
+    r.place = idx + 1;
+  });
+
+  // Розташування на п'єдесталі (4-те, 2-ге, 1-ше в центрі, 3-тє, 5-те)
+  const podiumOrder = [
+    ranked[3],
+    ranked[1],
+    ranked[0],
+    ranked[2],
+    ranked[4]
+  ].filter(Boolean);
+
+  const heights = { 1: '36vh', 2: '28vh', 3: '21vh', 4: '15vh', 5: '11vh' };
+  const gradients = {
+    1: 'linear-gradient(180deg, #ffd166 0%, #e09f3e 100%)',
+    2: 'linear-gradient(180deg, #e9ecef 0%, #adb5bd 100%)',
+    3: 'linear-gradient(180deg, #f4a261 0%, #bc6c25 100%)',
+    4: 'linear-gradient(180deg, #74c69d 0%, #40916c 100%)',
+    5: 'linear-gradient(180deg, #4cc9f0 0%, #1982c4 100%)'
+  };
+
+  podiumOrder.forEach(racer => {
+    const col = document.createElement('div');
+    col.className = 'podium-column';
+    const place = Math.min(5, racer.place);
+    const mood = place <= 3 ? 'happy' : 'normal';
+    const charDef = CHARACTER_DEFS[Number(racer.charId) % 5] || CHARACTER_DEFS[0];
+
+    col.innerHTML = `
+      <div class="podium-player-name">${escapeHtml(racer.name)} (${charDef.name})</div>
+      <div class="podium-racer">
+        ${place === 1 ? `
+          <svg viewBox="0 0 60 36" width="54" height="32" style="position:absolute; top:-22px; left:30px;">
+            <polygon points="5,32 10,8 22,20 30,4 38,20 50,8 55,32" fill="#ffd166" stroke="#582f0e" stroke-width="2.5"/>
+          </svg>
+        ` : ''}
+        ${getCharacterSVG(racer.charId, mood)}
+      </div>
+      <div class="podium-block" style="height:${heights[place]}; background:${gradients[place]};">
+        <svg viewBox="0 0 70 70" width="52" height="52">
+          <circle cx="35" cy="35" r="28" fill="#582f0e" opacity="0.25"/>
+          <text x="35" y="47" text-anchor="middle" fill="#fff8e7" font-size="36" font-weight="900" stroke="#582f0e" stroke-width="2">${racer.place}</text>
+        </svg>
+      </div>
+    `;
+    stage.appendChild(col);
+  });
+
+  overlay.style.display = 'flex';
+  launchVictoryConfetti();
+}
+
+function launchVictoryConfetti() {
+  const fxLayer = document.getElementById('fx-layer');
+  const colors = ['#ffd166', '#ff595e', '#8ac926', '#4cc9f0', '#ff924c', '#ffffff'];
+
+  for (let i = 0; i < 45; i++) {
+    const conf = document.createElement('div');
+    conf.style.position = 'absolute';
+    conf.style.width = '14px';
+    conf.style.height = '14px';
+    conf.style.borderRadius = i % 2 === 0 ? '50%' : '3px';
+    conf.style.background = colors[i % colors.length];
+    conf.style.left = `${10 + Math.random() * 80}vw`;
+    conf.style.top = '-20px';
+    conf.style.transition = `transform ${1.6 + Math.random() * 1.4}s linear, opacity 2.8s ease-in`;
+    fxLayer.appendChild(conf);
+
+    requestAnimationFrame(() => {
+      conf.style.transform = `translate(${(Math.random() - 0.5) * 220}px, 105vh) rotate(${360 + Math.random() * 360}deg)`;
+      conf.style.opacity = '0';
+    });
+    setTimeout(() => conf.remove(), 3100);
+  }
+}
+
+/* ============================================================================
+   СИНХРОНІЗАЦІЯ ЧЕРЕЗ FIREBASE (game_action ТА forest_race_v2)
+   ============================================================================ */
+function broadcastAction(type, data = {}) {
+  if (!actionRef || isRemoteAction) return;
+  actionRef.set({
+    senderId: mySenderId,
+    timestamp: Date.now(),
+    type: type,
+    ...data
+  });
+}
+
+if (playersRef) {
+  playersRef.on('value', (snap) => {
+    const val = snap.val() || {};
+    playersMap = val;
+    renderAllTracks();
+    renderTeacherMonitor();
+
+    // Якщо хтось із гравців досяг фінішу — вмикаємо п'єдестал
+    const winner = Object.values(playersMap).find(p => (p.step || 0) >= TOTAL_STEPS);
+    if (winner && gameConfig.status !== 'podium') {
+      gameConfig.status = 'podium';
+      showPodiumScene(winner.name);
+    }
+  });
+}
+
+if (configRef) {
+  configRef.on('value', (snap) => {
+    const val = snap.val();
+    if (!val) return;
+    const prevStatus = gameConfig.status;
+    gameConfig = { ...gameConfig, ...val };
+    updateComputerModeUI();
+    renderAllTracks();
+
+    if (gameConfig.status === 'podium' && prevStatus !== 'podium') {
+      showPodiumScene(gameConfig.winnerName || '');
+    } else if (gameConfig.status === 'racing' && prevStatus === 'podium') {
+      document.getElementById('podium-overlay').style.display = 'none';
+      buildMyShuffledDeck();
+    }
+  });
+}
+
+if (actionRef) {
+  actionRef.on('value', (snap) => {
+    const act = snap.val();
+    if (!act || !act.timestamp) return;
+    if (act.senderId === mySenderId) return;
+    if (act.timestamp <= lastActionTimestamp) return;
+    lastActionTimestamp = act.timestamp;
+
+    isRemoteAction = true;
+    if (act.type === 'player_move') {
+      animateRacerMove(act.playerId, act.charId, act.step, act.animClass, act.mood);
+      spawnParticlesAtRacer(act.playerId, act.isCorrect);
+      playBotStepSound(act.isCorrect);
+    } else if (act.type === 'bot_move') {
+      animateRacerMove('BOT_RACER', act.charId, act.step, act.animClass, act.mood);
+      playBotStepSound(act.mood === 'happy');
+    } else if (act.type === 'show_podium') {
+      gameConfig.status = 'podium';
+      showPodiumScene(act.winnerName || '');
+    } else if (act.type === 'reset_steps_only') {
+      gameConfig.status = 'racing';
+      document.getElementById('podium-overlay').style.display = 'none';
+      buildMyShuffledDeck();
+    } else if (act.type === 'restart_full_game') {
+      handleLocalFullRestart();
+    }
+    isRemoteAction = false;
+  });
+}
+
+/* ============================================================================
+   ІНСТРУМЕНТИ МАСШТАБУВАННЯ: ЛУПА+ ТА ЛУПА-
+   ============================================================================ */
+let currentZoom = 1;
+const zoomWrapper = document.getElementById('zoom-wrapper');
+
+document.getElementById('btn-zoom-in').onclick = () => {
+  currentZoom = Math.min(1.5, +(currentZoom + 0.1).toFixed(2));
+  zoomWrapper.style.transform = `scale(${currentZoom})`;
+};
+
+document.getElementById('btn-zoom-out').onclick = () => {
+  currentZoom = Math.max(0.6, +(currentZoom - 0.1).toFixed(2));
+  zoomWrapper.style.transform = `scale(${currentZoom})`;
+};
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Запуск при завантаженні сторінки
+window.addEventListener('DOMContentLoaded', () => {
+  // Якщо в цій вкладці раніше був активний гравець (до перезавантаження сторінки), одразу прибираємо його старий слід
+  cleanupMyPreviousPlayerTrack("");
+
+  buildCharPicker();
+  buildMyShuffledDeck();
+  renderAllTracks();
+
+  // Якщо ім'я передано через ?user=, підставляємо його у поле вводу, щоб гравець міг підтвердити або вписати своє
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlUser = urlParams.get('user');
+  const inp = document.getElementById('player-name-input');
+  if (urlUser && !urlUser.startsWith('Гість_')) {
+    inp.value = urlUser;
+    checkInputTeacherRole();
+  }
+});
+</script>
+
+<!-- ================= УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (ІДЕНТИФІКАЦІЯ, РАДАР ТА БЛОКУВАННЯ) ================= -->
+<div id="block-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.88); z-index:999999; align-items:center; justify-content:center; text-align:center; padding:20px;">
+  <div style="color:#ff3333; font-size:clamp(28px, 5vw, 52px); font-weight:900; font-family:Arial, sans-serif; text-shadow:0 4px 12px rgba(0,0,0,0.9);">
+    Зачекай! Зараз не твій урок.
+  </div>
+</div>
+
+<script>
+(function() {
+  const urlParams = new URLSearchParams(window.location.search);
+  let myName = urlParams.get('user');
+
+  if (myName && myName.trim() !== '') {
+    myName = myName.trim();
+    sessionStorage.setItem('userName', myName);
+  } else {
+    myName = sessionStorage.getItem('userName');
+    if (!myName || myName.trim() === '') {
+      myName = 'Гість_' + Math.floor(Math.random() * 1000);
+      sessionStorage.setItem('userName', myName);
+    }
+  }
+
+  const tabId = 'tab_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+  let currentOnlineRef = null;
+  let currentBlockedRef = null;
+  let blockedHandler = null;
+
+  function setupUserRefs(nameToUse) {
+    if (!db) return;
+    const safeName = nameToUse.replace(/[.#$\[\]\/]/g, '_');
+
+    if (currentOnlineRef) {
+      currentOnlineRef.remove();
+    }
+    if (currentBlockedRef && blockedHandler) {
+      currentBlockedRef.off('value', blockedHandler);
+    }
+
+    currentOnlineRef = db.ref('online_users/' + safeName + '/' + tabId);
+    currentBlockedRef = db.ref('blocked_users/' + safeName);
+
+    db.ref('.info/connected').on('value', (snap) => {
+      if (snap.val() === true && currentOnlineRef) {
+        currentOnlineRef.onDisconnect().remove();
+        currentOnlineRef.set({
+          name: nameToUse,
+          joinedAt: firebase.database.ServerValue.TIMESTAMP,
+          page: document.title
+        });
+      }
+    });
+
+    blockedHandler = (snap) => {
+      const overlay = document.getElementById('block-overlay');
+      if (overlay) {
+        overlay.style.display = snap.val() ? 'flex' : 'none';
+      }
+    };
+    currentBlockedRef.on('value', blockedHandler);
+  }
+
+  setupUserRefs(myName);
+
+  // Дозволяє оновити ім'я на радарі після того, як учень впише своє ім'я у вікні входу
+  window.updateRadarUserName = function(newName) {
+    if (!newName || !newName.trim()) return;
+    myName = newName.trim();
+    sessionStorage.setItem('userName', myName);
+    setupUserRefs(myName);
+  };
+
+  window.addEventListener('beforeunload', () => {
+    if (currentOnlineRef) {
+      currentOnlineRef.remove();
+    }
+  });
+
+  if (db) {
+    let initialForceRefresh = true;
+    db.ref('force_refresh').on('value', (snap) => {
+      if (initialForceRefresh) {
+        initialForceRefresh = false;
+        return;
+      }
+      if (snap.val()) {
+        window.location.reload();
+      }
+    });
+
+    // Повернення в Лобі з імунітетом першої секунди
+    const startTime = Date.now();
+    db.ref('current_activity').on('value', (snap) => {
+      if (Date.now() - startTime < 1000) return;
+      const val = snap.val();
+      if (val === 'lobby' || (val && val.status === 'lobby')) {
+        window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
