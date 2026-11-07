@@ -1,0 +1,1735 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Звуковий аналіз</title>
+<style>
+  /* ================= ОСНОВНІ СТИЛІ ТА СКИДАННЯ ================= */
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'Comic Sans MS', sans-serif;
+    background: #1a0f07;
+  }
+
+  /* Контейнер усієї сцени */
+  #game-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* Фоновий SVG на весь екран */
+  #bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+  }
+
+  /* Анімація похитування підвішених ковбасок та часнику */
+  .sway-slow {
+    transform-origin: 50% 0%;
+    animation: swaySlow 5s ease-in-out infinite alternate;
+  }
+  .sway-med {
+    transform-origin: 50% 0%;
+    animation: swaySlow 3.8s ease-in-out infinite alternate-reverse;
+  }
+  @keyframes swaySlow {
+    0% { transform: rotate(-2.5deg); }
+    100% { transform: rotate(2.5deg); }
+  }
+
+  /* Мерехтіння свічки в ліхтарі */
+  .candle-flame {
+    transform-origin: 50% 90%;
+    animation: flicker 0.18s infinite alternate;
+  }
+  @keyframes flicker {
+    0% { transform: scale(1, 1) rotate(-2deg); opacity: 0.95; }
+    100% { transform: scale(1.06, 0.94) rotate(2deg); opacity: 1; }
+  }
+
+  /* ================= НАВІГАЦІЙНІ КНОПКИ (НАЗАД / ДАЛІ) ================= */
+  .nav-btn {
+    position: absolute;
+    top: 22px;
+    width: 64px;
+    height: 64px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    z-index: 30;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    filter: drop-shadow(0 6px 8px rgba(0,0,0,0.6));
+  }
+  .nav-btn:hover {
+    transform: scale(1.12);
+    filter: drop-shadow(0 8px 14px rgba(255, 200, 80, 0.5));
+  }
+  .nav-btn:active {
+    transform: scale(0.92);
+  }
+  #btn-prev { left: 24px; }
+  #btn-next { right: 24px; }
+
+  /* ================= ІГРОВА ДОШКА (КАРТКА СЛОВА ТА СХЕМА) ================= */
+  #task-board {
+    position: absolute;
+    top: 3%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(860px, 84vw);
+    height: min(430px, 54vh);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 30px 24px;
+    pointer-events: none;
+  }
+
+  /* SVG-основа різьбленої дубової дошки */
+  #board-bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    filter: drop-shadow(0 16px 24px rgba(0,0,0,0.75));
+  }
+
+  /* Верхня частина дошки: картинка + слово */
+  #word-showcase {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    width: 100%;
+    height: 58%;
+    pointer-events: auto;
+    padding-top: 8px;
+  }
+
+  /* Медальйон із деталізованим малюнком предмета */
+  #item-frame {
+    width: min(195px, 25vh);
+    height: min(195px, 25vh);
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 8px 12px rgba(0,0,0,0.5));
+  }
+  #item-frame:hover {
+    transform: scale(1.06) rotate(-2deg);
+  }
+  #item-frame:active {
+    transform: scale(0.95);
+  }
+
+  /* Плашка зі словом (стилізований сирний пергамент на дереві) */
+  #word-plaque {
+    position: relative;
+    padding: 16px 34px;
+    border-radius: 26px;
+    background: radial-gradient(circle at 30% 30%, #ffefba, #f3c65f 70%, #d4942a 100%);
+    border: 5px solid #6b3811;
+    box-shadow: 
+      inset 0 3px 8px rgba(255,255,255,0.7),
+      inset 0 -5px 10px rgba(120,60,0,0.45),
+      0 10px 18px rgba(0,0,0,0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+  #word-plaque:hover {
+    transform: scale(1.04);
+  }
+
+  .word-letter {
+    font-size: clamp(34px, 5vw, 60px);
+    font-weight: 900;
+    color: #3d1c04;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.7), 0 4px 6px rgba(0,0,0,0.2);
+    letter-spacing: 2px;
+    display: inline-block;
+    transition: transform 0.2s;
+  }
+  /* Підсвітка цільових букв та буквосполучень (дж, дз, й, ь, я, ю, є, ї, щ) */
+  .word-letter.highlight {
+    color: #b81414;
+    text-shadow: 0 0 12px rgba(255, 220, 100, 0.9), 0 2px 0 #fff;
+    transform: scale(1.08);
+  }
+
+  /* Нижня полиця на дошці: слоти для звукової схеми */
+  #scheme-shelf {
+    position: relative;
+    width: 94%;
+    height: 92px;
+    background: linear-gradient(180deg, #2d1506 0%, #43210b 55%, #241004 100%);
+    border-radius: 24px;
+    border: 4px solid #7c471c;
+    box-shadow: 
+      inset 0 8px 14px rgba(0,0,0,0.85),
+      0 4px 0 #1a0b02;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    pointer-events: auto;
+  }
+
+  #slots-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(6px, 1.1vw, 14px);
+    flex: 1;
+    height: 100%;
+  }
+
+  /* Окреме заглиблення під звукову фішку */
+  .sound-slot {
+    width: clamp(50px, 6.4vw, 68px);
+    height: clamp(50px, 6.4vw, 68px);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 40%, #1c0c03, #0e0601 85%);
+    border: 3px dashed #6e411c;
+    box-shadow: inset 0 5px 10px rgba(0,0,0,0.9), 0 1px 2px rgba(255,200,120,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+  .sound-slot.active-target {
+    border-color: #ffcf52;
+    box-shadow: inset 0 3px 8px rgba(255,200,50,0.35), 0 0 12px rgba(255,200,50,0.5);
+    transform: scale(1.06);
+  }
+  .sound-slot:hover {
+    transform: scale(1.08);
+  }
+
+  /* Кнопки керування на полиці (Стерти останній / Перевірити дзвіночком) */
+  .shelf-action-btn {
+    width: 66px;
+    height: 66px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 5px 6px rgba(0,0,0,0.6));
+    flex-shrink: 0;
+  }
+  .shelf-action-btn:hover {
+    transform: scale(1.13);
+  }
+  .shelf-action-btn:active {
+    transform: scale(0.9);
+  }
+
+  /* ================= ПАНЕЛЬ ФІШОК ЗВУКІВ (ВНИЗУ ЗЛІВА/ПО ЦЕНТРУ) ================= */
+  #tokens-tray {
+    position: absolute;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 14px 36px;
+    border-radius: 40px;
+    background: linear-gradient(180deg, #5c3012 0%, #3b1c07 100%);
+    border: 5px solid #965726;
+    box-shadow: 
+      inset 0 4px 8px rgba(255,210,140,0.35),
+      inset 0 -6px 12px rgba(0,0,0,0.7),
+      0 14px 26px rgba(0,0,0,0.8);
+  }
+
+  .token-btn {
+    width: clamp(74px, 9vw, 94px);
+    height: clamp(74px, 9vw, 94px);
+    border: none;
+    background: transparent;
+    cursor: grab;
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    filter: drop-shadow(0 8px 10px rgba(0,0,0,0.65));
+  }
+  .token-btn:hover {
+    transform: translateY(-8px) scale(1.1);
+    filter: drop-shadow(0 14px 16px rgba(255,215,100,0.45));
+  }
+  .token-btn:active {
+    transform: translateY(2px) scale(0.95);
+    cursor: grabbing;
+  }
+
+  /* Анімація вставленої фішки */
+  .placed-token-svg {
+    width: 92%;
+    height: 92%;
+    animation: popIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+  @keyframes popIn {
+    0% { transform: scale(0) rotate(-25deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* Анімація помилки та перемоги на дошці */
+  .shake-error {
+    animation: errorShake 0.55s ease-in-out;
+  }
+  @keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-14px) rotate(-2deg); }
+    40% { transform: translateX(14px) rotate(2deg); }
+    60% { transform: translateX(-10px) rotate(-1deg); }
+    80% { transform: translateX(10px) rotate(1deg); }
+  }
+
+  .victory-bounce {
+    animation: victoryPulse 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes victoryPulse {
+    0% { transform: translateX(-50%) scale(1); }
+    40% { transform: translateX(-50%) scale(1.06) translateY(-10px); }
+    100% { transform: translateX(-50%) scale(1); }
+  }
+
+  /* ================= ТОВСТА КУМЕДНА МИШКА (ЖИВИЙ ПЕРСОНАЖ) ================= */
+  #mouse-actor {
+    position: absolute;
+    bottom: 95px;
+    left: 12%;
+    width: clamp(230px, 25vw, 310px);
+    height: clamp(230px, 25vw, 310px);
+    z-index: 20;
+    cursor: pointer;
+    will-change: transform, left;
+    filter: drop-shadow(0 16px 18px rgba(0,0,0,0.7));
+  }
+
+  /* Контейнер частинок для салюту із сиру та ягід */
+  #fx-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40;
+    overflow: hidden;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-stage">
+
+  <!-- ================= СЮЖЕТНИЙ ЖИВИЙ ФОН: ЗАТИШНА СИРНА КОМОРА МИШКИ ================= -->
+  <svg id="bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Градієнт теплого світла ліхтаря у кам'яній коморі -->
+      <radialGradient id="lanternGlow" cx="18%" cy="28%" r="75%">
+        <stop offset="0%" stop-color="#ffcf6b" stop-opacity="0.45"/>
+        <stop offset="35%" stop-color="#9e5218" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="#170b04" stop-opacity="0.95"/>
+      </radialGradient>
+
+      <linearGradient id="stoneWall" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#2b170b"/>
+        <stop offset="65%" stop-color="#3c2110"/>
+        <stop offset="100%" stop-color="#1f1007"/>
+      </linearGradient>
+
+      <linearGradient id="woodPlank" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#4e280f"/>
+        <stop offset="50%" stop-color="#6e3b17"/>
+        <stop offset="100%" stop-color="#42210b"/>
+      </linearGradient>
+
+      <linearGradient id="floorWood" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#4a250d"/>
+        <stop offset="25%" stop-color="#633314"/>
+        <stop offset="100%" stop-color="#261104"/>
+      </linearGradient>
+
+      <radialGradient id="cheeseWheelGrad" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#ffe97d"/>
+        <stop offset="55%" stop-color="#f5b82e"/>
+        <stop offset="100%" stop-color="#b87609"/>
+      </radialGradient>
+
+      <radialGradient id="cheeseHole" cx="40%" cy="40%" r="65%">
+        <stop offset="0%" stop-color="#9e6206"/>
+        <stop offset="100%" stop-color="#d99416"/>
+      </radialGradient>
+
+      <linearGradient id="honeyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ffc83b"/>
+        <stop offset="50%" stop-color="#e8850c"/>
+        <stop offset="100%" stop-color="#9c4100"/>
+      </linearGradient>
+
+      <linearGradient id="sausageGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#6e1710"/>
+        <stop offset="35%" stop-color="#b53324"/>
+        <stop offset="100%" stop-color="#4f0d08"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Кам'яна стіна комори -->
+    <rect width="1920" height="1080" fill="url(#stoneWall)"/>
+
+    <!-- Фактурна цегляна та кам'яна кладка -->
+    <g fill="#261308" stroke="#170a03" stroke-width="3" opacity="0.65">
+      <rect x="60" y="90" width="180" height="75" rx="14"/>
+      <rect x="260" y="90" width="220" height="75" rx="14"/>
+      <rect x="140" y="180" width="210" height="80" rx="14"/>
+      <rect x="1450" y="100" width="200" height="75" rx="14"/>
+      <rect x="1670" y="100" width="170" height="75" rx="14"/>
+      <rect x="1540" y="190" width="230" height="80" rx="14"/>
+      <rect x="80" y="460" width="190" height="80" rx="14"/>
+      <rect x="1600" y="480" width="210" height="80" rx="14"/>
+    </g>
+
+    <!-- Дерев'яні полиці ліворуч та праворуч -->
+    <g>
+      <!-- Ліва верхня полиця -->
+      <path d="M0,370 L480,370 L465,405 L0,405 Z" fill="url(#woodPlank)" stroke="#241004" stroke-width="4"/>
+      <path d="M380,405 L430,405 L380,490 Z" fill="#2c1406"/>
+      <!-- Велика головка швейцарського сиру на лівій полиці -->
+      <path d="M50,260 C50,235 250,235 250,260 L250,370 C250,385 50,385 50,370 Z" fill="url(#cheeseWheelGrad)" stroke="#8c5504" stroke-width="3"/>
+      <ellipse cx="150" cy="260" rx="100" ry="22" fill="#ffef99" stroke="#dba01f" stroke-width="2"/>
+      <circle cx="110" cy="310" r="16" fill="url(#cheeseHole)"/>
+      <circle cx="185" cy="335" r="22" fill="url(#cheeseHole)"/>
+      <circle cx="155" cy="295" r="10" fill="url(#cheeseHole)"/>
+      <circle cx="85" cy="345" r="12" fill="url(#cheeseHole)"/>
+
+      <!-- Глечик із медом поруч із сиром -->
+      <path d="M290,275 Q270,320 285,370 L375,370 Q390,320 370,275 Z" fill="url(#honeyGrad)" stroke="#6e2e00" stroke-width="3"/>
+      <rect x="285" y="255" width="90" height="22" rx="10" fill="#f7e3b5" stroke="#8c622b" stroke-width="3"/>
+      <path d="M295,277 Q310,305 320,277 Q335,315 350,277" fill="#fff3c4" opacity="0.8"/>
+
+      <!-- Права верхня полиця -->
+      <path d="M1420,380 L1920,380 L1920,415 L1435,415 Z" fill="url(#woodPlank)" stroke="#241004" stroke-width="4"/>
+      <path d="M1480,415 L1530,415 L1530,500 Z" fill="#2c1406"/>
+
+      <!-- Банки з малиновим варенням та солоними огірками праворуч -->
+      <rect x="1500" y="265" width="95" height="115" rx="22" fill="#a81434" stroke="#540617" stroke-width="3"/>
+      <ellipse cx="1547" cy="265" rx="48" ry="12" fill="#ffccd7" stroke="#8f3b4d" stroke-width="3"/>
+      <path d="M1515,295 Q1547,315 1580,295" stroke="#ff7592" stroke-width="5" fill="none" opacity="0.5"/>
+
+      <!-- Ще одна головка сиру праворуч -->
+      <path d="M1635,280 C1635,260 1855,260 1855,280 L1855,380 C1855,395 1635,395 1635,380 Z" fill="url(#cheeseWheelGrad)" stroke="#8c5504" stroke-width="3"/>
+      <ellipse cx="1745" cy="280" rx="110" ry="20" fill="#ffef99"/>
+      <circle cx="1690" cy="330" r="19" fill="url(#cheeseHole)"/>
+      <circle cx="1780" cy="320" r="14" fill="url(#cheeseHole)"/>
+      <circle cx="1740" cy="355" r="15" fill="url(#cheeseHole)"/>
+    </g>
+
+    <!-- Верхня дерев'яна балка під стелею -->
+    <rect x="0" y="0" width="1920" height="58" fill="url(#woodPlank)" stroke="#1a0b03" stroke-width="4"/>
+
+    <!-- Підвішені ковбаски та в'язка часнику, що похитуються -->
+    <g class="sway-slow" style="transform-origin: 430px 45px;">
+      <line x1="430" y1="45" x2="430" y2="115" stroke="#d4b483" stroke-width="4"/>
+      <path d="M405,115 C385,155 385,220 415,255 C430,270 455,255 445,215 C435,175 445,140 430,115 Z" fill="url(#sausageGrad)" stroke="#3d0905" stroke-width="3"/>
+      <ellipse cx="416" cy="155" rx="6" ry="4" fill="#ffd9c4" opacity="0.6"/>
+      <ellipse cx="425" cy="195" rx="5" ry="5" fill="#ffd9c4" opacity="0.6"/>
+      <ellipse cx="412" cy="220" rx="6" ry="4" fill="#ffd9c4" opacity="0.6"/>
+    </g>
+
+    <g class="sway-med" style="transform-origin: 1460px 45px;">
+      <line x1="1460" y1="45" x2="1460" y2="110" stroke="#c9a56b" stroke-width="5"/>
+      <!-- В'язка часнику -->
+      <g fill="#f5ead6" stroke="#9e8765" stroke-width="2.5">
+        <ellipse cx="1445" cy="130" rx="22" ry="18"/>
+        <ellipse cx="1475" cy="142" rx="24" ry="19"/>
+        <ellipse cx="1442" cy="168" rx="25" ry="20"/>
+        <ellipse cx="1476" cy="182" rx="22" ry="18"/>
+        <ellipse cx="1455" cy="212" rx="24" ry="19"/>
+      </g>
+    </g>
+
+    <!-- Кований ліхтар зі свічкою ліворуч -->
+    <g class="sway-slow" style="transform-origin: 210px 45px;">
+      <line x1="210" y1="45" x2="210" y2="105" stroke="#1f140e" stroke-width="6"/>
+      <polygon points="180,105 240,105 255,130 165,130" fill="#2b1d14" stroke="#120b07" stroke-width="3"/>
+      <rect x="175" y="130" width="70" height="85" rx="8" fill="#ffdf80" fill-opacity="0.28" stroke="#2b1d14" stroke-width="5"/>
+      <!-- Полум'я свічки -->
+      <rect x="200" y="175" width="20" height="35" fill="#fff2d6"/>
+      <path class="candle-flame" d="M210,138 C222,155 224,172 210,176 C196,172 198,155 210,138 Z" fill="#ffae00"/>
+      <path class="candle-flame" d="M210,148 C216,158 216,170 210,173 C204,170 204,158 210,148 Z" fill="#fff799"/>
+      <polygon points="170,215 250,215 235,232 185,232" fill="#2b1d14"/>
+    </g>
+
+    <!-- Дерев'яна підлога комори з перспективою дощок -->
+    <rect x="0" y="750" width="1920" height="330" fill="url(#floorWood)"/>
+    <line x1="0" y1="750" x2="1920" y2="750" stroke="#1f0d03" stroke-width="8"/>
+    <g stroke="#291205" stroke-width="4" opacity="0.75">
+      <line x1="0" y1="820" x2="1920" y2="820"/>
+      <line x1="0" y1="905" x2="1920" y2="905"/>
+      <line x1="0" y1="1000" x2="1920" y2="1000"/>
+      <line x1="350" y1="750" x2="180" y2="1080"/>
+      <line x1="780" y1="750" x2="690" y2="1080"/>
+      <line x1="1180" y1="750" x2="1280" y2="1080"/>
+      <line x1="1580" y1="750" x2="1760" y2="1080"/>
+    </g>
+
+    <!-- Дубова бочка та мішок із зерном у кутах комори -->
+    <g transform="translate(55, 530)">
+      <path d="M25,0 L165,0 C205,75 205,175 165,250 L25,250 C-15,175 -15,75 25,0 Z" fill="url(#woodPlank)" stroke="#241004" stroke-width="5"/>
+      <path d="M5,45 Q95,62 185,45" fill="none" stroke="#362f2b" stroke-width="14"/>
+      <path d="M0,125 Q95,142 190,125" fill="none" stroke="#362f2b" stroke-width="14"/>
+      <path d="M7,200 Q95,217 183,200" fill="none" stroke="#362f2b" stroke-width="14"/>
+      <!-- Шматочок сиру зверху на бочці -->
+      <polygon points="60,-5 145,-25 160,10 60,10" fill="#ffd447" stroke="#b57c07" stroke-width="3"/>
+    </g>
+
+    <!-- Мішок із борошном та велика головка сиру праворуч на підлозі -->
+    <g transform="translate(1610, 560)">
+      <path d="M50,25 C15,60 -10,165 20,220 C50,245 170,245 195,215 C225,165 195,60 160,25 C140,10 70,10 50,25 Z" fill="#b88b58" stroke="#634422" stroke-width="4"/>
+      <path d="M65,22 C85,-15 130,-15 145,22 Z" fill="#c99c67" stroke="#634422" stroke-width="4"/>
+      <path d="M62,24 Q105,36 148,24" fill="none" stroke="#7a3b10" stroke-width="8" stroke-linecap="round"/>
+      <!-- Надкушений трикутник сиру біля мішка -->
+      <path d="M-65,185 L45,165 L65,225 L-65,225 Z" fill="url(#cheeseWheelGrad)" stroke="#8c5504" stroke-width="3"/>
+      <circle cx="-15" cy="202" r="11" fill="url(#cheeseHole)"/>
+      <circle cx="25" cy="205" r="8" fill="url(#cheeseHole)"/>
+    </g>
+
+    <!-- Загальне тепле освітлення ліхтаря та пилинки в повітрі -->
+    <rect width="1920" height="1080" fill="url(#lanternGlow)" pointer-events="none"/>
+  </svg>
+
+  <!-- ================= КНОПКА "НАЗАД" (ПОПЕРЕДНЄ СЛОВО) ================= -->
+  <button id="btn-prev" class="nav-btn" aria-label="prev">
+    <svg viewBox="0 0 100 100">
+      <defs>
+        <radialGradient id="cheeseBtnG" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#fff099"/>
+          <stop offset="60%" stop-color="#f7b928"/>
+          <stop offset="100%" stop-color="#b57405"/>
+        </radialGradient>
+      </defs>
+      <circle cx="50" cy="50" r="44" fill="url(#cheeseBtnG)" stroke="#5c3104" stroke-width="6"/>
+      <circle cx="26" cy="32" r="6" fill="#c98208"/>
+      <circle cx="72" cy="70" r="8" fill="#c98208"/>
+      <path d="M62,26 L32,50 L62,74 Z" fill="#5c2804" stroke="#fff3b0" stroke-width="3" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- ================= КНОПКА "ДАЛІ" (НАСТУПНЕ СЛОВО БЕЗ ПРОХОДЖЕННЯ) ================= -->
+  <button id="btn-next" class="nav-btn" aria-label="next">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="44" fill="url(#cheeseBtnG)" stroke="#5c3104" stroke-width="6"/>
+      <circle cx="74" cy="32" r="6" fill="#c98208"/>
+      <circle cx="28" cy="70" r="8" fill="#c98208"/>
+      <path d="M38,26 L68,50 L38,74 Z" fill="#5c2804" stroke="#fff3b0" stroke-width="3" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- ================= ІГРОВА ДОШКА ЗІ СЛОВОМ ТА ЗВУКОВОЮ СХЕМОЮ ================= -->
+  <div id="task-board">
+    <!-- Різьблена дерев'яна основа на кованих ланцюгах -->
+    <svg id="board-bg-svg" viewBox="0 0 900 450" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="oakBoard" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#784218"/>
+          <stop offset="50%" stop-color="#592e0d"/>
+          <stop offset="100%" stop-color="#3b1c05"/>
+        </linearGradient>
+        <linearGradient id="brassRim" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#ffe885"/>
+          <stop offset="50%" stop-color="#c98e1e"/>
+          <stop offset="100%" stop-color="#704904"/>
+        </linearGradient>
+      </defs>
+      <!-- Ланцюги кріплення зверху -->
+      <rect x="140" y="0" width="16" height="40" rx="6" fill="#2b2623" stroke="#120f0e" stroke-width="3"/>
+      <rect x="744" y="0" width="16" height="40" rx="6" fill="#2b2623" stroke="#120f0e" stroke-width="3"/>
+      <!-- Основна дерев'яна плита з фігурними кутами -->
+      <path d="M45,25 L855,25 Q885,25 885,55 L885,405 Q885,435 855,435 L45,435 Q15,435 15,405 L15,55 Q15,25 45,25 Z" 
+            fill="url(#oakBoard)" stroke="url(#brassRim)" stroke-width="10"/>
+      <!-- Текстура волокон дерева -->
+      <path d="M35,95 Q450,75 865,95 M35,210 Q450,235 865,210 M35,330 Q450,310 865,330" 
+            stroke="#2e1504" stroke-width="3" fill="none" opacity="0.45"/>
+      <!-- Заклепки по кутах -->
+      <circle cx="42" cy="52" r="10" fill="url(#brassRim)" stroke="#3b1c05" stroke-width="2"/>
+      <circle cx="858" cy="52" r="10" fill="url(#brassRim)" stroke="#3b1c05" stroke-width="2"/>
+      <circle cx="42" cy="408" r="10" fill="url(#brassRim)" stroke="#3b1c05" stroke-width="2"/>
+      <circle cx="858" cy="408" r="10" fill="url(#brassRim)" stroke="#3b1c05" stroke-width="2"/>
+    </svg>
+
+    <!-- Верхній блок: Ілюстрація предмета + слово -->
+    <div id="word-showcase">
+      <div id="item-frame"></div>
+      <div id="word-plaque"></div>
+    </div>
+
+    <!-- Нижня полиця: Слоти для фішок + кнопка очищення + сирний дзвіночок перевірки -->
+    <div id="scheme-shelf">
+      <!-- Кнопка видалення останньої фішки (віничок/лапка) -->
+      <button id="btn-erase" class="shelf-action-btn" aria-label="erase">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="35" fill="#8f291d" stroke="#ffba82" stroke-width="4"/>
+          <path d="M52,26 L26,40 L52,54 M30,40 L58,40" fill="none" stroke="#fff3d6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      <!-- Контейнер слотів звуків -->
+      <div id="slots-container"></div>
+
+      <!-- Кнопка перевірки (золотий дзвіночок) -->
+      <button id="btn-check" class="shelf-action-btn" aria-label="check">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="35" fill="#2b8a28" stroke="#b8ff9e" stroke-width="4"/>
+          <path d="M22,42 L35,55 L58,26" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= ТОВСТА РЕАЛІСТИЧНА МИШКА (НЕ КЛІПАЄ, ВОДИТЬ ОЧИМА ТА ЕМОЦІЯМИ) ================= -->
+  <div id="mouse-actor">
+    <svg id="mouse-svg" viewBox="0 0 360 360">
+      <defs>
+        <!-- Реалістичне багатошарове хутро мишки -->
+        <radialGradient id="furBody" cx="42%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#9e958e"/>
+          <stop offset="55%" stop-color="#6e655f"/>
+          <stop offset="90%" stop-color="#47403b"/>
+          <stop offset="100%" stop-color="#2e2925"/>
+        </radialGradient>
+
+        <!-- Світле пухнасте черевце -->
+        <radialGradient id="bellyFur" cx="46%" cy="38%" r="60%">
+          <stop offset="0%" stop-color="#f7ebe1"/>
+          <stop offset="65%" stop-color="#dec7b6"/>
+          <stop offset="100%" stop-color="#9c8474"/>
+        </radialGradient>
+
+        <!-- Рожеві вушка з прожилками -->
+        <radialGradient id="earPink" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stop-color="#ffadb8"/>
+          <stop offset="65%" stop-color="#e07b8b"/>
+          <stop offset="100%" stop-color="#7a4c53"/>
+        </radialGradient>
+
+        <!-- Лапки та носик -->
+        <radialGradient id="noseGrad" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#ffb8c6"/>
+          <stop offset="50%" stop-color="#e35d78"/>
+          <stop offset="100%" stop-color="#801f33"/>
+        </radialGradient>
+
+        <!-- Райдужка ока -->
+        <radialGradient id="irisGrad" cx="45%" cy="45%" r="55%">
+          <stop offset="0%" stop-color="#8c5319"/>
+          <stop offset="65%" stop-color="#4a2806"/>
+          <stop offset="100%" stop-color="#1f0f00"/>
+        </radialGradient>
+      </defs>
+
+      <!-- Тінь під мишкою -->
+      <ellipse id="mouse-shadow" cx="180" cy="335" rx="115" ry="18" fill="rgba(0,0,0,0.55)"/>
+
+      <!-- Довгий сегментований рожевий хвіст -->
+      <path id="mouse-tail" d="M270,295 Q335,310 342,265 Q348,230 318,220" 
+            fill="none" stroke="#d98994" stroke-width="14" stroke-linecap="round"/>
+      <path id="mouse-tail-shade" d="M270,295 Q335,310 342,265 Q348,230 318,220" 
+            fill="none" stroke="#9e545e" stroke-width="4" stroke-dasharray="4 8" stroke-linecap="round"/>
+
+      <!-- Група всього тіла для ходьби та дихання -->
+      <g id="mouse-whole-body" style="transform-origin: 180px 320px;">
+
+        <!-- Задні короткі товсті лапки -->
+        <g id="foot-left" style="transform-origin: 115px 315px;">
+          <ellipse cx="110" cy="324" rx="34" ry="15" fill="#e69da8" stroke="#7d464f" stroke-width="2.5"/>
+          <circle cx="88" cy="325" r="6" fill="#ffbac4"/>
+          <circle cx="101" cy="329" r="6.5" fill="#ffbac4"/>
+          <circle cx="116" cy="329" r="6" fill="#ffbac4"/>
+        </g>
+        <g id="foot-right" style="transform-origin: 245px 315px;">
+          <ellipse cx="250" cy="324" rx="34" ry="15" fill="#e69da8" stroke="#7d464f" stroke-width="2.5"/>
+          <circle cx="272" cy="325" r="6" fill="#ffbac4"/>
+          <circle cx="259" cy="329" r="6.5" fill="#ffbac4"/>
+          <circle cx="244" cy="329" r="6" fill="#ffbac4"/>
+        </g>
+
+        <!-- ГІГАНТСЬКИЙ ТОВСТИЙ ТУЛУБ-КУЛЯ -->
+        <path id="mouse-torso" d="M180,95 C265,95 318,175 312,258 C306,320 255,332 180,332 C105,332 54,320 48,258 C42,175 95,95 180,95 Z" 
+              fill="url(#furBody)" stroke="#29231f" stroke-width="3"/>
+
+        <!-- Пухнасті штрихи шерсті по боках -->
+        <path d="M50,220 L40,225 M47,245 L36,252 M52,270 L42,276 M310,220 L320,225 M313,245 L324,252 M308,270 L318,276" 
+              stroke="#47403b" stroke-width="3.5" stroke-linecap="round"/>
+
+        <!-- Величезне м'яке світле пузо (желеподібно труситься) -->
+        <g id="mouse-belly-group" style="transform-origin: 180px 245px;">
+          <ellipse cx="180" cy="242" rx="98" ry="78" fill="url(#bellyFur)"/>
+          <!-- Смішний пупок -->
+          <path d="M174,265 Q180,273 186,265" fill="none" stroke="#8f7463" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="180" cy="263" r="2.5" fill="#8f7463"/>
+        </g>
+
+        <!-- ГОЛОВА МИШКИ З ВЕЛИКИМИ ЩОКАМИ -->
+        <g id="mouse-head" style="transform-origin: 180px 135px;">
+          <!-- Ліве вухо -->
+          <g id="ear-left" style="transform-origin: 115px 95px;">
+            <circle cx="92" cy="68" r="42" fill="url(#furBody)" stroke="#29231f" stroke-width="3"/>
+            <circle cx="94" cy="70" r="32" fill="url(#earPink)"/>
+            <path d="M94,75 L80,55 M94,75 L72,72 M94,70 L95,48" stroke="#c95b6d" stroke-width="1.8" opacity="0.6" stroke-linecap="round"/>
+          </g>
+
+          <!-- Праве вухо -->
+          <g id="ear-right" style="transform-origin: 245px 95px;">
+            <circle cx="268" cy="68" r="42" fill="url(#furBody)" stroke="#29231f" stroke-width="3"/>
+            <circle cx="266" cy="70" r="32" fill="url(#earPink)"/>
+            <path d="M266,75 L280,55 M266,75 L288,72 M266,70 L265,48" stroke="#c95b6d" stroke-width="1.8" opacity="0.6" stroke-linecap="round"/>
+          </g>
+
+          <!-- Череп та величезні хом'ячі щоки -->
+          <path d="M180,52 C232,52 260,88 268,125 C284,142 280,182 242,192 C215,199 145,199 118,192 C80,182 76,142 92,125 C100,88 128,52 180,52 Z" 
+                fill="url(#furBody)" stroke="#29231f" stroke-width="2.5"/>
+
+          <!-- Рум'янець на товстих щічках -->
+          <ellipse id="cheek-l" cx="112" cy="154" rx="22" ry="13" fill="#ff7a8e" opacity="0.38"/>
+          <ellipse id="cheek-r" cx="248" cy="154" rx="22" ry="13" fill="#ff7a8e" opacity="0.38"/>
+
+          <!-- Світла мордочка -->
+          <ellipse cx="180" cy="155" rx="48" ry="32" fill="url(#bellyFur)"/>
+
+          <!-- ОЧІ (НІКОЛИ НЕ КЛІПАЮТЬ! Лише рухають зіницями та бровами) -->
+          <g id="eyes-container">
+            <!-- Ліве око (білок) -->
+            <ellipse cx="148" cy="112" rx="19" ry="21" fill="#ffffff" stroke="#241c18" stroke-width="3"/>
+            <!-- Праве око (білок) -->
+            <ellipse cx="212" cy="112" rx="19" ry="21" fill="#ffffff" stroke="#241c18" stroke-width="3"/>
+
+            <!-- Рухома група райдужки та зіниці (слідкує за курсором та фішками) -->
+            <g id="pupils-group">
+              <!-- Ліва райдужка + зіниця + блік -->
+              <circle cx="150" cy="112" r="11.5" fill="url(#irisGrad)"/>
+              <circle cx="150" cy="112" r="6.5" fill="#080401"/>
+              <circle cx="146" cy="107" r="3.8" fill="#ffffff"/>
+              <circle cx="154" cy="116" r="1.8" fill="#ffffff"/>
+
+              <!-- Права райдужка + зіниця + блік -->
+              <circle cx="210" cy="112" r="11.5" fill="url(#irisGrad)"/>
+              <circle cx="210" cy="112" r="6.5" fill="#080401"/>
+              <circle cx="206" cy="107" r="3.8" fill="#ffffff"/>
+              <circle cx="214" cy="116" r="1.8" fill="#ffffff"/>
+            </g>
+
+            <!-- Виразні брови для зміни емоцій -->
+            <path id="brow-left" d="M128,86 Q148,78 166,87" fill="none" stroke="#261e1a" stroke-width="5.5" stroke-linecap="round"/>
+            <path id="brow-right" d="M194,87 Q212,78 232,86" fill="none" stroke="#261e1a" stroke-width="5.5" stroke-linecap="round"/>
+          </g>
+
+          <!-- РОТ ТА ЗУБКИ (змінюються від емоції) -->
+          <g id="mouth-group">
+            <!-- Два білі різці -->
+            <rect id="mouse-teeth" x="171" y="164" width="8.5" height="11" rx="2" fill="#ffffff" stroke="#544236" stroke-width="1.5"/>
+            <rect id="mouse-teeth-2" x="180.5" y="164" width="8.5" height="11" rx="2" fill="#ffffff" stroke="#544236" stroke-width="1.5"/>
+            <!-- Лінія губ -->
+            <path id="mouth-path" d="M156,162 Q168,172 180,161 Q192,172 204,162" fill="none" stroke="#361f18" stroke-width="3.8" stroke-linecap="round"/>
+          </g>
+
+          <!-- Ніс та довгі вуса (ворушаться) -->
+          <g id="nose-whiskers" style="transform-origin: 180px 142px;">
+            <path d="M115,145 Q75,138 42,148 M112,153 Q72,154 38,166 M116,160 Q82,168 52,182" fill="none" stroke="#e8ddd5" stroke-width="2" stroke-linecap="round"/>
+            <path d="M245,145 Q285,138 318,148 M248,153 Q288,154 322,166 M244,160 Q278,168 308,182" fill="none" stroke="#e8ddd5" stroke-width="2" stroke-linecap="round"/>
+            <ellipse cx="180" cy="142" rx="16" ry="11" fill="url(#noseGrad)" stroke="#5c1724" stroke-width="2"/>
+            <ellipse cx="175" cy="138" rx="5" ry="2.5" fill="#ffdbe2" opacity="0.8"/>
+          </g>
+        </g>
+
+        <!-- ПЕРЕДНІ ЛАПКИ (чешуть пузо, тримають крихту сиру, радіють) -->
+        <g id="arm-left" style="transform-origin: 105px 195px;">
+          <path d="M98,185 C72,210 85,248 118,245 C132,243 132,222 115,212" fill="url(#furBody)" stroke="#29231f" stroke-width="2.5"/>
+          <ellipse cx="122" cy="235" rx="15" ry="11" fill="#e69da8" stroke="#7d464f" stroke-width="2"/>
+        </g>
+
+        <g id="arm-right" style="transform-origin: 255px 195px;">
+          <path d="M262,185 C288,210 275,248 242,245 C228,243 228,222 245,212" fill="url(#furBody)" stroke="#29231f" stroke-width="2.5"/>
+          <ellipse cx="238" cy="235" rx="15" ry="11" fill="#e69da8" stroke="#7d464f" stroke-width="2"/>
+          <!-- Шматочок сиру в лапці (показується під час перекусу) -->
+          <g id="snack-cheese" opacity="0">
+            <polygon points="215,220 245,210 240,242" fill="#ffd23f" stroke="#a66c00" stroke-width="2"/>
+            <circle cx="233" cy="225" r="3.5" fill="#b87804"/>
+          </g>
+        </g>
+
+      </g>
+    </svg>
+  </div>
+
+  <!-- ================= ПАНЕЛЬ ЗВУКОВИХ ФІШОК (● ГОЛОСНИЙ, ━ ТВЕРДИЙ, ═ М'ЯКИЙ) ================= -->
+  <div id="tokens-tray">
+    <!-- Голосний звук [●] — червона ягідна/сирна фішка з кружечком -->
+    <button class="token-btn" data-type="o" aria-label="vowel">
+      <svg viewBox="0 0 100 100">
+        <defs>
+          <radialGradient id="tokRed" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#ff7a7a"/>
+            <stop offset="55%" stop-color="#d91e2b"/>
+            <stop offset="100%" stop-color="#75060e"/>
+          </radialGradient>
+        </defs>
+        <circle cx="50" cy="50" r="45" fill="url(#tokRed)" stroke="#ffccd0" stroke-width="4"/>
+        <circle cx="50" cy="50" r="37" fill="none" stroke="#990b15" stroke-width="2" stroke-dasharray="6 4"/>
+        <circle cx="50" cy="50" r="17" fill="#ffffff" stroke="#590208" stroke-width="3"/>
+      </svg>
+    </button>
+
+    <!-- Твердий приголосний звук [━] — синя фішка з однією рискою -->
+    <button class="token-btn" data-type="-" aria-label="hard-consonant">
+      <svg viewBox="0 0 100 100">
+        <defs>
+          <radialGradient id="tokBlue" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#7acbff"/>
+            <stop offset="55%" stop-color="#1967d2"/>
+            <stop offset="100%" stop-color="#082963"/>
+          </radialGradient>
+        </defs>
+        <circle cx="50" cy="50" r="45" fill="url(#tokBlue)" stroke="#cce8ff" stroke-width="4"/>
+        <circle cx="50" cy="50" r="37" fill="none" stroke="#0b3c8a" stroke-width="2" stroke-dasharray="6 4"/>
+        <rect x="22" y="42" width="56" height="16" rx="8" fill="#ffffff" stroke="#06214d" stroke-width="3"/>
+      </svg>
+    </button>
+
+    <!-- М'який приголосний звук [═] — зелена фішка з двома рисками -->
+    <button class="token-btn" data-type="=" aria-label="soft-consonant">
+      <svg viewBox="0 0 100 100">
+        <defs>
+          <radialGradient id="tokGreen" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#8aff94"/>
+            <stop offset="55%" stop-color="#1ca638"/>
+            <stop offset="100%" stop-color="#074d16"/>
+          </radialGradient>
+        </defs>
+        <circle cx="50" cy="50" r="45" fill="url(#tokGreen)" stroke="#d4ffd9" stroke-width="4"/>
+        <circle cx="50" cy="50" r="37" fill="none" stroke="#0c631d" stroke-width="2" stroke-dasharray="6 4"/>
+        <rect x="22" y="30" width="56" height="13" rx="6.5" fill="#ffffff" stroke="#053810" stroke-width="2.5"/>
+        <rect x="22" y="57" width="56" height="13" rx="6.5" fill="#ffffff" stroke="#053810" stroke-width="2.5"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Шар для активних візуальних ефектів (салюти із сиру, зірочок та ягід) -->
+  <div id="fx-layer"></div>
+
+</div>
+
+<script>
+/* ============================================================================
+   1. ЗВУКОВИЙ РУШІЙ (Web Audio API — активні звукові фідбеки без жодних слів)
+   ============================================================================ */
+const SoundFX = (() => {
+  let ctx = null;
+  function init() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+  }
+
+  // Універсальний синтезатор ноти
+  function tone(freq, type, duration, vol = 0.2, delay = 0, slideTo = null) {
+    init();
+    const t = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t + duration);
+
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + duration + 0.02);
+  }
+
+  return {
+    // Звук встановлення звукової фішки (різна висота для ●, ━, ═)
+    placeToken(type) {
+      if (type === 'o') {
+        tone(520, 'sine', 0.16, 0.25, 0, 740);
+      } else if (type === '-') {
+        tone(310, 'triangle', 0.15, 0.28, 0, 260);
+      } else {
+        tone(440, 'sine', 0.12, 0.22, 0, 580);
+        tone(660, 'sine', 0.14, 0.18, 0.06, 820);
+      }
+    },
+    // Видалення фішки
+    removeToken() {
+      tone(380, 'sine', 0.12, 0.2, 0, 190);
+    },
+    // Перемикання рівня (кнопки Назад / Далі)
+    navClick() {
+      tone(420, 'triangle', 0.09, 0.2, 0, 620);
+    },
+    // Кумедний звук кроку товстої мишки
+    footstep() {
+      tone(95 + Math.random() * 25, 'sine', 0.08, 0.12, 0, 55);
+    },
+    // Похлопування по товстому пузі мишки
+    bellyPat() {
+      tone(130, 'sine', 0.12, 0.3, 0, 70);
+      tone(950, 'sine', 0.09, 0.12, 0.05, 1350); // кумедний писк
+    },
+    // Хрускіт сиру
+    munch() {
+      tone(280, 'sawtooth', 0.06, 0.1, 0, 180);
+      tone(340, 'square', 0.06, 0.08, 0.09, 220);
+    },
+    // Яскрава святкова мелодія перемоги (3 варіації для різноманітності)
+    victory() {
+      const variant = Math.floor(Math.random() * 3);
+      if (variant === 0) {
+        const notes = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50];
+        notes.forEach((n, i) => tone(n, 'triangle', 0.18, 0.26, i * 0.09));
+      } else if (variant === 1) {
+        const notes = [440, 554.37, 659.25, 880, 1108.73];
+        notes.forEach((n, i) => tone(n, 'sine', 0.2, 0.26, i * 0.08, n * 1.05));
+      } else {
+        const notes = [392, 523.25, 659.25, 783.99, 987.77, 1046.5];
+        notes.forEach((n, i) => tone(n, 'triangle', 0.16, 0.25, i * 0.07));
+      }
+    },
+    // Кумедний мультяшний звук помилки (пружина / тромбон)
+    wrong() {
+      tone(290, 'sawtooth', 0.18, 0.22, 0, 210);
+      tone(205, 'sawtooth', 0.32, 0.24, 0.16, 125);
+    }
+  };
+})();
+
+
+/* ============================================================================
+   2. СЛОВНИК ІЗ 24 СЛІВ ТА ДЕТАЛІЗОВАНІ SVG-ІЛЮСТРАЦІЇ
+   Позначення у схемі (sounds):
+     'o' — Голосний звук [●]
+     '-' — Твердий приголосний звук [━]
+     '=' — М'який або пом'якшений приголосний звук [═]
+   Усі цільові букви та буквосполучення (дж, дз, й, ь, я, ю, є, ї, щ) підсвічуються!
+   ============================================================================ */
+const WORDS_DATA = [
+  // --- БУКВОСПОЛУЧЕННЯ ДЖ ---
+  {
+    word: "джміль",
+    highlights: [0, 1, 5], // дж, ь
+    sounds: ['-', '=', 'o', '='], // [дж м' і л'] — 4 звуки
+    svg: `
+      <ellipse cx="100" cy="68" rx="34" ry="18" fill="#d9f4ff" opacity="0.75" stroke="#5aa9cc" stroke-width="2" transform="rotate(-25 100 68)"/>
+      <ellipse cx="118" cy="64" rx="30" ry="15" fill="#e8f9ff" opacity="0.8" stroke="#5aa9cc" stroke-width="2" transform="rotate(20 118 64)"/>
+      <ellipse cx="100" cy="112" rx="52" ry="38" fill="#f5b81d" stroke="#291a04" stroke-width="4"/>
+      <path d="M74,80 Q68,112 74,144 M98,74 Q94,112 98,150 M122,78 Q120,112 122,146" stroke="#241604" stroke-width="14" fill="none"/>
+      <circle cx="56" cy="108" r="22" fill="#2e1f08"/>
+      <circle cx="48" cy="102" r="6" fill="#ffffff"/><circle cx="46" cy="102" r="3" fill="#000"/>
+      <path d="M45,88 Q32,68 22,74 M54,86 Q45,65 35,68" fill="none" stroke="#241604" stroke-width="3.5" stroke-linecap="round"/>
+      <polygon points="152,108 168,112 152,116" fill="#241604"/>`
+  },
+  {
+    word: "бджола",
+    highlights: [1, 2], // дж
+    sounds: ['-', '-', 'o', '-', 'o'], // [б дж о л а] — 5 звуків
+    svg: `
+      <ellipse cx="95" cy="64" rx="28" ry="16" fill="#dff6ff" opacity="0.85" stroke="#68b5d6" stroke-width="2" transform="rotate(-18 95 64)"/>
+      <ellipse cx="116" cy="68" rx="25" ry="14" fill="#dff6ff" opacity="0.85" stroke="#68b5d6" stroke-width="2" transform="rotate(22 116 68)"/>
+      <ellipse cx="108" cy="112" rx="46" ry="28" fill="#ffd438" stroke="#362103" stroke-width="4"/>
+      <path d="M86,87 L86,137 M108,84 L108,140 M130,88 L130,136" stroke="#2e1b02" stroke-width="10"/>
+      <circle cx="62" cy="108" r="19" fill="#362103"/>
+      <circle cx="55" cy="103" r="5.5" fill="#fff"/><circle cx="54" cy="103" r="2.5" fill="#000"/>
+      <path d="M52,90 Q42,72 32,76" fill="none" stroke="#362103" stroke-width="3" stroke-linecap="round"/>
+      <polygon points="154,109 170,112 154,115" fill="#362103"/>`
+  },
+  {
+    word: "джем",
+    highlights: [0, 1], // дж
+    sounds: ['-', 'o', '-'], // [дж е м] — 3 звуки
+    svg: `
+      <rect x="52" y="65" width="96" height="105" rx="22" fill="#c9183b" stroke="#610518" stroke-width="4"/>
+      <path d="M64,85 L64,152" stroke="#ff7a95" stroke-width="8" stroke-linecap="round" opacity="0.5"/>
+      <path d="M44,52 Q100,62 156,52 L148,74 Q100,82 52,74 Z" fill="#ffebba" stroke="#8c5a19" stroke-width="3.5"/>
+      <ellipse cx="100" cy="52" rx="56" ry="12" fill="#ff526f" stroke="#8c5a19" stroke-width="3"/>
+      <rect x="70" y="98" width="60" height="42" rx="10" fill="#fff3d1" stroke="#8c5a19" stroke-width="2.5"/>
+      <circle cx="100" cy="119" r="12" fill="#e61c44"/>
+      <path d="M95,107 L100,101 L105,107" fill="#2e8c26"/>`
+  },
+
+  // --- БУКВОСПОЛУЧЕННЯ ДЗ ---
+  {
+    word: "дзвін",
+    highlights: [0, 1], // дз
+    sounds: ['-', '=', 'o', '-'], // [дз в' і н] — 4 звуки
+    svg: `
+      <circle cx="100" cy="40" r="12" fill="none" stroke="#9c6509" stroke-width="6"/>
+      <circle cx="100" cy="156" r="15" fill="#804c00" stroke="#472a00" stroke-width="3"/>
+      <path d="M100,45 C68,45 58,85 48,132 L152,132 C142,85 132,45 100,45 Z" fill="#ffc933" stroke="#805105" stroke-width="4"/>
+      <ellipse cx="100" cy="135" rx="56" ry="14" fill="#e69d17" stroke="#805105" stroke-width="4"/>
+      <path d="M74,65 Q64,95 58,122" stroke="#fff3b0" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.75"/>`
+  },
+  {
+    word: "дзеркало",
+    highlights: [0, 1], // дз
+    sounds: ['-', 'o', '-', '-', 'o', '-', 'o'], // [дз е р к а л о] — 7 звуків
+    svg: `
+      <rect x="91" y="135" width="18" height="45" rx="9" fill="#c78316" stroke="#5e3a02" stroke-width="3.5"/>
+      <ellipse cx="100" cy="88" rx="50" ry="58" fill="#f2ad2c" stroke="#694205" stroke-width="4"/>
+      <ellipse cx="100" cy="88" rx="38" ry="46" fill="#99e5ff" stroke="#b3740e" stroke-width="3"/>
+      <path d="M76,62 L112,118 M92,54 L122,102" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity="0.75"/>`
+  },
+  {
+    word: "дзьоб",
+    highlights: [0, 1, 2], // дз, ь
+    sounds: ['=', 'o', '-'], // [дз' о б] — 3 звуки
+    svg: `
+      <circle cx="72" cy="105" r="44" fill="#2c3540" stroke="#11161c" stroke-width="4"/>
+      <circle cx="76" cy="96" r="22" fill="#fff3cf"/>
+      <circle cx="78" cy="96" r="9" fill="#1b6bc2"/><circle cx="78" cy="96" r="4.5" fill="#000"/>
+      <path d="M95,78 C145,74 176,92 182,118 C150,126 118,125 94,120 Z" fill="#ff9d14" stroke="#753300" stroke-width="4"/>
+      <path d="M150,83 C168,92 176,104 180,117 L154,120 Z" fill="#d92323"/>
+      <line x1="95" y1="104" x2="178" y2="112" stroke="#6e2c00" stroke-width="3.5"/>`
+  },
+  {
+    word: "ґудзик",
+    highlights: [2, 3], // дз
+    sounds: ['-', 'o', '-', 'o', '-'], // [ґ у дз и к] — 5 звуків
+    svg: `
+      <circle cx="100" cy="100" r="62" fill="#e03a56" stroke="#6e0d1d" stroke-width="5"/>
+      <circle cx="100" cy="100" r="46" fill="#bf243e" stroke="#ff8fa2" stroke-width="3"/>
+      <circle cx="84" cy="84" r="9" fill="#3d050e"/><circle cx="116" cy="84" r="9" fill="#3d050e"/>
+      <circle cx="84" cy="116" r="9" fill="#3d050e"/><circle cx="116" cy="116" r="9" fill="#3d050e"/>
+      <path d="M84,84 L116,116 M116,84 L84,116" stroke="#fff0b8" stroke-width="4" stroke-linecap="round"/>`
+  },
+
+  // --- БУКВА Й ---
+  {
+    word: "йогурт",
+    highlights: [0], // й
+    sounds: ['=', 'o', '-', 'o', '-', '-'], // [й о г у р т] — 6 звуків
+    svg: `
+      <path d="M56,74 L144,74 L132,162 Q100,170 68,162 Z" fill="#ffd6e3" stroke="#8f3553" stroke-width="4"/>
+      <path d="M46,66 Q100,78 154,66 Q142,45 100,48 Q58,45 46,66 Z" fill="#ff739d" stroke="#8f3553" stroke-width="3.5"/>
+      <path d="M118,52 L145,24" stroke="#d9e8f5" stroke-width="9" stroke-linecap="round"/>
+      <circle cx="100" cy="118" r="18" fill="#e61c47"/><circle cx="95" cy="114" r="2" fill="#fff3b0"/><circle cx="105" cy="120" r="2" fill="#fff3b0"/>`
+  },
+  {
+    word: "чай",
+    highlights: [2], // й
+    sounds: ['-', 'o', '='], // [ч а й] — 3 звуки
+    svg: `
+      <path d="M78,52 Q68,36 82,24 M104,50 Q94,34 108,22" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+      <ellipse cx="100" cy="156" rx="64" ry="14" fill="#d9e6f2" stroke="#53728f" stroke-width="4"/>
+      <path d="M138,88 C168,88 168,132 134,132" fill="none" stroke="#ff5e36" stroke-width="11" stroke-linecap="round"/>
+      <path d="M48,74 L144,74 C144,132 128,154 96,154 C64,154 48,132 48,74 Z" fill="#ff5e36" stroke="#7a1f08" stroke-width="4"/>
+      <ellipse cx="96" cy="74" rx="48" ry="12" fill="#8c3b08" stroke="#7a1f08" stroke-width="3"/>
+      <circle cx="76" cy="112" r="8" fill="#fff"/><circle cx="114" cy="112" r="8" fill="#fff"/><circle cx="96" cy="132" r="8" fill="#fff"/>`
+  },
+  {
+    word: "лінійка",
+    highlights: [4], // й
+    sounds: ['=', 'o', '=', 'o', '=', '-', 'o'], // [л' і н' і й к а] — 7 звуків
+    svg: `
+      <g transform="rotate(-28 100 100)">
+        <rect x="22" y="72" width="156" height="56" rx="8" fill="#ffcf40" stroke="#7a5200" stroke-width="4"/>
+        <path d="M40,72 L40,92 M55,72 L55,84 M70,72 L70,92 M85,72 L85,84 M100,72 L100,92 M115,72 L115,84 M130,72 L130,92 M145,72 L145,84 M160,72 L160,92" stroke="#5c3d00" stroke-width="3.5"/>
+        <circle cx="42" cy="108" r="8" fill="#4f2f0d"/>
+      </g>`
+  },
+
+  // --- М'ЯКИЙ ЗНАК (Ь) ---
+  {
+    word: "сіль",
+    highlights: [3], // ь
+    sounds: ['=', 'o', '='], // [с' і л'] — 3 звуки
+    svg: `
+      <path d="M66,72 L134,72 L146,160 Q100,170 54,160 Z" fill="#d9f0ff" stroke="#497696" stroke-width="4"/>
+      <path d="M58,108 Q100,100 142,108 L144,158 Q100,168 56,158 Z" fill="#ffffff"/>
+      <path d="M64,72 C64,42 136,42 136,72 Z" fill="#b8c7d4" stroke="#425566" stroke-width="4"/>
+      <circle cx="88" cy="54" r="3" fill="#2b3842"/><circle cx="100" cy="50" r="3" fill="#2b3842"/><circle cx="112" cy="54" r="3" fill="#2b3842"/>`
+  },
+  {
+    word: "кінь",
+    highlights: [3], // ь
+    sounds: ['=', 'o', '='], // [к' і н'] — 3 звуки
+    svg: `
+      <path d="M62,165 L68,95 C52,65 76,38 102,42 L112,24 L122,45 C148,54 166,76 158,96 C150,112 122,104 114,98 L120,165 Z" fill="#9c5421" stroke="#421f06" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M74,48 C50,62 46,112 64,148" fill="none" stroke="#3b1a04" stroke-width="14" stroke-linecap="round"/>
+      <circle cx="116" cy="68" r="6" fill="#fff"/><circle cx="118" cy="68" r="3.5" fill="#000"/>
+      <circle cx="146" cy="84" r="4" fill="#3b1a04"/>`
+  },
+  {
+    word: "пень",
+    highlights: [3], // ь
+    sounds: ['-', 'o', '='], // [п е н'] — 3 звуки
+    svg: `
+      <path d="M54,68 L146,68 C148,115 162,145 174,160 L132,158 L116,166 L84,158 L32,162 C46,142 52,115 54,68 Z" fill="#75431c" stroke="#361c07" stroke-width="4"/>
+      <ellipse cx="100" cy="68" rx="46" ry="16" fill="#e6be8a" stroke="#4a280d" stroke-width="4"/>
+      <ellipse cx="100" cy="68" rx="28" ry="9" fill="none" stroke="#9e6d3b" stroke-width="2.5"/>
+      <path d="M142,104 Q168,92 162,74 Q146,80 142,104 Z" fill="#46a828" stroke="#1b520a" stroke-width="2.5"/>`
+  },
+
+  // --- БУКВА Я ---
+  {
+    word: "яблуко",
+    highlights: [0], // я
+    sounds: ['=', 'o', '-', '-', 'o', '-', 'o'], // [й а б л у к о] — 7 звуків
+    svg: `
+      <path d="M100,56 C98,36 108,28 114,26" fill="none" stroke="#593310" stroke-width="6" stroke-linecap="round"/>
+      <path d="M104,44 C124,26 150,34 138,52 C126,60 110,54 104,44 Z" fill="#4cb528" stroke="#1e590a" stroke-width="3"/>
+      <path d="M100,56 C62,42 36,78 46,120 C54,154 84,168 100,156 C116,168 146,154 154,120 C164,78 138,42 100,56 Z" fill="#e6222e" stroke="#69060c" stroke-width="4"/>
+      <path d="M62,78 Q54,102 62,126" fill="none" stroke="#ff949b" stroke-width="7" stroke-linecap="round" opacity="0.7"/>`
+  },
+  {
+    word: "м'яч",
+    highlights: [2], // я
+    sounds: ['-', '=', 'o', '-'], // [м й а ч] — 4 звуки
+    svg: `
+      <circle cx="100" cy="100" r="60" fill="#ff9e1b" stroke="#5c2804" stroke-width="4"/>
+      <path d="M42,88 Q100,50 158,88 L158,112 Q100,150 42,112 Z" fill="#1d70cf"/>
+      <circle cx="100" cy="100" r="22" fill="#ffe147" stroke="#5c2804" stroke-width="3.5"/>
+      <circle cx="100" cy="100" r="60" fill="none" stroke="#5c2804" stroke-width="4"/>`
+  },
+  {
+    word: "вишня",
+    highlights: [4], // я
+    sounds: ['-', 'o', '-', '=', 'o'], // [в и ш н' а] — 5 звуків
+    svg: `
+      <path d="M72,118 Q88,65 112,38 Q122,74 132,122" fill="none" stroke="#3c7a18" stroke-width="5" stroke-linecap="round"/>
+      <path d="M112,38 C138,32 158,48 140,62 C124,68 114,52 112,38 Z" fill="#52b828" stroke="#1f5709" stroke-width="3"/>
+      <circle cx="68" cy="134" r="26" fill="#b80f2e" stroke="#4f0210" stroke-width="3.5"/>
+      <circle cx="132" cy="138" r="26" fill="#d11537" stroke="#4f0210" stroke-width="3.5"/>
+      <circle cx="58" cy="125" r="6" fill="#ff8da1" opacity="0.7"/><circle cx="122" cy="129" r="6" fill="#ff8da1" opacity="0.7"/>`
+  },
+
+  // --- БУКВА Ю ---
+  {
+    word: "юшка",
+    highlights: [0], // ю
+    sounds: ['=', 'o', '-', '-', 'o'], // [й у ш к а] — 5 звуків
+    svg: `
+      <path d="M75,65 Q65,45 80,32 M115,62 Q105,42 120,28" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.75"/>
+      <path d="M34,92 L166,92 C162,144 136,164 100,164 C64,164 38,144 34,92 Z" fill="#d4551e" stroke="#591c03" stroke-width="4"/>
+      <ellipse cx="100" cy="92" rx="66" ry="18" fill="#ffba3b" stroke="#591c03" stroke-width="4"/>
+      <path d="M112,88 Q134,68 152,78 L142,92 Z" fill="#5b8fb8" stroke="#24435c" stroke-width="2.5"/>
+      <circle cx="76" cy="92" r="7" fill="#52b828"/><circle cx="96" cy="96" r="6" fill="#ff6624"/>`
+  },
+  {
+    word: "ключ",
+    highlights: [2], // ю
+    sounds: ['-', '=', 'o', '-'], // [к л' у ч] — 4 звуки
+    svg: `
+      <g transform="rotate(-30 100 100)">
+        <circle cx="58" cy="100" r="32" fill="#ffc82e" stroke="#6e4800" stroke-width="4"/>
+        <circle cx="58" cy="100" r="13" fill="#3b1c05" stroke="#6e4800" stroke-width="3"/>
+        <rect x="88" y="92" width="78" height="16" rx="6" fill="#ffc82e" stroke="#6e4800" stroke-width="4"/>
+        <rect x="132" y="106" width="12" height="22" rx="3" fill="#ffc82e" stroke="#6e4800" stroke-width="3.5"/>
+        <rect x="150" y="106" width="12" height="16" rx="3" fill="#ffc82e" stroke="#6e4800" stroke-width="3.5"/>
+      </g>`
+  },
+
+  // --- БУКВА Є ---
+  {
+    word: "єнот",
+    highlights: [0], // є
+    sounds: ['=', 'o', '-', 'o', '-'], // [й е н о т] — 5 звуків
+    svg: `
+      <circle cx="60" cy="58" r="20" fill="#5e646b" stroke="#232629" stroke-width="3.5"/>
+      <circle cx="140" cy="58" r="20" fill="#5e646b" stroke="#232629" stroke-width="3.5"/>
+      <path d="M100,48 C145,48 168,85 162,124 C155,152 128,162 100,162 C72,162 45,152 38,124 C32,85 55,48 100,48 Z" fill="#8d949e" stroke="#232629" stroke-width="4"/>
+      <ellipse cx="72" cy="104" rx="26" ry="18" fill="#26292e" transform="rotate(-12 72 104)"/>
+      <ellipse cx="128" cy="104" rx="26" ry="18" fill="#26292e" transform="rotate(12 128 104)"/>
+      <circle cx="74" cy="104" r="7" fill="#fff"/><circle cx="74" cy="104" r="3.5" fill="#000"/>
+      <circle cx="126" cy="104" r="7" fill="#fff"/><circle cx="126" cy="104" r="3.5" fill="#000"/>
+      <ellipse cx="100" cy="132" rx="24" ry="18" fill="#ebeff5"/>
+      <circle cx="100" cy="126" r="8" fill="#1c1e21"/>`
+  },
+  {
+    word: "заєць",
+    highlights: [2, 4], // є, ь
+    sounds: ['-', 'o', '=', 'o', '='], // [з а й е ц'] — 5 звуків
+    svg: `
+      <ellipse cx="82" cy="54" rx="13" ry="38" fill="#b8aea4" stroke="#47413b" stroke-width="3.5" transform="rotate(-10 82 54)"/>
+      <ellipse cx="82" cy="56" rx="7" ry="26" fill="#f2a7b3" transform="rotate(-10 82 56)"/>
+      <ellipse cx="118" cy="54" rx="13" ry="38" fill="#b8aea4" stroke="#47413b" stroke-width="3.5" transform="rotate(10 118 54)"/>
+      <ellipse cx="118" cy="56" rx="7" ry="26" fill="#f2a7b3" transform="rotate(10 118 56)"/>
+      <circle cx="100" cy="118" r="42" fill="#c7bdb3" stroke="#47413b" stroke-width="4"/>
+      <circle cx="84" cy="108" r="6.5" fill="#1f1712"/><circle cx="116" cy="108" r="6.5" fill="#1f1712"/>
+      <ellipse cx="100" cy="124" rx="8" ry="5.5" fill="#e67386"/>
+      <rect x="95" y="132" width="10" height="9" rx="2" fill="#fff" stroke="#47413b" stroke-width="2"/>`
+  },
+
+  // --- БУКВА Ї ---
+  {
+    word: "їжак",
+    highlights: [0], // ї
+    sounds: ['=', 'o', '-', 'o', '-'], // [й і ж а к] — 5 звуків
+    svg: `
+      <polygon points="56,132 42,95 68,100 62,65 88,82 98,52 114,78 138,56 140,86 166,78 154,110 172,126 146,138" fill="#473325" stroke="#21160e" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M32,128 C52,102 95,102 146,136 L52,146 C38,144 26,136 32,128 Z" fill="#d9b38c" stroke="#473325" stroke-width="3.5"/>
+      <circle cx="32" cy="126" r="7" fill="#1f130c"/>
+      <circle cx="58" cy="120" r="5.5" fill="#1f130c"/><circle cx="56" cy="118" r="2" fill="#fff"/>
+      <circle cx="112" cy="64" r="15" fill="#e3242b" stroke="#66080b" stroke-width="2.5"/>`
+  },
+  {
+    word: "поїзд",
+    highlights: [2], // ї
+    sounds: ['-', 'o', '=', 'o', '-', '-'], // [п о й і з д] — 6 звуків
+    svg: `
+      <circle cx="62" cy="42" r="10" fill="#e6eff5" opacity="0.8"/><circle cx="82" cy="32" r="14" fill="#e6eff5" opacity="0.7"/>
+      <rect x="48" y="56" width="22" height="32" rx="4" fill="#333b42" stroke="#161a1d" stroke-width="3"/>
+      <rect x="38" y="84" width="84" height="52" rx="10" fill="#d92b2b" stroke="#590909" stroke-width="4"/>
+      <rect x="106" y="62" width="54" height="74" rx="8" fill="#246eb8" stroke="#0c2f52" stroke-width="4"/>
+      <rect x="116" y="72" width="34" height="26" rx="4" fill="#a8e4ff" stroke="#0c2f52" stroke-width="3"/>
+      <circle cx="62" cy="144" r="18" fill="#ffb82b" stroke="#422c02" stroke-width="4"/>
+      <circle cx="104" cy="144" r="18" fill="#ffb82b" stroke="#422c02" stroke-width="4"/>
+      <circle cx="144" cy="144" r="18" fill="#ffb82b" stroke="#422c02" stroke-width="4"/>`
+  },
+
+  // --- БУКВА Щ (завжди 2 тверді приголосні звуки [ш ч]) ---
+  {
+    word: "щука",
+    highlights: [0], // щ
+    sounds: ['-', '-', 'o', '-', 'o'], // [ш ч у к а] — 5 звуків
+    svg: `
+      <path d="M152,102 L178,76 L172,102 L178,128 Z" fill="#d9652b" stroke="#5c2104" stroke-width="3.5"/>
+      <path d="M22,104 C54,74 114,76 156,102 C114,128 54,130 22,104 Z" fill="#4f8c3f" stroke="#1e3d16" stroke-width="4"/>
+      <path d="M36,108 C72,122 114,120 148,104" fill="#e2f0cb"/>
+      <circle cx="48" cy="96" r="6" fill="#ffdf4f"/><circle cx="47" cy="96" r="3" fill="#000"/>
+      <circle cx="84" cy="96" r="4" fill="#b8d98c"/><circle cx="106" cy="98" r="4" fill="#b8d98c"/><circle cx="126" cy="100" r="3.5" fill="#b8d98c"/>`
+  },
+  {
+    word: "борщ",
+    highlights: [3], // щ
+    sounds: ['-', 'o', '-', '-', '-'], // [б о р ш ч] — 5 звуків
+    svg: `
+      <path d="M38,94 L162,94 C156,146 132,164 100,164 C68,164 44,146 38,94 Z" fill="#e8d5b5" stroke="#694e26" stroke-width="4"/>
+      <path d="M44,122 L156,122" stroke="#c91e2c" stroke-width="8"/>
+      <ellipse cx="100" cy="94" rx="62" ry="18" fill="#b51228" stroke="#590410" stroke-width="4"/>
+      <ellipse cx="100" cy="92" rx="18" ry="8" fill="#ffffff"/>
+      <circle cx="88" cy="90" r="3" fill="#2e8c1e"/><circle cx="108" cy="93" r="3" fill="#2e8c1e"/>`
+  },
+  {
+    word: "дощ",
+    highlights: [2], // щ
+    sounds: ['-', 'o', '-', '-'], // [д о ш ч] — 4 звуки
+    svg: `
+      <path d="M54,104 C34,104 28,78 46,70 C50,44 82,38 98,54 C116,38 148,48 148,72 C166,78 162,104 142,104 Z" fill="#688fb5" stroke="#27425c" stroke-width="4"/>
+      <g fill="#3bb3ff" stroke="#125e8f" stroke-width="2.5">
+        <path d="M62,118 C54,134 62,144 68,136 C70,130 66,124 62,118 Z"/>
+        <path d="M98,124 C90,140 98,150 104,142 C106,136 102,130 98,124 Z"/>
+        <path d="M132,118 C124,134 132,144 138,136 C140,130 136,124 132,118 Z"/>
+      </g>`
+  }
+];
+
+
+/* ============================================================================
+   3. ЛОГІКА УПРАВЛІННЯ ГРОЮ ТА ЗВУКОВОЮ СХЕМОЮ
+   ============================================================================ */
+let currentWordIndex = 0;
+let userScheme = []; // поточні виставлені дитиною фішки ['o', '-', '=']
+let isLocked = false;
+const MAX_SLOTS = 7;
+
+const itemFrame = document.getElementById('item-frame');
+const wordPlaque = document.getElementById('word-plaque');
+const slotsContainer = document.getElementById('slots-container');
+const taskBoard = document.getElementById('task-board');
+const fxLayer = document.getElementById('fx-layer');
+
+// Генерація мініатюри звукової фішки всередині слота
+function getTokenMiniSVG(type) {
+  if (type === 'o') {
+    return `<svg class="placed-token-svg" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" fill="url(#tokRed)" stroke="#ffccd0" stroke-width="5"/>
+      <circle cx="50" cy="50" r="18" fill="#ffffff" stroke="#590208" stroke-width="3.5"/>
+    </svg>`;
+  } else if (type === '-') {
+    return `<svg class="placed-token-svg" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" fill="url(#tokBlue)" stroke="#cce8ff" stroke-width="5"/>
+      <rect x="20" y="41" width="60" height="18" rx="9" fill="#ffffff" stroke="#06214d" stroke-width="3.5"/>
+    </svg>`;
+  } else {
+    return `<svg class="placed-token-svg" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" fill="url(#tokGreen)" stroke="#d4ffd9" stroke-width="5"/>
+      <rect x="20" y="29" width="60" height="14" rx="7" fill="#ffffff" stroke="#053810" stroke-width="3"/>
+      <rect x="20" y="57" width="60" height="14" rx="7" fill="#ffffff" stroke="#053810" stroke-width="3"/>
+    </svg>`;
+  }
+}
+
+// Відмальовування поточного рівня
+function renderLevel(index) {
+  isLocked = false;
+  userScheme = [];
+  const data = WORDS_DATA[index];
+
+  // Малюємо медальйон із деталізованим SVG предмета
+  itemFrame.innerHTML = `
+    <svg viewBox="0 0 200 200" width="100%" height="100%">
+      <circle cx="100" cy="100" r="92" fill="#fff5d6" stroke="#784218" stroke-width="9"/>
+      <circle cx="100" cy="100" r="82" fill="none" stroke="#d4942a" stroke-width="3" stroke-dasharray="8 6"/>
+      ${data.svg}
+    </svg>
+  `;
+
+  // Малюємо слово з підсвіткою цільових букв/буквосполучень
+  wordPlaque.innerHTML = '';
+  [...data.word].forEach((ch, idx) => {
+    const span = document.createElement('span');
+    span.className = 'word-letter' + (data.highlights.includes(idx) ? ' highlight' : '');
+    span.textContent = ch;
+    wordPlaque.appendChild(span);
+  });
+
+  renderSlots();
+  MouseController.setEmotion('curious');
+}
+
+// Відмальовування слотів на полиці (7 слотів, щоб дитина сама визначала кількість звуків!)
+function renderSlots() {
+  slotsContainer.innerHTML = '';
+  for (let i = 0; i < MAX_SLOTS; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'sound-slot' + (i === userScheme.length ? ' active-target' : '');
+    if (userScheme[i]) {
+      slot.innerHTML = getTokenMiniSVG(userScheme[i]);
+      // Клік по заповненому слоту видаляє цю фішку
+      slot.addEventListener('click', () => {
+        if (isLocked) return;
+        userScheme.splice(i, 1);
+        SoundFX.removeToken();
+        renderSlots();
+        MouseController.setEmotion('curious');
+      });
+    }
+    // Підтримка перетягування (Drag & Drop) у слот
+    slot.addEventListener('dragover', e => e.preventDefault());
+    slot.addEventListener('drop', e => {
+      e.preventDefault();
+      if (isLocked) return;
+      const type = e.dataTransfer.getData('text/plain');
+      if (type) addSoundToken(type);
+    });
+    slotsContainer.appendChild(slot);
+  }
+}
+
+// Додавання звукової фішки у схему
+function addSoundToken(type) {
+  if (isLocked || userScheme.length >= MAX_SLOTS) return;
+  userScheme.push(type);
+  SoundFX.placeToken(type);
+  renderSlots();
+  MouseController.setEmotion('thinking');
+  MouseController.lookAtElement(slotsContainer);
+}
+
+// Перевірка зібраної звукової схеми
+function checkScheme() {
+  if (isLocked || userScheme.length === 0) return;
+  const target = WORDS_DATA[currentWordIndex].sounds;
+
+  const isCorrect =
+    userScheme.length === target.length &&
+    userScheme.every((val, idx) => val === target[idx]);
+
+  if (isCorrect) {
+    isLocked = true;
+    SoundFX.victory();
+    taskBoard.classList.remove('victory-bounce');
+    void taskBoard.offsetWidth;
+    taskBoard.classList.add('victory-bounce');
+
+    MouseController.setEmotion('happy');
+    spawnCelebrationParticles();
+
+    setTimeout(() => {
+      currentWordIndex = (currentWordIndex + 1) % WORDS_DATA.length;
+      renderLevel(currentWordIndex);
+    }, 2300);
+  } else {
+    SoundFX.wrong();
+    const shelf = document.getElementById('scheme-shelf');
+    shelf.classList.remove('shake-error');
+    void shelf.offsetWidth;
+    shelf.classList.add('shake-error');
+
+    MouseController.setEmotion('sad');
+    // Залишаємо лише правильний початок схеми, а помилкові фішки скидаємо
+    setTimeout(() => {
+      let validPrefix = 0;
+      while (
+        validPrefix < userScheme.length &&
+        validPrefix < target.length &&
+        userScheme[validPrefix] === target[validPrefix]
+      ) {
+        validPrefix++;
+      }
+      userScheme = userScheme.slice(0, validPrefix);
+      renderSlots();
+    }, 550);
+  }
+}
+
+// Підключення кнопок фішок, очищення та навігації
+document.querySelectorAll('.token-btn').forEach(btn => {
+  const type = btn.dataset.type;
+  btn.addEventListener('click', () => addSoundToken(type));
+  btn.setAttribute('draggable', 'true');
+  btn.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', type);
+  });
+});
+
+document.getElementById('btn-erase').addEventListener('click', () => {
+  if (isLocked || userScheme.length === 0) return;
+  userScheme.pop();
+  SoundFX.removeToken();
+  renderSlots();
+});
+
+document.getElementById('btn-check').addEventListener('click', checkScheme);
+
+document.getElementById('btn-prev').addEventListener('click', () => {
+  SoundFX.navClick();
+  currentWordIndex = (currentWordIndex - 1 + WORDS_DATA.length) % WORDS_DATA.length;
+  renderLevel(currentWordIndex);
+});
+
+document.getElementById('btn-next').addEventListener('click', () => {
+  SoundFX.navClick();
+  currentWordIndex = (currentWordIndex + 1) % WORDS_DATA.length;
+  renderLevel(currentWordIndex);
+});
+
+// Клік по зображенню предмета або плашці слова підстрибує та тішить мишку
+itemFrame.addEventListener('click', () => {
+  SoundFX.navClick();
+  MouseController.lookAtElement(itemFrame);
+});
+wordPlaque.addEventListener('click', () => {
+  SoundFX.navClick();
+  MouseController.lookAtElement(wordPlaque);
+});
+
+
+/* ============================================================================
+   4. ШТУЧНИЙ ІНТЕЛЕКТ ТОВСТОЇ КУМЕДНОЇ МИШКИ
+      - НЕ КЛІПАЄ! Лише переводить погляд (зіниці) за курсором та об'єктами.
+      - Змінює емоції бровами, ротом, щічками, вушками та лапками.
+      - Самостійно ходить по коморі, чухає пузо, нюхає ковбаски, гризе сир.
+   ============================================================================ */
+const MouseController = (() => {
+  const actor = document.getElementById('mouse-actor');
+  const wholeBody = document.getElementById('mouse-whole-body');
+  const bellyGroup = document.getElementById('mouse-belly-group');
+  const pupilsGroup = document.getElementById('pupils-group');
+  const browLeft = document.getElementById('brow-left');
+  const browRight = document.getElementById('brow-right');
+  const mouthPath = document.getElementById('mouth-path');
+  const teeth1 = document.getElementById('mouse-teeth');
+  const teeth2 = document.getElementById('mouse-teeth-2');
+  const armLeft = document.getElementById('arm-left');
+  const armRight = document.getElementById('arm-right');
+  const footLeft = document.getElementById('foot-left');
+  const footRight = document.getElementById('foot-right');
+  const earLeft = document.getElementById('ear-left');
+  const earRight = document.getElementById('ear-right');
+  const noseWhiskers = document.getElementById('nose-whiskers');
+  const snackCheese = document.getElementById('snack-cheese');
+
+  let posX = 14; // позиція в % ширини екрана
+  let targetX = 14;
+  let state = 'idle'; // 'walking', 'scratching', 'eating', 'sniffing', 'reacting'
+  let stateTimer = 0;
+  let stepPhase = 0;
+
+  // Координати погляду (НІЯКОГО КЛІПАННЯ, лише плавний рух зіниць)
+  let lookTargetX = window.innerWidth * 0.5;
+  let lookTargetY = window.innerHeight * 0.4;
+  let curPupilX = 0;
+  let curPupilY = 0;
+
+  window.addEventListener('mousemove', e => {
+    lookTargetX = e.clientX;
+    lookTargetY = e.clientY;
+  });
+
+  // Плавне переведення погляду на конкретний DOM-елемент
+  function lookAtElement(el) {
+    const r = el.getBoundingClientRect();
+    lookTargetX = r.left + r.width / 2;
+    lookTargetY = r.top + r.height / 2;
+  }
+
+  // Встановлення емоції без кліпання (брови + рот + вушка)
+  function setEmotion(emotion) {
+    snackCheese.setAttribute('opacity', '0');
+
+    if (emotion === 'curious') {
+      browLeft.setAttribute('d', 'M128,86 Q148,78 166,87');
+      browRight.setAttribute('d', 'M194,87 Q212,78 232,86');
+      mouthPath.setAttribute('d', 'M156,162 Q168,172 180,161 Q192,172 204,162');
+      mouthPath.setAttribute('fill', 'none');
+      teeth1.setAttribute('opacity', '1');
+      teeth2.setAttribute('opacity', '1');
+    } 
+    else if (emotion === 'thinking') {
+      // Одна брова високо піднята, інша насуплена, погляд уважний
+      browLeft.setAttribute('d', 'M128,78 Q148,68 166,80');
+      browRight.setAttribute('d', 'M194,90 Q212,84 232,90');
+      mouthPath.setAttribute('d', 'M162,165 Q180,160 198,167');
+      mouthPath.setAttribute('fill', 'none');
+    } 
+    else if (emotion === 'happy') {
+      state = 'reacting';
+      stateTimer = 130;
+      browLeft.setAttribute('d', 'M126,76 Q148,64 166,78');
+      browRight.setAttribute('d', 'M194,78 Q212,64 234,76');
+      mouthPath.setAttribute('d', 'M150,158 Q180,192 210,158 Z');
+      mouthPath.setAttribute('fill', '#7a1928');
+      teeth1.setAttribute('opacity', '1');
+      teeth2.setAttribute('opacity', '1');
+    } 
+    else if (emotion === 'sad') {
+      state = 'reacting';
+      stateTimer = 85;
+      browLeft.setAttribute('d', 'M126,92 Q148,82 166,76');
+      browRight.setAttribute('d', 'M194,76 Q212,82 234,92');
+      mouthPath.setAttribute('d', 'M160,174 Q180,154 200,174');
+      mouthPath.setAttribute('fill', 'none');
+    }
+  }
+
+  // Клік по мишці: лоскіт товстого пуза!
+  actor.addEventListener('click', () => {
+    SoundFX.bellyPat();
+    state = 'scratching';
+    stateTimer = 95;
+    setEmotion('happy');
+  });
+
+  // Головний цикл анімації живої мишки (60 FPS)
+  function update(time) {
+    const t = time * 0.001;
+
+    // 1. ОНОВЛЕННЯ ПОГЛЯДУ (ЗІНИЦІ СЛІДКУЮТЬ ЗА ЦІЛЛЮ, ПОВІКИ НІКОЛИ НЕ КЛІПАЮТЬ)
+    const rect = actor.getBoundingClientRect();
+    const eyeCenterX = rect.left + rect.width * 0.5;
+    const eyeCenterY = rect.top + rect.height * 0.34;
+    const dx = lookTargetX - eyeCenterX;
+    const dy = lookTargetY - eyeCenterY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const maxOffset = 6.5;
+    const targetPX = (dx / dist) * Math.min(maxOffset, dist * 0.03);
+    const targetPY = (dy / dist) * Math.min(maxOffset, dist * 0.03);
+
+    curPupilX += (targetPX - curPupilX) * 0.16;
+    curPupilY += (targetPY - curPupilY) * 0.16;
+    pupilsGroup.setAttribute('transform', `translate(${curPupilX.toFixed(2)}, ${curPupilY.toFixed(2)})`);
+
+    // 2. ПОСТІЙНЕ ВОРУШІННЯ ВУСИКІВ ТА ДИХАННЯ ПУЗА
+    const noseWiggle = Math.sin(t * 7) * 2.5;
+    noseWhiskers.style.transform = `rotate(${noseWiggle}deg) scale(${1 + Math.sin(t * 5) * 0.03})`;
+
+    // 3. АВТОНОМНА ПОВЕДІНКА МИШКИ (ХОДЬБА ТА КУМЕДНІ СПРАВИ)
+    stateTimer--;
+    if (stateTimer <= 0) {
+      const rand = Math.random();
+      if (rand < 0.42) {
+        // Вирушає на прогулянку в іншу частину комори (обходячи центральний лоток або вздовж підлоги)
+        state = 'walking';
+        targetX = Math.random() < 0.5 ? (6 + Math.random() * 16) : (66 + Math.random() * 14);
+        stateTimer = 180;
+        setEmotion('curious');
+      } else if (rand < 0.68) {
+        // Чухає своє величезне пузо обома лапками
+        state = 'scratching';
+        stateTimer = 110;
+      } else if (rand < 0.86) {
+        // Дістає крихту сиру і смачно жує
+        state = 'eating';
+        stateTimer = 120;
+        snackCheese.setAttribute('opacity', '1');
+      } else {
+        // Принюхується до підвішених ковбасок зверху
+        state = 'sniffing';
+        stateTimer = 100;
+        lookTargetX = window.innerWidth * 0.25;
+        lookTargetY = 80;
+      }
+    }
+
+    // Виконання поточного стану
+    if (state === 'walking') {
+      const diff = targetX - posX;
+      if (Math.abs(diff) > 0.35) {
+        posX += Math.sign(diff) * 0.14;
+        actor.style.left = `${posX}%`;
+        stepPhase += 0.22;
+
+        // Перевальцем хитається з боку в бік, тупотить лапками, пузо підстрибує
+        const waddleRot = Math.sin(stepPhase) * 4.5;
+        const waddleBounce = Math.abs(Math.cos(stepPhase)) * -10;
+        wholeBody.style.transform = `translateY(${waddleBounce}px) rotate(${waddleRot}deg)`;
+        bellyGroup.style.transform = `translateY(${Math.sin(stepPhase * 2) * 5}px) scale(${1 + Math.sin(stepPhase) * 0.04})`;
+        footLeft.style.transform = `translateY(${Math.max(0, Math.sin(stepPhase) * -14)}px) rotate(${Math.sin(stepPhase) * 12}deg)`;
+        footRight.style.transform = `translateY(${Math.max(0, -Math.sin(stepPhase) * -14)}px) rotate(${-Math.sin(stepPhase) * 12}deg)`;
+        armLeft.style.transform = `rotate(${Math.sin(stepPhase) * 15}deg)`;
+        armRight.style.transform = `rotate(${-Math.sin(stepPhase) * 15}deg)`;
+
+        if (Math.floor(stepPhase * 2) % 6 === 0 && Math.random() < 0.25) {
+          SoundFX.footstep();
+        }
+      } else {
+        state = 'idle';
+        stateTimer = 60;
+      }
+    } 
+    else if (state === 'scratching') {
+      // Весело барабанить лапками по товстому животику
+      const scratch = Math.sin(t * 18) * 14;
+      wholeBody.style.transform = `scale(1.02, 0.98)`;
+      bellyGroup.style.transform = `translateY(${Math.sin(t * 18) * 6}px) scale(${1.04 + Math.sin(t * 9) * 0.03})`;
+      armLeft.style.transform = `rotate(${-22 + scratch}deg) translate(12px, 6px)`;
+      armRight.style.transform = `rotate(${22 - scratch}deg) translate(-12px, 6px)`;
+      earLeft.style.transform = `rotate(${Math.sin(t * 8) * 6}deg)`;
+      earRight.style.transform = `rotate(${-Math.sin(t * 8) * 6}deg)`;
+    } 
+    else if (state === 'eating') {
+      // Підносить лапку з сиром до рота і швидко жує щічками
+      snackCheese.setAttribute('opacity', '1');
+      const chew = Math.sin(t * 20);
+      wholeBody.style.transform = `translateY(${chew * 2}px)`;
+      armRight.style.transform = `rotate(42deg) translate(-22px, -38px)`;
+      armLeft.style.transform = `rotate(-12deg)`;
+      bellyGroup.style.transform = `scale(${1 + chew * 0.025})`;
+      if (Math.random() < 0.04) SoundFX.munch();
+    } 
+    else if (state === 'sniffing') {
+      // Тягнеться носиком угору і крутить вушками
+      snackCheese.setAttribute('opacity', '0');
+      wholeBody.style.transform = `translateY(-6px) scale(0.98, 1.03)`;
+      earLeft.style.transform = `rotate(-10deg)`;
+      earRight.style.transform = `rotate(10deg)`;
+      armLeft.style.transform = `rotate(8deg)`;
+      armRight.style.transform = `rotate(-8deg)`;
+    } 
+    else if (state === 'reacting') {
+      // Емоційна реакція на успіх або помилку
+      const jump = Math.abs(Math.sin(t * 12)) * -18;
+      wholeBody.style.transform = `translateY(${jump}px) scale(${1 + Math.sin(t * 12) * 0.05})`;
+      bellyGroup.style.transform = `translateY(${Math.cos(t * 15) * 8}px)`;
+      armLeft.style.transform = `rotate(-55deg)`;
+      armRight.style.transform = `rotate(55deg)`;
+    } 
+    else {
+      // Спокійне дихання
+      snackCheese.setAttribute('opacity', '0');
+      const breath = Math.sin(t * 3);
+      wholeBody.style.transform = `scale(${1 + breath * 0.015}, ${1 - breath * 0.015})`;
+      bellyGroup.style.transform = `scale(${1 + breath * 0.025})`;
+      armLeft.style.transform = `rotate(0deg)`;
+      armRight.style.transform = `rotate(0deg)`;
+      footLeft.style.transform = ` none`;
+      footRight.style.transform = `none`;
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  requestAnimationFrame(update);
+
+  return {
+    setEmotion,
+    lookAtElement
+  };
+})();
+
+
+/* ============================================================================
+   5. АКТИВНИЙ ФІДБЕК: САЛЮТ ІЗ СИРНИХ ШМАТОЧКІВ, ЯГІД ТА ЗІРОК
+   ============================================================================ */
+function spawnCelebrationParticles() {
+  for (let i = 0; i < 32; i++) {
+    const el = document.createElement('div');
+    el.style.position = 'absolute';
+    const startX = window.innerWidth * 0.5 + (Math.random() - 0.5) * 350;
+    const startY = window.innerHeight * 0.35;
+    el.style.left = `${startX}px`;
+    el.style.top = `${startY}px`;
+    el.style.width = '36px';
+    el.style.height = '36px';
+
+    // 3 види святкових SVG-частинок: шматочок сиру, червона ягідка, золота зірка
+    const kind = i % 3;
+    if (kind === 0) {
+      el.innerHTML = `<svg viewBox="0 0 40 40"><polygon points="4,32 36,24 26,6" fill="#ffd438" stroke="#9e6200" stroke-width="2.5"/><circle cx="20" cy="22" r="4" fill="#b87400"/></svg>`;
+    } else if (kind === 1) {
+      el.innerHTML = `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="14" fill="#ff2e4c" stroke="#7a0617" stroke-width="2.5"/><circle cx="15" cy="15" r="4" fill="#ff9ead"/></svg>`;
+    } else {
+      el.innerHTML = `<svg viewBox="0 0 40 40"><polygon points="20,2 25,14 38,15 28,24 31,37 20,30 9,37 12,24 2,15 15,14" fill="#ffea54" stroke="#b57c00" stroke-width="2"/></svg>`;
+    }
+
+    fxLayer.appendChild(el);
+
+    const vx = (Math.random() - 0.5) * 16;
+    let vy = -6 - Math.random() * 12;
+    let x = startX;
+    let y = startY;
+    let rot = Math.random() * 360;
+    const vRot = (Math.random() - 0.5) * 14;
+    let opacity = 1;
+
+    function animParticle() {
+      x += vx;
+      y += vy;
+      vy += 0.48; // гравітація
+      rot += vRot;
+      opacity -= 0.016;
+      el.style.transform = `translate(${x - startX}px, ${y - startY}px) rotate(${rot}deg)`;
+      el.style.opacity = Math.max(0, opacity);
+      if (opacity > 0) {
+        requestAnimationFrame(animParticle);
+      } else {
+        el.remove();
+      }
+    }
+    requestAnimationFrame(animParticle);
+  }
+}
+
+// Запуск першого рівня
+renderLevel(currentWordIndex);
+</script>
+</body>
+</html>
