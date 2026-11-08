@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Будинок із віконницями — Хто чим зайнятий</title>
+<style>
+  /* Базове скидання стилів */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #1b2e4b;
+    font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
+  }
+
+  /* Головна сцена на весь екран */
+  #stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Сюжетний живий фон саду та неба */
+  #bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+  }
+
+  /* Контейнер будинку із фіксованими пропорціями (4:3), щоб нічого не сплющувалося */
+  #scene-container {
+    position: relative;
+    width: min(94vw, calc(93vh * 1.32));
+    height: min(93vh, calc(94vw / 1.32));
+    z-index: 5;
+  }
+
+  /* SVG фасаду будинку */
+  #house-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  /* Сітка 6 вікон (2 колонки х 3 поверхи) */
+  #windows-grid {
+    position: absolute;
+    top: 23.5%;
+    left: 14.5%;
+    width: 71%;
+    height: 69.5%;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 5.5% 13%;
+    z-index: 10;
+  }
+
+  /* Окреме вікно з 3D-перспективою */
+  .window-box {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    perspective: 1200px;
+    cursor: pointer;
+  }
+
+  /* Внутрішній простір кімнати */
+  .room-viewport {
+    position: absolute;
+    inset: 3%;
+    border-radius: 10px 10px 4px 4px;
+    overflow: hidden;
+    background: #141923;
+    filter: brightness(0.16) saturate(0.35);
+    transition: filter 0.65s ease, box-shadow 0.65s ease;
+    box-shadow: inset 0 0 25px rgba(0,0,0,0.9);
+  }
+
+  /* Ввімкнення теплого світла у відкритій кімнаті */
+  .window-box.open .room-viewport {
+    filter: brightness(1.03) saturate(1.08);
+    box-shadow:
+      inset 0 0 22px rgba(255, 200, 110, 0.45),
+      0 0 35px rgba(255, 215, 130, 0.55);
+  }
+
+  /* Теплий ореол світла на фасаді */
+  .warm-halo {
+    position: absolute;
+    inset: -12%;
+    border-radius: 24px;
+    background: radial-gradient(circle, rgba(255,215,120,0.45) 0%, rgba(255,175,60,0) 70%);
+    opacity: 0;
+    transition: opacity 0.65s ease;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .window-box.open .warm-halo {
+    opacity: 1;
+  }
+
+  /* Зовнішня дерев'яна рама вікна та підвіконня */
+  .window-frame {
+    position: absolute;
+    inset: -3%;
+    width: 106%;
+    height: 108%;
+    pointer-events: none;
+    z-index: 12;
+    filter: drop-shadow(0 5px 7px rgba(0,0,0,0.45));
+  }
+
+  /* Стулки віконниць (складаються гармошкою при відкритті, не перекриваючи сусідні кімнати) */
+  .shutter-wing {
+    position: absolute;
+    top: 2%;
+    bottom: 3%;
+    width: 48.5%;
+    z-index: 15;
+    transform-style: preserve-3d;
+    transition: transform 0.85s cubic-bezier(0.32, 1.28, 0.62, 1);
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+  }
+
+  .shutter-left {
+    left: 1.5%;
+    transform-origin: left center;
+  }
+
+  .shutter-right {
+    right: 1.5%;
+    transform-origin: right center;
+  }
+
+  .window-box.open .shutter-left {
+    transform: rotateY(-122deg) scaleX(0.42);
+  }
+
+  .window-box.open .shutter-right {
+    transform: rotateY(122deg) scaleX(0.42);
+  }
+
+  /* Цільна табличка зі складом по центру віконниць */
+  .syllable-cartouche {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 58%;
+    height: 44%;
+    transform: translate(-50%, -50%) translateZ(4px);
+    z-index: 20;
+    transition: transform 0.7s cubic-bezier(0.34, 1.3, 0.64, 1);
+    filter: drop-shadow(0 5px 8px rgba(0,0,0,0.55));
+    pointer-events: none;
+  }
+
+  .window-box.open .syllable-cartouche {
+    transform: translate(-50%, -148%) scale(0.56);
+  }
+
+  .window-box:not(.open):hover .shutter-left {
+    transform: rotateY(-8deg);
+  }
+  .window-box:not(.open):hover .shutter-right {
+    transform: rotateY(8deg);
+  }
+  .window-box:not(.open):hover .syllable-cartouche {
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+
+  /* Живий персонаж — пухнастий рудий кіт Мурчик у саду */
+  #garden-cat {
+    position: absolute;
+    right: -6%;
+    bottom: 0%;
+    width: 21%;
+    height: 32%;
+    z-index: 30;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+  }
+
+  #garden-cat:hover {
+    transform: scale(1.05);
+  }
+
+  /* Мінімалістичні дерев'яні кнопки навігації (Назад / Далі) */
+  .nav-btn {
+    position: absolute;
+    bottom: 2.2vh;
+    width: clamp(54px, 7.2vh, 72px);
+    height: clamp(54px, 7.2vh, 72px);
+    cursor: pointer;
+    z-index: 50;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    filter: drop-shadow(0 6px 9px rgba(0,0,0,0.5));
+  }
+
+  .nav-btn:hover {
+    transform: scale(1.1) translateY(-2px);
+    filter: drop-shadow(0 8px 12px rgba(0,0,0,0.6)) brightness(1.08);
+  }
+
+  .nav-btn:active {
+    transform: scale(0.94);
+  }
+
+  #btn-prev { left: 2vw; }
+  #btn-next { left: calc(2vw + clamp(64px, 8.5vh, 86px)); }
+
+  /* Шар для святкових іскор */
+  #fx-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 45;
+  }
+
+  /* Анімації фону, персонажів та предметів (обертання строго навколо плечового суглоба) */
+  @keyframes chimneySmoke {
+    0% { transform: translate(0, 0) scale(0.6); opacity: 0.7; }
+    50% { transform: translate(15px, -32px) scale(1.1); opacity: 0.45; }
+    100% { transform: translate(34px, -68px) scale(1.65); opacity: 0; }
+  }
+  @keyframes treeBreeze {
+    0%, 100% { transform: rotate(-1.3deg); }
+    50% { transform: rotate(1.5deg); }
+  }
+  @keyframes shoulderSwing {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(7deg); }
+  }
+  @keyframes shoulderSwingOpposite {
+    0%, 100% { transform: rotate(5deg); }
+    50% { transform: rotate(-6deg); }
+  }
+  @keyframes actionVertical {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes steamFloat {
+    0% { transform: translateY(0) scaleX(0.9); opacity: 0.75; }
+    100% { transform: translateY(-22px) scaleX(1.3); opacity: 0; }
+  }
+  @keyframes pendulumSwing {
+    0%, 100% { transform: rotate(-13deg); }
+    50% { transform: rotate(13deg); }
+  }
+  @keyframes pancakeFlip {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-24px) rotate(180deg); }
+  }
+  @keyframes catTailWag {
+    0%, 100% { transform: rotate(-9deg); }
+    50% { transform: rotate(13deg); }
+  }
+  @keyframes catBounce {
+    0%, 100% { transform: translateY(0) scale(1); }
+    40% { transform: translateY(-16px) scale(1.04, 0.96); }
+  }
+
+  .smoke-c { animation: chimneySmoke 4.4s infinite ease-out; }
+  .smoke-c:nth-child(2) { animation-delay: 1.4s; }
+  .smoke-c:nth-child(3) { animation-delay: 2.8s; }
+  .breeze { transform-origin: bottom center; animation: treeBreeze 5.5s infinite ease-in-out; }
+  .arm-left-anim { animation: shoulderSwing 1.6s infinite ease-in-out; }
+  .arm-right-anim { animation: shoulderSwingOpposite 1.6s infinite ease-in-out; }
+  .anim-updown { animation: actionVertical 1.4s infinite ease-in-out; }
+  .anim-steam { animation: steamFloat 2.2s infinite ease-out; }
+  .anim-pendulum { animation: pendulumSwing 1.5s infinite ease-in-out; }
+  .anim-pancake { animation: pancakeFlip 1.6s infinite ease-in-out; }
+  .cat-bounce { animation: catBounce 0.6s ease; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <!-- 1. ЖИВИЙ ДЕТАЛІЗОВАНИЙ ФОН САДУ -->
+  <svg id="bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="skyG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#2c588f"/>
+        <stop offset="45%" stop-color="#699fd4"/>
+        <stop offset="78%" stop-color="#f0c98e"/>
+        <stop offset="100%" stop-color="#e89e64"/>
+      </linearGradient>
+      <radialGradient id="sunG" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff8cc" stop-opacity="0.95"/>
+        <stop offset="45%" stop-color="#ffd166" stop-opacity="0.45"/>
+        <stop offset="100%" stop-color="#ff9f1c" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="meadowFar" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#589c4c"/>
+        <stop offset="100%" stop-color="#2f6127"/>
+      </linearGradient>
+      <linearGradient id="meadowNear" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#6bb551"/>
+        <stop offset="100%" stop-color="#244f1e"/>
+      </linearGradient>
+      <linearGradient id="barkG" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#452814"/>
+        <stop offset="50%" stop-color="#6e4326"/>
+        <stop offset="100%" stop-color="#381f0e"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Небо та сонце -->
+    <rect width="1920" height="1080" fill="url(#skyG)"/>
+    <circle cx="240" cy="190" r="180" fill="url(#sunG)"/>
+    <circle cx="240" cy="190" r="62" fill="#fff5bf"/>
+
+    <!-- Хмари -->
+    <g fill="#fff6eb" opacity="0.86">
+      <path d="M140,145 Q165,105 215,118 Q250,85 295,112 Q335,110 345,145 Z"/>
+      <path d="M1450,175 Q1480,130 1530,145 Q1575,110 1625,140 Q1665,140 1675,175 Z"/>
+    </g>
+
+    <!-- Далекі зелені пагорби -->
+    <path d="M0,760 Q450,655 960,735 T1920,715 L1920,1080 L0,1080 Z" fill="url(#meadowFar)"/>
+
+    <!-- Квітучі яблуні в саду -->
+    <g class="breeze" style="transform-origin: 180px 930px;">
+      <path d="M170,940 Q188,750 165,610 Q120,540 75,500 M182,700 Q240,610 295,555 M175,640 Q180,530 210,460" stroke="url(#barkG)" stroke-width="28" stroke-linecap="round" fill="none"/>
+      <circle cx="110" cy="525" r="98" fill="#3f853a"/>
+      <circle cx="265" cy="545" r="106" fill="#4c9945"/>
+      <circle cx="190" cy="450" r="118" fill="#5eb054"/>
+      <g fill="#ffd6e6" stroke="#e87ea8" stroke-width="2">
+        <circle cx="95" cy="505" r="10"/><circle cx="155" cy="425" r="12"/><circle cx="230" cy="435" r="11"/>
+        <circle cx="280" cy="525" r="12"/><circle cx="185" cy="520" r="10"/><circle cx="135" cy="570" r="11"/>
+      </g>
+    </g>
+
+    <g class="breeze" style="transform-origin: 1740px 930px; animation-delay: -2.4s;">
+      <path d="M1745,940 Q1730,750 1755,610 Q1805,540 1845,505 M1738,690 Q1680,610 1625,550" stroke="url(#barkG)" stroke-width="28" stroke-linecap="round" fill="none"/>
+      <circle cx="1645" cy="545" r="102" fill="#3f853a"/>
+      <circle cx="1815" cy="530" r="106" fill="#4c9945"/>
+      <circle cx="1730" cy="445" r="118" fill="#5eb054"/>
+      <g fill="#ffd6e6" stroke="#e87ea8" stroke-width="2">
+        <circle cx="1630" cy="525" r="11"/><circle cx="1700" cy="425" r="12"/><circle cx="1775" cy="435" r="11"/>
+        <circle cx="1830" cy="515" r="12"/><circle cx="1730" cy="515" r="10"/>
+      </g>
+    </g>
+
+    <!-- Галявина перед будинком та парканчик -->
+    <path d="M0,865 Q520,815 960,845 T1920,835 L1920,1080 L0,1080 Z" fill="url(#meadowNear)"/>
+    <g fill="#ebd0a9" stroke="#7d4c22" stroke-width="3">
+      <rect x="50" y="875" width="350" height="14" rx="5"/>
+      <rect x="50" y="925" width="350" height="14" rx="5"/>
+      <path d="M75,835 L90,815 L105,835 V965 H75 Z M145,835 L160,815 L175,835 V965 H145 Z M215,835 L230,815 L245,835 V965 H215 Z M285,835 L300,815 L315,835 V965 H285 Z M355,835 L370,815 L385,835 V965 H355 Z"/>
+      <rect x="1520" y="875" width="350" height="14" rx="5"/>
+      <rect x="1520" y="925" width="350" height="14" rx="5"/>
+      <path d="M1545,835 L1560,815 L1575,835 V965 H1545 Z M1615,835 L1630,815 L1645,835 V965 H1615 Z M1685,835 L1700,815 L1715,835 V965 H1685 Z M1755,835 L1770,815 L1785,835 V965 H1755 Z M1825,835 L1840,815 L1855,835 V965 H1825 Z"/>
+    </g>
+
+    <!-- Кущі квітучих троянд -->
+    <g class="breeze" style="transform-origin: 280px 980px;">
+      <ellipse cx="290" cy="960" rx="145" ry="62" fill="#2c6e24"/>
+      <circle cx="210" cy="950" r="16" fill="#ff5c7c"/><circle cx="210" cy="950" r="6" fill="#ffeb75"/>
+      <circle cx="275" cy="935" r="18" fill="#ff8aa3"/><circle cx="275" cy="935" r="7" fill="#ffeb75"/>
+      <circle cx="345" cy="950" r="16" fill="#ffb347"/><circle cx="345" cy="950" r="6" fill="#fff099"/>
+    </g>
+    <g class="breeze" style="transform-origin: 1640px 980px; animation-delay: -1.6s;">
+      <ellipse cx="1630" cy="960" rx="145" ry="62" fill="#2c6e24"/>
+      <circle cx="1550" cy="950" r="16" fill="#ff5c7c"/><circle cx="1550" cy="950" r="6" fill="#ffeb75"/>
+      <circle cx="1615" cy="935" r="18" fill="#ffb347"/><circle cx="1615" cy="935" r="7" fill="#fff099"/>
+      <circle cx="1685" cy="950" r="16" fill="#ff8aa3"/><circle cx="1685" cy="950" r="6" fill="#ffeb75"/>
+    </g>
+  </svg>
+
+  <!-- 2. ТРИПОВЕРХОВИЙ БУДИНОК З КОТАМИ НА ДАХУ ТА ДИМАРЕМ -->
+  <div id="scene-container">
+    <svg id="house-svg" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="facadeG" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#faebd4"/>
+          <stop offset="55%" stop-color="#edd0a4"/>
+          <stop offset="100%" stop-color="#d9b077"/>
+        </linearGradient>
+        <linearGradient id="roofG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#c2412d"/>
+          <stop offset="55%" stop-color="#992b1b"/>
+          <stop offset="100%" stop-color="#6e190d"/>
+        </linearGradient>
+        <pattern id="shinglePat" width="44" height="28" patternUnits="userSpaceOnUse">
+          <path d="M0,14 Q22,30 44,14" fill="none" stroke="#521007" stroke-width="2.5" opacity="0.55"/>
+          <path d="M-22,28 Q0,44 22,28" fill="none" stroke="#e0634e" stroke-width="2" opacity="0.4"/>
+        </pattern>
+        <pattern id="brickPat" width="36" height="20" patternUnits="userSpaceOnUse">
+          <rect width="36" height="20" fill="#a84029"/>
+          <path d="M0,10 H36 M18,0 V10 M0,10 V20 M36,10 V20" stroke="#662010" stroke-width="2"/>
+        </pattern>
+      </defs>
+
+      <!-- Дим із димаря -->
+      <g transform="translate(875, 42)">
+        <circle class="smoke-c" cx="0" cy="0" r="20" fill="#fff9f2"/>
+        <circle class="smoke-c" cx="14" cy="-12" r="26" fill="#fff9f2"/>
+        <circle class="smoke-c" cx="-6" cy="-22" r="22" fill="#fff9f2"/>
+      </g>
+
+      <!-- Цегляний димар -->
+      <rect x="835" y="36" width="78" height="130" fill="url(#brickPat)" stroke="#4a170b" stroke-width="3.5"/>
+      <rect x="826" y="25" width="96" height="16" rx="4" fill="#752414" stroke="#4a170b" stroke-width="3"/>
+
+      <!-- Тінь під будинком -->
+      <ellipse cx="600" cy="874" rx="520" ry="22" fill="rgba(0,0,0,0.38)"/>
+
+      <!-- Стіни будинку -->
+      <rect x="115" y="190" width="970" height="675" rx="10" fill="url(#facadeG)" stroke="#734520" stroke-width="5"/>
+
+      <!-- Кутовий камінь -->
+      <g fill="#cfa06b" stroke="#734520" stroke-width="2">
+        <rect x="115" y="210" width="46" height="26" rx="3"/><rect x="115" y="255" width="32" height="26" rx="3"/>
+        <rect x="115" y="300" width="46" height="26" rx="3"/><rect x="115" y="345" width="32" height="26" rx="3"/>
+        <rect x="115" y="425" width="46" height="26" rx="3"/><rect x="115" y="470" width="32" height="26" rx="3"/>
+        <rect x="115" y="515" width="46" height="26" rx="3"/><rect x="115" y="560" width="32" height="26" rx="3"/>
+        <rect x="115" y="640" width="46" height="26" rx="3"/><rect x="115" y="685" width="32" height="26" rx="3"/>
+        <rect x="115" y="730" width="46" height="26" rx="3"/><rect x="115" y="775" width="32" height="26" rx="3"/>
+
+        <rect x="1039" y="210" width="46" height="26" rx="3"/><rect x="1053" y="255" width="32" height="26" rx="3"/>
+        <rect x="1039" y="300" width="46" height="26" rx="3"/><rect x="1053" y="345" width="32" height="26" rx="3"/>
+        <rect x="1039" y="425" width="46" height="26" rx="3"/><rect x="1053" y="470" width="32" height="26" rx="3"/>
+        <rect x="1039" y="515" width="46" height="26" rx="3"/><rect x="1053" y="560" width="32" height="26" rx="3"/>
+        <rect x="1039" y="640" width="46" height="26" rx="3"/><rect x="1053" y="685" width="32" height="26" rx="3"/>
+        <rect x="1039" y="730" width="46" height="26" rx="3"/><rect x="1053" y="775" width="32" height="26" rx="3"/>
+      </g>
+
+      <!-- Міжповерхові карнизи та фундамент -->
+      <rect x="105" y="408" width="990" height="16" rx="5" fill="#874c20" stroke="#4d280b" stroke-width="3"/>
+      <rect x="105" y="622" width="990" height="16" rx="5" fill="#874c20" stroke="#4d280b" stroke-width="3"/>
+      <rect x="102" y="828" width="996" height="40" rx="6" fill="#7a7067" stroke="#453e38" stroke-width="4"/>
+      <path d="M220,828 V868 M360,828 V868 M500,828 V868 M640,828 V868 M780,828 V868 M920,828 V868" stroke="#453e38" stroke-width="3"/>
+
+      <!-- Черепичний дах і кругле горищне вікно -->
+      <polygon points="58,198 600,22 1142,198" fill="url(#roofG)" stroke="#471007" stroke-width="6" stroke-linejoin="round"/>
+      <polygon points="68,195 600,28 1132,195" fill="url(#shinglePat)"/>
+      <path d="M58,198 L600,22 L1142,198" fill="none" stroke="#faebd4" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="600" cy="122" r="42" fill="#23354d" stroke="#faebd4" stroke-width="7"/>
+      <circle cx="600" cy="122" r="35" fill="none" stroke="#874c20" stroke-width="3.5"/>
+      <path d="M600,87 V157 M565,122 H635" stroke="#faebd4" stroke-width="4.5"/>
+
+      <!-- Коти на даху -->
+      <g transform="translate(310, 74) rotate(-18)">
+        <path d="M-26,22 Q-48,8 -38,-10" fill="none" stroke="#f7f3eb" stroke-width="9" stroke-linecap="round"/>
+        <ellipse cx="0" cy="16" rx="25" ry="16" fill="#f7f3eb" stroke="#9e9487" stroke-width="2"/>
+        <circle cx="18" cy="3" r="14" fill="#f7f3eb" stroke="#9e9487" stroke-width="2"/>
+        <polygon points="9,-7 13,-20 21,-8" fill="#f7f3eb" stroke="#9e9487" stroke-width="1.5"/>
+        <polygon points="19,-8 28,-18 29,-4" fill="#f7f3eb" stroke="#9e9487" stroke-width="1.5"/>
+        <circle cx="22" cy="1" r="2.3" fill="#1d3557"/>
+        <polygon points="29,4 25,7 25,2" fill="#ff8da1"/>
+      </g>
+
+      <g transform="translate(790, 92)">
+        <path d="M22,20 Q46,6 38,-14" fill="none" stroke="#6c757d" stroke-width="9" stroke-linecap="round"/>
+        <ellipse cx="0" cy="16" rx="24" ry="15" fill="#6c757d" stroke="#343a40" stroke-width="2"/>
+        <circle cx="-14" cy="3" r="14" fill="#6c757d" stroke="#343a40" stroke-width="2"/>
+        <polygon points="-24,-5 -20,-18 -12,-7" fill="#6c757d" stroke="#343a40" stroke-width="1.5"/>
+        <polygon points="-12,-7 -4,-18 -2,-5" fill="#6c757d" stroke="#343a40" stroke-width="1.5"/>
+        <path d="M-20,3 Q-16,0 -12,3" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round"/>
+      </g>
+    </svg>
+
+    <!-- СІТКА ІНТЕРАКТИВНИХ ВІКОН -->
+    <div id="windows-grid"></div>
+
+    <!-- ЖИВИЙ ПЕРСОНАЖ: Рудий кіт Мурчик у саду -->
+    <div id="garden-cat" title="Погладь Мурчика!">
+      <svg viewBox="0 0 240 270" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="overflow: visible;">
+        <defs>
+          <linearGradient id="catFur" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffaa45"/>
+            <stop offset="55%" stop-color="#e87714"/>
+            <stop offset="100%" stop-color="#ab4900"/>
+          </linearGradient>
+          <linearGradient id="catChest" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fffdf9"/>
+            <stop offset="100%" stop-color="#ebd9c0"/>
+          </linearGradient>
+        </defs>
+
+        <rect x="48" y="198" width="144" height="68" rx="8" fill="#9c6230" stroke="#522c0c" stroke-width="4"/>
+        <rect x="36" y="186" width="168" height="18" rx="6" fill="#bd7d44" stroke="#522c0c" stroke-width="4"/>
+
+        <g style="transform-origin: 65px 168px; animation: catTailWag 2.4s infinite ease-in-out;">
+          <path d="M68,168 Q14,148 18,95 Q20,72 38,78 Q52,85 46,115 Q42,142 74,158" fill="url(#catFur)" stroke="#6e2e00" stroke-width="3.5"/>
+          <path d="M19,105 Q32,100 45,106 M22,126 Q35,122 49,128" stroke="#853800" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+        </g>
+
+        <path d="M66,155 C62,110 178,110 174,155 C172,188 152,192 120,192 C88,192 68,188 66,155 Z" fill="url(#catFur)" stroke="#6e2e00" stroke-width="3.5"/>
+        <path d="M90,122 Q120,132 150,122 Q156,162 120,178 Q84,162 90,122 Z" fill="url(#catChest)"/>
+        <ellipse cx="94" cy="188" rx="17" ry="11" fill="url(#catChest)" stroke="#6e2e00" stroke-width="3"/>
+        <ellipse cx="146" cy="188" rx="17" ry="11" fill="url(#catChest)" stroke="#6e2e00" stroke-width="3"/>
+
+        <g id="cat-head" style="transform-origin: 120px 92px; transition: transform 0.35s ease;">
+          <path d="M74,72 L60,22 L104,48 Z" fill="url(#catFur)" stroke="#6e2e00" stroke-width="3.5" stroke-linejoin="round"/>
+          <polygon points="75,64 67,32 96,50" fill="#ffadb9"/>
+          <path d="M166,72 L180,22 L136,48 Z" fill="url(#catFur)" stroke="#6e2e00" stroke-width="3.5" stroke-linejoin="round"/>
+          <polygon points="165,64 173,32 144,50" fill="#ffadb9"/>
+
+          <path d="M66,86 C66,48 174,48 174,86 C182,102 164,126 120,126 C76,126 58,102 66,86 Z" fill="url(#catFur)" stroke="#6e2e00" stroke-width="3.5"/>
+          <path d="M120,48 V64 M106,51 L112,63 M134,51 L128,63" stroke="#853800" stroke-width="4" stroke-linecap="round"/>
+
+          <ellipse cx="102" cy="102" rx="20" ry="14" fill="url(#catChest)"/>
+          <ellipse cx="138" cy="102" rx="20" ry="14" fill="url(#catChest)"/>
+
+          <ellipse cx="96" cy="80" rx="12" ry="13" fill="#d8f3dc" stroke="#3d1e00" stroke-width="2.5"/>
+          <ellipse cx="96" cy="80" rx="9" ry="11" fill="#40916c"/>
+          <ellipse cx="96" cy="80" rx="4.5" ry="9" fill="#081c15"/>
+          <circle cx="92" cy="75" r="3.5" fill="#fff"/>
+
+          <ellipse cx="144" cy="80" rx="12" ry="13" fill="#d8f3dc" stroke="#3d1e00" stroke-width="2.5"/>
+          <ellipse cx="144" cy="80" rx="9" ry="11" fill="#40916c"/>
+          <ellipse cx="144" cy="80" rx="4.5" ry="9" fill="#081c15"/>
+          <circle cx="140" cy="75" r="3.5" fill="#fff"/>
+
+          <path d="M112,90 Q120,87 128,90 L120,99 Z" fill="#ff758f" stroke="#591927" stroke-width="2"/>
+          <path d="M104,104 Q112,112 120,100 Q128,112 136,104" fill="none" stroke="#522100" stroke-width="3" stroke-linecap="round"/>
+          <path d="M84,98 L42,92 M84,104 L40,106 M156,98 L198,92 M156,104 L200,106" stroke="#fffbf5" stroke-width="2.5" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 3. КНОПКИ ПЕРЕМИКАННЯ СЛАЙДІВ (Назад та Далі) -->
+  <div id="btn-prev" class="nav-btn">
+    <svg viewBox="0 0 80 80">
+      <defs>
+        <radialGradient id="woodBtnG" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#f7c177"/>
+          <stop offset="65%" stop-color="#c47429"/>
+          <stop offset="100%" stop-color="#783e0b"/>
+        </radialGradient>
+      </defs>
+      <circle cx="40" cy="40" r="36" fill="url(#woodBtnG)" stroke="#472103" stroke-width="4"/>
+      <circle cx="40" cy="40" r="30" fill="none" stroke="#ffe1b3" stroke-width="2" stroke-dasharray="6 4"/>
+      <path d="M46,24 L26,40 L46,56 Z" fill="#fff8e8" stroke="#472103" stroke-width="3.5" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <div id="btn-next" class="nav-btn">
+    <svg viewBox="0 0 80 80">
+      <circle cx="40" cy="40" r="36" fill="url(#woodBtnG)" stroke="#472103" stroke-width="4"/>
+      <circle cx="40" cy="40" r="30" fill="none" stroke="#ffe1b3" stroke-width="2" stroke-dasharray="6 4"/>
+      <path d="M34,24 L54,40 L34,56 Z" fill="#fff8e8" stroke="#472103" stroke-width="3.5" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <!-- Шар салютів та іскор -->
+  <svg id="fx-layer" viewBox="0 0 1920 1080" preserveAspectRatio="none"></svg>
+</div>
+
+<script>
+  /* =========================================================================
+     ЗВУКОВИЙ СИНТЕЗАТОР (Web Audio API) — скрип віконниць та звуки 18 кімнат
+     ========================================================================= */
+  let audioCtx = null;
+  function getAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function playShutterCreak(open = true) {
+    const ctx = getAudio();
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(open ? 140 : 210, now);
+    osc.frequency.exponentialRampToValueAtTime(open ? 255 : 125, now + 0.24);
+    osc.frequency.exponentialRampToValueAtTime(open ? 185 : 155, now + 0.48);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(510, now);
+    filter.Q.setValueAtTime(4.2, now);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.13, now + 0.07);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.52);
+
+    if (open) {
+      [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+        const ch = ctx.createOscillator();
+        const cg = ctx.createGain();
+        ch.type = 'triangle';
+        ch.frequency.setValueAtTime(freq, now + 0.16 + i * 0.06);
+        cg.gain.setValueAtTime(0.001, now + 0.16 + i * 0.06);
+        cg.gain.linearRampToValueAtTime(0.1, now + 0.2 + i * 0.06);
+        cg.gain.exponentialRampToValueAtTime(0.001, now + 0.72 + i * 0.06);
+        ch.connect(cg);
+        cg.connect(ctx.destination);
+        ch.start(now + 0.16 + i * 0.06);
+        ch.stop(now + 0.75 + i * 0.06);
+      });
+    }
+  }
+
+  function playRoomSound(index) {
+    const ctx = getAudio();
+    const now = ctx.currentTime;
+    const scales = [
+      [440, 554.37, 659.25, 880],
+      [392, 493.88, 587.33, 783.99],
+      [523.25, 659.25, 783.99, 1046.5],
+      [349.23, 440, 523.25, 698.46],
+      [493.88, 622.25, 739.99, 987.77],
+      [587.33, 739.99, 880, 1174.66]
+    ];
+    const notes = scales[index % scales.length];
+    notes.forEach((f, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = i % 2 === 0 ? 'sine' : 'triangle';
+      o.frequency.setValueAtTime(f, now + i * 0.08);
+      o.frequency.exponentialRampToValueAtTime(f * 1.06, now + i * 0.08 + 0.18);
+      g.gain.setValueAtTime(0.11, now + i * 0.08);
+      g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.22);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(now + i * 0.08);
+      o.stop(now + i * 0.08 + 0.24);
+    });
+  }
+
+  function playCatMeow() {
+    const ctx = getAudio();
+    const now = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(460, now);
+    o.frequency.exponentialRampToValueAtTime(780, now + 0.16);
+    o.frequency.exponentialRampToValueAtTime(410, now + 0.42);
+    g.gain.setValueAtTime(0.01, now);
+    g.gain.linearRampToValueAtTime(0.15, now + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start(now);
+    o.stop(now + 0.45);
+  }
+
+  /* =========================================================================
+     ГЕНЕРАТОР АНАТОМІЧНИХ ПЕРСОНАЖІВ ІЗ ПРИКРІПЛЕНИМИ ДО ПЛЕЧЕЙ РУКАМИ
+     ========================================================================= */
+  // Малює суцільну руку (від плеча через лікоть і передпліччя до кисті з пальчиком)
+  function drawLimb({
+    sx, sy, ex, ey, hx, hy,
+    shirtColor, skin = '#ffdfc4', skinShadow = '#d9a17c',
+    toolSVG = '', animClass = ''
+  }) {
+    // Проміжна точка манжети рукава (60% від ліктя до кисті або на лікті)
+    const cx = ex + (hx - ex) * 0.28;
+    const cy = ey + (hy - ey) * 0.28;
+    return `
+      <g class="${animClass}" style="transform-origin: ${sx}px ${sy}px;">
+        <!-- Тінь/контур оголеного передпліччя -->
+        <path d="M${ex},${ey} L${hx},${hy}" stroke="${skinShadow}" stroke-width="12.5" stroke-linecap="round" fill="none"/>
+        <!-- Оголене передпліччя -->
+        <path d="M${ex},${ey} L${hx},${hy}" stroke="${skin}" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <!-- Контур рукава від плечового суглоба до ліктя -->
+        <path d="M${sx},${sy} Q${ex},${ey} ${cx},${cy}" stroke="rgba(0,0,0,0.32)" stroke-width="16.5" stroke-linecap="round" fill="none"/>
+        <!-- Тканина рукава від плеча -->
+        <path d="M${sx},${sy} Q${ex},${ey} ${cx},${cy}" stroke="${shirtColor}" stroke-width="13.5" stroke-linecap="round" fill="none"/>
+        <!-- Долоня та великий пальчик -->
+        <circle cx="${hx}" cy="${hy}" r="6.8" fill="${skin}" stroke="${skinShadow}" stroke-width="1.8"/>
+        <circle cx="${hx - 3}" cy="${hy - 3}" r="2.8" fill="${skin}" stroke="${skinShadow}" stroke-width="1.2"/>
+        <!-- Інструмент або предмет безпосередньо в долоні -->
+        ${toolSVG}
+      </g>
+    `;
+  }
+
+  // Малює тулуб і голову персонажа (у локальних координатах плечі розташовані в точках (10, 70) та (60, 70))
+  function renderHumanBody({
+    x = 185, y = 42,
+    skin = '#ffdfc4', skinShadow = '#d9a17c',
+    hairColor = '#5c3317', hairStyle = 'short',
+    shirtColor = '#3a7ca5', apronColor = null,
+    glasses = false, hat = null,
+    lookDir = -1
+  }) {
+    const eyeShift = lookDir * 2.5;
+    let hairBack = '';
+    let hairFront = '';
+
+    if (hairStyle === 'bun') {
+      hairBack = `<circle cx="${35 - lookDir * 18}" cy="14" r="14" fill="${hairColor}"/>`;
+      hairFront = `<path d="M12,30 C12,6 58,6 58,30 C50,18 22,18 12,30 Z" fill="${hairColor}"/>`;
+    } else if (hairStyle === 'long') {
+      hairBack = `<path d="M10,28 C6,55 8,85 16,95 H54 C62,85 64,55 60,28 Z" fill="${hairColor}"/>`;
+      hairFront = `<path d="M11,32 C12,5 58,5 59,32 C46,16 24,18 11,32 Z" fill="${hairColor}"/>`;
+    } else if (hairStyle === 'curly') {
+      hairBack = `<circle cx="14" cy="24" r="12" fill="${hairColor}"/><circle cx="56" cy="24" r="12" fill="${hairColor}"/><circle cx="35" cy="12" r="14" fill="${hairColor}"/>`;
+      hairFront = `<path d="M14,28 Q25,14 35,22 Q45,14 56,28" fill="none" stroke="${hairColor}" stroke-width="8" stroke-linecap="round"/>`;
+    } else {
+      hairFront = `<path d="M12,31 C11,6 59,6 58,31 C48,17 24,17 12,31 Z" fill="${hairColor}"/>`;
+    }
+
+    let hatSVG = '';
+    if (hat === 'chef') {
+      hatSVG = `
+        <path d="M11,20 C2,2 22,-6 35,2 C48,-6 68,2 59,20 Z" fill="#ffffff" stroke="#c2c8cf" stroke-width="2"/>
+        <rect x="13" y="17" width="44" height="9" rx="3" fill="#ffffff" stroke="#c2c8cf" stroke-width="2"/>
+      `;
+    } else if (hat === 'beret') {
+      hatSVG = `<path d="M8,22 C12,6 55,4 64,18 C52,24 20,24 8,22 Z" fill="#1d4ed8" stroke="#1e3a8a" stroke-width="2"/>`;
+    } else if (hat === 'straw') {
+      hatSVG = `
+        <ellipse cx="35" cy="20" rx="32" ry="7" fill="#f3c65f" stroke="#9e7219" stroke-width="2"/>
+        <path d="M17,20 C19,3 51,3 53,20 Z" fill="#f3c65f" stroke="#9e7219" stroke-width="2"/>
+        <path d="M18,18 H52" stroke="#e63946" stroke-width="3.5"/>
+      `;
+    }
+
+    const glassesSVG = glasses ? `
+      <g stroke="#4a3520" stroke-width="2" fill="rgba(255,255,255,0.28)">
+        <circle cx="${26 + eyeShift}" cy="38" r="6.5"/>
+        <circle cx="${44 + eyeShift}" cy="38" r="6.5"/>
+        <line x1="${32.5 + eyeShift}" y1="38" x2="${37.5 + eyeShift}" y2="38"/>
+      </g>
+    ` : '';
+
+    const apronSVG = apronColor ? `
+      <path d="M15,69 H55 L59,145 H11 Z" fill="${apronColor}" stroke="rgba(0,0,0,0.25)" stroke-width="1.8"/>
+      <path d="M24,69 V58 M46,69 V58" stroke="${apronColor}" stroke-width="3.5"/>
+    ` : '';
+
+    return `
+      <g transform="translate(${x}, ${y})">
+        ${hairBack}
+        <rect x="27" y="54" width="16" height="16" rx="5" fill="${skinShadow}"/>
+        <!-- Тулуб із плечовими суглобами в (10,70) та (60,70) -->
+        <path d="M6,72 C6,61 20,60 35,60 C50,60 64,61 64,72 L70,145 H0 Z" fill="${shirtColor}" stroke="rgba(0,0,0,0.3)" stroke-width="2"/>
+        <polygon points="24,60 35,71 46,60" fill="#fff8eb" stroke="rgba(0,0,0,0.2)" stroke-width="1.5"/>
+        ${apronSVG}
+        <ellipse cx="12" cy="40" rx="4.5" ry="7" fill="${skin}" stroke="${skinShadow}" stroke-width="1.8"/>
+        <ellipse cx="58" cy="40" rx="4.5" ry="7" fill="${skin}" stroke="${skinShadow}" stroke-width="1.8"/>
+        <path d="M13,32 C13,14 57,14 57,32 C57,47 47,60 35,60 C23,60 13,47 13,32 Z" fill="${skin}" stroke="${skinShadow}" stroke-width="2"/>
+        <ellipse cx="21" cy="45" rx="5" ry="3" fill="#ff8fa3" opacity="0.45"/>
+        <ellipse cx="49" cy="45" rx="5" ry="3" fill="#ff8fa3" opacity="0.45"/>
+        <path d="M${21 + eyeShift},31 Q${26 + eyeShift},28 ${31 + eyeShift},31 M${39 + eyeShift},31 Q${44 + eyeShift},28 ${49 + eyeShift},31" fill="none" stroke="${hairColor}" stroke-width="2.2" stroke-linecap="round"/>
+        <ellipse cx="${26 + eyeShift}" cy="38" rx="4.2" ry="4.5" fill="#ffffff" stroke="#3b2314" stroke-width="1.4"/>
+        <circle cx="${26 + eyeShift * 1.2}" cy="38" r="2.6" fill="#2b1d12"/>
+        <circle cx="${25 + eyeShift}" cy="36.8" r="1.1" fill="#ffffff"/>
+        <ellipse cx="${44 + eyeShift}" cy="38" rx="4.2" ry="4.5" fill="#ffffff" stroke="#3b2314" stroke-width="1.4"/>
+        <circle cx="${44 + eyeShift * 1.2}" cy="38" r="2.6" fill="#2b1d12"/>
+        <circle cx="${43 + eyeShift}" cy="36.8" r="1.1" fill="#ffffff"/>
+        <path d="M${35 + eyeShift * 0.6},36 L${33 + eyeShift},44 Q35,46 ${37 + eyeShift * 0.5},44" fill="none" stroke="${skinShadow}" stroke-width="2" stroke-linecap="round"/>
+        <path d="M28,49 Q35,55 42,49" fill="none" stroke="#8f3929" stroke-width="2.4" stroke-linecap="round"/>
+        ${glassesSVG}
+        ${hairFront}
+        ${hatSVG}
+      </g>
+    `;
+  }
+
+  // Малює обидві прикріплені до плечей руки поверх столу/предметів у тих самих координатах (x, y)
+  function renderAttachedArms({ x = 185, y = 42, shirtColor, leftArm, rightArm }) {
+    return `
+      <g transform="translate(${x}, ${y})">
+        ${leftArm ? drawLimb({ sx: 11, sy: 70, shirtColor, ...leftArm }) : ''}
+        ${rightArm ? drawLimb({ sx: 59, sy: 70, shirtColor, ...rightArm }) : ''}
+      </g>
+    `;
+  }
+
+  // Базова об'ємна кімната
+  function renderRoomBase({ wallColor, sideWallColor, floorColor, rugColor = null }) {
+    return `
+      <rect width="320" height="220" fill="${wallColor}"/>
+      <polygon points="0,0 34,24 34,168 0,220" fill="${sideWallColor}"/>
+      <polygon points="320,0 286,24 286,168 320,220" fill="${sideWallColor}"/>
+      <polygon points="0,0 320,0 286,24 34,24" fill="#fff6e3" opacity="0.65"/>
+      <line x1="160" y1="0" x2="160" y2="18" stroke="#5c3a1e" stroke-width="2.5"/>
+      <path d="M142,22 C142,10 178,10 178,22 Z" fill="#ffbe0b" stroke="#8c5800" stroke-width="2"/>
+      <polygon points="145,22 175,22 250,175 70,175" fill="rgba(255,235,150,0.16)"/>
+      <polygon points="34,168 286,168 320,220 0,220" fill="${floorColor}" stroke="#593518" stroke-width="2"/>
+      ${rugColor ? `<ellipse cx="160" cy="196" rx="95" ry="16" fill="${rugColor}" stroke="#fff3d1" stroke-width="2.5"/>` : ''}
+    `;
+  }
+
+  /* =========================================================================
+     КАТАЛОГ ІЗ 18 УНІКАЛЬНИХ КІМНАТ (УСІ РУКИ ПРИЄДНАНІ ДО ПЛЕЧЕЙ!)
+     ========================================================================= */
+  const LEVELS = [
+    /* ================= СЛАЙД 1: ПРЯМІ СКЛАДИ З М ================= */
+    [
+      {
+        syl: 'МА', color: '#2b7a4b', border: '#144527', flower: '#ff6b8b',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#faedcd', sideWallColor: '#e9d8a6', floorColor: '#bc6c25' })}
+            <!-- Полиця зі спеціями -->
+            <rect x="46" y="42" width="110" height="7" rx="3" fill="#7f4f24"/>
+            <rect x="56" y="24" width="18" height="18" rx="3" fill="#e63946" stroke="#780000" stroke-width="1.5"/>
+            <rect x="82" y="20" width="20" height="22" rx="4" fill="#52b788" stroke="#1b4332" stroke-width="1.5"/>
+            <rect x="110" y="25" width="16" height="17" rx="3" fill="#ffb703" stroke="#7f5539" stroke-width="1.5"/>
+            <!-- Кухар (тіло) -->
+            ${renderHumanBody({ x: 185, y: 42, hairColor: '#4a2c11', shirtColor: '#e63946', apronColor: '#ffffff', hat: 'chef' })}
+            <!-- Кухонна плита та ронделик із супом -->
+            <rect x="25" y="152" width="270" height="68" fill="#7f4f24" stroke="#432818" stroke-width="2.5"/>
+            <rect x="20" y="144" width="280" height="10" rx="3" fill="#ddb892" stroke="#432818" stroke-width="2"/>
+            <ellipse cx="118" cy="143" rx="26" ry="5" fill="#00b4d8"/>
+            <g transform="translate(80, 102)">
+              <rect x="-34" y="12" width="38" height="7" rx="3" fill="#2b1d12"/>
+              <rect x="0" y="8" width="76" height="33" rx="7" fill="#d96b27" stroke="#5c2808" stroke-width="2.2"/>
+              <ellipse cx="38" cy="10" rx="38" ry="8" fill="#ff9f1c" stroke="#5c2808" stroke-width="2"/>
+              <circle cx="24" cy="10" r="4.5" fill="#e63946"/><circle cx="48" cy="11" r="4" fill="#52b788"/><circle cx="36" cy="8" r="4" fill="#ffca3a"/>
+              <path class="anim-steam" d="M22,-2 Q16,-16 25,-26" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+              <path class="anim-steam" style="animation-delay:0.8s" d="M46,-2 Q52,-16 42,-26" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+            </g>
+            <!-- Приєднані до плечей руки кухаря: ліва рука мішає суп дерев'яною ложкою, права тримає сільничку -->
+            ${renderAttachedArms({
+              x: 185, y: 42, shirtColor: '#e63946',
+              leftArm: {
+                ex: -16, ey: 76, hx: -44, hy: 58, animClass: 'arm-left-anim',
+                toolSVG: `<line x1="-44" y1="58" x2="-68" y2="73" stroke="#8d5524" stroke-width="5" stroke-linecap="round"/>`
+              },
+              rightArm: {
+                ex: 72, ey: 88, hx: 58, hy: 102,
+                toolSVG: `<rect x="50" y="92" width="12" height="16" rx="3" fill="#fff" stroke="#6c757d" stroke-width="1.5"/>`
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МО', color: '#2b5f8f', border: '#123352', flower: '#ffd166',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#f5dec0', sideWallColor: '#e0c097', floorColor: '#9c6644' })}
+            <rect x="44" y="32" width="68" height="44" rx="4" fill="#b08968" stroke="#5c3a21" stroke-width="2"/>
+            <path d="M58,40 V66 M78,40 V64 M96,40 V66" stroke="#343a40" stroke-width="4" stroke-linecap="round"/>
+            <!-- Майстриня (тіло) -->
+            ${renderHumanBody({ x: 188, y: 42, hairColor: '#6f1d1b', hairStyle: 'bun', shirtColor: '#f4a261', apronColor: '#264653', hat: 'beret' })}
+            <!-- Верстак, банка синьої фарби та дерев'яна рамка -->
+            <rect x="25" y="154" width="270" height="66" fill="#8d5524" stroke="#432818" stroke-width="2.5"/>
+            <rect x="48" y="118" width="32" height="36" rx="4" fill="#e9ecef" stroke="#495057" stroke-width="2"/>
+            <path d="M50,120 H78 V132 Q70,140 64,129 Q56,140 50,130 Z" fill="#1d4ed8"/>
+            <g transform="translate(88, 50)">
+              <rect x="0" y="0" width="74" height="98" rx="5" fill="#d4a373" stroke="#5c3a21" stroke-width="2.5"/>
+              <path d="M0,5 Q0,0 5,0 H69 Q74,0 74,5 V58 H58 V16 H16 V82 H0 Z" fill="#1d4ed8"/>
+              <rect x="16" y="16" width="42" height="66" fill="#fffdf7" stroke="#5c3a21" stroke-width="2"/>
+            </g>
+            <!-- Приєднані до плечей руки: ліва рука фарбує рамку пензлем у синій колір, права тримає палітру -->
+            ${renderAttachedArms({
+              x: 188, y: 42, shirtColor: '#f4a261',
+              leftArm: {
+                ex: -14, ey: 76, hx: -34, hy: 60, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <line x1="-34" y1="60" x2="-52" y2="68" stroke="#8d5524" stroke-width="5" stroke-linecap="round"/>
+                  <polygon points="-50,64 -60,68 -56,75 -47,70" fill="#1d4ed8"/>
+                `
+              },
+              rightArm: {
+                ex: 72, ey: 88, hx: 52, hy: 98,
+                toolSVG: `
+                  <ellipse cx="44" cy="98" rx="16" ry="10" fill="#e09f67" stroke="#5c3a21" stroke-width="1.8"/>
+                  <circle cx="38" cy="96" r="3.5" fill="#1d4ed8"/><circle cx="46" cy="101" r="3.5" fill="#e63946"/><circle cx="50" cy="95" r="3.5" fill="#ffbe0b"/>
+                `
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МУ', color: '#8a3d6b', border: '#4a1836', flower: '#7fd8ff',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#caf0f8', sideWallColor: '#90e0ef', floorColor: '#0077b6' })}
+            <ellipse cx="148" cy="52" rx="28" ry="22" fill="#e0fbfc" stroke="#ffffff" stroke-width="5"/>
+            <!-- Хлопчик (тіло) -->
+            ${renderHumanBody({ x: 192, y: 44, hairColor: '#7f4f24', hairStyle: 'short', shirtColor: '#2ec4b6' })}
+            <!-- Песик спанієль, чиї лапки анатомічно тягнуться від тулуба просто в умивальник -->
+            <g transform="translate(42, 60)">
+              <ellipse cx="18" cy="36" rx="10" ry="22" transform="rotate(18 18 36)" fill="#6f4518" stroke="#3d230a" stroke-width="2"/>
+              <circle cx="44" cy="32" r="21" fill="#f3d5b5" stroke="#6f4518" stroke-width="2.2"/>
+              <circle cx="38" cy="27" r="7" fill="#6f4518"/><circle cx="38" cy="26" r="2.5" fill="#fff"/>
+              <circle cx="52" cy="27" r="2.8" fill="#111"/><ellipse cx="60" cy="33" rx="5.5" ry="4" fill="#221105"/>
+              <path d="M50,42 Q55,52 60,43" fill="#ff6b8b"/>
+              <path d="M18,52 C14,85 18,110 62,110 C64,82 58,52 18,52 Z" fill="#f3d5b5" stroke="#6f4518" stroke-width="2.2"/>
+              <!-- Передні лапи песика, приєднані до грудей і протягнуті в раковину -->
+              <path d="M52,64 Q74,68 92,62" stroke="#6f4518" stroke-width="12" stroke-linecap="round" fill="none"/>
+              <path d="M52,64 Q74,68 92,62" stroke="#f3d5b5" stroke-width="9" stroke-linecap="round" fill="none"/>
+              <ellipse cx="95" cy="62" rx="8" ry="5.5" fill="#f3d5b5" stroke="#6f4518" stroke-width="1.8"/>
+            </g>
+            <!-- Кран та умивальник -->
+            <path d="M136,102 Q136,86 150,86 Q162,86 162,98" fill="none" stroke="#6c757d" stroke-width="5.5" stroke-linecap="round"/>
+            <path d="M160,99 V126" stroke="#48cae4" stroke-width="3.5" stroke-dasharray="5 3"/>
+            <!-- Обидві приєднані руки хлопчика намилюють лапки песика -->
+            ${renderAttachedArms({
+              x: 192, y: 44, shirtColor: '#2ec4b6',
+              leftArm: {
+                ex: -14, ey: 76, hx: -42, hy: 76, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <circle cx="-48" cy="74" r="8" fill="#ffffff" opacity="0.92"/>
+                  <circle cx="-38" cy="72" r="7" fill="#ffffff" opacity="0.92"/>
+                  <rect x="-49" y="72" width="13" height="7" rx="3.5" fill="#ff758f"/>
+                `
+              },
+              rightArm: {
+                ex: 38, ey: 86, hx: -24, hy: 78, animClass: 'arm-right-anim'
+              }
+            })}
+            <!-- Чаша умивальника поверх нижнього краю долонь -->
+            <path d="M98,126 H202 Q196,166 150,166 Q104,166 98,126 Z" fill="#ffffff" stroke="#adb5bd" stroke-width="3"/>
+            <rect x="136" y="164" width="28" height="56" fill="#e9ecef" stroke="#adb5bd" stroke-width="2.5"/>
+          </svg>`
+      },
+      {
+        syl: 'МИ', color: '#b85a23', border: '#632907', flower: '#80ed99',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#fff1d0', sideWallColor: '#f3d59b', floorColor: '#c98a5b', rugColor: '#52b788' })}
+            <!-- Дитина (тіло) -->
+            ${renderHumanBody({ x: 185, y: 50, hairColor: '#d97724', hairStyle: 'curly', shirtColor: '#8338ec' })}
+            <!-- Дерев'яна конячка-гойдалка -->
+            <g transform="translate(38, 108)" class="anim-pendulum" style="transform-origin: 42px 62px;">
+              <path d="M4,62 Q42,78 82,62" fill="none" stroke="#e63946" stroke-width="6" stroke-linecap="round"/>
+              <line x1="22" y1="64" x2="32" y2="38" stroke="#8d5524" stroke-width="5"/>
+              <line x1="62" y1="64" x2="52" y2="38" stroke="#8d5524" stroke-width="5"/>
+              <ellipse cx="42" cy="36" rx="22" ry="11" fill="#e09f67" stroke="#6f4518" stroke-width="2"/>
+              <path d="M54,32 L66,12 L76,18 L64,38 Z" fill="#e09f67" stroke="#6f4518" stroke-width="2"/>
+            </g>
+            <!-- Вежа з кубиків -->
+            <g transform="translate(124, 92)">
+              <rect x="0" y="64" width="34" height="28" rx="3" fill="#ff595e" stroke="#800f2f" stroke-width="2"/>
+              <rect x="3" y="36" width="28" height="28" rx="3" fill="#ffca3a" stroke="#996e00" stroke-width="2"/>
+              <rect x="6" y="10" width="22" height="26" rx="3" fill="#1982c4" stroke="#0a369d" stroke-width="2"/>
+            </g>
+            <!-- Приєднані до плечей руки: ліва рука ставить зелений дашок на вежу, права тримає запасний кубик -->
+            ${renderAttachedArms({
+              x: 185, y: 50, shirtColor: '#8338ec',
+              leftArm: {
+                ex: -12, ey: 64, hx: -38, hy: 48, animClass: 'arm-left-anim',
+                toolSVG: `<polygon points="-58,52 -44,32 -30,52" fill="#8ac926" stroke="#386641" stroke-width="2"/>`
+              },
+              rightArm: {
+                ex: 70, ey: 86, hx: 52, hy: 98,
+                toolSVG: `<rect x="38" y="92" width="18" height="18" rx="3" fill="#ff9f1c" stroke="#99582a" stroke-width="1.8"/>`
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МЕ', color: '#3a7d7c', border: '#184544', flower: '#ff9f1c',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#f8d8c8', sideWallColor: '#e5b8a2', floorColor: '#7f4f24', rugColor: '#e76f51' })}
+            <!-- М'яке крісло та бабуся -->
+            <rect x="122" y="54" width="96" height="126" rx="28" fill="#2a9d8f" stroke="#164a41" stroke-width="3"/>
+            ${renderHumanBody({ x: 135, y: 44, hairColor: '#dee2e6', hairStyle: 'bun', shirtColor: '#e76f51', glasses: true })}
+            <!-- В'язаний смугастий шарф між спицями -->
+            <g transform="translate(135, 130)">
+              <path d="M22,6 Q35,38 20,62 H48 Q54,38 44,6 Z" fill="#ffbe0b" stroke="#8f3929" stroke-width="2"/>
+              <path d="M23,18 H46 M22,34 H47 M21,50 H48" stroke="#e63946" stroke-width="5"/>
+            </g>
+            <!-- Обидві руки бабусі прикріплені до плечей і тримають спиці -->
+            ${renderAttachedArms({
+              x: 135, y: 44, shirtColor: '#e76f51',
+              leftArm: {
+                ex: -2, ey: 84, hx: 18, hy: 92, animClass: 'arm-left-anim',
+                toolSVG: `<line x1="18" y1="92" x2="44" y2="78" stroke="#e9ecef" stroke-width="3" stroke-linecap="round"/>`
+              },
+              rightArm: {
+                ex: 72, ey: 84, hx: 52, hy: 92, animClass: 'arm-right-anim',
+                toolSVG: `<line x1="52" y1="92" x2="26" y2="78" stroke="#e9ecef" stroke-width="3" stroke-linecap="round"/>`
+              }
+            })}
+            <!-- Кошик із клубками ниток -->
+            <circle cx="72" cy="154" r="12" fill="#ff595e"/><circle cx="92" cy="152" r="13" fill="#ffca3a"/>
+            <path d="M54,158 H110 L102,190 H62 Z" fill="#c98a4b" stroke="#5c3a21" stroke-width="2.2"/>
+          </svg>`
+      },
+      {
+        syl: 'МІ', color: '#6a4c93', border: '#342052', flower: '#ffca3a',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#d8f3dc', sideWallColor: '#b7e4c7', floorColor: '#7f5539' })}
+            <!-- Садівниця (тіло) -->
+            ${renderHumanBody({ x: 192, y: 42, hairColor: '#3d2314', hairStyle: 'long', shirtColor: '#52b788', hat: 'straw' })}
+            <!-- Стіл із вазонами -->
+            <rect x="25" y="152" width="270" height="68" fill="#6f4518" stroke="#3d230a" stroke-width="2.5"/>
+            <polygon points="48,116 86,116 78,152 56,152" fill="#e07a5f" stroke="#7d3624" stroke-width="2"/>
+            <ellipse cx="67" cy="92" rx="16" ry="24" fill="#2a9d8f" stroke="#13544c" stroke-width="2"/>
+            <circle cx="67" cy="66" r="8" fill="#ff5d8f"/>
+            <polygon points="104,116 144,116 136,152 112,152" fill="#f4a261" stroke="#8c4e1c" stroke-width="2"/>
+            <path d="M124,116 Q120,84 128,58" fill="none" stroke="#2b7a28" stroke-width="4"/>
+            <circle cx="128" cy="54" r="13" fill="#ff6b6b" stroke="#800f2f" stroke-width="2"/><circle cx="128" cy="54" r="5" fill="#ffd166"/>
+            <!-- Приєднані руки: ліва рука тримає золоту лійку і поливає квіти, права тримає секатор -->
+            ${renderAttachedArms({
+              x: 192, y: 42, shirtColor: '#52b788',
+              leftArm: {
+                ex: -12, ey: 74, hx: -30, hy: 62, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <rect x="-58" y="52" width="28" height="22" rx="5" fill="#ffd166" stroke="#8f6200" stroke-width="2"/>
+                  <line x1="-58" y1="62" x2="-78" y2="50" stroke="#ffd166" stroke-width="5" stroke-linecap="round"/>
+                  <path d="M-82,56 L-90,72 M-78,58 L-82,74" stroke="#00b4d8" stroke-width="2.5" stroke-dasharray="3 4"/>
+                `
+              },
+              rightArm: {
+                ex: 72, ey: 88, hx: 56, hy: 102
+              }
+            })}
+          </svg>`
+      }
+    ],
+
+    /* ================= СЛАЙД 2: ЗАКРИТІ СКЛАДИ (6 НОВИХ КІМНАТ!) ================= */
+    [
+      {
+        syl: 'АМ', color: '#9e3b33', border: '#541712', flower: '#ffd166',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#f3e5d8', sideWallColor: '#dec5b0', floorColor: '#6f4518', rugColor: '#9b2226' })}
+            <!-- Музикант (тіло) -->
+            ${renderHumanBody({ x: 162, y: 38, hairColor: '#2b1d12', hairStyle: 'curly', shirtColor: '#1d3557', apronColor: '#9b2226' })}
+            <!-- Пюпітр із нотами -->
+            <line x1="76" y1="115" x2="76" y2="188" stroke="#343a40" stroke-width="4"/>
+            <polygon points="48,88 104,88 98,118 54,118" fill="#fffdf7" stroke="#495057" stroke-width="2.5"/>
+            <path d="M56,98 H94 M56,106 H94" stroke="#495057" stroke-width="1.5"/>
+            <!-- Віолончель перед музикантом -->
+            <g transform="translate(135, 62)">
+              <line x1="28" y1="-8" x2="28" y2="128" stroke="#3d230a" stroke-width="5"/>
+              <path d="M12,38 C2,38 4,62 16,68 C0,78 0,112 28,112 C56,112 56,78 40,68 C52,62 54,38 44,38 Z" fill="#b5541e" stroke="#4a1d05" stroke-width="2.5"/>
+              <line x1="26" y1="12" x2="26" y2="96" stroke="#f8f9fa" stroke-width="1.2"/>
+              <line x1="30" y1="12" x2="30" y2="96" stroke="#f8f9fa" stroke-width="1.2"/>
+            </g>
+            <!-- Приєднані до плечей руки віолончеліста: ліва веде смичок, права затискає струни на грифі -->
+            ${renderAttachedArms({
+              x: 162, y: 38, shirtColor: '#1d3557',
+              leftArm: {
+                ex: -12, ey: 82, hx: 4, hy: 92, animClass: 'arm-left-anim',
+                toolSVG: `<line x1="-28" y1="96" x2="38" y2="86" stroke="#5c2808" stroke-width="4" stroke-linecap="round"/>`
+              },
+              rightArm: {
+                ex: 58, ey: 56, hx: 32, hy: 48
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'ОМ', color: '#2f6f7a', border: '#133940', flower: '#ff85a1',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#ffe5ec', sideWallColor: '#ffc2d1', floorColor: '#a66329' })}
+            <!-- Кондитерка (тіло) -->
+            ${renderHumanBody({ x: 188, y: 40, hairColor: '#9c5221', hairStyle: 'bun', shirtColor: '#ff758f', apronColor: '#fff', hat: 'chef' })}
+            <rect x="25" y="154" width="270" height="66" fill="#d4a373" stroke="#5c3a21" stroke-width="2.5"/>
+            <!-- Двоярусний святковий торт -->
+            <g transform="translate(76, 82)">
+              <rect x="24" y="64" width="44" height="8" rx="3" fill="#adb5bd"/>
+              <rect x="6" y="38" width="80" height="26" rx="5" fill="#fff0f3" stroke="#c9184a" stroke-width="2"/>
+              <path d="M6,42 Q18,52 30,42 Q44,52 58,42 Q72,52 86,42" fill="none" stroke="#ff4d6d" stroke-width="4"/>
+              <rect x="18" y="14" width="56" height="24" rx="5" fill="#ffccd5" stroke="#c9184a" stroke-width="2"/>
+              <circle cx="28" cy="10" r="5" fill="#d90429"/><circle cx="46" cy="10" r="5" fill="#d90429"/><circle cx="64" cy="10" r="5" fill="#d90429"/>
+            </g>
+            <!-- Приєднані до плечей руки: ліва прикрашає торт з кондитерського мішка, права тримає мисочку з ягодами -->
+            ${renderAttachedArms({
+              x: 188, y: 40, shirtColor: '#ff758f',
+              leftArm: {
+                ex: -14, ey: 68, hx: -36, hy: 48, animClass: 'arm-left-anim',
+                toolSVG: `<polygon points="-32,42 -42,52 -58,56" fill="#ffffff" stroke="#adb5bd" stroke-width="2"/>`
+              },
+              rightArm: {
+                ex: 72, ey: 88, hx: 52, hy: 100,
+                toolSVG: `<path d="M36,98 H64 L58,110 H42 Z" fill="#4cc9f0" stroke="#0077b6" stroke-width="1.8"/>`
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'УМ', color: '#4d7c2b', border: '#24420f', flower: '#ff9f1c',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#e6ccb2', sideWallColor: '#ddb892', floorColor: '#582f0e' })}
+            <rect x="42" y="32" width="84" height="95" fill="#6f4518" stroke="#3d230a" stroke-width="2.5"/>
+            <rect x="48" y="38" width="12" height="24" fill="#e63946"/><rect x="62" y="40" width="14" height="22" fill="#1d3557"/><rect x="78" y="37" width="12" height="25" fill="#2a9d8f"/><rect x="92" y="39" width="15" height="23" fill="#ffb703"/>
+            <!-- Дідусь-дослідник (тіло) -->
+            ${renderHumanBody({ x: 184, y: 42, hairColor: '#e9ecef', hairStyle: 'short', shirtColor: '#588157', glasses: true })}
+            <rect x="25" y="150" width="270" height="70" fill="#7f4f24" stroke="#3d230a" stroke-width="2.5"/>
+            <polygon points="72,150 165,150 175,134 82,134" fill="#faedcd" stroke="#9c6644" stroke-width="2"/>
+            <!-- Приєднані до плечей руки: ліва тримає золоту лупу над картою, права спирається на край столу -->
+            ${renderAttachedArms({
+              x: 184, y: 42, shirtColor: '#588157',
+              leftArm: {
+                ex: -14, ey: 80, hx: -34, hy: 76, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <line x1="-34" y1="76" x2="-48" y2="68" stroke="#5c2808" stroke-width="4.5" stroke-linecap="round"/>
+                  <circle cx="-58" cy="62" r="14" fill="rgba(144,224,239,0.48)" stroke="#ffb703" stroke-width="3.8"/>
+                `
+              },
+              rightArm: {
+                ex: 70, ey: 88, hx: 56, hy: 104
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'ИМ', color: '#7a4b8f', border: '#3e204d', flower: '#70e000',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#e0fbfc', sideWallColor: '#bde0fe', floorColor: '#7f5539' })}
+            <!-- Дівчинка (тіло) -->
+            ${renderHumanBody({ x: 194, y: 44, hairColor: '#b5651d', hairStyle: 'long', shirtColor: '#ff9f1c' })}
+            <!-- Великий акваріум із золотими рибками -->
+            <rect x="44" y="144" width="128" height="76" fill="#5c3a21" stroke="#3d230a" stroke-width="2.5"/>
+            <rect x="48" y="68" width="120" height="76" rx="4" fill="#48cae4" stroke="#023e8a" stroke-width="3"/>
+            <path d="M62,142 Q56,115 66,98 M142,142 Q148,112 138,94" fill="none" stroke="#2b9348" stroke-width="5" stroke-linecap="round"/>
+            <g class="anim-updown">
+              <ellipse cx="92" cy="106" rx="13" ry="8" fill="#ff7b00"/>
+              <polygon points="78,106 68,98 68,114" fill="#ffaa00"/>
+              <circle cx="99" cy="104" r="2" fill="#111"/>
+              <ellipse cx="126" cy="120" rx="11" ry="7" fill="#ffbe0b"/>
+              <polygon points="136,120 145,113 145,127" fill="#ff7b00"/>
+            </g>
+            <!-- Приєднані руки: ліва рука простягається від плеча і сипле корм з баночки в акваріум -->
+            ${renderAttachedArms({
+              x: 194, y: 44, shirtColor: '#ff9f1c',
+              leftArm: {
+                ex: -16, ey: 56, hx: -42, hy: 30, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <rect x="-58" y="18" width="16" height="22" rx="3" transform="rotate(-25 -50 28)" fill="#e63946" stroke="#800f2f" stroke-width="1.8"/>
+                  <circle cx="-62" cy="42" r="2" fill="#ffbe0b"/><circle cx="-56" cy="48" r="2" fill="#ffbe0b"/>
+                `
+              },
+              rightArm: {
+                ex: 70, ey: 86, hx: 56, hy: 100
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'ЕМ', color: '#b5651d', border: '#5e3007', flower: '#4cc9f0',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#fae1dd', sideWallColor: '#f8edeb', floorColor: '#8d5524' })}
+            <!-- Кравецький манекен -->
+            <g transform="translate(52, 54)">
+              <line x1="20" y1="65" x2="20" y2="125" stroke="#5c3a21" stroke-width="4"/>
+              <path d="M6,18 C6,6 34,6 34,18 L40,72 H0 Z" fill="#e63946" stroke="#800f2f" stroke-width="2"/>
+            </g>
+            <!-- Кравчиня (тіло) -->
+            ${renderHumanBody({ x: 188, y: 42, hairColor: '#3b2314', hairStyle: 'bun', shirtColor: '#7209b7' })}
+            <rect x="30" y="152" width="260" height="68" fill="#9c6644" stroke="#432818" stroke-width="2.5"/>
+            <!-- Швейна машинка та тканина -->
+            <path d="M84,152 Q105,142 126,152" fill="#e63946" stroke="#800f2f" stroke-width="2"/>
+            <path d="M102,152 H172 V138 H128 V112 H164 V96 H112 L106,132" fill="#2b2d42" stroke="#8d99ae" stroke-width="2"/>
+            <circle cx="166" cy="116" r="12" fill="none" stroke="#ffb703" stroke-width="3.5"/>
+            <!-- Приєднані руки кравчині: ліва тримає тканину біля голки, права крутить золоте коліщатко машинки -->
+            ${renderAttachedArms({
+              x: 188, y: 42, shirtColor: '#7209b7',
+              leftArm: {
+                ex: -12, ey: 84, hx: -42, hy: 96, animClass: 'arm-left-anim'
+              },
+              rightArm: {
+                ex: 34, ey: 84, hx: -18, hy: 74, animClass: 'arm-right-anim'
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'ІМ', color: '#28527a', border: '#112940', flower: '#f72585',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#dec9e9', sideWallColor: '#c19ee0', floorColor: '#6f4518' })}
+            <!-- Мама (тіло) -->
+            ${renderHumanBody({ x: 192, y: 44, hairColor: '#5c3317', hairStyle: 'long', shirtColor: '#f72585' })}
+            <!-- Ліжечко з малюком -->
+            <rect x="34" y="96" width="12" height="98" rx="4" fill="#7f4f24" stroke="#3d230a" stroke-width="2"/>
+            <rect x="44" y="128" width="120" height="22" rx="6" fill="#fff" stroke="#adb5bd" stroke-width="2"/>
+            <circle cx="72" cy="122" r="15" fill="#ffdfc4" stroke="#d9a17c" stroke-width="2"/>
+            <path d="M60,115 C64,102 82,102 84,115" fill="#7f4f24"/>
+            <path d="M74,132 H164 V178 H44 V142 Z" fill="#4cc9f0" stroke="#0077b6" stroke-width="2"/>
+            <!-- Обидві приєднані руки мами тримають розгорнуту книгу казок -->
+            ${renderAttachedArms({
+              x: 192, y: 44, shirtColor: '#f72585',
+              leftArm: {
+                ex: -8, ey: 84, hx: 8, hy: 88, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <polygon points="4,72 28,66 28,94 4,98" fill="#fffdf7" stroke="#5c3a21" stroke-width="2"/>
+                  <polygon points="28,66 52,72 52,98 28,94" fill="#fffdf7" stroke="#5c3a21" stroke-width="2"/>
+                `
+              },
+              rightArm: {
+                ex: 68, ey: 84, hx: 48, hy: 88, animClass: 'arm-right-anim'
+              }
+            })}
+          </svg>`
+      }
+    ],
+
+    /* ================= СЛАЙД 3: ЗБІГ ПРИГОЛОСНИХ (ЩЕ 6 НОВИХ КІМНАТ!) ================= */
+    [
+      {
+        syl: 'МРА', color: '#386641', border: '#1b3620', flower: '#ffbe0b',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#edede9', sideWallColor: '#d6ccc2', floorColor: '#7f5539' })}
+            <rect x="44" y="38" width="90" height="7" fill="#7f4f24"/>
+            <ellipse cx="64" cy="26" rx="11" ry="13" fill="#bc6c25"/><ellipse cx="98" cy="24" rx="13" ry="15" fill="#d4a373"/>
+            <!-- Гончар (тіло) -->
+            ${renderHumanBody({ x: 184, y: 42, hairColor: '#3d2314', hairStyle: 'short', shirtColor: '#606c38', apronColor: '#bc6c25' })}
+            <rect x="28" y="156" width="264" height="64" fill="#8d5524" stroke="#3d230a" stroke-width="2.5"/>
+            <!-- Гончарний круг та глиняний глечик -->
+            <ellipse cx="134" cy="152" rx="38" ry="8" fill="#adb5bd" stroke="#495057" stroke-width="2"/>
+            <path d="M116,150 C104,126 114,102 122,92 H146 C154,102 164,126 152,150 Z" fill="#c97b42" stroke="#6f3812" stroke-width="2.2"/>
+            <!-- Обидві приєднані до плечей руки гончаря ліплять глечик з двох боків -->
+            ${renderAttachedArms({
+              x: 184, y: 42, shirtColor: '#606c38',
+              leftArm: {
+                ex: -12, ey: 76, hx: -34, hy: 72, animClass: 'arm-left-anim'
+              },
+              rightArm: {
+                ex: 32, ey: 88, hx: -26, hy: 80, animClass: 'arm-right-anim'
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МЛО', color: '#6d597a', border: '#362940', flower: '#ff758f',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#fff3b0', sideWallColor: '#f4e285', floorColor: '#9c6644' })}
+            <!-- Тато на кухні (тіло) -->
+            ${renderHumanBody({ x: 186, y: 42, hairColor: '#4a2c11', hairStyle: 'short', shirtColor: '#3a86ff', apronColor: '#ffbe0b' })}
+            <rect x="25" y="152" width="270" height="68" fill="#7f4f24" stroke="#3d230a" stroke-width="2.5"/>
+            <path d="M54,118 H78 L82,152 H50 Z" fill="#ffffff" stroke="#adb5bd" stroke-width="2"/>
+            <rect x="92" y="128" width="24" height="24" rx="5" fill="#ffb703" stroke="#996e00" stroke-width="2"/>
+            <!-- Млинець, що підлітає -->
+            <ellipse class="anim-pancake" cx="136" cy="108" rx="19" ry="5.5" fill="#f4a261" stroke="#9c5221" stroke-width="2"/>
+            <!-- Приєднані руки: ліва рука тримає ручку пательні, права тримає лопатку -->
+            ${renderAttachedArms({
+              x: 186, y: 42, shirtColor: '#3a86ff',
+              leftArm: {
+                ex: -8, ey: 82, hx: -22, hy: 84, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <line x1="-22" y1="84" x2="-46" y2="88" stroke="#2b2d42" stroke-width="5.5" stroke-linecap="round"/>
+                  <ellipse cx="-56" cy="89" rx="25" ry="6.5" fill="#2b2d42" stroke="#111" stroke-width="2"/>
+                `
+              },
+              rightArm: {
+                ex: 72, ey: 86, hx: 56, hy: 96,
+                toolSVG: `<line x1="56" y1="96" x2="42" y2="82" stroke="#495057" stroke-width="3.5" stroke-linecap="round"/>`
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МНУ', color: '#b56576', border: '#592833', flower: '#90e0ef',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#d8e2dc', sideWallColor: '#b7c9be', floorColor: '#bc6c25', rugColor: '#38b000' })}
+            <!-- Шведська стінка -->
+            <g stroke="#8d5524" stroke-width="4">
+              <line x1="48" y1="26" x2="48" y2="176"/><line x1="88" y1="26" x2="88" y2="176"/>
+              <path d="M48,45 H88 M48,70 H88 M48,95 H88 M48,120 H88 M48,145 H88" stroke-width="3"/>
+            </g>
+            <!-- Спортсмен (тіло) -->
+            ${renderHumanBody({ x: 182, y: 44, hairColor: '#222', hairStyle: 'short', shirtColor: '#e63946' })}
+            <!-- Футбольний м'яч під лівою рукою -->
+            <g class="anim-updown" transform="translate(140, 128)">
+              <circle cx="0" cy="0" r="17" fill="#ffffff" stroke="#212529" stroke-width="2.2"/>
+              <polygon points="0,-7 7,-2 4,6 -4,6 -7,-2" fill="#212529"/>
+            </g>
+            <!-- Приєднані руки: ліва рука відбиває м'яч, права піднімає синю гантелю -->
+            ${renderAttachedArms({
+              x: 182, y: 44, shirtColor: '#e63946',
+              leftArm: {
+                ex: -14, ey: 74, hx: -38, hy: 64, animClass: 'arm-left-anim'
+              },
+              rightArm: {
+                ex: 74, ey: 68, hx: 72, hy: 48, animClass: 'arm-right-anim',
+                toolSVG: `
+                  <line x1="62" y1="48" x2="82" y2="48" stroke="#343a40" stroke-width="4"/>
+                  <circle cx="62" cy="48" r="5.5" fill="#1d4ed8"/><circle cx="82" cy="48" r="5.5" fill="#1d4ed8"/>
+                `
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МРІ', color: '#2a6f97', border: '#11374d', flower: '#ffca3a',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#caf0f8', sideWallColor: '#ade8f4', floorColor: '#7f4f24' })}
+            <!-- Мандрівниця (тіло) -->
+            ${renderHumanBody({ x: 188, y: 44, hairColor: '#7f4f24', hairStyle: 'long', shirtColor: '#f77f00' })}
+            <!-- Папуга ара на присаді -->
+            <g transform="translate(56, 74)">
+              <line x1="-10" y1="36" x2="36" y2="36" stroke="#6f4518" stroke-width="4"/>
+              <ellipse cx="14" cy="20" rx="11" ry="18" fill="#e63946" stroke="#800f2f" stroke-width="1.8"/>
+              <circle cx="14" cy="2" r="10" fill="#e63946"/>
+              <path d="M22,-2 Q30,2 24,8 Z" fill="#ffbe0b"/>
+              <circle cx="16" cy="0" r="2" fill="#111"/>
+            </g>
+            <!-- Підзорна труба на тринозі -->
+            <g transform="translate(126, 96)">
+              <line x1="18" y1="24" x2="2" y2="85" stroke="#5c3a21" stroke-width="4"/>
+              <line x1="18" y1="24" x2="34" y2="85" stroke="#5c3a21" stroke-width="4"/>
+              <polygon points="-12,10 52,22 50,30 -16,22" fill="#ffb703" stroke="#8f5b00" stroke-width="2"/>
+            </g>
+            <!-- Приєднані руки: ліва рука налаштовує окуляр підзорної труби, права тримає компас -->
+            ${renderAttachedArms({
+              x: 188, y: 44, shirtColor: '#f77f00',
+              leftArm: {
+                ex: -12, ey: 76, hx: -34, hy: 72, animClass: 'arm-left-anim'
+              },
+              rightArm: {
+                ex: 70, ey: 86, hx: 54, hy: 98,
+                toolSVG: `<circle cx="48" cy="98" r="7" fill="#ffd166" stroke="#8f5b00" stroke-width="1.8"/>`
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МЛИ', color: '#bc6c25', border: '#61330a', flower: '#a8dadc',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#ffccd5', sideWallColor: '#ffb3c1', floorColor: '#8d5524' })}
+            <!-- Грумерка (тіло) -->
+            ${renderHumanBody({ x: 188, y: 42, hairColor: '#5c3317', hairStyle: 'bun', shirtColor: '#7209b7', apronColor: '#ff85a1' })}
+            <rect x="28" y="152" width="264" height="68" fill="#d4a373" stroke="#5c3a21" stroke-width="2.5"/>
+            <!-- Білий пухнастий пудель на столику -->
+            <g transform="translate(82, 86)">
+              <circle cx="32" cy="48" r="20" fill="#ffffff" stroke="#adb5bd" stroke-width="2"/>
+              <circle cx="44" cy="22" r="16" fill="#ffffff" stroke="#adb5bd" stroke-width="2"/>
+              <circle cx="44" cy="8" r="10" fill="#ffffff" stroke="#adb5bd" stroke-width="2"/>
+              <polygon points="38,4 50,10 38,12" fill="#ff0a54"/>
+              <circle cx="50" cy="20" r="2.5" fill="#111"/><circle cx="58" cy="23" r="3.5" fill="#111"/>
+            </g>
+            <!-- Приєднані руки: ліва рука розчісує пуделя рожевою щіткою, права тримає бантик -->
+            ${renderAttachedArms({
+              x: 188, y: 42, shirtColor: '#7209b7',
+              leftArm: {
+                ex: -14, ey: 74, hx: -38, hy: 64, animClass: 'arm-left-anim',
+                toolSVG: `<ellipse cx="-48" cy="64" rx="11" ry="6.5" fill="#ff4d6d" stroke="#800f2f" stroke-width="1.8"/>`
+              },
+              rightArm: {
+                ex: 70, ey: 86, hx: 54, hy: 98
+              }
+            })}
+          </svg>`
+      },
+      {
+        syl: 'МНЕ', color: '#4f772d', border: '#253d11', flower: '#ff8fa3',
+        scene: () => `
+          <svg viewBox="0 0 320 220" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            ${renderRoomBase({ wallColor: '#faedcd', sideWallColor: '#e9edc9', floorColor: '#6f4518' })}
+            <!-- Годинникар (тіло) -->
+            ${renderHumanBody({ x: 186, y: 42, hairColor: '#6c757d', hairStyle: 'short', shirtColor: '#264653', glasses: true })}
+            <!-- Різьблений годинник із маятником -->
+            <g transform="translate(80, 34)">
+              <line x1="36" y1="82" x2="36" y2="132" stroke="#ffb703" stroke-width="3" class="anim-pendulum" style="transform-origin: 36px 82px;"/>
+              <circle cx="36" cy="128" r="11" fill="#ffb703" stroke="#996e00" stroke-width="2" class="anim-pendulum" style="transform-origin: 36px 82px;"/>
+              <polygon points="4,32 36,6 68,32 62,92 10,92" fill="#8d5524" stroke="#3d230a" stroke-width="2.5"/>
+              <circle cx="36" cy="54" r="20" fill="#fffdf7" stroke="#3d230a" stroke-width="2.5"/>
+              <path d="M36,54 V40 M36,54 L46,54" stroke="#111" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+            <!-- Приєднані руки годинникаря: ліва заводить годинник золотим ключиком, права тримає кишеньковий годинник -->
+            ${renderAttachedArms({
+              x: 186, y: 42, shirtColor: '#264653',
+              leftArm: {
+                ex: -14, ey: 68, hx: -36, hy: 52, animClass: 'arm-left-anim',
+                toolSVG: `
+                  <line x1="-36" y1="52" x2="-52" y2="48" stroke="#ffb703" stroke-width="3.5" stroke-linecap="round"/>
+                  <circle cx="-34" cy="52" r="5" fill="none" stroke="#ffb703" stroke-width="2.5"/>
+                `
+              },
+              rightArm: {
+                ex: 70, ey: 86, hx: 54, hy: 98,
+                toolSVG: `<circle cx="48" cy="102" r="7" fill="#ffd166" stroke="#996e00" stroke-width="2"/>`
+              }
+            })}
+          </svg>`
+      }
+    ]
+  ];
+
+  let currentSlide = 0;
+  const gridEl = document.getElementById('windows-grid');
+  const fxLayer = document.getElementById('fx-layer');
+  const catHead = document.getElementById('cat-head');
+  const gardenCat = document.getElementById('garden-cat');
+
+  /* =========================================================================
+     МАЛЮВАННЯ СТУЛОК ВІКОННИЦЬ ТА ЦІЛЬНОЇ ТАБЛИЧКИ ЗІ СКЛАДОМ
+     ========================================================================= */
+  function createShutterWing(color, border, flower) {
+    return `
+      <svg viewBox="0 0 120 190" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+        <rect x="3" y="3" width="114" height="184" rx="10" fill="${color}" stroke="${border}" stroke-width="5"/>
+        <rect x="14" y="14" width="92" height="162" rx="6" fill="none" stroke="#ffe1b3" stroke-width="2" opacity="0.7"/>
+        <g transform="translate(60, 36)">
+          <ellipse cx="-18" cy="2" rx="10" ry="5" transform="rotate(-24 -18 2)" fill="#52b788"/>
+          <ellipse cx="18" cy="2" rx="10" ry="5" transform="rotate(24 18 2)" fill="#52b788"/>
+          <circle cx="0" cy="0" r="10" fill="${flower}" stroke="#fff" stroke-width="1.8"/>
+          <circle cx="0" cy="0" r="4" fill="#fff3b0"/>
+        </g>
+        <g transform="translate(60, 154)">
+          <ellipse cx="-18" cy="-2" rx="10" ry="5" transform="rotate(24 -18 -2)" fill="#52b788"/>
+          <ellipse cx="18" cy="-2" rx="10" ry="5" transform="rotate(-24 18 -2)" fill="#52b788"/>
+          <circle cx="0" cy="0" r="10" fill="${flower}" stroke="#fff" stroke-width="1.8"/>
+          <circle cx="0" cy="0" r="4" fill="#fff3b0"/>
+        </g>
+      </svg>
+    `;
+  }
+
+  function createSyllablePlaque(syllable, flower) {
+    return `
+      <svg viewBox="0 0 180 86" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="plaqueG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7a4319"/>
+            <stop offset="100%" stop-color="#472207"/>
+          </linearGradient>
+        </defs>
+        <rect x="5" y="5" width="170" height="76" rx="18" fill="url(#plaqueG)" stroke="#ffd699" stroke-width="4"/>
+        <rect x="11" y="11" width="158" height="64" rx="13" fill="none" stroke="#b5763c" stroke-width="1.8" stroke-dasharray="5 3"/>
+        <circle cx="22" cy="43" r="5" fill="${flower}"/>
+        <circle cx="158" cy="43" r="5" fill="${flower}"/>
+        <text x="90" y="58" text-anchor="middle" font-family="'Segoe UI', 'Trebuchet MS', sans-serif" font-size="44" font-weight="900" letter-spacing="2" fill="#fff8e8" stroke="#2b1200" stroke-width="2.5" paint-order="stroke fill">${syllable}</text>
+      </svg>
+    `;
+  }
+
+  function createWindowFrame() {
+    return `
+      <svg class="window-frame" viewBox="0 0 320 220" preserveAspectRatio="none">
+        <rect x="6" y="6" width="308" height="196" rx="12" fill="none" stroke="#6e3a14" stroke-width="10"/>
+        <rect x="9" y="9" width="302" height="190" rx="9" fill="none" stroke="#dba267" stroke-width="2.5"/>
+        <rect x="0" y="198" width="320" height="18" rx="5" fill="#94501f" stroke="#472105" stroke-width="3"/>
+      </svg>
+    `;
+  }
+
+  /* =========================================================================
+     ВІДОБРАЖЕННЯ ПОТОЧНОГО РІВНЯ ТА ОБРОБКА КЛІКІВ
+     ========================================================================= */
+  function renderSlide(slideIdx) {
+    gridEl.innerHTML = '';
+    const rooms = LEVELS[slideIdx];
+
+    rooms.forEach((item, idx) => {
+      const box = document.createElement('div');
+      box.className = 'window-box';
+
+      box.innerHTML = `
+        <div class="warm-halo"></div>
+        <div class="room-viewport">${item.scene()}</div>
+        ${createWindowFrame()}
+        <div class="shutter-wing shutter-left">${createShutterWing(item.color, item.border, item.flower)}</div>
+        <div class="shutter-wing shutter-right">${createShutterWing(item.color, item.border, item.flower)}</div>
+        <div class="syllable-cartouche">${createSyllablePlaque(item.syl, item.flower)}</div>
+      `;
+
+      box.addEventListener('click', (e) => {
+        const clickedShutter = e.target.closest('.shutter-wing');
+        if (!box.classList.contains('open')) {
+          box.classList.add('open');
+          playShutterCreak(true);
+          setTimeout(() => playRoomSound(idx), 280);
+          spawnSparkles(box, item.flower);
+          animateCatReaction(idx);
+        } else if (clickedShutter) {
+          box.classList.remove('open');
+          playShutterCreak(false);
+        } else {
+          playRoomSound(idx);
+          spawnSparkles(box, '#ffd166');
+          animateCatReaction(idx);
+        }
+      });
+
+      gridEl.appendChild(box);
+    });
+  }
+
+  function spawnSparkles(targetEl, color) {
+    const r = targetEl.getBoundingClientRect();
+    const cx = ((r.left + r.width / 2) / window.innerWidth) * 1920;
+    const cy = ((r.top + r.height / 2) / window.innerHeight) * 1080;
+
+    for (let i = 0; i < 14; i++) {
+      const star = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      star.setAttribute('points', '0,-11 3.5,-3.5 11,0 3.5,3.5 0,11 -3.5,3.5 -11,0 -3.5,-3.5');
+      star.setAttribute('fill', i % 2 === 0 ? '#fff3b0' : color);
+
+      const angle = (Math.PI * 2 * i) / 14;
+      const dist = 75 + Math.random() * 85;
+      const tx = cx + Math.cos(angle) * dist;
+      const ty = cy + Math.sin(angle) * dist;
+
+      star.setAttribute('transform', `translate(${cx}, ${cy}) scale(0.4)`);
+      star.style.transition = 'transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.75s ease';
+      fxLayer.appendChild(star);
+
+      requestAnimationFrame(() => {
+        star.setAttribute('transform', `translate(${tx}, ${ty}) scale(1.3) rotate(90)`);
+        star.style.opacity = '0';
+      });
+      setTimeout(() => star.remove(), 800);
+    }
+  }
+
+  function animateCatReaction(winIdx) {
+    const tilts = [-14, -7, -11, -4, -7, 3];
+    catHead.style.transform = `rotate(${tilts[winIdx] || -8}deg) translateY(-4px)`;
+    gardenCat.classList.remove('cat-bounce');
+    void gardenCat.offsetWidth;
+    gardenCat.classList.add('cat-bounce');
+    setTimeout(() => { catHead.style.transform = 'rotate(0deg)'; }, 1100);
+  }
+
+  gardenCat.addEventListener('click', () => {
+    playCatMeow();
+    spawnSparkles(gardenCat, '#ffaa45');
+    animateCatReaction(0);
+  });
+
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    currentSlide = (currentSlide - 1 + LEVELS.length) % LEVELS.length;
+    playShutterCreak(false);
+    renderSlide(currentSlide);
+  });
+
+  document.getElementById('btn-next').addEventListener('click', () => {
+    currentSlide = (currentSlide + 1) % LEVELS.length;
+    playShutterCreak(true);
+    renderSlide(currentSlide);
+  });
+
+  renderSlide(currentSlide);
+</script>
+</body>
+</html>
