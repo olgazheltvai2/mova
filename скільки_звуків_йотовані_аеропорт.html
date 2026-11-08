@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Аеропорт — Багажна стрічка</title>
+  <style>
+    /* ==========================================================
+       ОСНОВНІ СТИЛІ ТА СКИДАННЯ (БЕЗ БІЛИХ ПРЯМОКУТНИКІВ І ТЕКСТУ)
+       ========================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0d1522;
+      font-family: 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+    }
+
+    /* Контейнер усієї сцени аеропорту */
+    #game-wrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 30%, #1c2e4a 0%, #0d1624 100%);
+    }
+
+    /* Головне SVG-полотно на весь екран */
+    #airport-svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Інтерактивна зона валізи */
+    #active-suitcase {
+      cursor: pointer;
+      transition: filter 0.2s ease;
+    }
+
+    #active-suitcase:hover {
+      filter: drop-shadow(0 0 22px rgba(255, 215, 100, 0.92)) brightness(1.07);
+    }
+
+    /* ==========================================================
+       МІНІМАЛІСТИЧНІ КНОПКИ НАВІГАЦІЇ («НАЗАД» ТА «ДАЛІ»)
+       ========================================================== */
+    .nav-controls {
+      position: fixed;
+      top: 22px;
+      right: 26px;
+      display: flex;
+      gap: 14px;
+      z-index: 50;
+    }
+
+    .nav-btn {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 214, 120, 0.55);
+      background: linear-gradient(145deg, #2a3f5f 0%, #162438 60%, #0f1928 100%);
+      box-shadow:
+        0 8px 18px rgba(0, 0, 0, 0.55),
+        inset 0 2px 3px rgba(255, 255, 255, 0.25),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.6);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      transform: translateY(-3px) scale(1.07);
+      border-color: #ffd86b;
+      box-shadow:
+        0 12px 24px rgba(0, 0, 0, 0.65),
+        0 0 15px rgba(255, 216, 107, 0.45),
+        inset 0 2px 4px rgba(255, 255, 255, 0.35);
+    }
+
+    .nav-btn:active {
+      transform: translateY(1px) scale(0.95);
+    }
+
+    .nav-btn svg {
+      width: 28px;
+      height: 28px;
+      fill: none;
+      stroke: #ffd86b;
+      stroke-width: 3.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <!-- Мінімалістичні кнопки миттєвого переходу між словами («Назад» та «Далі») -->
+  <div class="nav-controls">
+    <button class="nav-btn" id="btn-prev" aria-label="Попередній рівень">
+      <svg viewBox="0 0 24 24">
+        <path d="M15 18l-6-6 6-6" />
+      </svg>
+    </button>
+    <button class="nav-btn" id="btn-next" aria-label="Наступний рівень">
+      <svg viewBox="0 0 24 24">
+        <path d="M9 18l6-6-6-6" />
+      </svg>
+    </button>
+  </div>
+
+  <!-- Головна деталізована SVG-сцена аеропорту -->
+  <svg id="airport-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <!-- Градієнти вечірнього неба за панорамним вікном -->
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#1a2a6c" />
+        <stop offset="45%" stop-color="#b21f1f" />
+        <stop offset="78%" stop-color="#fdbb2d" />
+        <stop offset="100%" stop-color="#ffe999" />
+      </linearGradient>
+
+      <!-- Тоноване скло панорамного вікна -->
+      <linearGradient id="glassTint" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#76c4ff" stop-opacity="0.16" />
+        <stop offset="50%" stop-color="#ffffff" stop-opacity="0.05" />
+        <stop offset="100%" stop-color="#1b3b5c" stop-opacity="0.22" />
+      </linearGradient>
+
+      <!-- Скляні автоматичні двері виходу -->
+      <linearGradient id="doorGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#8ecae6" stop-opacity="0.32" />
+        <stop offset="50%" stop-color="#ffffff" stop-opacity="0.14" />
+        <stop offset="100%" stop-color="#219ebc" stop-opacity="0.28" />
+      </linearGradient>
+
+      <!-- Металеві конструкції терміналу -->
+      <linearGradient id="steelGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#2c3540" />
+        <stop offset="35%" stop-color="#566373" />
+        <stop offset="50%" stop-color="#7b8a9c" />
+        <stop offset="70%" stop-color="#45505e" />
+        <stop offset="100%" stop-color="#222933" />
+      </linearGradient>
+
+      <!-- Хромований метал для бортів багажної стрічки -->
+      <linearGradient id="chromeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#d8e2ec" />
+        <stop offset="20%" stop-color="#ffffff" />
+        <stop offset="48%" stop-color="#7a8999" />
+        <stop offset="55%" stop-color="#414c58" />
+        <stop offset="80%" stop-color="#9fb0c2" />
+        <stop offset="100%" stop-color="#2f3842" />
+      </linearGradient>
+
+      <!-- Стеля терміналу -->
+      <linearGradient id="ceilingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#161f2c" />
+        <stop offset="60%" stop-color="#273447" />
+        <stop offset="100%" stop-color="#384960" />
+      </linearGradient>
+
+      <!-- Підлога аеропорту (полірований граніт) -->
+      <linearGradient id="floorGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#2a3546" />
+        <stop offset="25%" stop-color="#37465b" />
+        <stop offset="65%" stop-color="#253040" />
+        <stop offset="100%" stop-color="#151d28" />
+      </linearGradient>
+
+      <!-- Промінь світла від прожекторів стелі -->
+      <linearGradient id="lightBeam" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fff4c2" stop-opacity="0.25" />
+        <stop offset="100%" stop-color="#fff4c2" stop-opacity="0" />
+      </linearGradient>
+
+      <!-- Гумове полотно конвеєра -->
+      <linearGradient id="beltRubber" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#171b21" />
+        <stop offset="50%" stop-color="#2b3340" />
+        <stop offset="100%" stop-color="#12151a" />
+      </linearGradient>
+
+      <!-- Візерунок плитки підлоги терміналу -->
+      <pattern id="floorTiles" width="160" height="80" patternUnits="userSpaceOnUse">
+        <path d="M 0 0 L 160 0 L 160 80 L 0 80 Z" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1.5" />
+        <path d="M 80 0 L 80 80" stroke="rgba(255,255,255,0.04)" stroke-width="1" />
+        <circle cx="80" cy="40" r="2" fill="rgba(255,215,130,0.08)" />
+      </pattern>
+
+      <!-- Візерунок шотландської клітинки для ретро-валізи -->
+      <pattern id="plaidPattern" width="32" height="32" patternUnits="userSpaceOnUse">
+        <rect width="32" height="32" fill="#8e2424" />
+        <rect x="0" y="6" width="32" height="8" fill="#1e4d2b" opacity="0.65" />
+        <rect x="6" y="0" width="8" height="32" fill="#1e4d2b" opacity="0.65" />
+        <line x1="0" y1="22" x2="32" y2="22" stroke="#f7d060" stroke-width="2" />
+        <line x1="22" y1="0" x2="22" y2="32" stroke="#f7d060" stroke-width="2" />
+      </pattern>
+
+      <!-- Візерунок карбону для спортивної валізи -->
+      <pattern id="carbonPattern" width="12" height="12" patternUnits="userSpaceOnUse">
+        <rect width="12" height="12" fill="#1e2229" />
+        <polygon points="0,0 6,0 12,6 12,12 6,12 0,6" fill="#2e3540" />
+        <polygon points="6,0 12,0 12,6" fill="#3a4352" />
+        <polygon points="0,6 6,12 0,12" fill="#3a4352" />
+      </pattern>
+
+      <!-- Візерунок гобелена / квітковий бохо для валізи -->
+      <pattern id="bohoPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+        <rect width="40" height="40" fill="#4a1c40" />
+        <circle cx="20" cy="20" r="14" fill="none" stroke="#e07a5f" stroke-width="2.5" stroke-dasharray="4 3" />
+        <circle cx="20" cy="20" r="7" fill="#f2cc8f" />
+        <circle cx="20" cy="20" r="3" fill="#81b29a" />
+        <circle cx="0" cy="0" r="6" fill="#e07a5f" />
+        <circle cx="40" cy="0" r="6" fill="#e07a5f" />
+        <circle cx="0" cy="40" r="6" fill="#e07a5f" />
+        <circle cx="40" cy="40" r="6" fill="#e07a5f" />
+      </pattern>
+
+      <!-- Тінь під персонажами та валізами -->
+      <radialGradient id="dropShadow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#000000" stop-opacity="0.72" />
+        <stop offset="65%" stop-color="#000000" stop-opacity="0.32" />
+        <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+      </radialGradient>
+
+      <!-- Бірка/табличка для слова (золотаво-бронзова фактурна, жодних білих прямокутників!) -->
+      <linearGradient id="tagPlateGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#3b2314" />
+        <stop offset="50%" stop-color="#26150b" />
+        <stop offset="100%" stop-color="#170c06" />
+      </linearGradient>
+
+      <linearGradient id="goldRimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffe28a" />
+        <stop offset="35%" stop-color="#d49b27" />
+        <stop offset="70%" stop-color="#fff0b8" />
+        <stop offset="100%" stop-color="#9c6b12" />
+      </linearGradient>
+
+      <!-- Маска для рухомих сегментів стрічки, щоб вони не виходили за заокруглений край каруселі -->
+      <clipPath id="beltClip">
+        <path d="M 80 14 L 745 14 C 815 14 815 112 745 112 L 80 112 Z" />
+      </clipPath>
+    </defs>
+
+    <!-- ==========================================================
+         1. ПАНОРАМНЕ ВІКНО АЕРОПОРТУ ТА ЗЛІТНА СМУГА (ЖИВИЙ ФОН)
+         ========================================================== -->
+    <g id="outside-world">
+      <!-- Вечірнє небо -->
+      <rect x="60" y="40" width="1220" height="430" fill="url(#skyGrad)" />
+
+      <!-- Сонце біля горизонту -->
+      <circle cx="1040" cy="335" r="76" fill="#ffea9f" opacity="0.75" />
+      <circle cx="1040" cy="335" r="112" fill="#ffae42" opacity="0.25" />
+
+      <!-- Далекі силуети гір та міста на горизонті -->
+      <path d="M 60 365 L 220 330 L 350 352 L 520 315 L 690 350 L 890 335 L 1100 358 L 1280 330 L 1280 420 L 60 420 Z" fill="#2d1b38" opacity="0.7" />
+
+      <!-- Хмари, що пливуть небом -->
+      <g id="clouds-layer" opacity="0.75">
+        <g id="cloud-1" transform="translate(200, 125)">
+          <path d="M 0 30 Q 15 5 45 15 Q 70 -10 105 10 Q 135 5 145 30 Z" fill="#ffbfa3" />
+        </g>
+        <g id="cloud-2" transform="translate(720, 90) scale(1.25)">
+          <path d="M 0 30 Q 20 8 50 18 Q 80 -8 115 12 Q 145 8 160 30 Z" fill="#ffd9b3" />
+        </g>
+      </g>
+
+      <!-- Диспетчерська вежа аеропорту вдалині -->
+      <g transform="translate(390, 200)">
+        <polygon points="28,175 42,55 58,55 72,175" fill="#1f162b" />
+        <polygon points="15,55 85,55 96,25 4,25" fill="#2c223d" />
+        <polygon points="12,50 88,50 93,30 7,30" fill="#7ce8ff" opacity="0.65" />
+        <line x1="35" y1="30" x2="38" y2="50" stroke="#1f162b" stroke-width="2" />
+        <line x1="65" y1="30" x2="62" y2="50" stroke="#1f162b" stroke-width="2" />
+        <rect x="20" y="18" width="60" height="7" rx="3" fill="#171121" />
+        <line x1="50" y1="18" x2="50" y2="0" stroke="#ff4d4d" stroke-width="2.5" />
+        <circle id="tower-beacon" cx="50" cy="0" r="4.5" fill="#ff3b3b" />
+      </g>
+
+      <!-- Літак, що злітає в небі -->
+      <g id="flying-plane" transform="translate(150, 250) rotate(-12) scale(0.85)">
+        <path d="M -180 8 L -20 4" stroke="rgba(255,240,220,0.45)" stroke-width="5" stroke-linecap="round" stroke-dasharray="12 6" />
+        <path d="M -30 0 C 10 -12 85 -12 125 -2 C 140 2 145 8 125 12 C 80 14 0 12 -30 6 Z" fill="#f4f7fb" />
+        <polygon points="-25,2 -52,-28 -32,-28 -8,0" fill="#e63946" />
+        <polygon points="-20,3 -36,-10 -12,2" fill="#1d3557" />
+        <polygon points="25,6 -12,26 12,26 58,7" fill="#dce5f0" />
+        <ellipse cx="32" cy="17" rx="11" ry="5" fill="#457b9d" />
+        <path d="M 110 -5 L 128 -1 L 114 2 Z" fill="#1d3557" />
+        <circle cx="90" cy="2" r="2" fill="#ffe66d" />
+        <circle cx="80" cy="2" r="2" fill="#ffe66d" />
+        <circle cx="70" cy="2" r="2" fill="#ffe66d" />
+        <circle cx="60" cy="2" r="2" fill="#ffe66d" />
+        <circle cx="50" cy="2" r="2" fill="#ffe66d" />
+        <circle id="plane-strobe" cx="2" cy="26" r="3" fill="#ff2a2a" />
+      </g>
+
+      <!-- Злітно-посадкова смуга за вікном -->
+      <rect x="60" y="365" width="1220" height="95" fill="#1d222e" />
+      <line x1="60" y1="395" x2="1280" y2="395" stroke="#f8f9fa" stroke-width="3" stroke-dasharray="45 35" opacity="0.65" />
+      <g id="runway-lights">
+        <circle cx="150" cy="378" r="3" fill="#4cc9f0" />
+        <circle cx="300" cy="378" r="3" fill="#4cc9f0" />
+        <circle cx="450" cy="378" r="3" fill="#4cc9f0" />
+        <circle cx="600" cy="378" r="3" fill="#4cc9f0" />
+        <circle cx="750" cy="378" r="3" fill="#4cc9f0" />
+        <circle cx="900" cy="378" r="3" fill="#4cc9f0" />
+        <circle cx="1050" cy="378" r="3" fill="#4cc9f0" />
+        <circle cx="1200" cy="378" r="3" fill="#4cc9f0" />
+      </g>
+
+      <!-- Тоноване скло панорамних вікон та сталеві рами -->
+      <rect x="60" y="40" width="1220" height="420" fill="url(#glassTint)" />
+      <g stroke="url(#steelGrad)" stroke-width="14">
+        <line x1="340" y1="40" x2="340" y2="460" />
+        <line x1="640" y1="40" x2="640" y2="460" />
+        <line x1="940" y1="40" x2="940" y2="460" />
+        <line x1="1240" y1="40" x2="1240" y2="460" />
+        <line x1="60" y1="230" x2="1240" y2="230" stroke-width="9" />
+      </g>
+    </g>
+
+    <!-- ==========================================================
+         2. ІНТЕР'ЄР АЕРОПОРТУ, АВТОМАТИЧНІ ДВЕРІ ВИХОДУ ТА ПІДЛОГА
+         ========================================================== -->
+    <g id="terminal-interior">
+      <!-- Верхня балка та стеля -->
+      <polygon points="0,0 1600,0 1520,75 80,75" fill="url(#ceilingGrad)" />
+      <rect x="0" y="70" width="1600" height="16" fill="url(#steelGrad)" />
+
+      <!-- Світильники на стелі та промені світла -->
+      <g>
+        <ellipse cx="280" cy="52" rx="48" ry="10" fill="#fff3b0" />
+        <polygon points="232,52 328,52 410,460 150,460" fill="url(#lightBeam)" />
+
+        <ellipse cx="780" cy="52" rx="48" ry="10" fill="#fff3b0" />
+        <polygon points="732,52 828,52 910,460 650,460" fill="url(#lightBeam)" />
+
+        <ellipse cx="1220" cy="52" rx="48" ry="10" fill="#fff3b0" />
+        <polygon points="1172,52 1268,52 1350,460 1090,460" fill="url(#lightBeam)" />
+      </g>
+
+      <!-- Ліва колона терміналу -->
+      <rect x="0" y="0" width="85" height="540" fill="url(#steelGrad)" />
+
+      <!-- Стіна під панорамним вікном -->
+      <rect x="0" y="445" width="1600" height="95" fill="#1e2938" />
+      <rect x="0" y="445" width="1600" height="12" fill="url(#chromeGrad)" />
+      <rect x="0" y="472" width="1250" height="4" fill="#4cc9f0" opacity="0.65" />
+
+      <!-- Права частина залу: Розсувні автоматичні скляні двері на вихід (куди пасажир іде з валізою в руці!) -->
+      <g id="exit-hallway" transform="translate(1240, 86)">
+        <rect x="0" y="0" width="360" height="454" fill="#1b2432" />
+        <!-- Портал автоматичних дверей -->
+        <rect x="35" y="95" width="285" height="359" rx="8" fill="#0d141f" stroke="url(#chromeGrad)" stroke-width="10" />
+        <!-- Світлий коридор за скляними дверима -->
+        <rect x="45" y="105" width="265" height="345" fill="#192b3f" />
+        <ellipse cx="177" cy="145" rx="60" ry="8" fill="#e0fbfc" opacity="0.5" />
+        <!-- Зелений графічний вказівник виходу над дверима (іконка чоловічка зі стрілкою, без тексту) -->
+        <rect x="128" y="32" width="98" height="40" rx="8" fill="#06d6a0" stroke="#ffffff" stroke-width="2.5" />
+        <circle cx="158" cy="44" r="4.5" fill="#0f172a" />
+        <path d="M 150 62 L 156 52 L 165 55 L 168 64 M 156 52 L 164 46" stroke="#0f172a" stroke-width="3" fill="none" stroke-linecap="round" />
+        <path d="M 182 52 L 208 52 M 199 44 L 208 52 L 199 60" stroke="#0f172a" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+
+        <!-- Ліва та права рухомі скляні стулки дверей (роз'їжджаються, коли пасажир несе валізу!) -->
+        <g id="door-leaf-left">
+          <rect x="45" y="105" width="132" height="345" fill="url(#doorGlassGrad)" stroke="#9fb0c2" stroke-width="3" />
+          <line x1="65" y1="130" x2="145" y2="410" stroke="rgba(255,255,255,0.2)" stroke-width="6" />
+          <rect x="165" y="250" width="6" height="48" rx="3" fill="#e2e8f0" />
+        </g>
+        <g id="door-leaf-right">
+          <rect x="178" y="105" width="132" height="345" fill="url(#doorGlassGrad)" stroke="#9fb0c2" stroke-width="3" />
+          <line x1="200" y1="130" x2="280" y2="410" stroke="rgba(255,255,255,0.2)" stroke-width="6" />
+          <rect x="184" y="250" width="6" height="48" rx="3" fill="#e2e8f0" />
+        </g>
+      </g>
+
+      <!-- Графічне електронне табло рейсів (без тексту) -->
+      <g transform="translate(970, 96)">
+        <rect x="0" y="0" width="220" height="100" rx="10" fill="#111822" stroke="url(#chromeGrad)" stroke-width="5" />
+        <rect x="45" y="-25" width="8" height="25" fill="#45505e" />
+        <rect x="165" y="-25" width="8" height="25" fill="#45505e" />
+        <path d="M 25 32 L 42 25 L 48 28 L 36 36 L 46 42 L 43 45 L 31 39 L 23 43 L 20 40 L 26 35 Z" fill="#ffd166" />
+        <rect x="62" y="24" width="75" height="8" rx="4" fill="#4cc9f0" opacity="0.85" />
+        <rect x="150" y="24" width="45" height="8" rx="4" fill="#06d6a0" />
+        <rect x="62" y="48" width="90" height="8" rx="4" fill="#4cc9f0" opacity="0.85" />
+        <rect x="165" y="48" width="30" height="8" rx="4" fill="#ffd166" />
+        <rect x="62" y="72" width="60" height="8" rx="4" fill="#4cc9f0" opacity="0.85" />
+        <rect x="135" y="72" width="60" height="8" rx="4" fill="#06d6a0" />
+      </g>
+
+      <!-- Декоративний вазон із монстерою -->
+      <g transform="translate(560, 420)">
+        <polygon points="15,110 85,110 98,45 2,45" fill="url(#chromeGrad)" />
+        <ellipse cx="50" cy="45" rx="48" ry="9" fill="#2b3440" />
+        <path d="M 50 45 Q 10 10 -15 28 Q 5 42 50 45" fill="#2a9d8f" />
+        <path d="M 50 45 Q 25 -15 0 -5 Q 15 25 50 45" fill="#21867a" />
+        <path d="M 50 45 Q 50 -25 65 -20 Q 65 15 50 45" fill="#34b3a3" />
+        <path d="M 50 45 Q 85 -10 108 10 Q 82 32 50 45" fill="#2a9d8f" />
+        <path d="M 50 45 Q 95 20 118 38 Q 85 48 50 45" fill="#1d6f65" />
+      </g>
+
+      <!-- Підлога залу очікування (відкритий простір праворуч від конвеєра для проходу пасажира з валізою в руці!) -->
+      <rect x="0" y="530" width="1600" height="370" fill="url(#floorGrad)" />
+      <rect x="0" y="530" width="1600" height="370" fill="url(#floorTiles)" />
+      <ellipse cx="950" cy="720" rx="580" ry="110" fill="rgba(255, 235, 180, 0.04)" />
+    </g>
+
+    <!-- ==========================================================
+         3. КОНВЕЄРНА КАРУСЕЛЬ (ЗАКІНЧУЄТЬСЯ ЗАОКРУГЛЕНИМ БОРТОМ НА X = 810!)
+         Завдяки цьому праворуч від стрічки — чиста підлога аеропорту,
+         по якій пасажир іде пішки з піднятою у руці валізою!
+         ========================================================== -->
+    <g id="conveyor-system">
+      <!-- Корпус багажного порталу зліва -->
+      <g id="baggage-portal" transform="translate(0, 385)">
+        <path d="M 0 0 L 265 0 L 298 300 L 0 300 Z" fill="url(#steelGrad)" />
+        <path d="M 265 0 L 315 25 L 338 300 L 298 300 Z" fill="#1e252e" />
+        <rect x="40" y="52" width="205" height="215" rx="14" fill="#0b0e12" stroke="url(#chromeGrad)" stroke-width="12" />
+
+        <!-- Сигнальний маячок над тунелем -->
+        <g transform="translate(142, 20)">
+          <rect x="-24" y="10" width="48" height="12" rx="4" fill="#2c3540" />
+          <path d="M -16 10 C -16 -12 16 -12 16 10 Z" fill="#ff9f1c" id="chute-light" />
+          <circle cx="0" cy="2" r="18" fill="#ff9f1c" opacity="0.2" id="chute-glow" />
+        </g>
+      </g>
+
+      <!-- Основна платформа конвеєрної стрічки (закінчується на X = 815) -->
+      <g id="belt-structure" transform="translate(0, 625)">
+        <!-- Тінь під конвеєром на гранітній підлозі -->
+        <ellipse cx="425" cy="145" rx="445" ry="30" fill="rgba(0,0,0,0.68)" />
+
+        <!-- Задній металевий бортик та заокруглений правий торець каруселі -->
+        <path d="M 70 0 L 750 0 C 845 0 845 150 750 150 L 0 150 L 0 105 L 70 0 Z" fill="url(#chromeGrad)" stroke="#222933" stroke-width="3" />
+
+        <!-- Рухоме гумове полотно конвеєра із заокругленим розворотом -->
+        <path d="M 80 14 L 745 14 C 815 14 815 112 745 112 L 80 112 Z" fill="url(#beltRubber)" stroke="#0f1318" stroke-width="4" />
+
+        <!-- Рухомі сегменти-траки стрічки (обрізані по контуру каруселі) -->
+        <g id="belt-slats" clip-path="url(#beltClip)"></g>
+
+        <!-- Передній масивний хромований бампер конвеєра -->
+        <path d="M 0 108 L 752 108 C 795 108 815 92 822 72 C 826 118 798 152 748 152 L 0 152 Z" fill="url(#chromeGrad)" />
+        <!-- Темна гумова відбійна смуга та жовто-помаранчеві світловідбивачі -->
+        <rect x="0" y="124" width="765" height="16" rx="6" fill="#181d24" />
+        <g id="bumper-reflectors" fill="#ffb703" opacity="0.88">
+          <rect x="85" y="128" width="44" height="8" rx="4" />
+          <rect x="245" y="128" width="44" height="8" rx="4" />
+          <rect x="405" y="128" width="44" height="8" rx="4" />
+          <rect x="565" y="128" width="44" height="8" rx="4" />
+          <rect x="710" y="128" width="38" height="8" rx="4" />
+        </g>
+      </g>
+
+      <!-- Передні гумові шторки тунелю (розхиляються при виїзді валізи) -->
+      <g id="tunnel-curtains" transform="translate(46, 444)">
+        <rect class="curtain-strip" x="0" y="0" width="31" height="196" rx="3" fill="#1f2630" stroke="#10141a" stroke-width="2" />
+        <rect class="curtain-strip" x="33" y="0" width="31" height="196" rx="3" fill="#252d38" stroke="#10141a" stroke-width="2" />
+        <rect class="curtain-strip" x="66" y="0" width="31" height="196" rx="3" fill="#1f2630" stroke="#10141a" stroke-width="2" />
+        <rect class="curtain-strip" x="99" y="0" width="31" height="196" rx="3" fill="#252d38" stroke="#10141a" stroke-width="2" />
+        <rect class="curtain-strip" x="132" y="0" width="31" height="196" rx="3" fill="#1f2630" stroke="#10141a" stroke-width="2" />
+        <rect class="curtain-strip" x="165" y="0" width="31" height="196" rx="3" fill="#252d38" stroke="#10141a" stroke-width="2" />
+      </g>
+    </g>
+
+    <!-- ==========================================================
+         4. ТІНЬ ВАЛІЗИ НА ПІДЛОЗІ (З'ЯВЛЯЄТЬСЯ, КОЛИ ПАСАЖИР ЗНЯВ ЇЇ ЗІ СТРІЧКИ І НЕСЕ В РУЦІ)
+         ========================================================== -->
+    <ellipse id="carried-suitcase-floor-shadow" cx="0" cy="0" rx="85" ry="16" fill="url(#dropShadow)" opacity="0" />
+
+    <!-- ==========================================================
+         5. ШАР ВЕЛИКОГО ПАСАЖИРА (НА ПЕРЕДНЬОМУ ПЛАНІ НА ПІДЛОЗІ ЗАЛУ!)
+         Оскільки пасажир розміщений ПІСЛЯ конвеєра і праворуч від нього,
+         він стоїть у повний зріст на підлозі, підходить до стрічки,
+         бере валізу в руку, піднімає її зі стрічки і несе до виходу!
+         ========================================================== -->
+    <g id="passenger-stage" transform="translate(940, 775)"></g>
+
+    <!-- ==========================================================
+         6. ШАР ВАЛІЗИ (СПОЧАТКУ НА СТРІЧЦІ, А ПОТІМ У РУЦІ ПАСАЖИРА)
+         ========================================================== -->
+    <g id="suitcase-stage"></g>
+
+    <!-- ==========================================================
+         7. КИСТЬ РУКИ ПАСАЖИРА ПОВЕРХ РУЧКИ ВАЛІЗИ
+         Відображається в момент захоплення та перенесення, щоб було видно,
+         як пальці пасажира міцно тримають ручку валізи!
+         ========================================================== -->
+    <g id="hand-grip-overlay" opacity="0"></g>
+
+    <!-- ==========================================================
+         8. ШАР АКТИВНИХ ВІЗУАЛЬНИХ ЕФЕКТІВ ТА ЧАСТИНОК (БЕЗ СЛІВ)
+         ========================================================== -->
+    <g id="fx-stage"></g>
+  </svg>
+</div>
+
+<script>
+  /* ============================================================================
+     НАЛАШТУВАННЯ СЛІВ ГРИ (30 ІМЕННИКІВ З БУКВАМИ Я, Ю, Є)
+     Усі слова — іменники в називному відмінку, розподілені порівну (15 і 15):
+     - де я, ю, є позначають 1 звук (після м'якого приголосного)
+     - де я, ю, є позначають 2 звуки (на початку слова, після голосного, апострофа чи ь)
+     ============================================================================ */
+  const WORDS_LIST = [
+    "вишня",     // 1. «я» після приголосного -> 1 звук
+    "яблуко",    // 2. «я» на початку слова -> 2 звуки
+    "ключ",      // 3. «ю» після приголосного -> 1 звук
+    "єнот",      // 4. «є» на початку слова -> 2 звуки
+    "диня",      // 5. «я» після приголосного -> 1 звук
+    "маяк",      // 6. «я» після голосного -> 2 звуки
+    "рюкзак",    // 7. «ю» після приголосного -> 1 звук
+    "юшка",      // 8. «ю» на початку слова -> 2 звуки
+    "куля",      // 9. «я» після приголосного -> 1 звук
+    "змія",      // 10. «я» після голосного -> 2 звуки
+    "люстра",    // 11. «ю» після приголосного -> 1 звук
+    "каюта",     // 12. «ю» після голосного -> 2 звуки
+    "хвиля",     // 13. «я» після приголосного -> 1 звук
+    "ягода",     // 14. «я» на початку слова -> 2 звуки
+    "тюльпан",   // 15. «ю» після приголосного -> 1 звук
+    "пір'я",     // 16. «я» після апострофа -> 2 звуки
+    "земля",     // 17. «я» після приголосного -> 1 звук
+    "єдиноріг",  // 18. «є» на початку слова -> 2 звуки
+    "капелюх",   // 19. «ю» після приголосного -> 1 звук
+    "якір",      // 20. «я» на початку слова -> 2 звуки
+    "крапля",    // 21. «я» після приголосного -> 1 звук
+    "юрта",      // 22. «ю» на початку слова -> 2 звуки
+    "дюна",      // 23. «ю» після приголосного -> 1 звук
+    "в'юн",      // 24. «ю» після апострофа -> 2 звуки
+    "шабля",     // 25. «я» після приголосного -> 1 звук
+    "ящірка",    // 26. «я» на початку слова -> 2 звуки
+    "пюре",      // 27. «ю» після приголосного -> 1 звук
+    "поєдинок",  // 28. «є» після голосного -> 2 звуки
+    "зяблик",    // 29. «я» після приголосного -> 1 звук
+    "ательє"     // 30. «є» після м'якого знака -> 2 звуки
+  ];
+
+  /* ============================================================================
+     ГЕНЕРАТОР РЕАЛІСТИЧНИХ ЗВУКІВ (WEB AUDIO API — БЕЗ ЗОВНІШНІХ ФАЙЛІВ І СЛІВ)
+     ============================================================================ */
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === "suspended") {
+        this.ctx.resume();
+      }
+    }
+
+    // Звук виїзду валізи через гумові шторки конвеєра
+    playSuitcaseArrive() {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(115, now);
+      osc.frequency.exponentialRampToValueAtTime(48, now + 0.25);
+
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.29);
+
+      // Двохнотний м'який сигнал аеропорту (Дін-дон)
+      const notes = [587.33, 440.0];
+      notes.forEach((freq, idx) => {
+        const chime = this.ctx.createOscillator();
+        const cGain = this.ctx.createGain();
+        chime.type = "sine";
+        chime.frequency.setValueAtTime(freq, now + idx * 0.22);
+
+        cGain.gain.setValueAtTime(0.12, now + idx * 0.22);
+        cGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.22 + 0.55);
+
+        chime.connect(cGain);
+        cGain.connect(this.ctx.destination);
+        chime.start(now + idx * 0.22);
+        chime.stop(now + idx * 0.22 + 0.56);
+      });
+    }
+
+    // Легкий звук постукування ногою під час очікування
+    playTapSound() {
+      if (!this.ctx || this.ctx.state !== "running") return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(70, now + 0.06);
+
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.07);
+    }
+
+    // Різноманітний активний фідбек при кліку на валізу (захоплення + 3 варіанти фанфар)
+    playPickupCelebration(variantIndex) {
+      this.init();
+      const now = this.ctx.currentTime;
+
+      // Звук міцного захоплення ручки валізи
+      const clickOsc = this.ctx.createOscillator();
+      const clickGain = this.ctx.createGain();
+      clickOsc.type = "square";
+      clickOsc.frequency.setValueAtTime(520, now);
+      clickOsc.frequency.exponentialRampToValueAtTime(220, now + 0.08);
+      clickGain.gain.setValueAtTime(0.18, now);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      clickOsc.connect(clickGain);
+      clickGain.connect(this.ctx.destination);
+      clickOsc.start(now);
+      clickOsc.stop(now + 0.1);
+
+      // Звук підняття валізи вгору зі стрічки (Whoosh up)
+      const liftOsc = this.ctx.createOscillator();
+      const liftGain = this.ctx.createGain();
+      liftOsc.type = "sine";
+      liftOsc.frequency.setValueAtTime(190, now + 0.28);
+      liftOsc.frequency.exponentialRampToValueAtTime(580, now + 0.62);
+      liftGain.gain.setValueAtTime(0.16, now + 0.28);
+      liftGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+      liftOsc.connect(liftGain);
+      liftGain.connect(this.ctx.destination);
+      liftOsc.start(now + 0.28);
+      liftOsc.stop(now + 0.66);
+
+      // Три різні святкові фанфари для різноманітності фідбеку
+      const melodies = [
+        [523.25, 659.25, 783.99, 1046.5, 1318.5],
+        [440.0, 554.37, 659.25, 880.0, 1108.73],
+        [587.33, 739.99, 880.0, 1174.66, 1479.98]
+      ];
+      const melody = melodies[variantIndex % melodies.length];
+
+      melody.forEach((freq, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = i % 2 === 0 ? "triangle" : "sine";
+        const start = now + 0.08 + i * 0.075;
+        osc.frequency.setValueAtTime(freq, start);
+
+        gain.gain.setValueAtTime(0.22, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.45);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.46);
+      });
+    }
+
+    // Звук кроків пасажира по гранітній підлозі, коли він несе валізу в руці
+    playFootstep(stepIndex) {
+      if (!this.ctx || this.ctx.state !== "running") return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "triangle";
+      const baseFreq = stepIndex % 2 === 0 ? 135 : 162;
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(52, now + 0.09);
+
+      gain.gain.setValueAtTime(0.13, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+
+    // Звук перемикання кнопки «Назад» / «Далі»
+    playNavClick() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(480, now);
+      osc.frequency.exponentialRampToValueAtTime(720, now + 0.09);
+
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.11);
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  /* ============================================================================
+     ОПИС 10 УНІКАЛЬНИХ РЕАЛІСТИЧНИХ ПЕРСОНАЖІВ (ПАСАЖИРІВ)
+     ============================================================================ */
+  const PASSENGERS_DATA = [
+    {
+      // 1. Пілот цивільної авіації
+      skin: "#f3c6a5", hair: "#2b2018", eyeColor: "#2b5876",
+      outfitMain: "#162944", outfitSec: "#ffffff",
+      accent: "#f4c430", pants: "#111f36", shoes: "#1a1a1a",
+      hatType: "pilot", glasses: "aviator", hairStyle: "short", beard: false,
+      collarType: "tie"
+    },
+    {
+      // 2. Мандрівниця-мисткиня у береті та шарфі
+      skin: "#f7d3ba", hair: "#9e3b24", eyeColor: "#2a6f4e",
+      outfitMain: "#c85a32", outfitSec: "#f4e3c1",
+      accent: "#2a9d8f", pants: "#2b3a4a", shoes: "#5c2c16",
+      hatType: "beret", glasses: "round", hairStyle: "longWavy", beard: false,
+      collarType: "scarf"
+    },
+    {
+      // 3. Турист у гавайській сорочці з фотоапаратом
+      skin: "#eab68c", hair: "#6b4423", eyeColor: "#4a3b2c",
+      outfitMain: "#0096c7", outfitSec: "#ffbe0b",
+      accent: "#fb5607", pants: "#d4be98", shoes: "#8d5b4c",
+      hatType: "sunhat", glasses: "sunglasses", hairStyle: "curly", beard: false,
+      collarType: "camera"
+    },
+    {
+      // 4. Ділова леді в елегантному тренчі
+      skin: "#f5cba7", hair: "#1e1b18", eyeColor: "#3d5a80",
+      outfitMain: "#d6b892", outfitSec: "#7f1d1d",
+      accent: "#e5c158", pants: "#22272e", shoes: "#4a1212",
+      hatType: "none", glasses: "catEye", hairStyle: "bun", beard: false,
+      collarType: "lapel"
+    },
+    {
+      // 5. Рок-музикант у шкіряній куртці з навушниками
+      skin: "#f0c8b0", hair: "#1a1829", eyeColor: "#3b4d61",
+      outfitMain: "#24272c", outfitSec: "#e63946",
+      accent: "#adb5bd", pants: "#1b263b", shoes: "#111317",
+      hatType: "headphones", glasses: "none", hairStyle: "spiky", beard: true,
+      collarType: "rock"
+    },
+    {
+      // 6. Бабуся-мандрівниця в кардигані з перлами
+      skin: "#f4d0b8", hair: "#d9e2ec", eyeColor: "#457b9d",
+      outfitMain: "#7b5283", outfitSec: "#fae1dd",
+      accent: "#fff8e7", pants: "#3d314a", shoes: "#3b2314",
+      hatType: "none", glasses: "reading", hairStyle: "grandmaBun", beard: false,
+      collarType: "pearls"
+    },
+    {
+      // 7. Альпініст-дослідник у теплій шапці та жилеті
+      skin: "#dca278", hair: "#4a3219", eyeColor: "#386641",
+      outfitMain: "#386641", outfitSec: "#bc4749",
+      accent: "#f2e8cf", pants: "#3d405b", shoes: "#6c462b",
+      hatType: "beanie", glasses: "none", hairStyle: "short", beard: true,
+      collarType: "puffer"
+    },
+    {
+      // 8. Модниця у хутряному пальті
+      skin: "#e3ae88", hair: "#3d1e10", eyeColor: "#6d4c41",
+      outfitMain: "#b5179e", outfitSec: "#f7cad0",
+      accent: "#ffd166", pants: "#240046", shoes: "#7209b7",
+      hatType: "none", glasses: "glam", hairStyle: "longStraight", beard: false,
+      collarType: "fur"
+    },
+    {
+      // 9. Професор у твідовому піджаку з метеликом
+      skin: "#f1c29b", hair: "#8d99ae", eyeColor: "#2b4c7e",
+      outfitMain: "#6f523b", outfitSec: "#f8edeb",
+      accent: "#a4161a", pants: "#3c2f25", shoes: "#291c14",
+      hatType: "fedora", glasses: "round", hairStyle: "short", beard: true,
+      collarType: "bowtie"
+    },
+    {
+      // 10. Спортсмен у яскравому костюмі та кепці
+      skin: "#c68b59", hair: "#1b1917", eyeColor: "#3b2818",
+      outfitMain: "#ff6b00", outfitSec: "#ffffff",
+      accent: "#00b4d8", pants: "#1d3557", shoes: "#ff6b00",
+      hatType: "cap", glasses: "none", hairStyle: "short", beard: false,
+      collarType: "sport"
+    }
+  ];
+
+  /* ============================================================================
+     ФУНКЦІЯ МАЛЮВАННЯ ВЕЛИКОГО ДЕТАЛІЗОВАНОГО ПЕРСОНАЖА В SVG (МАСШТАБ 2.2)
+     ============================================================================ */
+  function buildPassengerSVG(typeIndex) {
+    const p = PASSENGERS_DATA[typeIndex % PASSENGERS_DATA.length];
+
+    let collarSVG = "";
+    if (p.collarType === "tie") {
+      collarSVG = `
+        <polygon points="-20,-138 0,-105 20,-138" fill="${p.outfitSec}" />
+        <polygon points="-6,-126 6,-126 9,-58 0,-46 -9,-58" fill="#b81d13" />
+        <rect x="20" y="-102" width="24" height="8" rx="2" fill="${p.accent}" />
+        <polygon points="32,-107 38,-102 32,-97 26,-102" fill="#fff3b0" />
+        <rect x="-50" y="-138" width="18" height="7" rx="2" fill="${p.accent}" />
+        <rect x="32" y="-138" width="18" height="7" rx="2" fill="${p.accent}" />
+        <circle cx="-12" cy="-78" r="3.5" fill="${p.accent}" />
+        <circle cx="-12" cy="-58" r="3.5" fill="${p.accent}" />
+        <circle cx="12" cy="-78" r="3.5" fill="${p.accent}" />
+        <circle cx="12" cy="-58" r="3.5" fill="${p.accent}" />
+      `;
+    } else if (p.collarType === "scarf") {
+      collarSVG = `
+        <path d="M -42 -138 Q 0 -116 42 -138 Q 48 -114 34 -108 Q 0 -98 -36 -110 Z" fill="${p.accent}" />
+        <path d="M 14 -116 L 28 -48 L 6 -52 L 4 -112 Z" fill="${p.accent}" stroke="rgba(0,0,0,0.15)" stroke-width="1.5" />
+        <line x1="8" y1="-50" x2="7" y2="-40" stroke="#ffd166" stroke-width="2.5" />
+        <line x1="15" y1="-49" x2="15" y2="-39" stroke="#ffd166" stroke-width="2.5" />
+        <line x1="23" y1="-48" x2="24" y2="-38" stroke="#ffd166" stroke-width="2.5" />
+      `;
+    } else if (p.collarType === "camera") {
+      collarSVG = `
+        <circle cx="-26" cy="-95" r="9" fill="#ffbe0b" opacity="0.55" />
+        <circle cx="28" cy="-82" r="11" fill="#fb5607" opacity="0.5" />
+        <circle cx="-22" cy="-55" r="8" fill="#fb5607" opacity="0.5" />
+        <path d="M -24 -136 L 0 -78 L 24 -136" fill="none" stroke="#2b2d42" stroke-width="4.5" />
+        <rect x="-22" y="-82" width="44" height="32" rx="6" fill="#2b2d42" stroke="#adb5bd" stroke-width="2.5" />
+        <rect x="8" y="-87" width="10" height="5" rx="2" fill="#e63946" />
+        <circle cx="0" cy="-66" r="11" fill="#111" stroke="#dee2e6" stroke-width="3" />
+        <circle cx="-3" cy="-69" r="3.5" fill="#4cc9f0" />
+      `;
+    } else if (p.collarType === "pearls") {
+      collarSVG = `
+        <path d="M -24 -138 Q 0 -102 24 -138" fill="${p.outfitSec}" />
+        <circle cx="-24" cy="-128" r="5" fill="#fff8e7" stroke="#d9cfc1" stroke-width="1" />
+        <circle cx="-13" cy="-121" r="5" fill="#fff8e7" stroke="#d9cfc1" stroke-width="1" />
+        <circle cx="0" cy="-118" r="5.5" fill="#fff8e7" stroke="#d9cfc1" stroke-width="1" />
+        <circle cx="13" cy="-121" r="5" fill="#fff8e7" stroke="#d9cfc1" stroke-width="1" />
+        <circle cx="24" cy="-128" r="5" fill="#fff8e7" stroke="#d9cfc1" stroke-width="1" />
+      `;
+    } else if (p.collarType === "bowtie") {
+      collarSVG = `
+        <polygon points="-22,-136 22,-136 0,-88" fill="${p.outfitSec}" />
+        <path d="M -22 -136 L -34 -95 L -12 -90 L 0 -88" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="2" />
+        <path d="M 22 -136 L 34 -95 L 12 -90 L 0 -88" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="2" />
+        <polygon points="-18,-130 -2,-121 -18,-112" fill="${p.accent}" />
+        <polygon points="18,-130 2,-121 18,-112" fill="${p.accent}" />
+        <circle cx="0" cy="-121" r="4.5" fill="#780000" />
+      `;
+    } else if (p.collarType === "fur") {
+      collarSVG = `
+        <path d="M -48 -136 C -58 -105 -28 -88 0 -92 C 28 -88 58 -105 48 -136 C 32 -148 -32 -148 -48 -136 Z" fill="${p.outfitSec}" stroke="rgba(0,0,0,0.12)" stroke-width="2" />
+        <circle cx="0" cy="-108" r="5" fill="${p.accent}" />
+      `;
+    } else if (p.collarType === "puffer") {
+      collarSVG = `
+        <rect x="-42" y="-134" width="84" height="100" rx="16" fill="${p.outfitSec}" />
+        <line x1="-40" y1="-102" x2="40" y2="-102" stroke="rgba(0,0,0,0.22)" stroke-width="3.5" />
+        <line x1="-40" y1="-68" x2="40" y2="-68" stroke="rgba(0,0,0,0.22)" stroke-width="3.5" />
+        <line x1="0" y1="-134" x2="0" y2="-34" stroke="#f2e8cf" stroke-width="3" />
+      `;
+    } else {
+      collarSVG = `
+        <polygon points="-26,-138 0,-88 26,-138" fill="${p.outfitSec}" />
+        <path d="M -26 -138 L -38 -102 L -16 -96 L 0 -88" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="2.5" />
+        <path d="M 26 -138 L 38 -102 L 16 -96 L 0 -88" fill="none" stroke="rgba(0,0,0,0.22)" stroke-width="2.5" />
+        <line x1="0" y1="-88" x2="0" y2="-32" stroke="rgba(0,0,0,0.25)" stroke-width="3" />
+      `;
+    }
+
+    let hairBackSVG = "";
+    let hairFrontSVG = "";
+    if (p.hairStyle === "longWavy") {
+      hairBackSVG = `<path d="M -44 -195 C -62 -155 -60 -105 -42 -90 L 42 -90 C 60 -105 62 -155 44 -195 Z" fill="${p.hair}" />`;
+      hairFrontSVG = `<path d="M -40 -202 Q 0 -224 40 -202 Q 20 -180 -38 -184 Z" fill="${p.hair}" />`;
+    } else if (p.hairStyle === "longStraight") {
+      hairBackSVG = `<rect x="-46" y="-198" width="92" height="105" rx="20" fill="${p.hair}" />`;
+      hairFrontSVG = `<path d="M -42 -204 Q 0 -220 42 -204 Q 15 -186 -42 -182 Z" fill="${p.hair}" />`;
+    } else if (p.hairStyle === "bun" || p.hairStyle === "grandmaBun") {
+      hairBackSVG = `<circle cx="0" cy="-230" r="24" fill="${p.hair}" />`;
+      hairFrontSVG = `<path d="M -40 -192 C -40 -224 40 -224 40 -192 C 20 -206 -20 -206 -40 -192 Z" fill="${p.hair}" />`;
+    } else if (p.hairStyle === "spiky") {
+      hairFrontSVG = `<polygon points="-40,-190 -48,-216 -24,-204 -14,-232 4,-208 24,-228 32,-202 46,-212 40,-188" fill="${p.hair}" />`;
+    } else if (p.hairStyle === "curly") {
+      hairFrontSVG = `
+        <circle cx="-30" cy="-204" r="15" fill="${p.hair}" />
+        <circle cx="-11" cy="-212" r="16" fill="${p.hair}" />
+        <circle cx="13" cy="-212" r="16" fill="${p.hair}" />
+        <circle cx="30" cy="-202" r="15" fill="${p.hair}" />
+      `;
+    } else {
+      hairFrontSVG = `<path d="M -40 -188 C -42 -222 42 -222 40 -188 C 22 -204 -22 -204 -40 -188 Z" fill="${p.hair}" />`;
+    }
+
+    let hatSVG = "";
+    if (p.hatType === "pilot") {
+      hatSVG = `
+        <g transform="translate(0, -208)">
+          <ellipse cx="0" cy="7" rx="46" ry="9" fill="#111a2e" />
+          <path d="M -42 4 L -52 -16 Q 0 -32 52 -16 L 42 4 Z" fill="#162944" />
+          <rect x="-40" y="-2" width="80" height="6" fill="#f4c430" />
+          <circle cx="0" cy="-10" r="7.5" fill="#f4c430" />
+          <path d="M -14 -10 Q 0 -4 14 -10" fill="none" stroke="#f4c430" stroke-width="2.5" />
+        </g>
+      `;
+    } else if (p.hatType === "beret") {
+      hatSVG = `
+        <g transform="translate(5, -210) rotate(8)">
+          <ellipse cx="0" cy="0" rx="46" ry="16" fill="#e63946" />
+          <path d="M -4 -15 L 2 -24" stroke="#e63946" stroke-width="4.5" stroke-linecap="round" />
+        </g>
+      `;
+    } else if (p.hatType === "sunhat") {
+      hatSVG = `
+        <g transform="translate(0, -208)">
+          <ellipse cx="0" cy="6" rx="66" ry="11" fill="#e9c46a" stroke="#d4a373" stroke-width="2.5" />
+          <path d="M -38 5 C -36 -24 36 -24 38 5 Z" fill="#e9c46a" />
+          <rect x="-37" y="-2" width="74" height="8" fill="#e76f51" />
+        </g>
+      `;
+    } else if (p.hatType === "beanie") {
+      hatSVG = `
+        <g transform="translate(0, -204)">
+          <path d="M -42 6 C -42 -32 42 -32 42 6 Z" fill="#bc4749" />
+          <rect x="-44" y="0" width="88" height="13" rx="6.5" fill="#a4161a" />
+          <circle cx="0" cy="-26" r="11" fill="#f2e8cf" />
+        </g>
+      `;
+    } else if (p.hatType === "fedora") {
+      hatSVG = `
+        <g transform="translate(0, -208)">
+          <ellipse cx="0" cy="6" rx="56" ry="9" fill="#4a3525" />
+          <path d="M -36 5 L -28 -22 Q 0 -16 28 -22 L 36 5 Z" fill="#5c422e" />
+          <rect x="-34" y="-1" width="68" height="6.5" fill="#291c14" />
+        </g>
+      `;
+    } else if (p.hatType === "cap") {
+      hatSVG = `
+        <g transform="translate(0, -204)">
+          <path d="M -40 4 C -40 -26 40 -26 40 4 Z" fill="#00b4d8" />
+          <path d="M 10 2 L 62 9 Q 42 15 10 8 Z" fill="#0077b6" />
+        </g>
+      `;
+    } else if (p.hatType === "headphones") {
+      hatSVG = `
+        <g>
+          <path d="M -44 -175 C -48 -230 48 -230 44 -175" fill="none" stroke="#adb5bd" stroke-width="6.5" />
+          <rect x="-51" y="-188" width="13" height="28" rx="6.5" fill="#e63946" stroke="#222" stroke-width="1.5" />
+          <rect x="38" y="-188" width="13" height="28" rx="6.5" fill="#e63946" stroke="#222" stroke-width="1.5" />
+        </g>
+      `;
+    }
+
+    let glassesSVG = "";
+    if (p.glasses === "aviator" || p.glasses === "sunglasses") {
+      glassesSVG = `
+        <g transform="translate(0, -178)">
+          <rect x="-30" y="-8" width="25" height="16" rx="6" fill="rgba(17,24,39,0.82)" stroke="#ffd166" stroke-width="2.2" />
+          <rect x="5" y="-8" width="25" height="16" rx="6" fill="rgba(17,24,39,0.82)" stroke="#ffd166" stroke-width="2.2" />
+          <line x1="-18" y1="-5" x2="-10" y2="4" stroke="rgba(255,255,255,0.35)" stroke-width="2" />
+          <line x1="12" y1="-5" x2="20" y2="4" stroke="rgba(255,255,255,0.35)" stroke-width="2" />
+          <line x1="-5" y1="-2" x2="5" y2="-2" stroke="#ffd166" stroke-width="2.2" />
+        </g>
+      `;
+    } else if (p.glasses === "round" || p.glasses === "reading") {
+      glassesSVG = `
+        <g transform="translate(0, -178)">
+          <circle cx="-16" cy="0" r="11" fill="rgba(255,255,255,0.18)" stroke="#3d2c1e" stroke-width="2.5" />
+          <circle cx="16" cy="0" r="11" fill="rgba(255,255,255,0.18)" stroke="#3d2c1e" stroke-width="2.5" />
+          <line x1="-5" y1="0" x2="5" y2="0" stroke="#3d2c1e" stroke-width="2.5" />
+        </g>
+      `;
+    } else if (p.glasses === "catEye" || p.glasses === "glam") {
+      glassesSVG = `
+        <g transform="translate(0, -178)">
+          <polygon points="-31,-9 -4,-4 -8,8 -27,7" fill="rgba(181,23,158,0.32)" stroke="#ffd166" stroke-width="2.4" />
+          <polygon points="31,-9 4,-4 8,8 27,7" fill="rgba(181,23,158,0.32)" stroke="#ffd166" stroke-width="2.4" />
+          <line x1="-4" y1="-4" x2="4" y2="-4" stroke="#ffd166" stroke-width="2.2" />
+        </g>
+      `;
+    }
+
+    const beardSVG = p.beard
+      ? `<path d="M -28 -160 Q 0 -134 28 -160 Q 24 -140 0 -138 Q -24 -140 -28 -160 Z" fill="${p.hair}" opacity="0.88" />`
+      : "";
+
+    return `
+      <g id="character-root" transform="scale(2.2)">
+        <!-- Тінь персонажа на гранітній підлозі залу -->
+        <ellipse cx="0" cy="8" rx="56" ry="13" fill="url(#dropShadow)" />
+
+        <!-- Ліва нога -->
+        <g id="char-leg-left" transform="translate(-19, -46)">
+          <rect x="-12" y="0" width="24" height="46" rx="9" fill="${p.pants}" />
+          <line x1="0" y1="4" x2="0" y2="40" stroke="rgba(0,0,0,0.2)" stroke-width="1.5" />
+          <path d="M -14 40 L 14 40 Q 22 53 9 53 L -14 53 Z" fill="${p.shoes}" />
+          <rect x="-14" y="50" width="28" height="3.5" rx="1.5" fill="#d9d9d9" opacity="0.5" />
+        </g>
+
+        <!-- Права нога -->
+        <g id="char-leg-right" transform="translate(19, -46)">
+          <rect x="-12" y="0" width="24" height="46" rx="9" fill="${p.pants}" />
+          <line x1="0" y1="4" x2="0" y2="40" stroke="rgba(0,0,0,0.2)" stroke-width="1.5" />
+          <g id="char-foot-right">
+            <path d="M -12 40 L 18 40 Q 26 53 13 53 L -12 53 Z" fill="${p.shoes}" />
+            <rect x="-12" y="50" width="30" height="3.5" rx="1.5" fill="#d9d9d9" opacity="0.5" />
+          </g>
+        </g>
+
+        <!-- Тулуб, голова та руки -->
+        <g id="char-upper-body">
+          <!-- Права рука -->
+          <g id="char-arm-right" transform="translate(45, -130)">
+            <rect x="-11" y="0" width="24" height="68" rx="11" fill="${p.outfitMain}" stroke="rgba(0,0,0,0.18)" stroke-width="1.5" />
+            <rect x="-9" y="60" width="20" height="6" rx="2" fill="${p.outfitSec}" />
+            <circle cx="1" cy="72" r="10.5" fill="${p.skin}" />
+            <circle cx="-7" cy="69" r="4.5" fill="${p.skin}" />
+          </g>
+
+          <!-- Основний торс / пальто / піджак -->
+          <path d="M -44 -138 L 44 -138 L 50 -36 L -50 -36 Z" fill="${p.outfitMain}" stroke="rgba(0,0,0,0.2)" stroke-width="1.5" />
+          <rect x="-38" y="-66" width="20" height="6" rx="2" fill="rgba(0,0,0,0.2)" />
+          <rect x="18" y="-66" width="20" height="6" rx="2" fill="rgba(0,0,0,0.2)" />
+          ${collarSVG}
+
+          <!-- Ліва рука (якою пасажир дивиться на годинник, а потім БЕРЕ І НЕСЕ ВАЛІЗУ!) -->
+          <g id="char-arm-left" transform="translate(-45, -130)">
+            <rect x="-13" y="0" width="24" height="68" rx="11" fill="${p.outfitMain}" stroke="rgba(0,0,0,0.18)" stroke-width="1.5" />
+            <rect x="-11" y="60" width="20" height="6" rx="2" fill="${p.outfitSec}" />
+            <rect x="-12" y="52" width="22" height="6" rx="2" fill="#3b2314" />
+            <circle cx="-1" cy="55" r="6.5" fill="#fff8e7" stroke="#ffd166" stroke-width="2" />
+            <line x1="-1" y1="55" x2="-1" y2="51" stroke="#111" stroke-width="1.4" stroke-linecap="round" />
+            <line x1="-1" y1="55" x2="3" y2="55" stroke="#e63946" stroke-width="1.2" stroke-linecap="round" />
+            <!-- Кисть лівої руки -->
+            <circle cx="-1" cy="72" r="10.5" fill="${p.skin}" />
+            <circle cx="7" cy="69" r="4.5" fill="${p.skin}" />
+          </g>
+
+          <!-- Шия -->
+          <rect x="-13" y="-152" width="26" height="20" rx="6" fill="${p.skin}" />
+          <path d="M -13 -146 Q 0 -138 13 -146 L 13 -152 L -13 -152 Z" fill="rgba(0,0,0,0.14)" />
+
+          <!-- Голова та емоції -->
+          <g id="char-head" transform="translate(0, 0)">
+            ${hairBackSVG}
+            <circle cx="-40" cy="-175" r="8.5" fill="${p.skin}" />
+            <circle cx="-40" cy="-175" r="4.5" fill="rgba(0,0,0,0.1)" />
+            <circle cx="40" cy="-175" r="8.5" fill="${p.skin}" />
+            <circle cx="40" cy="-175" r="4.5" fill="rgba(0,0,0,0.1)" />
+
+            <rect x="-38" y="-214" width="76" height="72" rx="34" fill="${p.skin}" />
+            <ellipse cx="-23" cy="-167" rx="7.5" ry="4.2" fill="#e57373" opacity="0.35" />
+            <ellipse cx="23" cy="-167" rx="7.5" ry="4.2" fill="#e57373" opacity="0.35" />
+
+            <!-- Очі -->
+            <g id="char-eyes" transform="translate(0, -178)">
+              <ellipse cx="-15" cy="0" rx="7.2" ry="8.2" fill="#ffffff" stroke="rgba(0,0,0,0.15)" stroke-width="1" />
+              <ellipse cx="15" cy="0" rx="7.2" ry="8.2" fill="#ffffff" stroke="rgba(0,0,0,0.15)" stroke-width="1" />
+              <g id="char-pupils">
+                <circle cx="-15" cy="0" r="4.8" fill="${p.eyeColor}" />
+                <circle cx="15" cy="0" r="4.8" fill="${p.eyeColor}" />
+                <circle cx="-15" cy="0" r="2.6" fill="#111827" />
+                <circle cx="15" cy="0" r="2.6" fill="#111827" />
+                <circle cx="-16.8" cy="-2.2" r="1.6" fill="#ffffff" />
+                <circle cx="13.2" cy="-2.2" r="1.6" fill="#ffffff" />
+                <circle cx="-13.5" cy="1.8" r="0.8" fill="#ffffff" />
+                <circle cx="16.5" cy="1.8" r="0.8" fill="#ffffff" />
+              </g>
+              <rect id="eyelid-left" x="-23" y="-9.5" width="17" height="3" rx="1.5" fill="${p.skin}" />
+              <rect id="eyelid-right" x="6" y="-9.5" width="17" height="3" rx="1.5" fill="${p.skin}" />
+            </g>
+
+            <!-- Брови -->
+            <g id="char-brows" transform="translate(0, -191)">
+              <path id="brow-left" d="M -23 2 Q -15 -3 -7 1" fill="none" stroke="${p.hair}" stroke-width="3.5" stroke-linecap="round" />
+              <path id="brow-right" d="M 7 1 Q 15 -3 23 2" fill="none" stroke="${p.hair}" stroke-width="3.5" stroke-linecap="round" />
+            </g>
+
+            <!-- Ніс -->
+            <path d="M 0 -177 L -3.5 -166 L 3.5 -165" fill="none" stroke="rgba(0,0,0,0.28)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+
+            ${beardSVG}
+
+            <!-- Рот -->
+            <path id="char-mouth" d="M -9 -155 Q 0 -158 9 -155" fill="none" stroke="#7f2b2b" stroke-width="3.2" stroke-linecap="round" />
+
+            ${glassesSVG}
+            ${hairFrontSVG}
+            ${hatSVG}
+
+            <!-- Крапелька хвилювання біля скроні -->
+            <path id="char-sweat" d="M 34 -198 C 34 -198 40 -187 40 -183 C 40 -179 37 -176 34 -176 C 31 -176 28 -179 28 -183 C 28 -187 34 -198 34 -198 Z" fill="#4cc9f0" opacity="0" />
+          </g>
+        </g>
+      </g>
+    `;
+  }
+
+  /* ============================================================================
+     ФУНКЦІЯ МАЛЮВАННЯ ПАЛЬЦІВ РУКИ ПОВЕРХ РУЧКИ ВАЛІЗИ
+     Коли пасажир бере валізу, ця кисть малюється прямо поверх верхньої ручки валізи,
+     щоб було чітко видно, що валіза затиснута в його долоні!
+     ============================================================================ */
+  function buildHandGripSVG(typeIndex) {
+    const p = PASSENGERS_DATA[typeIndex % PASSENGERS_DATA.length];
+    return `
+      <g>
+        <!-- Чотири пальці, що охоплюють ручку валізи спереду -->
+        <rect x="-18" y="-9" width="9" height="19" rx="4.5" fill="${p.skin}" stroke="rgba(0,0,0,0.22)" stroke-width="1.5" />
+        <rect x="-9" y="-10" width="9" height="20" rx="4.5" fill="${p.skin}" stroke="rgba(0,0,0,0.22)" stroke-width="1.5" />
+        <rect x="0" y="-10" width="9" height="20" rx="4.5" fill="${p.skin}" stroke="rgba(0,0,0,0.22)" stroke-width="1.5" />
+        <rect x="9" y="-9" width="9" height="18" rx="4.5" fill="${p.skin}" stroke="rgba(0,0,0,0.22)" stroke-width="1.5" />
+        <!-- Великий палець збоку -->
+        <ellipse cx="14" cy="2" rx="8" ry="5.5" transform="rotate(-20, 14, 2)" fill="${p.skin}" stroke="rgba(0,0,0,0.22)" stroke-width="1.5" />
+      </g>
+    `;
+  }
+
+  /* ============================================================================
+     ФУНКЦІЯ МАЛЮВАННЯ 10 ВИДІВ ДЕТАЛІЗОВАНИХ ВАЛІЗ З КРУПНИМ СЛОВОМ
+     У кожної валізи верхня ручка розташована рівно в точці (0, -172),
+     за яку пасажир береться рукою і піднімає валізу!
+     ============================================================================ */
+  function buildSuitcaseSVG(typeIndex, wordText) {
+    const styleId = typeIndex % 10;
+    let bagBodySVG = "";
+
+    switch (styleId) {
+      case 0:
+        // 1. Вінтажна шкіряна скриня-валіза з ременями та латунними кутиками
+        bagBodySVG = `
+          <path d="M -42 -155 L -34 -180 L 34 -180 L 42 -155" fill="none" stroke="#4a2c11" stroke-width="11" stroke-linecap="round" />
+          <rect x="-155" y="-155" width="310" height="150" rx="18" fill="#7f4f24" stroke="#4a2c11" stroke-width="4" />
+          <path d="M -137 -155 L -155 -137 L -155 -155 Z" fill="#ffd166" />
+          <path d="M 137 -155 L 155 -137 L 155 -155 Z" fill="#ffd166" />
+          <path d="M -137 -5 L -155 -23 L -155 -5 Z" fill="#ffd166" />
+          <path d="M 137 -5 L 155 -23 L 155 -5 Z" fill="#ffd166" />
+          <rect x="-112" y="-155" width="22" height="150" fill="#4a2c11" />
+          <rect x="90" y="-155" width="22" height="150" fill="#4a2c11" />
+          <rect x="-116" y="-115" width="30" height="18" rx="3" fill="none" stroke="#ffd166" stroke-width="4" />
+          <rect x="86" y="-115" width="30" height="18" rx="3" fill="none" stroke="#ffd166" stroke-width="4" />
+        `;
+        break;
+
+      case 1:
+        // 2. Сучасний бірюзовий полікарбонатний спінер на 4 подвійних колесах
+        bagBodySVG = `
+          <path d="M -38 -158 L -38 -182 L 38 -182 L 38 -158" fill="none" stroke="#adb5bd" stroke-width="8" />
+          <rect x="-30" y="-186" width="60" height="11" rx="5" fill="#1d3557" />
+          <rect x="-148" y="-160" width="296" height="148" rx="26" fill="#0096c7" stroke="#023e8a" stroke-width="4" />
+          <line x1="-130" y1="-135" x2="130" y2="-135" stroke="#48cae4" stroke-width="5" stroke-linecap="round" />
+          <line x1="-130" y1="-35" x2="130" y2="-35" stroke="#48cae4" stroke-width="5" stroke-linecap="round" />
+          <circle cx="-115" cy="-4" r="11" fill="#1d2228" stroke="#adb5bd" stroke-width="3" />
+          <circle cx="115" cy="-4" r="11" fill="#1d2228" stroke="#adb5bd" stroke-width="3" />
+        `;
+        break;
+
+      case 2:
+        // 3. Класична шотландська картата валіза з карамельними накладками
+        bagBodySVG = `
+          <path d="M -40 -155 C -40 -184 40 -184 40 -155" fill="none" stroke="#5c2c16" stroke-width="11" />
+          <rect x="-152" y="-155" width="304" height="148" rx="20" fill="url(#plaidPattern)" stroke="#5c2c16" stroke-width="6" />
+          <rect x="-144" y="-147" width="288" height="132" rx="14" fill="none" stroke="#f7d060" stroke-width="2" stroke-dasharray="8 5" />
+          <circle cx="-110" cy="-130" r="6" fill="#ffd166" />
+          <circle cx="110" cy="-130" r="6" fill="#ffd166" />
+        `;
+        break;
+
+      case 3:
+        // 4. Алюмінієвий преміум-кейс із заклепками та кодовими замками
+        bagBodySVG = `
+          <rect x="-42" y="-180" width="84" height="22" rx="7" fill="none" stroke="#343a40" stroke-width="9" />
+          <rect x="-155" y="-158" width="310" height="150" rx="16" fill="url(#chromeGrad)" stroke="#495057" stroke-width="4" />
+          <line x1="-145" y1="-140" x2="145" y2="-140" stroke="#6c757d" stroke-width="3" />
+          <line x1="-145" y1="-25" x2="145" y2="-25" stroke="#6c757d" stroke-width="3" />
+          <rect x="-155" y="-158" width="28" height="28" rx="6" fill="#343a40" />
+          <rect x="127" y="-158" width="28" height="28" rx="6" fill="#343a40" />
+          <rect x="-155" y="-36" width="28" height="28" rx="6" fill="#343a40" />
+          <rect x="127" y="-36" width="28" height="28" rx="6" fill="#343a40" />
+        `;
+        break;
+
+      case 4:
+        // 5. Експедиційний оливковий баул-трансформер із кишенями та карабінами
+        bagBodySVG = `
+          <path d="M -50 -152 Q 0 -194 50 -152" fill="none" stroke="#dda15e" stroke-width="10" />
+          <rect x="-156" y="-152" width="312" height="145" rx="34" fill="#3a5a40" stroke="#283618" stroke-width="4" />
+          <rect x="-140" y="-135" width="42" height="110" rx="10" fill="#588157" stroke="#283618" stroke-width="3" />
+          <rect x="98" y="-135" width="42" height="110" rx="10" fill="#588157" stroke="#283618" stroke-width="3" />
+          <circle cx="-118" cy="-115" r="7" fill="none" stroke="#ffb703" stroke-width="3" />
+          <circle cx="118" cy="-115" r="7" fill="none" stroke="#ffb703" stroke-width="3" />
+        `;
+        break;
+
+      case 5:
+        // 6. Гламурна малиново-оксамитова стьобана валіза із золотою фурнітурою
+        bagBodySVG = `
+          <path d="M -38 -158 C -38 -186 38 -186 38 -158" fill="none" stroke="#ffd166" stroke-width="10" />
+          <rect x="-150" y="-158" width="300" height="148" rx="28" fill="#9d174d" stroke="#f472b6" stroke-width="4" />
+          <line x1="-120" y1="-158" x2="-60" y2="-10" stroke="#be185d" stroke-width="3" />
+          <line x1="120" y1="-158" x2="60" y2="-10" stroke="#be185d" stroke-width="3" />
+          <circle cx="-110" cy="-4" r="10" fill="#ffd166" />
+          <circle cx="110" cy="-4" r="10" fill="#ffd166" />
+        `;
+        break;
+
+      case 6:
+        // 7. Дерев'яно-кований ретро-сундук мандрівника з печатками
+        bagBodySVG = `
+          <path d="M -38 -156 L -30 -180 L 30 -180 L 38 -156" fill="none" stroke="#3d2516" stroke-width="10" />
+          <rect x="-156" y="-156" width="312" height="150" rx="12" fill="#9c6644" stroke="#3d2516" stroke-width="5" />
+          <rect x="-156" y="-128" width="312" height="14" fill="#3d2516" />
+          <rect x="-156" y="-42" width="312" height="14" fill="#3d2516" />
+          <circle cx="-125" cy="-121" r="4" fill="#ffd166" />
+          <circle cx="125" cy="-121" r="4" fill="#ffd166" />
+          <circle cx="-125" cy="-35" r="4" fill="#ffd166" />
+          <circle cx="125" cy="-35" r="4" fill="#ffd166" />
+        `;
+        break;
+
+      case 7:
+        // 8. Спортивна карбонова валіза з неоново-помаранчевими вставками
+        bagBodySVG = `
+          <path d="M -42 -156 L -32 -180 L 32 -180 L 42 -156" fill="none" stroke="#ff6b00" stroke-width="9" />
+          <rect x="-152" y="-156" width="304" height="148" rx="24" fill="url(#carbonPattern)" stroke="#ff6b00" stroke-width="4" />
+          <polygon points="-152,-120 -95,-156 -65,-156 -152,-95" fill="#ff6b00" />
+          <polygon points="152,-45 95,-8 65,-8 152,-70" fill="#ff6b00" />
+        `;
+        break;
+
+      case 8:
+        // 9. Бохо-валіза з візерунковим гобеленом та шкіряними пряжками
+        bagBodySVG = `
+          <path d="M -38 -156 C -38 -184 38 -184 38 -156" fill="none" stroke="#bc6c25" stroke-width="10" />
+          <rect x="-152" y="-156" width="304" height="148" rx="22" fill="url(#bohoPattern)" stroke="#bc6c25" stroke-width="6" />
+          <rect x="-122" y="-156" width="18" height="148" fill="#bc6c25" />
+          <rect x="104" y="-156" width="18" height="148" fill="#bc6c25" />
+        `;
+        break;
+
+      default:
+        // 10. Смарт-валіза кольору нічного сапфіру з мідним контуром
+        bagBodySVG = `
+          <path d="M -38 -158 L -34 -182 L 34 -182 L 38 -158" fill="none" stroke="#e07a5f" stroke-width="9" />
+          <rect x="-152" y="-158" width="304" height="150" rx="26" fill="#1b263b" stroke="#e07a5f" stroke-width="4" />
+          <rect x="-140" y="-146" width="280" height="126" rx="18" fill="none" stroke="#4cc9f0" stroke-width="2.5" opacity="0.7" />
+          <circle cx="-112" cy="-4" r="10" fill="#e07a5f" />
+          <circle cx="112" cy="-4" r="10" fill="#e07a5f" />
+        `;
+        break;
+    }
+
+    const fontSize = wordText.length >= 8 ? 42 : wordText.length >= 6 ? 48 : 54;
+
+    return `
+      <g id="active-suitcase">
+        <!-- Тінь під валізою на стрічці (зникає, коли пасажир піднімає валізу в повітря!) -->
+        <ellipse id="suitcase-belt-shadow" cx="0" cy="4" rx="158" ry="18" fill="rgba(0,0,0,0.6)" />
+
+        ${bagBodySVG}
+
+        <!-- Фактурна шкіряно-бронзова табличка зі словом (жодних білих прямокутників!) -->
+        <g transform="translate(0, -82)">
+          <rect x="-132" y="-48" width="264" height="96" rx="16" fill="url(#goldRimGrad)" stroke="#3b2314" stroke-width="2.5" />
+          <rect x="-124" y="-40" width="248" height="80" rx="12" fill="url(#tagPlateGrad)" />
+          <rect x="-118" y="-34" width="236" height="68" rx="9" fill="none" stroke="#ffd166" stroke-width="1.6" stroke-dasharray="6 4" opacity="0.65" />
+          <circle cx="-110" cy="-25" r="3.5" fill="#ffe28a" />
+          <circle cx="110" cy="-25" r="3.5" fill="#ffe28a" />
+          <circle cx="-110" cy="25" r="3.5" fill="#ffe28a" />
+          <circle cx="110" cy="25" r="3.5" fill="#ffe28a" />
+
+          <!-- Крупно написане слово з буквами Я, Ю, Є -->
+          <text
+            x="0"
+            y="16"
+            text-anchor="middle"
+            font-size="${fontSize}"
+            font-weight="900"
+            letter-spacing="1.5"
+            fill="#fff6d6"
+            stroke="#1b0e07"
+            stroke-width="1.5"
+            style="paint-order: stroke fill; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.85));"
+          >${wordText}</text>
+        </g>
+      </g>
+    `;
+  }
+
+  /* ============================================================================
+     КЕРУВАННЯ СТАНОМ ГРИ ТА АНІМАЦІЯМИ
+     Стани:
+     - ENTERING: пасажир підходить до каруселі, валіза виїжджає з тунелю до краю стрічки (X=585)
+     - WAITING: пасажир чекає на підлозі біля стрічки (нервує, дивиться на годинник, тупає, зітхає)
+     - GRAB_REACH: пасажир підходить впритул до валізи, нахиляється і простягає руку прямо до ручки валізи
+     - LIFT_OFF_BELT: пасажир піднімає валізу високо в повітря ЗІ СТРІЧКИ і переносить її у свою руку над підлогою!
+     - CARRY_AWAY: пасажир несе валізу в руці (вона гойдається у долоні в такт крокам) і виходить крізь розсувні двері!
+     ============================================================================ */
+  const passengerStage = document.getElementById("passenger-stage");
+  const suitcaseStage = document.getElementById("suitcase-stage");
+  const handGripOverlay = document.getElementById("hand-grip-overlay");
+  const carriedFloorShadow = document.getElementById("carried-suitcase-floor-shadow");
+  const doorLeafLeft = document.getElementById("door-leaf-left");
+  const doorLeafRight = document.getElementById("door-leaf-right");
+  const fxStage = document.getElementById("fx-stage");
+  const beltSlatsGroup = document.getElementById("belt-slats");
+  const curtainStrips = document.querySelectorAll(".curtain-strip");
+  const chuteLight = document.getElementById("chute-light");
+  const chuteGlow = document.getElementById("chute-glow");
+
+  let currentLevel = 0;
+  let gameState = "ENTERING";
+  let stateStartTime = performance.now();
+
+  // Координати пасажира (стоїть на відкритій гранітній підлозі праворуч від конвеєра)
+  let passengerX = 950;
+  let passengerY = 775;
+
+  // Координати валізи
+  let suitcaseX = 95;
+  let suitcaseY = 695;
+  let suitcaseScale = 0.76;
+  let suitcaseAngle = 0;
+  let pickupStartSuitcaseX = 585;
+
+  let lastStepTriggered = -1;
+  let lastIdleTapTriggered = -1;
+
+  // Створюємо траки конвеєрної стрічки (вона закінчується на X = 800)
+  const SLAT_COUNT = 12;
+  const slatElements = [];
+  for (let i = 0; i < SLAT_COUNT; i++) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("stroke", "#3c4654");
+    line.setAttribute("stroke-width", "4.5");
+    line.setAttribute("stroke-linecap", "round");
+    beltSlatsGroup.appendChild(line);
+    slatElements.push(line);
+  }
+
+  /* ============================================================================
+     ЗАПУСК КОНКРЕТНОГО РІВНЯ
+     ============================================================================ */
+  function startLevel(index) {
+    currentLevel = (index + WORDS_LIST.length) % WORDS_LIST.length;
+
+    const word = WORDS_LIST[currentLevel];
+    const passengerType = currentLevel % 10;
+    const suitcaseType = (currentLevel * 3 + Math.floor(currentLevel / 10)) % 10;
+
+    passengerStage.innerHTML = buildPassengerSVG(passengerType);
+    suitcaseStage.innerHTML = buildSuitcaseSVG(suitcaseType, word);
+    handGripOverlay.innerHTML = buildHandGripSVG(passengerType);
+    handGripOverlay.setAttribute("opacity", "0");
+    carriedFloorShadow.setAttribute("opacity", "0");
+    doorLeafLeft.setAttribute("transform", "translate(0, 0)");
+    doorLeafRight.setAttribute("transform", "translate(0, 0)");
+    fxStage.innerHTML = "";
+
+    // Пасажир заходить на позицію очікування біля правого краю каруселі
+    passengerX = 1240;
+    passengerY = 775;
+
+    // Валіза виїжджає з тунелю зліва
+    suitcaseX = 95;
+    suitcaseY = 695;
+    suitcaseScale = 0.68;
+    suitcaseAngle = 0;
+
+    gameState = "ENTERING";
+    stateStartTime = performance.now();
+    lastStepTriggered = -1;
+    lastIdleTapTriggered = -1;
+
+    const activeSuitcase = document.getElementById("active-suitcase");
+    if (activeSuitcase) {
+      activeSuitcase.addEventListener("click", onSuitcaseClicked);
+    }
+
+    sound.playSuitcaseArrive();
+  }
+
+  /* ============================================================================
+     ОБРОБНИК КЛІКУ НА ВАЛІЗУ
+     Пасажир підходить до стрічки, бере валізу за ручку, знімає зі стрічки і несе в руці!
+     ============================================================================ */
+  function onSuitcaseClicked() {
+    if (gameState === "GRAB_REACH" || gameState === "LIFT_OFF_BELT" || gameState === "CARRY_AWAY") return;
+
+    pickupStartSuitcaseX = suitcaseX;
+    gameState = "GRAB_REACH";
+    stateStartTime = performance.now();
+    lastStepTriggered = -1;
+
+    sound.playPickupCelebration(currentLevel);
+    spawnCelebrationParticles(suitcaseX, suitcaseY - 90);
+  }
+
+  /* ============================================================================
+     ЯСКРАВИЙ САЛЮТ ІЗ ЗІРОЧОК ПРИ ЗАБИРАННІ ВАЛІЗИ
+     ============================================================================ */
+  const activeParticles = [];
+
+  function spawnCelebrationParticles(cx, cy) {
+    const colors = ["#ffd166", "#06d6a0", "#4cc9f0", "#ff5d8f", "#f77f00", "#ffffff"];
+    for (let i = 0; i < 32; i++) {
+      const angle = (Math.PI * 2 * i) / 32 + (Math.random() - 0.5) * 0.25;
+      const speed = 4 + Math.random() * 7;
+      const size = 8 + Math.random() * 11;
+      const color = colors[i % colors.length];
+
+      const star = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      const s = size;
+      const s2 = size * 0.35;
+      star.setAttribute(
+        "points",
+        `0,${-s} ${s2},${-s2} ${s},0 ${s2},${s2} 0,${s} ${-s2},${s2} ${-s},0 ${-s2},${-s2}`
+      );
+      star.setAttribute("fill", color);
+      fxStage.appendChild(star);
+
+      activeParticles.push({
+        el: star,
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 3,
+        rot: Math.random() * 360,
+        vRot: (Math.random() - 0.5) * 14,
+        alpha: 1
+      });
+    }
+  }
+
+  function updateParticles() {
+    for (let i = activeParticles.length - 1; i >= 0; i--) {
+      const p = activeParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.18;
+      p.rot += p.vRot;
+      p.alpha -= 0.022;
+
+      if (p.alpha <= 0) {
+        p.el.remove();
+        activeParticles.splice(i, 1);
+      } else {
+        p.el.setAttribute(
+          "transform",
+          `translate(${p.x.toFixed(1)}, ${p.y.toFixed(1)}) rotate(${p.rot.toFixed(1)}) scale(${p.alpha.toFixed(2)})`
+        );
+        p.el.setAttribute("opacity", p.alpha.toFixed(2));
+      }
+    }
+  }
+
+  /* ============================================================================
+     ДОПОМІЖНА ФУНКЦІЯ: ОБЧИСЛЕННЯ ТОЧНИХ СВІТОВИХ КООРДИНАТ ЛІВОЇ КИСТІ ПАСАЖИРА
+     Завдяки цій функції валіза під час підйому та ходьби прикріплюється своєю
+     ручкою РІВНО в долоню пасажира і гойдається разом із його рукою!
+     ============================================================================ */
+  function getLeftHandWorldPosition(bodyOffsetX, bodyOffsetY, bodyRotDeg, armRotDeg) {
+    const scale = 2.2;
+    // Центр обертання тулуба у локальних координатах: (0, -55)
+    const bodyPivotX = 0;
+    const bodyPivotY = -55;
+
+    // Плечовий суглоб лівої руки: (-45, -130)
+    const shoulderLocalX = -45 - bodyPivotX;
+    const shoulderLocalY = -130 - bodyPivotY;
+
+    const bRad = (bodyRotDeg * Math.PI) / 180;
+    const cosB = Math.cos(bRad);
+    const sinB = Math.sin(bRad);
+
+    // Положення плеча з урахуванням нахилу тулуба
+    const shoulderX = bodyOffsetX + bodyPivotX + (shoulderLocalX * cosB - shoulderLocalY * sinB);
+    const shoulderY = bodyOffsetY + bodyPivotY + (shoulderLocalX * sinB + shoulderLocalY * cosB);
+
+    // Вектор від плеча до центру кисті руки: (-1, 72)
+    const totalArmRad = ((bodyRotDeg + armRotDeg) * Math.PI) / 180;
+    const cosA = Math.cos(totalArmRad);
+    const sinA = Math.sin(totalArmRad);
+
+    const handLocalX = shoulderX + (-1 * cosA - 72 * sinA);
+    const handLocalY = shoulderY + (-1 * sinA + 72 * cosA);
+
+    return {
+      x: passengerX + handLocalX * scale,
+      y: passengerY + handLocalY * scale
+    };
+  }
+
+  /* ============================================================================
+     ЖИВА АНІМАЦІЯ ПАСАЖИРА ТА ФІЗИЧНОГО ЗАБИРАННЯ ВАЛІЗИ В РУКУ
+     ============================================================================ */
+  function animatePassengerAndSuitcase(now, elapsedInState) {
+    const upperBody = document.getElementById("char-upper-body");
+    const head = document.getElementById("char-head");
+    const armLeft = document.getElementById("char-arm-left");
+    const armRight = document.getElementById("char-arm-right");
+    const legLeft = document.getElementById("char-leg-left");
+    const legRight = document.getElementById("char-leg-right");
+    const footRight = document.getElementById("char-foot-right");
+    const pupils = document.getElementById("char-pupils");
+    const browLeft = document.getElementById("brow-left");
+    const browRight = document.getElementById("brow-right");
+    const mouth = document.getElementById("char-mouth");
+    const eyelidLeft = document.getElementById("eyelid-left");
+    const eyelidRight = document.getElementById("eyelid-right");
+    const sweat = document.getElementById("char-sweat");
+    const beltShadow = document.getElementById("suitcase-belt-shadow");
+
+    if (!upperBody || !head) return;
+
+    if (gameState === "ENTERING") {
+      // 1. Пасажир підходить до краю каруселі (X = 950), а валіза виїжджає по стрічці до X = 585
+      const t = Math.min(elapsedInState / 1350, 1);
+      const easeOut = 1 - Math.pow(1 - t, 3);
+
+      passengerX = 1240 - easeOut * 290; // Зупиняється на відкритій підлозі біля стрічки (X = 950)
+      passengerY = 775;
+
+      const walkCycle = Math.sin(elapsedInState * 0.016);
+      legLeft.setAttribute("transform", `translate(-19, -46) rotate(${walkCycle * 22})`);
+      legRight.setAttribute("transform", `translate(19, -46) rotate(${-walkCycle * 22})`);
+      armLeft.setAttribute("transform", `translate(-45, -130) rotate(${-walkCycle * 18})`);
+      armRight.setAttribute("transform", `translate(45, -130) rotate(${walkCycle * 18})`);
+      upperBody.setAttribute("transform", `translate(0, ${Math.abs(walkCycle) * -5})`);
+
+      // Валіза їде по стрічці до кінця каруселі (X = 585, Y = 695)
+      suitcaseX = 95 + easeOut * 490;
+      suitcaseY = 695;
+      suitcaseScale = 0.68 + easeOut * 0.08;
+      suitcaseAngle = 0;
+
+      // Гумові шторки тунелю відхиляються, пропускаючи валізу
+      const curtainAngle = t < 0.55 ? Math.sin((t / 0.55) * Math.PI) * 28 : 0;
+      curtainStrips.forEach((strip, idx) => {
+        const dir = idx < 3 ? -1 : 1;
+        strip.setAttribute(
+          "transform",
+          `rotate(${dir * curtainAngle * (1 - Math.abs(idx - 2.5) * 0.18)}, ${idx * 33 + 15}, 0)`
+        );
+      });
+
+      if (t >= 1) {
+        gameState = "WAITING";
+        stateStartTime = now;
+      }
+    } else if (gameState === "WAITING") {
+      // 2. Пасажир стоїть біля торця стрічки і нервує або нудьгує в очікуванні
+      const cycleTime = (elapsedInState % 9000) / 1000;
+      legLeft.setAttribute("transform", "translate(-19, -46)");
+      legRight.setAttribute("transform", "translate(19, -46)");
+
+      // Валіза чекає біля правого краю каруселі, злегка вібруючи на стрічці
+      suitcaseX = 585 + Math.sin(elapsedInState * 0.004) * 10;
+      suitcaseY = 695;
+      suitcaseScale = 0.76;
+      suitcaseAngle = 0;
+
+      if (cycleTime < 3.0) {
+        // ФАЗА 1: Дивиться на наручний годинник і хвилюється
+        const lift = Math.min(cycleTime / 0.5, 1) * (cycleTime > 2.5 ? (3.0 - cycleTime) / 0.5 : 1);
+        armLeft.setAttribute("transform", `translate(-45, -130) rotate(${-72 * lift})`);
+        armRight.setAttribute("transform", `translate(45, -130) rotate(${8 * Math.sin(now * 0.005)})`);
+        head.setAttribute("transform", `rotate(${-14 * lift}, 0, -160) translate(${-4 * lift}, ${3 * lift})`);
+        pupils.setAttribute("transform", `translate(${-3.2 * lift}, ${2.5 * lift})`);
+        browLeft.setAttribute("d", "M -23 -1 Q -15 -6 -7 2");
+        browRight.setAttribute("d", "M 7 2 Q 15 -6 23 -1");
+        mouth.setAttribute("d", `M -9 -154 Q -2 ${-158 + Math.sin(now * 0.015) * 2.5} 8 -153`);
+        sweat.setAttribute("opacity", (0.9 * lift).toFixed(2));
+        eyelidLeft.setAttribute("height", "3");
+        eyelidRight.setAttribute("height", "3");
+        footRight.setAttribute("transform", "rotate(0)");
+        upperBody.setAttribute("transform", `translate(0, ${Math.sin(now * 0.006) * 2})`);
+      } else if (cycleTime < 6.0) {
+        // ФАЗА 2: Нетерпляче постукує ногою та дивиться на валізу
+        armLeft.setAttribute("transform", "translate(-45, -130) rotate(12)");
+        armRight.setAttribute("transform", "translate(45, -130) rotate(-12)");
+        const tapWave = Math.abs(Math.sin(now * 0.022));
+        footRight.setAttribute("transform", `rotate(${-16 * tapWave}, -8, 40)`);
+
+        const tapStep = Math.floor(now / 280);
+        if (tapStep !== lastIdleTapTriggered) {
+          lastIdleTapTriggered = tapStep;
+          sound.playTapSound();
+        }
+
+        head.setAttribute("transform", `translate(-6, 0) rotate(-6, 0, -160)`);
+        pupils.setAttribute("transform", "translate(-3.8, 0)");
+        browLeft.setAttribute("d", "M -23 3 Q -15 0 -7 3");
+        browRight.setAttribute("d", "M 7 3 Q 15 0 23 3");
+        mouth.setAttribute("d", "M -9 -154 L 8 -156");
+        sweat.setAttribute("opacity", "0");
+        upperBody.setAttribute("transform", `translate(${Math.sin(now * 0.008) * 3}, 0)`);
+      } else {
+        // ФАЗА 3: Нудьгує та глибоко зітхає
+        const sigh = Math.sin(((cycleTime - 6.0) / 3.0) * Math.PI);
+        upperBody.setAttribute("transform", `translate(0, ${6 * sigh})`);
+        head.setAttribute("transform", `translate(0, ${4 * sigh}) rotate(${5 * sigh}, 0, -160)`);
+        armLeft.setAttribute("transform", "translate(-45, -130) rotate(4)");
+        armRight.setAttribute("transform", "translate(45, -130) rotate(-4)");
+        footRight.setAttribute("transform", "rotate(0)");
+        pupils.setAttribute("transform", "translate(0, 1)");
+        eyelidLeft.setAttribute("height", (3 + 6.5 * sigh).toFixed(1));
+        eyelidRight.setAttribute("height", (3 + 6.5 * sigh).toFixed(1));
+        browLeft.setAttribute("d", "M -23 4 Q -15 1 -7 2");
+        browRight.setAttribute("d", "M 7 2 Q 15 1 23 4");
+        mouth.setAttribute("d", sigh > 0.45 ? "M -6 -155 Q 0 -146 6 -155 Q 0 -159 -6 -155" : "M -8 -154 Q 0 -157 8 -154");
+        sweat.setAttribute("opacity", "0");
+      }
+    } else if (gameState === "GRAB_REACH") {
+      // 3. ПАСАЖИР ПІДХОДИТЬ ВПРИТУЛ ДО КАРУСЕЛІ І БЕРЕТЬСЯ РУКОЮ ЗА РУЧКУ ВАЛІЗИ!
+      const t = Math.min(elapsedInState / 360, 1);
+      const ease = t * t * (3 - 2 * t);
+
+      sweat.setAttribute("opacity", "0");
+      eyelidLeft.setAttribute("height", "2");
+      eyelidRight.setAttribute("height", "2");
+      pupils.setAttribute("transform", "translate(-2, 1)");
+      browLeft.setAttribute("d", "M -23 -2 Q -15 -9 -7 -2");
+      browRight.setAttribute("d", "M 7 -2 Q 15 -9 23 -2");
+      mouth.setAttribute("d", "M -14 -157 Q 0 -140 14 -157 Z");
+      mouth.setAttribute("fill", "#ffffff");
+      footRight.setAttribute("transform", "rotate(0)");
+
+      // Пасажир робить крок ліворуч до валізи (X: 950 -> 780) і нахиляється вперед
+      passengerX = 950 - ease * 170;
+      const bodyY = 12 * ease;
+      const bodyRot = -18 * ease;
+      const leftArmRot = 58 * ease; // Простягає ліву руку до ручки валізи
+
+      upperBody.setAttribute("transform", `translate(0, ${bodyY.toFixed(1)}) rotate(${bodyRot.toFixed(1)}, 0, -55)`);
+      armLeft.setAttribute("transform", `translate(-45, -130) rotate(${leftArmRot.toFixed(1)})`);
+      armRight.setAttribute("transform", `translate(45, -130) rotate(${-20 * ease})`);
+      head.setAttribute("transform", `rotate(${10 * ease}, 0, -160)`);
+
+      // Обчислюємо точне положення лівої кисті пасажира, щоб підвести ручку валізи прямо під пальці
+      const handPos = getLeftHandWorldPosition(0, bodyY, bodyRot, leftArmRot);
+      const targetSuitcaseX = handPos.x;
+      const targetSuitcaseY = handPos.y + 172 * 0.76;
+
+      suitcaseX = pickupStartSuitcaseX + (targetSuitcaseX - pickupStartSuitcaseX) * ease;
+      suitcaseY = 695 + (targetSuitcaseY - 695) * ease;
+      suitcaseScale = 0.76;
+      suitcaseAngle = 0;
+
+      if (t >= 1) {
+        gameState = "LIFT_OFF_BELT";
+        stateStartTime = now;
+      }
+    } else if (gameState === "LIFT_OFF_BELT") {
+      // 4. ПАСАЖИР ЗНІМАЄ ВАЛІЗУ ЗІ СТРІЧКИ (ПІДНІМАЄ ЇЇ ВИСОКО В ПОВІТРЯ І ПЕРЕНОСИТЬ НА ПІДЛОГУ!)
+      const t = Math.min(elapsedInState / 520, 1);
+      const ease = t * t * (3 - 2 * t);
+      const liftArc = Math.sin(t * Math.PI); // Висока дуга підйому валізи над бортиком каруселі!
+
+      // Пасажир випрямляється, високо піднімаючи руку з валізою, і відступає на відкриту підлогу (X: 780 -> 910)
+      passengerX = 780 + ease * 130;
+      const bodyY = 12 * (1 - ease) - 6 * liftArc;
+      const bodyRot = -18 * (1 - ease) + 6 * liftArc;
+      // Ліва рука піднімається вгору під час ривка зі стрічки, а потім опускається у природне положення перенесення
+      const leftArmRot = 58 * (1 - ease) + 32 * liftArc - 12 * ease;
+
+      upperBody.setAttribute("transform", `translate(0, ${bodyY.toFixed(1)}) rotate(${bodyRot.toFixed(1)}, 0, -55)`);
+      armLeft.setAttribute("transform", `translate(-45, -130) rotate(${leftArmRot.toFixed(1)})`);
+      armRight.setAttribute("transform", `translate(45, -130) rotate(${-20 + 45 * ease})`);
+      head.setAttribute("transform", `rotate(${10 * (1 - ease)}, 0, -160)`);
+
+      // Легкий крок ногами під час розвороту від стрічки
+      const stepWave = Math.sin(t * Math.PI * 2);
+      legLeft.setAttribute("transform", `translate(-19, -46) rotate(${stepWave * 16})`);
+      legRight.setAttribute("transform", `translate(19, -46) rotate(${-stepWave * 16})`);
+
+      // ВАЛІЗА ПРИКРІПЛЕНА ДО РУКИ ПАСАЖИРА І ПІДНІМАЄТЬСЯ ЗІ СТРІЧКИ У ПОВІТРЯ!
+      const handPos = getLeftHandWorldPosition(0, bodyY, bodyRot, leftArmRot);
+      suitcaseScale = 0.76 - 0.04 * ease;
+      suitcaseAngle = -16 * liftArc + 4 * ease; // Валіза трохи нахиляється від інерції підйому
+
+      // Ручка валізи (0, -172) жорстко зафіксована у кисті пасажира (handPos.x, handPos.y)
+      const rad = (suitcaseAngle * Math.PI) / 180;
+      const handleDist = 172 * suitcaseScale;
+      suitcaseX = handPos.x - Math.sin(rad) * handleDist;
+      suitcaseY = handPos.y + Math.cos(rad) * handleDist - 28 * liftArc;
+
+      // Показуємо пальці пасажира поверх ручки валізи!
+      const actualHandleX = suitcaseX + Math.sin(rad) * handleDist;
+      const actualHandleY = suitcaseY - Math.cos(rad) * handleDist;
+      handGripOverlay.setAttribute("opacity", "1");
+      handGripOverlay.setAttribute(
+        "transform",
+        `translate(${actualHandleX.toFixed(1)}, ${actualHandleY.toFixed(1)}) rotate(${suitcaseAngle.toFixed(1)}) scale(1.25)`
+      );
+
+      // Тінь на стрічці зникає, бо валіза вже у повітрі над підлогою!
+      if (beltShadow) {
+        beltShadow.setAttribute("opacity", (1 - ease).toFixed(2));
+      }
+      carriedFloorShadow.setAttribute("opacity", (0.75 * ease).toFixed(2));
+      carriedFloorShadow.setAttribute("cx", suitcaseX.toFixed(1));
+      carriedFloorShadow.setAttribute("cy", "792");
+      carriedFloorShadow.setAttribute("rx", (85 - 20 * liftArc).toFixed(1));
+
+      if (t >= 1) {
+        gameState = "CARRY_AWAY";
+        stateStartTime = now;
+      }
+    } else if (gameState === "CARRY_AWAY") {
+      // 5. ПАСАЖИР НЕСЕ ВАЛІЗУ В РУЦІ ПО ПІДЛОЗІ ЗАЛУ І ВИХОДИТЬ КРІЗЬ АВТОМАТИЧНІ ДВЕРІ!
+      const t = Math.min(elapsedInState / 1550, 1);
+      const easeIn = t * t * (2.5 - 1.5 * t);
+
+      // Пасажир іде по відкритій гранітній підлозі від X = 910 до виходу X = 1720
+      passengerX = 910 + easeIn * 810;
+      const walkCycle = Math.sin(elapsedInState * 0.021);
+
+      // Звук кроків по підлозі
+      const stepIdx = Math.floor(elapsedInState / 210);
+      if (stepIdx !== lastStepTriggered && t < 0.88) {
+        lastStepTriggered = stepIdx;
+        sound.playFootstep(stepIdx);
+      }
+
+      const bodyY = Math.abs(walkCycle) * -7;
+      const bodyRot = 4; // Легкий бадьорий нахил вперед під час ходьби
+      // Ліва рука тримає валізу і злегка погойдується в такт крокам
+      const leftArmRot = -12 + walkCycle * 11;
+
+      legLeft.setAttribute("transform", `translate(-19, -46) rotate(${walkCycle * 26})`);
+      legRight.setAttribute("transform", `translate(19, -46) rotate(${-walkCycle * 26})`);
+      armLeft.setAttribute("transform", `translate(-45, -130) rotate(${leftArmRot.toFixed(1)})`);
+      armRight.setAttribute("transform", `translate(45, -130) rotate(${-walkCycle * 24})`);
+      upperBody.setAttribute("transform", `translate(0, ${bodyY.toFixed(1)}) rotate(${bodyRot}, 0, -55)`);
+      head.setAttribute("transform", "rotate(4, 0, -160)");
+      pupils.setAttribute("transform", "translate(3, 0)");
+
+      // ВАЛІЗА РУХАЄТЬСЯ І ГОЙДАЄТЬСЯ ПРЯМО В РУЦІ ПАСАЖИРА НАД ПІДЛОГОЮ!
+      const handPos = getLeftHandWorldPosition(0, bodyY, bodyRot, leftArmRot);
+      suitcaseScale = 0.72;
+      suitcaseAngle = walkCycle * 7.5; // Маятникове погойдування валізи у руці при ходьбі
+
+      const rad = (suitcaseAngle * Math.PI) / 180;
+      const handleDist = 172 * suitcaseScale;
+      suitcaseX = handPos.x - Math.sin(rad) * handleDist;
+      suitcaseY = handPos.y + Math.cos(rad) * handleDist;
+
+      // Пальці руки міцно тримають ручку валізи
+      handGripOverlay.setAttribute("opacity", "1");
+      handGripOverlay.setAttribute(
+        "transform",
+        `translate(${handPos.x.toFixed(1)}, ${handPos.y.toFixed(1)}) rotate(${suitcaseAngle.toFixed(1)}) scale(1.25)`
+      );
+
+      // Тінь від піднятої валізи біжить по гранітній підлозі під нею!
+      if (beltShadow) {
+        beltShadow.setAttribute("opacity", "0");
+      }
+      carriedFloorShadow.setAttribute("opacity", "0.75");
+      carriedFloorShadow.setAttribute("cx", suitcaseX.toFixed(1));
+      carriedFloorShadow.setAttribute("cy", "792");
+      carriedFloorShadow.setAttribute("rx", "82");
+
+      // Автоматичні скляні двері праворуч розсуваються перед пасажиром із валізою!
+      const doorOpen = Math.min(Math.max((t - 0.1) / 0.35, 0), 1);
+      doorLeafLeft.setAttribute("transform", `translate(${-95 * doorOpen}, 0)`);
+      doorLeafRight.setAttribute("transform", `translate(${95 * doorOpen}, 0)`);
+
+      if (t >= 1) {
+        startLevel(currentLevel + 1);
+      }
+    }
+
+    // Оновлюємо трансформації пасажира та валізи
+    passengerStage.setAttribute("transform", `translate(${passengerX.toFixed(1)}, ${passengerY.toFixed(1)})`);
+    suitcaseStage.setAttribute(
+      "transform",
+      `translate(${suitcaseX.toFixed(1)}, ${suitcaseY.toFixed(1)}) rotate(${suitcaseAngle.toFixed(1)}) scale(${suitcaseScale.toFixed(3)})`
+    );
+  }
+
+  /* ============================================================================
+     ГОЛОВНИЙ ЦИКЛ АНІМАЦІЇ СЦЕНИ АЕРОПОРТУ (60 FPS)
+     ============================================================================ */
+  const flyingPlane = document.getElementById("flying-plane");
+  const cloud1 = document.getElementById("cloud-1");
+  const cloud2 = document.getElementById("cloud-2");
+  const towerBeacon = document.getElementById("tower-beacon");
+  const planeStrobe = document.getElementById("plane-strobe");
+
+  function masterLoop(now) {
+    const elapsedInState = now - stateStartTime;
+
+    // 1. Безперервний рух траків конвеєрної стрічки (в межах каруселі X = 80..800)
+    const beltOffset = (now * 0.095) % 68;
+    for (let i = 0; i < SLAT_COUNT; i++) {
+      const x = 80 + i * 68 + beltOffset;
+      slatElements[i].setAttribute("d", `M ${x.toFixed(1)} 16 L ${(x - 18).toFixed(1)} 110`);
+    }
+
+    // 2. Анімація живого фону за вікном (літак на зльоті, хмари, маячки)
+    const planeProgress = ((now * 0.045) % 1500) - 180;
+    const planeY = 295 - planeProgress * 0.11;
+    flyingPlane.setAttribute("transform", `translate(${planeProgress.toFixed(1)}, ${planeY.toFixed(1)}) rotate(-9) scale(0.85)`);
+
+    cloud1.setAttribute("transform", `translate(${((200 + now * 0.008) % 1200).toFixed(1)}, 125)`);
+    cloud2.setAttribute("transform", `translate(${((720 + now * 0.005) % 1200).toFixed(1)}, 90) scale(1.25)`);
+
+    const blink = Math.sin(now * 0.01) > 0 ? "1" : "0.2";
+    towerBeacon.setAttribute("opacity", blink);
+    planeStrobe.setAttribute("opacity", Math.sin(now * 0.02) > 0.3 ? "1" : "0.1");
+
+    // Сигнальний ліхтар над багажним тунелем
+    if (gameState === "ENTERING") {
+      const flash = Math.sin(now * 0.025) > 0 ? "#ffbe0b" : "#fb5607";
+      chuteLight.setAttribute("fill", flash);
+      chuteGlow.setAttribute("opacity", "0.45");
+    } else {
+      chuteLight.setAttribute("fill", "#06d6a0");
+      chuteGlow.setAttribute("opacity", "0.18");
+    }
+
+    // 3. Анімація пасажира та валізи
+    animatePassengerAndSuitcase(now, elapsedInState);
+
+    // 4. Оновлення салюту частинок
+    updateParticles();
+
+    requestAnimationFrame(masterLoop);
+  }
+
+  /* ============================================================================
+     КНОПКИ МИТТЄВОГО ПЕРЕХОДУ МІЖ ЗАВДАННЯМИ («НАЗАД» ТА «ДАЛІ»)
+     ============================================================================ */
+  document.getElementById("btn-prev").addEventListener("click", (e) => {
+    e.stopPropagation();
+    sound.playNavClick();
+    startLevel(currentLevel - 1);
+  });
+
+  document.getElementById("btn-next").addEventListener("click", (e) => {
+    e.stopPropagation();
+    sound.playNavClick();
+    startLevel(currentLevel + 1);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") {
+      sound.playNavClick();
+      startLevel(currentLevel + 1);
+    } else if (e.key === "ArrowLeft") {
+      sound.playNavClick();
+      startLevel(currentLevel - 1);
+    }
+  });
+
+  // Старт першого рівня та запуск головного циклу
+  startLevel(0);
+  requestAnimationFrame(masterLoop);
+</script>
+</body>
+</html>
