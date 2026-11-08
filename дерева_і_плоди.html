@@ -1,0 +1,2332 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Дерева та їх плоди</title>
+<style>
+  /* ================= СКИДАННЯ ТА БАЗОВІ СТИЛІ ================= */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
+    background: #163015;
+  }
+
+  /* Головний контейнер світу гри */
+  #game-world {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* ================= ЖИВИЙ СЮЖЕТНИЙ ФОН ЛІСОВОЇ ГАЛЯВИНИ ================= */
+  #background-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Анімація сонячних променів */
+  .sunbeam {
+    transform-origin: top center;
+    animation: swayBeam 9s ease-in-out infinite alternate;
+  }
+  .sunbeam:nth-child(2) { animation-duration: 12s; animation-delay: -4s; }
+  .sunbeam:nth-child(3) { animation-duration: 10s; animation-delay: -7s; }
+
+  @keyframes swayBeam {
+    0% { transform: rotate(-3.5deg) scaleX(0.94); opacity: 0.2; }
+    100% { transform: rotate(3.5deg) scaleX(1.06); opacity: 0.36; }
+  }
+
+  /* Рух хмаринок */
+  .cloud-anim-1 { animation: driftCloud 65s linear infinite; }
+  .cloud-anim-2 { animation: driftCloud 85s linear infinite reverse; }
+  @keyframes driftCloud {
+    0% { transform: translateX(-160px); }
+    100% { transform: translateX(160px); }
+  }
+
+  /* Гойдання трави та гілок на фоні */
+  .foliage-sway {
+    transform-box: fill-box;
+    transform-origin: bottom center;
+    animation: grassSway 4.5s ease-in-out infinite alternate;
+  }
+  .foliage-sway-top {
+    transform-box: fill-box;
+    transform-origin: top center;
+    animation: grassSway 5.5s ease-in-out infinite alternate-reverse;
+  }
+  @keyframes grassSway {
+    0% { transform: rotate(-2.2deg); }
+    100% { transform: rotate(2.2deg); }
+  }
+
+  /* Політ лісових метеликів */
+  .butterfly {
+    animation: flyAround 15s ease-in-out infinite;
+  }
+  @keyframes flyAround {
+    0%   { transform: translate(0, 0) rotate(5deg); }
+    25%  { transform: translate(90px, -40px) rotate(-8deg); }
+    50%  { transform: translate(170px, 15px) rotate(10deg); }
+    75%  { transform: translate(70px, 45px) rotate(-6deg); }
+    100% { transform: translate(0, 0) rotate(5deg); }
+  }
+
+  /* ================= НАВІГАЦІЯ ТА ПЕРЕМИКАЧІ ================= */
+  .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 68px;
+    height: 68px;
+    z-index: 30;
+    cursor: pointer;
+    background: none;
+    border: none;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,0.5));
+  }
+  .nav-btn:hover {
+    transform: translateY(-50%) scale(1.14);
+    filter: drop-shadow(0 8px 16px rgba(255,215,100,0.55));
+  }
+  .nav-btn:active {
+    transform: translateY(-50%) scale(0.92);
+  }
+  #btn-prev { left: 14px; }
+  #btn-next { right: 14px; }
+
+  /* Мінімалістичні іконки перемикання між Слайдами та Вікториною */
+  #mode-switcher {
+    position: absolute;
+    top: 14px;
+    right: 20px;
+    z-index: 30;
+    display: flex;
+    gap: 12px;
+  }
+  .mode-btn {
+    width: 54px;
+    height: 54px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    transition: transform 0.25s, filter 0.25s;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.45));
+  }
+  .mode-btn:hover { transform: scale(1.12); }
+  .mode-btn.active-mode {
+    filter: drop-shadow(0 0 12px #ffd54f) drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+    transform: scale(1.08);
+  }
+
+  /* Гілочка з листочками прогресу вгорі (без цифр і слів) */
+  #vine-progress {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 30px;
+    background: linear-gradient(180deg, rgba(62,39,35,0.88), rgba(39,23,20,0.92));
+    border: 2.5px solid #8d6e63;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.45), inset 0 2px 4px rgba(255,255,255,0.15);
+  }
+  .progress-leaf {
+    width: 14px;
+    height: 14px;
+    border-radius: 50% 0 50% 50%;
+    transform: rotate(-45deg);
+    background: #4e342e;
+    border: 1.5px solid #795548;
+    transition: all 0.35s ease;
+    cursor: pointer;
+  }
+  .progress-leaf.active {
+    background: radial-gradient(circle at 30% 30%, #ffee58, #f57f17);
+    border-color: #fff59d;
+    transform: rotate(-45deg) scale(1.32);
+    box-shadow: 0 0 9px #ffd54f;
+  }
+  .progress-leaf.visited {
+    background: linear-gradient(135deg, #9ccc65, #33691e);
+    border-color: #c5e1a5;
+  }
+
+  /* ================= ОСНОВНА ІГРОВА СЦЕНА ТА ДЕРЕВ'ЯНІ ПАННО ================= */
+  #stage {
+    position: absolute;
+    top: 64px;
+    bottom: 20px;
+    left: 96px;
+    right: 96px;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2.4vw;
+  }
+
+  /* Фактурні дерев'яні рамки з корою та мохом (жодних білих прямокутників) */
+  .wood-plaque {
+    position: relative;
+    background:
+      radial-gradient(ellipse at 50% 25%, rgba(255, 236, 179, 0.28), transparent 70%),
+      repeating-linear-gradient(90deg, rgba(93,64,55,0.1) 0px, rgba(93,64,55,0.1) 7px, transparent 7px, transparent 16px),
+      linear-gradient(165deg, #d7b899 0%, #b88b61 48%, #936639 100%);
+    border-radius: 38px 44px 40px 36px;
+    border: 7px solid #4e342e;
+    box-shadow:
+      0 16px 34px rgba(0,0,0,0.58),
+      inset 0 0 0 4px #6d4c41,
+      inset 0 6px 18px rgba(255,248,225,0.45),
+      inset 0 -8px 20px rgba(46,27,22,0.6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.32s;
+  }
+
+  /* Смужка лісового моху вздовж верхнього краю панно */
+  .wood-plaque::before {
+    content: "";
+    position: absolute;
+    top: -9px;
+    left: 26px;
+    right: 26px;
+    height: 13px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, transparent 5%, #558b2f 20%, #7cb342 35%, transparent 52%, #689f38 78%, transparent 95%);
+    pointer-events: none;
+  }
+
+  /* Панно дерева */
+  .tree-card {
+    width: min(44vw, 530px);
+    height: min(80vh, 650px);
+    cursor: pointer;
+  }
+  .tree-card:hover {
+    transform: translateY(-4px) scale(1.01);
+  }
+
+  /* Панно плоду та листочка у режимі слайдів */
+  .fruit-showcase-card {
+    width: min(36vw, 440px);
+    height: min(80vh, 650px);
+    cursor: pointer;
+  }
+  .fruit-showcase-card:hover {
+    transform: translateY(-4px) scale(1.012);
+  }
+
+  /* Внутрішній мальовничий медальйон із природним градієнтом неба та галявини */
+  .illustration-frame {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    border-radius: 26px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 22%, rgba(255,253,231,0.85) 0%, transparent 55%),
+      linear-gradient(180deg, #b3e5fc 0%, #e1f5fe 45%, #dcedc8 78%, #9ccc65 100%);
+    border: 4px solid #5d4037;
+    box-shadow: inset 0 6px 18px rgba(0,0,0,0.26);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Окремий м'який фон-медальйон для ботанічної картки листка й плоду */
+  .fruit-frame-bg {
+    background:
+      radial-gradient(circle at 50% 30%, #fffde7 0%, #e8f5e9 58%, #c5e1a5 100%);
+  }
+
+  .illustration-frame svg {
+    width: 97%;
+    height: 97%;
+    overflow: visible;
+    filter: drop-shadow(0 6px 9px rgba(0,0,0,0.22));
+    transition: transform 0.35s ease;
+  }
+  .wood-plaque:hover .illustration-frame svg {
+    transform: scale(1.03);
+  }
+
+  /* Дерев'яна табличка з підписом (відкривається по кліку) */
+  .label-plaque {
+    position: relative;
+    margin-top: 12px;
+    width: 94%;
+    height: 64px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #3e2723 0%, #241411 100%);
+    border: 3px solid #8d6e63;
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.75), 0 4px 8px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .label-text {
+    font-size: clamp(1.25rem, 2.1vw, 2rem);
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #fff8e1;
+    text-shadow: 0 2px 5px rgba(0,0,0,0.9), 0 0 12px rgba(255, 213, 79, 0.5);
+    opacity: 0;
+    transform: scale(0.72);
+    transition: opacity 0.38s ease, transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Листяна завіса, яка приховує підпис до кліку */
+  .leaf-shutter {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 20% 50%, #7cb342, transparent 60%),
+      radial-gradient(circle at 80% 50%, #558b2f, transparent 60%),
+      linear-gradient(90deg, #33691e, #689f38 50%, #33691e);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.52s cubic-bezier(0.68, -0.55, 0.27, 1.55), opacity 0.42s ease;
+    border-radius: 16px;
+  }
+  .leaf-shutter::after {
+    content: "";
+    width: 46%;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(236, 246, 218, 0.55);
+    box-shadow: 0 0 10px rgba(255, 241, 118, 0.65);
+  }
+
+  .label-plaque.revealed .leaf-shutter {
+    transform: translateY(110%) scale(0.82);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .label-plaque.revealed .label-text {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  /* ================= РЕЖИМ ВІКТОРИНИ (3 ВАРІАНТИ ПЛОДІВ) ================= */
+  .quiz-options-column {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    height: min(80vh, 650px);
+    justify-content: space-between;
+  }
+
+  .quiz-option-card {
+    width: min(27vw, 320px);
+    height: calc((min(80vh, 650px) - 28px) / 3);
+    padding: 10px;
+    border-radius: 28px;
+    cursor: pointer;
+    position: relative;
+  }
+  .quiz-option-card:hover {
+    transform: scale(1.055) translateX(-6px);
+    box-shadow:
+      0 14px 28px rgba(0,0,0,0.5),
+      0 0 18px rgba(255, 238, 88, 0.65),
+      inset 0 0 0 4px #8d6e63;
+  }
+
+  .quiz-option-card.correct-choice {
+    border-color: #ffd600;
+    box-shadow:
+      0 0 36px #ffd600,
+      0 0 65px #64dd17,
+      inset 0 0 22px rgba(255, 238, 88, 0.85);
+    animation: correctPulse 0.75s ease-in-out infinite alternate;
+  }
+  @keyframes correctPulse {
+    0% { transform: scale(1.05); }
+    100% { transform: scale(1.12); }
+  }
+
+  .quiz-option-card.wrong-choice {
+    animation: shakeWrong 0.52s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    filter: brightness(0.78) sepia(0.35);
+  }
+  @keyframes shakeWrong {
+    10%, 90% { transform: translateX(-8px) rotate(-2deg); }
+    20%, 80% { transform: translateX(10px) rotate(2deg); }
+    30%, 50%, 70% { transform: translateX(-12px) rotate(-3deg); }
+    40%, 60% { transform: translateX(12px) rotate(3deg); }
+  }
+
+  /* ================= ЖИВИЙ ПЕРСОНАЖ: БІЛОЧКА (З ФІКСОВАНИМИ ВУШКАМИ) ================= */
+  #character-container {
+    position: absolute;
+    bottom: 6px;
+    left: 12px;
+    width: 195px;
+    height: 230px;
+    z-index: 22;
+    cursor: pointer;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.5));
+  }
+
+  /* Плавне дихання білочки */
+  #squirrel-body {
+    transform-box: fill-box;
+    transform-origin: 50% 90%;
+    animation: squirrelIdle 3s ease-in-out infinite alternate;
+  }
+
+  /* Пухнастий хвіст погойдується */
+  #squirrel-tail {
+    transform-box: fill-box;
+    transform-origin: 80% 85%;
+    animation: tailSway 2.6s ease-in-out infinite alternate;
+  }
+
+  /* Вушка міцно прикріплені до голови завдяки transform-box: fill-box та точці обертання в основі вуха */
+  .squirrel-ear-left {
+    transform-box: fill-box;
+    transform-origin: 70% 92%;
+    animation: earTwitchLeft 4.8s ease-in-out infinite;
+  }
+  .squirrel-ear-right {
+    transform-box: fill-box;
+    transform-origin: 30% 92%;
+    animation: earTwitchRight 4.8s ease-in-out infinite;
+  }
+
+  @keyframes squirrelIdle {
+    0% { transform: translateY(0) scaleY(1); }
+    100% { transform: translateY(-3px) scaleY(1.025); }
+  }
+  @keyframes tailSway {
+    0% { transform: rotate(-5deg); }
+    100% { transform: rotate(7deg); }
+  }
+  @keyframes earTwitchLeft {
+    0%, 84%, 100% { transform: rotate(0deg); }
+    88% { transform: rotate(-6deg); }
+    93% { transform: rotate(3deg); }
+  }
+  @keyframes earTwitchRight {
+    0%, 84%, 100% { transform: rotate(0deg); }
+    88% { transform: rotate(6deg); }
+    93% { transform: rotate(-3deg); }
+  }
+
+  /* Стрибок радості білочки */
+  .squirrel-happy #squirrel-body {
+    animation: squirrelJump 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) 3;
+  }
+  .squirrel-happy #squirrel-tail {
+    animation: tailWagFast 0.24s ease-in-out 6 alternate;
+  }
+  @keyframes squirrelJump {
+    0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+    50% { transform: translateY(-34px) rotate(6deg) scale(1.06); }
+  }
+  @keyframes tailWagFast {
+    0% { transform: rotate(-14deg); }
+    100% { transform: rotate(18deg); }
+  }
+
+  /* Збентеження білочки при помилці */
+  .squirrel-sad #squirrel-body {
+    animation: squirrelOops 0.58s ease-in-out 1;
+  }
+  @keyframes squirrelOops {
+    0%, 100% { transform: translateY(0) rotate(0); }
+    25% { transform: translateY(6px) rotate(-6deg) scaleY(0.93); }
+    50% { transform: translateY(6px) rotate(6deg) scaleY(0.93); }
+    75% { transform: translateY(4px) rotate(-4deg) scaleY(0.96); }
+  }
+
+  /* Полотно для святкових частинок і салютів */
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  @media (max-width: 980px) {
+    #stage { left: 72px; right: 72px; gap: 12px; }
+    #character-container { width: 135px; height: 160px; left: 4px; }
+    .nav-btn { width: 52px; height: 52px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-world">
+
+  <!-- ================= ЖИВИЙ СЮЖЕТНИЙ ФОН ЛІСОВОЇ ГАЛЯВИНИ ================= -->
+  <svg id="background-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#64b5f6"/>
+        <stop offset="48%" stop-color="#b3e5fc"/>
+        <stop offset="85%" stop-color="#fff9c4"/>
+        <stop offset="100%" stop-color="#c5e1a5"/>
+      </linearGradient>
+      <linearGradient id="beamGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fffde7" stop-opacity="0.65"/>
+        <stop offset="100%" stop-color="#fffde7" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="hillFar" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#81c784"/>
+        <stop offset="100%" stop-color="#388e3c"/>
+      </linearGradient>
+      <linearGradient id="hillMid" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#689f38"/>
+        <stop offset="100%" stop-color="#2e7d32"/>
+      </linearGradient>
+      <linearGradient id="hillNear" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#558b2f"/>
+        <stop offset="100%" stop-color="#1b5e20"/>
+      </linearGradient>
+      <linearGradient id="trunkBg" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#3e2723"/>
+        <stop offset="50%" stop-color="#5d4037"/>
+        <stop offset="100%" stop-color="#271714"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Небо та лагідне сонце -->
+    <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+    <circle cx="310" cy="135" r="105" fill="#fff59d" opacity="0.85"/>
+    <circle cx="310" cy="135" r="165" fill="#fff9c4" opacity="0.35"/>
+
+    <!-- Хмари -->
+    <g class="cloud-anim-1" opacity="0.8" fill="#ffffff">
+      <path d="M220,160 Q250,115 300,130 Q340,95 395,125 Q440,120 455,160 Q480,185 440,200 L210,200 Q180,180 220,160 Z"/>
+      <path d="M1250,110 Q1285,70 1335,90 Q1380,60 1430,95 Q1475,105 1465,140 L1235,140 Q1210,125 1250,160 Z"/>
+    </g>
+    <g class="cloud-anim-2" opacity="0.65" fill="#fffde7">
+      <path d="M740,210 Q775,170 820,185 Q865,155 910,190 Q945,200 930,225 L730,225 Z"/>
+    </g>
+
+    <!-- Далекі лісисті пагорби -->
+    <path d="M0,690 Q240,580 520,640 T1080,610 T1620,650 T1920,600 L1920,1080 L0,1080 Z" fill="url(#hillFar)"/>
+    <path d="M0,760 Q450,660 950,740 T1920,710 L1920,1080 L0,1080 Z" fill="url(#hillMid)"/>
+
+    <!-- Сонячні промені -->
+    <polygon class="sunbeam" points="280,0 120,1080 390,1080 360,0" fill="url(#beamGrad)"/>
+    <polygon class="sunbeam" points="340,0 640,1080 960,1080 440,0" fill="url(#beamGrad)"/>
+    <polygon class="sunbeam" points="420,0 1220,1080 1560,1080 520,0" fill="url(#beamGrad)"/>
+
+    <!-- Стовбури великих дерев по краях екрана -->
+    <path d="M-40,0 L75,0 Q60,420 95,880 L-40,880 Z" fill="url(#trunkBg)"/>
+    <path d="M1960,0 L1845,0 Q1860,420 1825,880 L1960,880 Z" fill="url(#trunkBg)"/>
+
+    <!-- Передній зелений луг -->
+    <path d="M0,865 Q520,795 1040,855 T1920,830 L1920,1080 L0,1080 Z" fill="url(#hillNear)"/>
+
+    <!-- Листя на верхніх кулісах -->
+    <g class="foliage-sway-top" fill="#1b5e20">
+      <circle cx="45" cy="40" r="125"/>
+      <circle cx="170" cy="15" r="105" fill="#2e7d32"/>
+      <circle cx="1875" cy="45" r="130"/>
+      <circle cx="1740" cy="15" r="105" fill="#2e7d32"/>
+    </g>
+
+    <!-- Трава та лісові квіти на галявині -->
+    <g class="foliage-sway">
+      <path d="M320,1080 Q340,960 300,910 Q355,950 355,1080 Z" fill="#33691e"/>
+      <path d="M355,1080 Q385,950 430,900 Q395,965 385,1080 Z" fill="#558b2f"/>
+      <path d="M920,1080 Q940,980 905,930 Q955,975 960,1080 Z" fill="#33691e"/>
+      <path d="M1480,1080 Q1510,960 1560,915 Q1525,970 1510,1080 Z" fill="#558b2f"/>
+      <g transform="translate(420,975)">
+        <circle cx="0" cy="0" r="14" fill="#ffffff"/>
+        <circle cx="0" cy="0" r="6" fill="#fdd835"/>
+      </g>
+      <g transform="translate(910,995)">
+        <circle cx="0" cy="0" r="12" fill="#ffffff"/>
+        <circle cx="0" cy="0" r="5" fill="#fdd835"/>
+      </g>
+      <g transform="translate(1545,980)">
+        <circle cx="0" cy="0" r="15" fill="#fff9c4"/>
+        <circle cx="0" cy="0" r="6" fill="#ffb300"/>
+      </g>
+    </g>
+
+    <!-- Живий метелик -->
+    <g class="butterfly" transform="translate(520, 420)">
+      <path d="M0,0 C-18,-22 -34,-5 -12,10 C-28,22 -10,32 0,14 C10,32 28,22 12,10 C34,-5 18,-22 0,0 Z" fill="#ffd54f" stroke="#f57f17" stroke-width="2"/>
+      <ellipse cx="0" cy="8" rx="2.5" ry="10" fill="#3e2723"/>
+    </g>
+  </svg>
+
+  <!-- ================= ГІЛОЧКА ПРОГРЕСУ ТА ПЕРЕМИКАЧІ РЕЖИМІВ ================= -->
+  <div id="vine-progress"></div>
+
+  <div id="mode-switcher">
+    <!-- Режим слайдів (1 рівень) -->
+    <button class="mode-btn active-mode" id="btn-mode-slides" aria-label="Слайди">
+      <svg viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="29" fill="#5d4037" stroke="#ffd54f" stroke-width="3.5"/>
+        <circle cx="32" cy="32" r="24" fill="#8d6e63"/>
+        <path d="M16,22 Q24,18 32,23 Q40,18 48,22 L48,44 Q40,40 32,45 Q24,40 16,44 Z" fill="#fff8e1" stroke="#3e2723" stroke-width="2"/>
+        <line x1="32" y1="23" x2="32" y2="45" stroke="#5d4037" stroke-width="2"/>
+        <path d="M29,16 C35,10 44,14 38,24 C32,26 27,22 29,16 Z" fill="#7cb342" stroke="#33691e" stroke-width="1.5"/>
+      </svg>
+    </button>
+    <!-- Режим вікторини (2 рівень) -->
+    <button class="mode-btn" id="btn-mode-quiz" aria-label="Вікторина">
+      <svg viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="29" fill="#5d4037" stroke="#ffd54f" stroke-width="3.5"/>
+        <circle cx="32" cy="32" r="24" fill="#8d6e63"/>
+        <path d="M22,29 Q32,25 42,29 L40,42 Q32,51 24,42 Z" fill="#d7a15c" stroke="#3e2723" stroke-width="2"/>
+        <path d="M19,29 Q32,17 45,29 Q32,32 19,29 Z" fill="#5d4037" stroke="#271714" stroke-width="2"/>
+        <path d="M32,17 L34,12" stroke="#3e2723" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ================= КНОПКИ "НАЗАД" ТА "ДАЛІ" ================= -->
+  <button class="nav-btn" id="btn-prev" aria-label="Попередній рівень">
+    <svg viewBox="0 0 80 80">
+      <defs>
+        <radialGradient id="woodBtn" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#d7b899"/>
+          <stop offset="60%" stop-color="#8d6e63"/>
+          <stop offset="100%" stop-color="#4e342e"/>
+        </radialGradient>
+      </defs>
+      <circle cx="40" cy="40" r="36" fill="url(#woodBtn)" stroke="#3e2723" stroke-width="5"/>
+      <circle cx="40" cy="40" r="29" fill="none" stroke="#efebe9" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.45"/>
+      <path d="M46,22 L26,40 L46,58" fill="none" stroke="#fff8e1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <button class="nav-btn" id="btn-next" aria-label="Наступний рівень">
+    <svg viewBox="0 0 80 80">
+      <circle cx="40" cy="40" r="36" fill="url(#woodBtn)" stroke="#3e2723" stroke-width="5"/>
+      <circle cx="40" cy="40" r="29" fill="none" stroke="#efebe9" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.45"/>
+      <path d="M34,22 L54,40 L34,58" fill="none" stroke="#fff8e1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- ================= ЦЕНТРАЛЬНА СЦЕНА ================= -->
+  <div id="stage"></div>
+
+  <!-- ================= ПЕРСОНАЖ: БІЛОЧКА НА ПЕНЬКУ ================= -->
+  <div id="character-container">
+    <svg viewBox="0 0 220 250" width="100%" height="100%">
+      <defs>
+        <linearGradient id="stumpGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#4e342e"/>
+          <stop offset="45%" stop-color="#795548"/>
+          <stop offset="100%" stop-color="#3e2723"/>
+        </linearGradient>
+        <radialGradient id="furMain" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#ff8a50"/>
+          <stop offset="65%" stop-color="#e65100"/>
+          <stop offset="100%" stop-color="#bf360c"/>
+        </radialGradient>
+        <radialGradient id="furBelly" cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stop-color="#fff8e1"/>
+          <stop offset="100%" stop-color="#ffe0b2"/>
+        </radialGradient>
+      </defs>
+
+      <!-- Дерев'яний пеньок із мохом та грибочком -->
+      <path d="M25,235 Q45,190 50,175 L165,175 Q172,195 190,235 Z" fill="url(#stumpGrad)" stroke="#271714" stroke-width="3"/>
+      <ellipse cx="107" cy="175" rx="58" ry="14" fill="#d7ccc8" stroke="#4e342e" stroke-width="3"/>
+      <ellipse cx="107" cy="175" rx="44" ry="9" fill="none" stroke="#a1887f" stroke-width="2"/>
+      <path d="M42,182 Q60,198 82,184 Q95,195 112,183" fill="#689f38" stroke="#33691e" stroke-width="2"/>
+      <path d="M168,215 Q175,198 175,195 L183,195 Q183,202 188,215 Z" fill="#fff8e1"/>
+      <path d="M160,197 Q179,178 196,197 Z" fill="#d32f2f"/>
+      <circle cx="174" cy="190" r="2.5" fill="#ffffff"/>
+      <circle cx="184" cy="192" r="2" fill="#ffffff"/>
+
+      <!-- Рухоме тіло білочки -->
+      <g id="squirrel-body">
+        <!-- Пухнастий хвіст -->
+        <g id="squirrel-tail">
+          <path d="M76,162 C18,165 -5,95 28,55 C48,30 85,42 78,78 C73,102 92,135 76,162 Z" fill="url(#furMain)" stroke="#870000" stroke-width="2.5"/>
+          <path d="M40,68 C25,85 30,115 55,135" fill="none" stroke="#ffccbc" stroke-width="4" stroke-linecap="round" opacity="0.55"/>
+        </g>
+
+        <!-- Лапки та тулуб -->
+        <ellipse cx="86" cy="168" rx="16" ry="9" fill="#bf360c"/>
+        <ellipse cx="132" cy="168" rx="16" ry="9" fill="#bf360c"/>
+        <ellipse cx="108" cy="134" rx="34" ry="40" fill="url(#furMain)" stroke="#870000" stroke-width="2"/>
+        <ellipse cx="114" cy="138" rx="22" ry="29" fill="url(#furBelly)"/>
+
+        <!-- Голова та міцно посаджені вушка з китицями -->
+        <g id="squirrel-head">
+          <!-- Ліве вушко (основа глибоко всередині контуру голови) -->
+          <g class="squirrel-ear-left">
+            <path d="M82,76 C70,44 88,34 100,66 Z" fill="url(#furMain)" stroke="#870000" stroke-width="2"/>
+            <path d="M84,58 C78,46 88,42 94,58 Z" fill="#ffccbc" opacity="0.7"/>
+            <path d="M83,42 L77,27 M86,42 L84,26" stroke="#bf360c" stroke-width="2.5" stroke-linecap="round"/>
+          </g>
+          <!-- Праве вушко (основа глибоко всередині контуру голови) -->
+          <g class="squirrel-ear-right">
+            <path d="M138,76 C150,44 132,34 120,66 Z" fill="url(#furMain)" stroke="#870000" stroke-width="2"/>
+            <path d="M136,58 C142,46 132,42 126,58 Z" fill="#ffccbc" opacity="0.7"/>
+            <path d="M137,42 L143,27 M134,42 L136,26" stroke="#bf360c" stroke-width="2.5" stroke-linecap="round"/>
+          </g>
+
+          <!-- Основа голови перекриває нижній край вушок, щоб вони ніколи не відривались -->
+          <circle cx="110" cy="84" r="32" fill="url(#furMain)" stroke="#870000" stroke-width="2"/>
+          <!-- Пухнасті щічки -->
+          <ellipse cx="92" cy="94" rx="14" ry="11" fill="url(#furBelly)"/>
+          <ellipse cx="130" cy="94" rx="14" ry="11" fill="url(#furBelly)"/>
+          <circle cx="88" cy="95" r="6" fill="#ff8a80" opacity="0.5"/>
+          <circle cx="134" cy="95" r="6" fill="#ff8a80" opacity="0.5"/>
+
+          <!-- Оченята -->
+          <g id="squirrel-eyes-normal">
+            <circle cx="98" cy="80" r="7.5" fill="#212121"/>
+            <circle cx="96" cy="77" r="2.8" fill="#ffffff"/>
+            <circle cx="124" cy="80" r="7.5" fill="#212121"/>
+            <circle cx="122" cy="77" r="2.8" fill="#ffffff"/>
+          </g>
+          <g id="squirrel-eyes-happy" style="display:none" stroke="#212121" stroke-width="3.5" fill="none" stroke-linecap="round">
+            <path d="M90,82 Q98,71 105,82"/>
+            <path d="M117,82 Q124,71 132,82"/>
+          </g>
+
+          <!-- Носик і усмішка -->
+          <ellipse cx="112" cy="90" rx="5.5" ry="4" fill="#3e2723"/>
+          <path id="squirrel-mouth" d="M105,97 Q112,104 119,97" fill="none" stroke="#3e2723" stroke-width="2.5" stroke-linecap="round"/>
+        </g>
+
+        <!-- Передні лапки -->
+        <path d="M88,118 Q102,132 108,124" fill="none" stroke="#e65100" stroke-width="11" stroke-linecap="round"/>
+        <path d="M132,118 Q120,132 114,124" fill="none" stroke="#e65100" stroke-width="11" stroke-linecap="round"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Шар для салютів із листя, жолудів та світлячків -->
+  <canvas id="fx-canvas"></canvas>
+
+</div>
+
+<script>
+/* ============================================================================
+   1. АУДІО-РУШІЙ WEB AUDIO API (ЖИВІ ЛІСОВІ ЗВУКИ ТА МЕЛОДІЇ БЕЗ СЛІВ)
+   ============================================================================ */
+const AudioEngine = (() => {
+  let ctx = null;
+
+  function getCtx() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    return ctx;
+  }
+
+  // Дерев'яний ксилофон при перемиканні або відкритті таблички
+  function playWoodTap(freq = 540) {
+    const c = getCtx();
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, c.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.38, c.currentTime + 0.09);
+
+    gain.gain.setValueAtTime(0.26, c.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.14);
+
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.start();
+    osc.stop(c.currentTime + 0.15);
+  }
+
+  // Спів лісової пташки
+  function playBirdChirp() {
+    const c = getCtx();
+    const now = c.currentTime;
+    [0, 0.13].forEach((offset, i) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sine';
+      const startFreq = i === 0 ? 1680 : 1980;
+      osc.frequency.setValueAtTime(startFreq, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(startFreq * 1.42, now + offset + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(startFreq * 0.92, now + offset + 0.12);
+
+      gain.gain.setValueAtTime(0.01, now + offset);
+      gain.gain.linearRampToValueAtTime(0.18, now + offset + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.13);
+
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.14);
+    });
+  }
+
+  // Святкові мелодії при правильній відповіді (4 різні варіанти)
+  function playSuccessMelody(variant = 0) {
+    const c = getCtx();
+    const now = c.currentTime;
+    const scales = [
+      [523.25, 659.25, 783.99, 1046.50, 1318.51],
+      [587.33, 739.99, 880.00, 1174.66, 1479.98],
+      [440.00, 554.37, 659.25, 880.00, 1108.73, 1318.51],
+      [493.88, 622.25, 739.99, 987.77, 1244.51]
+    ];
+    const notes = scales[variant % scales.length];
+
+    notes.forEach((freq, idx) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.075);
+
+      gain.gain.setValueAtTime(0.001, now + idx * 0.075);
+      gain.gain.linearRampToValueAtTime(0.24, now + idx * 0.075 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.075 + 0.45);
+
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(now + idx * 0.075);
+      osc.stop(now + idx * 0.075 + 0.46);
+    });
+  }
+
+  // Глухий дерев'яний звук при помилці
+  function playWrongSound() {
+    const c = getCtx();
+    const now = c.currentTime;
+    [210, 160].forEach((freq, idx) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.7, now + idx * 0.12 + 0.15);
+
+      gain.gain.setValueAtTime(0.22, now + idx * 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.16);
+
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(now + idx * 0.12);
+      osc.stop(now + idx * 0.12 + 0.17);
+    });
+  }
+
+  return { playWoodTap, playBirdChirp, playSuccessMelody, playWrongSound };
+})();
+
+
+/* ============================================================================
+   2. ДАНІ ПРО ДЕРЕВА ТА ЇХНІ ПЛОДИ / ЦВІТІННЯ
+   ============================================================================ */
+const TREES_DATA = [
+  { id: 'oak',      treeName: 'ДУБ',     fruitName: 'ЖОЛУДЬ' },
+  { id: 'maple',    treeName: 'КЛЕН',    fruitName: 'КРИЛАТКА' },
+  { id: 'birch',    treeName: 'БЕРЕЗА',  fruitName: 'СЕРЕЖКИ' },
+  { id: 'willow',   treeName: 'ВЕРБА',   fruitName: 'КОТИКИ' },
+  { id: 'pine',     treeName: 'СОСНА',   fruitName: 'ШИШКА' },
+  { id: 'chestnut', treeName: 'КАШТАН',  fruitName: 'КАШТАН' },
+  { id: 'poplar',   treeName: 'ТОПОЛЯ',  fruitName: 'ПУХ' },
+  { id: 'linden',   treeName: 'ЛИПА',    fruitName: 'ЦВІТ І ГОРІШКИ' }
+];
+
+
+/* ============================================================================
+   3. ДОПОМІЖНІ ГЕНЕРАТОРИ ДЛЯ ВИСОКОРЕАЛІСТИЧНИХ БОТАНІЧНИХ КРОН ДЕРЕВ
+   Створюють пучки голок сосни, плакучі віти верби, різьблене листя дуба та клена.
+   ============================================================================ */
+
+// Генератор пучка довгих соснових голок (віяло хвоїнок для дерева сосни)
+function renderPineNeedleCluster(cx, cy, radius, darkColor, midColor, lightColor) {
+  let paths = '';
+  // Задній темний шар голок
+  for (let a = -155; a <= -25; a += 10) {
+    const rad = (a * Math.PI) / 180;
+    const x2 = (cx + Math.cos(rad) * radius).toFixed(1);
+    const y2 = (cy + Math.sin(rad) * radius).toFixed(1);
+    paths += `<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" stroke="${darkColor}" stroke-width="2.4" stroke-linecap="round"/>`;
+  }
+  // Середній смарагдовий шар голок
+  for (let a = -148; a <= -32; a += 11) {
+    const rad = (a * Math.PI) / 180;
+    const r2 = radius * 0.92;
+    const x2 = (cx + Math.cos(rad) * r2).toFixed(1);
+    const y2 = (cy + Math.sin(rad) * r2).toFixed(1);
+    paths += `<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" stroke="${midColor}" stroke-width="2" stroke-linecap="round"/>`;
+  }
+  // Передній освітлений сонцем шар голок
+  for (let a = -138; a <= -42; a += 14) {
+    const rad = (a * Math.PI) / 180;
+    const r2 = radius * 0.8;
+    const x2 = (cx + Math.cos(rad) * r2).toFixed(1);
+    const y2 = (cy + Math.sin(rad) * r2).toFixed(1);
+    paths += `<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" stroke="${lightColor}" stroke-width="1.6" stroke-linecap="round"/>`;
+  }
+  return paths;
+}
+
+// Генератор довгої плакучої гілки верби з густими вузькими листочками вздовж усієї довжини
+function renderWillowWeepingStrand(xStart, yStart, xEnd, yEnd, ctrlX, hasCatkins = false) {
+  let svg = `<path d="M${xStart},${yStart} Q${ctrlX},${(yStart + yEnd) / 2} ${xEnd},${yEnd}" fill="none" stroke="#688f2e" stroke-width="2.2" stroke-linecap="round"/>`;
+  const steps = 11;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / (steps + 1);
+    const inv = 1 - t;
+    const px = (inv * inv * xStart + 2 * inv * t * ctrlX + t * t * xEnd).toFixed(1);
+    const py = (inv * inv * yStart + 2 * inv * t * ((yStart + yEnd) / 2) + t * t * yEnd).toFixed(1);
+    const leafColor = i % 3 === 0 ? '#c5e1a5' : (i % 2 === 0 ? '#9ccc65' : '#689f38');
+    // Лівий і правий вузькі вербові листочки
+    svg += `<path d="M${px},${py} C${px - 10},${Number(py) + 6} ${px - 12},${Number(py) + 18} ${px - 4},${Number(py) + 24} C${px - 1},${Number(py) + 16} ${px},${Number(py) + 8} ${px},${py} Z" fill="${leafColor}"/>`;
+    svg += `<path d="M${px},${py} C${Number(px) + 10},${Number(py) + 6} ${Number(px) + 12},${Number(py) + 18} ${Number(px) + 4},${Number(py) + 24} C${Number(px) + 1},${Number(py) + 16} ${px},${Number(py) + 8} ${px},${py} Z" fill="${leafColor}"/>`;
+    if (hasCatkins && i % 3 === 1) {
+      svg += `<ellipse cx="${Number(px) + (i % 2 === 0 ? 5 : -5)}" cy="${Number(py) + 8}" rx="3.2" ry="5" fill="#f5f5f5" stroke="#b0bec5" stroke-width="0.8"/>`;
+    }
+  }
+  return svg;
+}
+
+
+/* ============================================================================
+   4. БОТАНІЧНІ SVG-ІЛЮСТРАЦІЇ ДЕРЕВ (МАКСИМАЛЬНА ДЕТАЛІЗАЦІЯ ТА РЕАЛІЗМ)
+   ============================================================================ */
+function getTreeSVG(treeId) {
+  switch (treeId) {
+
+    // ---------------- 1. ДУБ (Могутній рельєфний стовбур, розлогі гілки, різьблена дубова крона) ----------------
+    case 'oak': {
+      // Додаємо характерні хвилясті дубові листки по краях і всередині крони
+      const oakClusters = [
+        [95,185,-30], [72,220,-50], [115,130,-20], [160,92,-10], [210,82,5],
+        [262,98,25], [308,138,40], [332,190,55], [320,235,70], [140,210,-15],
+        [200,155,0], [260,205,20], [175,195,-8], [230,185,12]
+      ].map(([x, y, rot]) => `
+        <g transform="translate(${x},${y}) rotate(${rot}) scale(0.55)">
+          <path d="M0,30 C-14,22 -10,8 -22,2 C-35,-4 -30,-22 -16,-24 C-26,-38 -18,-54 -2,-50 C-10,-66 10,-66 2,-50 C18,-54 26,-38 16,-24 C30,-22 35,-4 22,2 C10,8 14,22 0,30 Z" fill="#aed581" stroke="#33691e" stroke-width="2"/>
+        </g>
+      `).join('');
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <linearGradient id="oakBark" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#2e1c18"/>
+            <stop offset="35%" stop-color="#5d4037"/>
+            <stop offset="65%" stop-color="#4e342e"/>
+            <stop offset="100%" stop-color="#231411"/>
+          </linearGradient>
+          <radialGradient id="oakShadow" cx="50%" cy="60%" r="60%">
+            <stop offset="0%" stop-color="#2e7d32"/>
+            <stop offset="100%" stop-color="#143d17"/>
+          </radialGradient>
+          <radialGradient id="oakMid" cx="45%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#66bb6a"/>
+            <stop offset="65%" stop-color="#388e3c"/>
+            <stop offset="100%" stop-color="#1b5e20"/>
+          </radialGradient>
+          <radialGradient id="oakSun" cx="40%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="#c5e1a5"/>
+            <stop offset="55%" stop-color="#7cb342"/>
+            <stop offset="100%" stop-color="#33691e"/>
+          </radialGradient>
+        </defs>
+
+        <!-- Пагорб із травою та могутнім корінням -->
+        <ellipse cx="210" cy="415" rx="165" ry="24" fill="#558b2f"/>
+        <ellipse cx="210" cy="418" rx="130" ry="15" fill="#33691e"/>
+
+        <!-- Глибокий тіньовий ярус крони -->
+        <circle cx="110" cy="215" r="78" fill="url(#oakShadow)"/>
+        <circle cx="310" cy="215" r="80" fill="url(#oakShadow)"/>
+        <circle cx="155" cy="140" r="82" fill="url(#oakShadow)"/>
+        <circle cx="265" cy="140" r="82" fill="url(#oakShadow)"/>
+        <circle cx="210" cy="115" r="88" fill="url(#oakShadow)"/>
+
+        <!-- Могутній вузлуватий стовбур дуба з розлогими гілками та коренями -->
+        <path d="M110,420 Q155,395 168,340 Q174,285 165,245 L92,195 L104,178 L172,218 L145,148 L162,140 L195,198 L205,130 L222,130 L225,198 L268,142 L284,152 L248,215 L322,180 L332,196 L252,245 Q245,295 252,340 Q265,395 312,420 Q268,408 242,416 Q210,405 178,416 Q152,408 110,420 Z" fill="url(#oakBark)"/>
+
+        <!-- Глибокі тріщини кори та дупло -->
+        <g stroke="#1f110e" stroke-width="3" fill="none" stroke-linecap="round">
+          <path d="M175,405 Q188,340 182,255"/>
+          <path d="M196,408 Q202,320 198,230"/>
+          <path d="M218,408 Q214,325 224,240"/>
+          <path d="M238,402 Q228,345 236,265"/>
+        </g>
+        <ellipse cx="208" cy="312" rx="9" ry="15" fill="#180c0a" stroke="#6d4c41" stroke-width="2"/>
+
+        <!-- Середній об'ємний ярус дубового листя -->
+        <circle cx="88" cy="198" r="60" fill="url(#oakMid)"/>
+        <circle cx="332" cy="198" r="60" fill="url(#oakMid)"/>
+        <circle cx="138" cy="135" r="70" fill="url(#oakMid)"/>
+        <circle cx="282" cy="135" r="70" fill="url(#oakMid)"/>
+        <circle cx="210" cy="92" r="72" fill="url(#oakMid)"/>
+        <circle cx="155" cy="205" r="56" fill="url(#oakMid)"/>
+        <circle cx="265" cy="205" r="56" fill="url(#oakMid)"/>
+
+        <!-- Освітлені сонцем куртини листя ( залишають видимими розвилки могутніх гілок ) -->
+        <circle cx="112" cy="178" r="48" fill="url(#oakSun)"/>
+        <circle cx="308" cy="178" r="48" fill="url(#oakSun)"/>
+        <circle cx="172" cy="118" r="54" fill="url(#oakSun)"/>
+        <circle cx="250" cy="118" r="54" fill="url(#oakSun)"/>
+        <circle cx="210" cy="82" r="50" fill="url(#oakSun)"/>
+        <circle cx="210" cy="162" r="52" fill="url(#oakSun)"/>
+
+        <!-- Різьблені дубові листочки по кроні -->
+        ${oakClusters}
+
+        <!-- Жолуді у кроні -->
+        <g fill="#d7a15c" stroke="#3e2723" stroke-width="1.5">
+          <ellipse cx="125" cy="212" rx="5.5" ry="8"/><path d="M119,207 Q125,201 131,207" fill="#5d4037"/>
+          <ellipse cx="292" cy="208" rx="5.5" ry="8"/><path d="M286,203 Q292,197 298,203" fill="#5d4037"/>
+          <ellipse cx="212" cy="172" rx="5.5" ry="8"/><path d="M206,167 Q212,161 218,167" fill="#5d4037"/>
+        </g>
+      </svg>`;
+    }
+
+    // ---------------- 2. КЛЕН (Розгалужений стовбур, пишна крона з гострокутними кленовими листками) ----------------
+    case 'maple': {
+      const mapleStars = [
+        [88,195,-25,'#dce775'], [115,130,-15,'#aed581'], [165,85,-5,'#dce775'],
+        [215,72,5,'#fff176'], [268,92,18,'#aed581'], [315,138,30,'#dce775'],
+        [332,198,42,'#aed581'], [142,185,-10,'#c5e1a5'], [210,142,0,'#dce775'],
+        [278,185,15,'#c5e1a5'], [178,215,-8,'#aed581'], [242,215,12,'#aed581']
+      ].map(([x, y, rot, col]) => `
+        <g transform="translate(${x},${y}) rotate(${rot}) scale(0.42)">
+          <path d="M0,25 L-35,35 L-25,8 L-62,-10 L-32,-26 L-42,-55 L-14,-42 L0,-85 L14,-42 L42,-55 L32,-26 L62,-10 L25,8 L35,35 Z" fill="${col}" stroke="#2e7d32" stroke-width="2.5"/>
+        </g>
+      `).join('');
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <linearGradient id="mapleBark" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#3e2723"/>
+            <stop offset="50%" stop-color="#6d4c41"/>
+            <stop offset="100%" stop-color="#271714"/>
+          </linearGradient>
+          <radialGradient id="mapleDark" cx="50%" cy="55%" r="60%">
+            <stop offset="0%" stop-color="#2e7d32"/>
+            <stop offset="100%" stop-color="#1b5e20"/>
+          </radialGradient>
+          <radialGradient id="mapleMid" cx="45%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#9ccc65"/>
+            <stop offset="65%" stop-color="#43a047"/>
+            <stop offset="100%" stop-color="#1b5e20"/>
+          </radialGradient>
+          <radialGradient id="mapleBright" cx="45%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="#dce775"/>
+            <stop offset="60%" stop-color="#7cb342"/>
+            <stop offset="100%" stop-color="#33691e"/>
+          </radialGradient>
+        </defs>
+
+        <ellipse cx="210" cy="415" rx="145" ry="20" fill="#558b2f"/>
+        <circle cx="210" cy="182" r="138" fill="url(#mapleDark)"/>
+
+        <!-- Стрункий розгалужений стовбур клена -->
+        <path d="M162,416 Q186,370 190,280 L124,195 L136,184 L193,248 L172,148 L186,144 L206,215 L228,142 L242,146 L220,242 L284,182 L296,194 L228,278 Q232,370 256,416 Z" fill="url(#mapleBark)"/>
+        <path d="M198,405 L202,280 M214,405 L212,285" stroke="#271714" stroke-width="2.5"/>
+
+        <!-- Густа куляста крона клена -->
+        <circle cx="115" cy="205" r="66" fill="url(#mapleMid)"/>
+        <circle cx="305" cy="205" r="66" fill="url(#mapleMid)"/>
+        <circle cx="148" cy="132" r="72" fill="url(#mapleMid)"/>
+        <circle cx="272" cy="132" r="72" fill="url(#mapleMid)"/>
+        <circle cx="210" cy="96" r="70" fill="url(#mapleBright)"/>
+        <circle cx="165" cy="180" r="60" fill="url(#mapleBright)"/>
+        <circle cx="255" cy="180" r="60" fill="url(#mapleBright)"/>
+        <circle cx="210" cy="145" r="64" fill="url(#mapleMid)"/>
+
+        <!-- Виразні п'ятикутні кленові листки по всій кроні -->
+        ${mapleStars}
+      </svg>`;
+    }
+
+    // ---------------- 3. БЕРЕЗА (Білокорий стовбур із чорними чечевичками, тонкі плакучі гілочки з ромбовим листям) ----------------
+    case 'birch': {
+      // Каскади дрібних березових листочків на тонких повислих гілочках
+      let birchDroops = '';
+      const droopX = [88, 108, 128, 148, 168, 252, 272, 292, 312, 332];
+      droopX.forEach((x, idx) => {
+        const topY = 120 + (idx % 3) * 22;
+        const botY = 265 + (idx % 2) * 35;
+        birchDroops += `<path d="M${x},${topY} Q${x + (idx < 5 ? -10 : 10)},${(topY + botY) / 2} ${x},${botY}" fill="none" stroke="#5d4037" stroke-width="1.5" opacity="0.8"/>`;
+        for (let y = topY + 12; y <= botY; y += 18) {
+          const col = (y + idx) % 2 === 0 ? '#dce775' : '#8bc34a';
+          birchDroops += `<path d="M${x},${y} L${x - 7},${y + 7} L${x},${y + 15} L${x + 7},${y + 7} Z" fill="${col}" stroke="#33691e" stroke-width="0.8"/>`;
+        }
+      });
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <linearGradient id="birchBark" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#d7ccc8"/>
+            <stop offset="30%" stop-color="#ffffff"/>
+            <stop offset="72%" stop-color="#f5f5f5"/>
+            <stop offset="100%" stop-color="#9e9e9e"/>
+          </linearGradient>
+          <radialGradient id="birchCanopy" cx="45%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#e6ee9c"/>
+            <stop offset="55%" stop-color="#9ccc65"/>
+            <stop offset="100%" stop-color="#558b2f"/>
+          </radialGradient>
+        </defs>
+
+        <ellipse cx="210" cy="415" rx="135" ry="18" fill="#689f38"/>
+
+        <!-- Світле ажурне підсвічування крони -->
+        <ellipse cx="210" cy="165" rx="125" ry="115" fill="url(#birchCanopy)" opacity="0.7"/>
+        <circle cx="150" cy="140" r="65" fill="url(#birchCanopy)" opacity="0.85"/>
+        <circle cx="270" cy="140" r="65" fill="url(#birchCanopy)" opacity="0.85"/>
+        <circle cx="210" cy="98" r="68" fill="url(#birchCanopy)"/>
+
+        <!-- Основні витончені гілки берези -->
+        <g stroke="#5d4037" stroke-width="3.2" fill="none" stroke-linecap="round">
+          <path d="M202,225 Q140,175 95,215"/>
+          <path d="M203,175 Q138,118 88,168"/>
+          <path d="M205,130 Q155,82 115,125"/>
+          <path d="M216,220 Q280,170 325,215"/>
+          <path d="M215,170 Q282,115 332,168"/>
+          <path d="M213,125 Q265,78 305,125"/>
+        </g>
+
+        <!-- Стрункий білокорий стовбур -->
+        <path d="M180,416 Q194,350 197,235 Q200,140 205,58 L214,58 Q219,140 222,235 Q225,350 240,416 Z" fill="url(#birchBark)" stroke="#8d8d8d" stroke-width="1.5"/>
+
+        <!-- Груба темна кора біля підніжжя берези (комлева частина) -->
+        <path d="M180,416 Q190,372 194,348 L204,362 L212,345 L220,365 L225,348 Q230,372 240,416 Z" fill="#373737"/>
+
+        <!-- Чорні горизонтальні риски-чечевички та темні трикутники під гілками -->
+        <g fill="#212121">
+          <path d="M197,225 L208,220 L197,234 Z"/>
+          <path d="M222,220 L210,215 L222,230 Z"/>
+          <ellipse cx="206" cy="325" rx="9" ry="2.6"/>
+          <ellipse cx="215" cy="302" rx="8" ry="2.2"/>
+          <ellipse cx="204" cy="278" rx="10" ry="2.8"/>
+          <ellipse cx="214" cy="252" rx="7.5" ry="2.2"/>
+          <ellipse cx="205" cy="202" rx="9" ry="2.4"/>
+          <ellipse cx="213" cy="178" rx="7" ry="2"/>
+          <ellipse cx="207" cy="148" rx="6.5" ry="1.8"/>
+          <ellipse cx="211" cy="118" rx="5.5" ry="1.6"/>
+        </g>
+
+        <!-- Тонкі повислі гілочки з дрібними ромбоподібними листочками -->
+        ${birchDroops}
+      </svg>`;
+    }
+
+    // ---------------- 4. ВЕРБА (Реалістична плакуча верба з дугоподібними гілками і десятками спадаючих кіс із вузьким листям) ----------------
+    case 'willow': {
+      // Будуємо густий водоспад із 18 спадаючих вербових гілок-кіс різної довжини
+      const strandsData = [
+        [72, 165, 62, 355, 58, true],
+        [92, 142, 82, 370, 76, false],
+        [112, 125, 102, 362, 98, true],
+        [132, 115, 124, 348, 120, false],
+        [152, 105, 145, 330, 142, true],
+        [172, 98, 166, 295, 164, false],
+        [192, 95, 188, 255, 188, true],
+        [228, 95, 232, 255, 232, false],
+        [248, 98, 254, 295, 256, true],
+        [268, 105, 275, 335, 278, false],
+        [288, 115, 296, 352, 300, true],
+        [308, 125, 318, 365, 322, false],
+        [328, 142, 338, 372, 344, true],
+        [348, 165, 358, 355, 362, false]
+      ];
+      const willowCurtain = strandsData
+        .map(([xs, ys, xe, ye, cx, cat]) => renderWillowWeepingStrand(xs, ys, xe, ye, cx, cat))
+        .join('');
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <linearGradient id="willowBark" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#3e2723"/>
+            <stop offset="45%" stop-color="#6d4c41"/>
+            <stop offset="100%" stop-color="#271714"/>
+          </linearGradient>
+          <radialGradient id="willowTop" cx="50%" cy="35%" r="60%">
+            <stop offset="0%" stop-color="#c5e1a5"/>
+            <stop offset="65%" stop-color="#7cb342"/>
+            <stop offset="100%" stop-color="#33691e"/>
+          </radialGradient>
+        </defs>
+
+        <!-- Блакитна гладінь лісового озерця та зелений берег -->
+        <ellipse cx="275" cy="418" rx="125" ry="18" fill="#4fc3f7" opacity="0.75"/>
+        <path d="M210,418 Q275,412 355,418" stroke="#e1f5fe" stroke-width="2.5" fill="none"/>
+        <ellipse cx="165" cy="415" rx="135" ry="22" fill="#558b2f"/>
+
+        <!-- Задній тіньовий шар плакучої крони -->
+        <path d="M68,175 C68,75 352,75 352,175 L345,330 Q210,310 75,330 Z" fill="#33691e" opacity="0.45"/>
+
+        <!-- Могутній покручений стовбур верби та дугоподібні гілки -->
+        <path d="M148,416 Q178,365 184,285 Q188,220 176,178 C142,135 98,138 72,172 C102,122 150,115 186,155 C175,112 140,98 112,125 C148,88 188,95 204,142 C218,95 262,88 298,125 C270,98 235,112 224,155 C260,115 308,122 338,172 C312,138 268,135 234,178 Q224,225 224,285 Q230,365 256,416 Z" fill="url(#willowBark)"/>
+
+        <!-- Рельєф кори на стовбурі верби -->
+        <path d="M188,402 Q198,330 194,240 M206,405 Q208,325 206,215 M222,402 Q216,330 218,245" stroke="#271714" stroke-width="3" fill="none"/>
+
+        <!-- Верхня шапка дрібного сріблясто-зеленого листя -->
+        <ellipse cx="210" cy="112" rx="118" ry="44" fill="url(#willowTop)"/>
+        <ellipse cx="145" cy="128" rx="75" ry="35" fill="url(#willowTop)"/>
+        <ellipse cx="275" cy="128" rx="75" ry="35" fill="url(#willowTop)"/>
+
+        <!-- Густий каскад довгих спадаючих гілок-кіс із окремими вузькими листочками -->
+        ${willowCurtain}
+      </svg>`;
+    }
+
+    // ---------------- 5. СОСНА (Мідно-рудий стовбур, ярусні гілки та пишні віяла СПРАВЖНІХ ГОЛОК-ХВОЇ) ----------------
+    case 'pine': {
+      // Розташовуємо 24 густі пучки-віяла довгих соснових голок по всіх гілках крони
+      const needlePads = [
+        // Нижній ярус ліворуч і праворуч
+        [85, 225, 42], [122, 220, 44], [155, 225, 40],
+        [268, 235, 40], [302, 230, 44], [338, 235, 42],
+        // Середній ярус
+        [98, 165, 44], [135, 158, 46], [172, 165, 42],
+        [248, 172, 42], [285, 165, 46], [322, 172, 44],
+        // Верхній ярус
+        [125, 112, 44], [162, 105, 46], [205, 112, 45], [248, 108, 46], [285, 115, 44],
+        // Верхівка сосни
+        [158, 68, 42], [192, 58, 46], [228, 58, 46], [262, 68, 42],
+        [210, 44, 42]
+      ];
+
+      const allNeedles = needlePads
+        .map(([cx, cy, r]) => renderPineNeedleCluster(cx, cy, r, '#0d3b14', '#2e7d32', '#66bb6a'))
+        .join('');
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <linearGradient id="pineTrunk" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#e65100"/>
+            <stop offset="35%" stop-color="#bf360c"/>
+            <stop offset="70%" stop-color="#6d4c41"/>
+            <stop offset="100%" stop-color="#3e2723"/>
+          </linearGradient>
+        </defs>
+
+        <ellipse cx="210" cy="415" rx="135" ry="18" fill="#558b2f"/>
+
+        <!-- Стрункий мідно-рудий стовбур сосни та горизонтальні звивисті гілки -->
+        <path d="M180,416 Q195,350 197,230 L95,222 L98,210 L198,214 L199,165 L108,158 L112,146 L199,150 L200,108 L135,102 L138,92 L201,96 L203,45 L217,45 L219,98 L278,94 L282,104 L219,110 L220,158 L308,154 L312,166 L221,172 L222,222 L325,218 L328,230 L223,238 Q225,350 240,416 Z" fill="url(#pineTrunk)"/>
+
+        <!-- Лускатий рельєф соснової кори -->
+        <g stroke="#3e2723" stroke-width="2.5" fill="none">
+          <path d="M196,385 L224,380 M198,350 L222,355 M199,315 L221,310 M200,280 L220,285 M201,245 L219,240 M202,195 L218,192"/>
+        </g>
+
+        <!-- Густі віяла справжніх голок-хвоїнок на кожній гілці -->
+        ${allNeedles}
+
+        <!-- Шишки, що звисають під хвойними лапами -->
+        <g fill="#795548" stroke="#271714" stroke-width="1.5">
+          <ellipse cx="118" cy="230" rx="7" ry="11"/>
+          <ellipse cx="305" cy="240" rx="7" ry="11"/>
+          <ellipse cx="142" cy="168" rx="7" ry="11"/>
+          <ellipse cx="282" cy="176" rx="7" ry="11"/>
+          <ellipse cx="178" cy="116" rx="6.5" ry="10"/>
+          <ellipse cx="245" cy="118" rx="6.5" ry="10"/>
+        </g>
+      </svg>`;
+    }
+
+    // ---------------- 6. КАШТАН (Пишний купол із пальчастим листям, біло-рожевими свічками та їжачками плодів) ----------------
+    case 'chestnut': {
+      // Віяла пальчастого листя та квітучі свічки каштана
+      const candles = [
+        [115, 165], [155, 115], [210, 88], [265, 115], [305, 165], [178, 175], [242, 175]
+      ].map(([x, y]) => `
+        <g transform="translate(${x},${y})">
+          <!-- Віяло з 5 пальчастих листків під свічкою -->
+          <g fill="#66bb6a" stroke="#1b5e20" stroke-width="1.2">
+            <ellipse cx="-16" cy="10" rx="11" ry="4.5" transform="rotate(-30 -16 10)"/>
+            <ellipse cx="16" cy="10" rx="11" ry="4.5" transform="rotate(30 16 10)"/>
+            <ellipse cx="-10" cy="16" rx="11" ry="4.5" transform="rotate(-65 -10 16)"/>
+            <ellipse cx="10" cy="16" rx="11" ry="4.5" transform="rotate(65 10 16)"/>
+            <ellipse cx="0" cy="18" rx="5" ry="11"/>
+          </g>
+          <!-- Пірамідальна свічка цвіту -->
+          <path d="M-10,6 L0,-28 L10,6 Z" fill="#fff8e1" stroke="#f06292" stroke-width="1.5"/>
+          <circle cx="0" cy="-14" r="2.5" fill="#f06292"/>
+          <circle cx="-4" cy="-4" r="2.5" fill="#f06292"/>
+          <circle cx="4" cy="-4" r="2.5" fill="#f06292"/>
+        </g>
+      `).join('');
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <radialGradient id="chestnutCanopy" cx="45%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#66bb6a"/>
+            <stop offset="60%" stop-color="#2e7d32"/>
+            <stop offset="100%" stop-color="#123d16"/>
+          </radialGradient>
+        </defs>
+
+        <ellipse cx="210" cy="415" rx="145" ry="20" fill="#558b2f"/>
+
+        <!-- Міцний темно-коричневий стовбур каштана -->
+        <path d="M162,416 Q184,355 188,265 L125,205 L138,192 L192,238 L198,165 L222,165 L228,238 L282,192 L295,205 L232,265 Q236,355 258,416 Z" fill="#3e2723"/>
+
+        <!-- Густий розлогий купол крони -->
+        <path d="M58,238 C48,110 130,38 210,38 C290,38 372,110 362,238 C350,278 285,278 210,278 C135,278 70,278 58,238 Z" fill="url(#chestnutCanopy)"/>
+        <circle cx="128" cy="198" r="66" fill="url(#chestnutCanopy)"/>
+        <circle cx="292" cy="198" r="66" fill="url(#chestnutCanopy)"/>
+        <circle cx="162" cy="122" r="68" fill="url(#chestnutCanopy)"/>
+        <circle cx="258" cy="122" r="68" fill="url(#chestnutCanopy)"/>
+        <circle cx="210" cy="158" r="76" fill="url(#chestnutCanopy)"/>
+
+        <!-- Пальчасте листя та квітучі свічки -->
+        ${candles}
+
+        <!-- Зелені колючі кульки каштанів у кроні -->
+        <g fill="#aed581" stroke="#33691e" stroke-width="2" stroke-dasharray="3 2">
+          <circle cx="140" cy="228" r="10"/>
+          <circle cx="210" cy="222" r="10"/>
+          <circle cx="280" cy="228" r="10"/>
+        </g>
+      </svg>`;
+    }
+
+    // ---------------- 7. ТОПОЛЯ (Висока струнка пірамідальна тополя з гілками, спрямованими вгору) ----------------
+    case 'poplar': {
+      let poplarLeaves = '';
+      const coords = [
+        [210,42], [192,75], [228,75], [178,115], [210,110], [242,115],
+        [165,160], [195,155], [225,155], [255,160],
+        [152,210], [185,205], [215,205], [245,205], [268,210],
+        [158,260], [190,255], [230,255], [262,260]
+      ];
+      coords.forEach(([x, y], i) => {
+        const col = i % 2 === 0 ? '#aed581' : '#7cb342';
+        poplarLeaves += `<path d="M${x},${y - 16} C${x - 16},${y + 4} ${x - 12},${y + 16} ${x},${y + 16} C${x + 12},${y + 16} ${x + 16},${y + 4} ${x},${y - 16} Z" fill="${col}" stroke="#33691e" stroke-width="1"/>`;
+      });
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <radialGradient id="poplarCrown" cx="42%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#9ccc65"/>
+            <stop offset="60%" stop-color="#558b2f"/>
+            <stop offset="100%" stop-color="#264d14"/>
+          </radialGradient>
+        </defs>
+
+        <ellipse cx="210" cy="415" rx="120" ry="18" fill="#558b2f"/>
+
+        <!-- Сіро-оливковий стовбур тополі та гострі вертикальні гілки -->
+        <path d="M182,416 Q195,360 197,285 L223,285 Q225,360 238,416 Z" fill="#5d534a" stroke="#3e3730" stroke-width="2"/>
+
+        <!-- Висока струнка колоноподібна крона -->
+        <ellipse cx="210" cy="260" rx="76" ry="75" fill="url(#poplarCrown)"/>
+        <ellipse cx="182" cy="215" rx="58" ry="74" fill="url(#poplarCrown)"/>
+        <ellipse cx="238" cy="215" rx="58" ry="74" fill="url(#poplarCrown)"/>
+        <ellipse cx="188" cy="148" rx="50" ry="70" fill="url(#poplarCrown)"/>
+        <ellipse cx="232" cy="148" rx="50" ry="70" fill="url(#poplarCrown)"/>
+        <ellipse cx="210" cy="88" rx="42" ry="68" fill="url(#poplarCrown)"/>
+        <path d="M180,68 Q210,8 240,68 Z" fill="#689f38"/>
+
+        <!-- Гілки, що тягнуться вгору всередині крони -->
+        <g stroke="#4e453d" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.65">
+          <path d="M210,305 L210,75"/>
+          <path d="M206,275 L168,195"/>
+          <path d="M214,275 L252,195"/>
+          <path d="M208,210 L178,130"/>
+          <path d="M212,210 L242,130"/>
+        </g>
+
+        <!-- Трикутні листочки тополі -->
+        ${poplarLeaves}
+
+        <!-- Білі пушинки тополиного пуху -->
+        <g fill="#ffffff" opacity="0.92">
+          <circle cx="165" cy="175" r="6.5"/>
+          <circle cx="252" cy="195" r="7"/>
+          <circle cx="195" cy="245" r="6.5"/>
+          <circle cx="225" cy="125" r="6"/>
+          <circle cx="132" cy="225" r="5.5"/>
+          <circle cx="285" cy="160" r="5.5"/>
+        </g>
+      </svg>`;
+    }
+
+    // ---------------- 8. ЛИПА (Серцеподібна густа крона з духмяним золотистим цвітом та крильцями) ----------------
+    case 'linden': {
+      const blossoms = [
+        [135, 165, -22], [275, 165, 22], [172, 112, -12], [248, 112, 12],
+        [210, 152, 0], [152, 220, 15], [268, 220, -15], [210, 212, 8]
+      ].map(([x, y, rot]) => `
+        <g transform="translate(${x},${y}) rotate(${rot})">
+          <ellipse cx="0" cy="-6" rx="16" ry="5.5" fill="#dce775" stroke="#827717" stroke-width="1"/>
+          <circle cx="-5" cy="5" r="5" fill="#fff59d" stroke="#fbc02d" stroke-width="1"/>
+          <circle cx="5" cy="6" r="4.5" fill="#fff59d" stroke="#fbc02d" stroke-width="1"/>
+        </g>
+      `).join('');
+
+      return `
+      <svg viewBox="0 0 420 450">
+        <defs>
+          <radialGradient id="lindenCrown" cx="45%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#9ccc65"/>
+            <stop offset="65%" stop-color="#558b2f"/>
+            <stop offset="100%" stop-color="#1f4d16"/>
+          </radialGradient>
+        </defs>
+
+        <ellipse cx="210" cy="415" rx="140" ry="20" fill="#558b2f"/>
+
+        <!-- Темний рельєфний стовбур липи -->
+        <path d="M168,416 Q188,355 192,265 L138,205 L150,192 L195,235 L202,165 L218,165 L225,235 L270,192 L282,205 L228,265 Q232,355 252,416 Z" fill="#3e2723"/>
+
+        <!-- М'яка серцеподібна крона липи -->
+        <path d="M210,38 C270,38 352,105 352,198 C352,265 288,288 210,288 C132,288 68,265 68,198 C68,105 150,38 210,38 Z" fill="url(#lindenCrown)"/>
+        <circle cx="138" cy="188" r="68" fill="url(#lindenCrown)"/>
+        <circle cx="282" cy="188" r="68" fill="url(#lindenCrown)"/>
+        <circle cx="174" cy="120" r="62" fill="url(#lindenCrown)"/>
+        <circle cx="246" cy="120" r="62" fill="url(#lindenCrown)"/>
+
+        <!-- Суцвіття липи з крильцями -->
+        ${blossoms}
+      </svg>`;
+    }
+  }
+}
+
+
+/* ============================================================================
+   5. БОТАНІЧНІ SVG-ІЛЮСТРАЦІЇ ПЛОДІВ І ЛИСТЯ (БЕЗ НАКЛАДАННЯ!)
+   Усі картки побудовані за єдиним чистим принципом (viewBox 0 0 340 370):
+   - У ВЕРХНІЙ ЧАСТИНІ (y: 12..172) розташований характерний ЛИСТОК або ХВОЯ дерева.
+   - Посередині (y: 175..185) проходить гілочка.
+   - У НИЖНІЙ ЧАСТИНІ ПІД ЛИСТКОМ (y: 190..355) розташовані ПЛОДИ або ЦВІТІННЯ.
+   Вони взагалі не перетинаються і не перекривають одне одного!
+   ============================================================================ */
+function getFruitSVG(treeId) {
+  switch (treeId) {
+
+    // ---------------- 1. ДУБ: Вгорі хвилястий дубовий листок, внизу під гілочкою — жолуді ----------------
+    case 'oak':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <radialGradient id="acornNut" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#ffcc80"/>
+            <stop offset="45%" stop-color="#c67c3b"/>
+            <stop offset="85%" stop-color="#8d4e1f"/>
+            <stop offset="100%" stop-color="#4e2608"/>
+          </radialGradient>
+          <linearGradient id="acornCap" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#8d6e63"/>
+            <stop offset="55%" stop-color="#5d4037"/>
+            <stop offset="100%" stop-color="#3e2723"/>
+          </linearGradient>
+          <linearGradient id="oakLeafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#9ccc65"/>
+            <stop offset="60%" stop-color="#558b2f"/>
+            <stop offset="100%" stop-color="#2e5718"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: Характерний хвилястий дубовий листок (горизонтально над гілочкою) -->
+        <g transform="translate(175, 92) rotate(-72) scale(0.92)">
+          <path d="M-12,92 L-12,72 C-32,62 -24,42 -44,32 C-68,20 -62,-6 -38,-12 C-58,-32 -48,-62 -22,-56 C-35,-82 -18,-108 4,-96 C12,-120 34,-120 42,-96 C64,-108 82,-82 68,-56 C94,-62 104,-32 84,-12 C108,-6 114,20 90,32 C70,42 78,62 58,72 C35,80 12,80 -12,72 Z" fill="url(#oakLeafGrad)" stroke="#1b5e20" stroke-width="3"/>
+          <!-- Прожилки дубового листка -->
+          <path d="M23,-105 L-8,82 M18,-62 L-22,-75 M15,-32 L68,-45 M10,-2 L-38,8 M6,28 L65,20" stroke="#dcedc8" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        </g>
+
+        <!-- Гілочка посередині -->
+        <path d="M45,178 Q170,192 295,172" fill="none" stroke="#4e342e" stroke-width="9" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ЛИСТКОМ): Два реалістичні жолуді у лускатих шапочках -->
+        <!-- Лівий великий жолудь -->
+        <g transform="translate(88, 192) rotate(6)">
+          <path d="M48,14 L48,-6" stroke="#4e342e" stroke-width="6" stroke-linecap="round"/>
+          <!-- Горішок жолудя -->
+          <path d="M12,38 C10,95 28,132 48,144 C68,132 86,95 84,38 Z" fill="url(#acornNut)" stroke="#4e2608" stroke-width="3"/>
+          <path d="M28,54 Q22,88 35,118" fill="none" stroke="#ffe0b2" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+          <path d="M45,143 L48,153 L51,143 Z" fill="#3e2723"/>
+          <!-- Луската шапочка (плюска) -->
+          <path d="M2,42 C2,8 94,8 94,42 C75,56 21,56 2,42 Z" fill="url(#acornCap)" stroke="#271714" stroke-width="3"/>
+          <path d="M18,26 L32,44 M36,20 L50,46 M56,20 L68,44 M74,26 L84,42 M32,22 L18,40 M52,20 L36,46 M70,22 L54,46" stroke="#3e2723" stroke-width="2"/>
+        </g>
+
+        <!-- Правий жолудь -->
+        <g transform="translate(185, 188) rotate(-12) scale(0.88)">
+          <path d="M48,14 L54,-8" stroke="#4e342e" stroke-width="6" stroke-linecap="round"/>
+          <path d="M12,38 C10,95 28,132 48,144 C68,132 86,95 84,38 Z" fill="url(#acornNut)" stroke="#4e2608" stroke-width="3"/>
+          <path d="M28,54 Q22,88 35,118" fill="none" stroke="#ffe0b2" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+          <path d="M45,143 L48,153 L51,143 Z" fill="#3e2723"/>
+          <path d="M2,42 C2,8 94,8 94,42 C75,56 21,56 2,42 Z" fill="url(#acornCap)" stroke="#271714" stroke-width="3"/>
+          <path d="M20,26 L36,44 M44,20 L58,46 M66,24 L46,46" stroke="#3e2723" stroke-width="2"/>
+        </g>
+      </svg>`;
+
+    // ---------------- 2. КЛЕН: Вгорі різьблений п'ятилопатевий кленовий листок, внизу — крилатка ----------------
+    case 'maple':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <linearGradient id="samaraWing" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#e6ee9c"/>
+            <stop offset="55%" stop-color="#9ccc65"/>
+            <stop offset="100%" stop-color="#8d6e63"/>
+          </linearGradient>
+          <linearGradient id="mapleLeafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#7cb342"/>
+            <stop offset="65%" stop-color="#388e3c"/>
+            <stop offset="100%" stop-color="#1b5e20"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: П'ятикутний кленовий листок над гілочкою (y: 14..170) -->
+        <g transform="translate(170, 148)">
+          <!-- Черешок листка до гілочки -->
+          <path d="M0,0 L0,32" stroke="#8d4e1f" stroke-width="4.5" stroke-linecap="round"/>
+          <!-- Пластина кленового листка -->
+          <path d="M0,0 L-52,10 L-40,-24 L-92,-46 L-55,-68 L-68,-104 L-26,-88 L0,-136 L26,-88 L68,-104 L55,-68 L92,-46 L40,-24 L52,10 Z" fill="url(#mapleLeafGrad)" stroke="#1b5e20" stroke-width="2.8"/>
+          <!-- Прожилки -->
+          <path d="M0,0 L0,-125 M0,-20 L-58,-92 M0,-20 L58,-92 M0,-10 L-78,-44 M0,-10 L78,-44" stroke="#dce775" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+        </g>
+
+        <!-- Гілочка клена посередині -->
+        <path d="M55,180 Q170,190 285,176" fill="none" stroke="#5d4037" stroke-width="7.5" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ЛИСТКОМ): Двокрилатка клена ("вертолітик / носики") -->
+        <g transform="translate(170, 235)">
+          <!-- Плодоніжка від гілочки до крилатки -->
+          <path d="M0,-52 Q4,-25 0,0" fill="none" stroke="#689f38" stroke-width="3.8" stroke-linecap="round"/>
+
+          <!-- Ліве крильце -->
+          <path d="M0,0 C-22,-14 -88,4 -126,52 C-146,78 -126,108 -88,92 C-48,76 -18,38 0,18 Z" fill="url(#samaraWing)" stroke="#558b2f" stroke-width="3"/>
+          <!-- Праве крильце -->
+          <path d="M0,0 C22,-14 88,4 126,52 C146,78 126,108 88,92 C48,76 18,38 0,18 Z" fill="url(#samaraWing)" stroke="#558b2f" stroke-width="3"/>
+
+          <!-- Сітка прожилок на крильцях -->
+          <path d="M-14,4 Q-68,18 -116,62 M-32,18 Q-72,42 -102,82 M-50,34 Q-72,58 -82,85" fill="none" stroke="#558b2f" stroke-width="2"/>
+          <path d="M14,4 Q68,18 116,62 M32,18 Q72,42 102,82 M50,34 Q72,58 82,85" fill="none" stroke="#558b2f" stroke-width="2"/>
+
+          <!-- Дві опуклі насінинки в центрі -->
+          <ellipse cx="-12" cy="8" rx="14" ry="10.5" transform="rotate(-20 -12 8)" fill="#795548" stroke="#3e2723" stroke-width="2.5"/>
+          <ellipse cx="12" cy="8" rx="14" ry="10.5" transform="rotate(20 12 8)" fill="#795548" stroke="#3e2723" stroke-width="2.5"/>
+        </g>
+      </svg>`;
+
+    // ---------------- 3. БЕРЕЗА: Вгорі два зубчасті березові листки, внизу під гілочкою — сережки ----------------
+    case 'birch':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <linearGradient id="catkinGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#9e9d24"/>
+            <stop offset="50%" stop-color="#d4e157"/>
+            <stop offset="100%" stop-color="#827717"/>
+          </linearGradient>
+          <linearGradient id="birchLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#c5e1a5"/>
+            <stop offset="55%" stop-color="#7cb342"/>
+            <stop offset="100%" stop-color="#33691e"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: Два ромбоподібні зубчасті березові листочки, спрямовані вгору (y: 20..168) -->
+        <!-- Лівий листок -->
+        <g transform="translate(115, 165) rotate(-24)">
+          <line x1="0" y1="0" x2="0" y2="14" stroke="#5d4037" stroke-width="3.5"/>
+          <path d="M0,0 L-22,-18 L-16,-24 L-34,-42 L-25,-48 L-36,-68 L-22,-74 L-26,-92 L-10,-96 L0,-118 L10,-96 L26,-92 L22,-74 L36,-68 L25,-48 L34,-42 L16,-24 L22,-18 Z" fill="url(#birchLeaf)" stroke="#2e5718" stroke-width="2.5"/>
+          <path d="M0,-4 L0,-108 M0,-26 L-24,-42 M0,-46 L24,-64 M0,-66 L-20,-82 M0,-82 L18,-92" stroke="#e6ee9c" stroke-width="2" fill="none"/>
+        </g>
+
+        <!-- Правий листок -->
+        <g transform="translate(225, 165) rotate(24)">
+          <line x1="0" y1="0" x2="0" y2="14" stroke="#5d4037" stroke-width="3.5"/>
+          <path d="M0,0 L-22,-18 L-16,-24 L-34,-42 L-25,-48 L-36,-68 L-22,-74 L-26,-92 L-10,-96 L0,-118 L10,-96 L26,-92 L22,-74 L36,-68 L25,-48 L34,-42 L16,-24 L22,-18 Z" fill="url(#birchLeaf)" stroke="#2e5718" stroke-width="2.5"/>
+          <path d="M0,-4 L0,-108 M0,-26 L-24,-42 M0,-46 L24,-64 M0,-66 L-20,-82 M0,-82 L18,-92" stroke="#e6ee9c" stroke-width="2" fill="none"/>
+        </g>
+
+        <!-- Гілочка берези посередині -->
+        <path d="M45,176 Q170,192 295,174" fill="none" stroke="#5d4037" stroke-width="7" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ЛИСТКАМИ): Три звисаючі березові сережки з лусочками -->
+        <g transform="translate(132, 185) rotate(8)">
+          <rect x="-13" y="0" width="26" height="142" rx="13" fill="url(#catkinGrad)" stroke="#5d4037" stroke-width="2.5"/>
+          <path d="M-12,20 Q0,30 12,20 M-12,42 Q0,52 12,42 M-12,64 Q0,74 12,64 M-12,86 Q0,96 12,86 M-12,108 Q0,118 12,108 M-12,126 Q0,136 12,126" fill="none" stroke="#5d4037" stroke-width="2.2"/>
+        </g>
+        <g transform="translate(174, 186) rotate(-5)">
+          <rect x="-13" y="0" width="26" height="156" rx="13" fill="url(#catkinGrad)" stroke="#5d4037" stroke-width="2.5"/>
+          <path d="M-12,22 Q0,32 12,22 M-12,44 Q0,54 12,44 M-12,66 Q0,76 12,66 M-12,88 Q0,98 12,88 M-12,110 Q0,120 12,110 M-12,132 Q0,142 12,132" fill="none" stroke="#5d4037" stroke-width="2.2"/>
+        </g>
+        <g transform="translate(214, 184) rotate(-18) scale(0.88)">
+          <rect x="-12" y="0" width="24" height="138" rx="12" fill="url(#catkinGrad)" stroke="#5d4037" stroke-width="2.5"/>
+          <path d="M-11,24 Q0,34 11,24 M-11,52 Q0,62 11,52 M-11,80 Q0,90 11,80 M-11,108 Q0,118 11,108" fill="none" stroke="#5d4037" stroke-width="2.2"/>
+        </g>
+      </svg>`;
+
+    // ---------------- 4. ВЕРБА: Вгорі довгі вузькі вербові листки, внизу на гілочці — пухнасті котики ----------------
+    case 'willow':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <radialGradient id="pussyBud" cx="38%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="55%" stop-color="#eceff1"/>
+            <stop offset="85%" stop-color="#b0bec5"/>
+            <stop offset="100%" stop-color="#78909c"/>
+          </radialGradient>
+          <linearGradient id="willowLeafGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#aed581"/>
+            <stop offset="50%" stop-color="#7cb342"/>
+            <stop offset="100%" stop-color="#33691e"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: Три вузькі ланцетоподібні вербові листочки у верхній частині (y: 18..155) -->
+        <!-- Лівий довгий вербовий листок -->
+        <g transform="translate(155, 138) rotate(-52)">
+          <path d="M0,0 C-18,-35 -18,-88 0,-128 C18,-88 18,-35 0,0 Z" fill="url(#willowLeafGrad)" stroke="#2e5718" stroke-width="2.2"/>
+          <line x1="0" y1="0" x2="0" y2="-122" stroke="#e6ee9c" stroke-width="2"/>
+        </g>
+        <!-- Центральний вербовий листок -->
+        <g transform="translate(172, 132) rotate(4)">
+          <path d="M0,0 C-16,-35 -16,-82 0,-118 C16,-82 16,-35 0,0 Z" fill="url(#willowLeafGrad)" stroke="#2e5718" stroke-width="2.2"/>
+          <line x1="0" y1="0" x2="0" y2="-112" stroke="#e6ee9c" stroke-width="2"/>
+        </g>
+        <!-- Правий довгий вербовий листок -->
+        <g transform="translate(188, 138) rotate(54)">
+          <path d="M0,0 C-18,-35 -18,-88 0,-128 C18,-88 18,-35 0,0 Z" fill="url(#willowLeafGrad)" stroke="#2e5718" stroke-width="2.2"/>
+          <line x1="0" y1="0" x2="0" y2="-122" stroke="#e6ee9c" stroke-width="2"/>
+        </g>
+
+        <!-- Червонувато-брунатна вербова гілочка, що спускається у нижню зону -->
+        <path d="M172,128 Q168,235 162,355" fill="none" stroke="#6d3b28" stroke-width="9" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ЛИСТКАМИ, y: 175..350): Чотири пухнасті сріблясті вербові котики -->
+        <!-- Котик 1 (ліворуч вгорі) -->
+        <g transform="translate(142, 196) rotate(-28)">
+          <ellipse cx="0" cy="0" rx="22" ry="30" fill="url(#pussyBud)" stroke="#cfd8dc" stroke-width="3" stroke-dasharray="3 2"/>
+          <circle cx="-8" cy="-10" r="2.5" fill="#ffd54f"/><circle cx="-11" cy="2" r="2.5" fill="#ffd54f"/>
+          <path d="M-18,12 Q0,38 18,12 Q4,22 -18,12 Z" fill="#5d3120"/>
+        </g>
+        <!-- Котик 2 (праворуч) -->
+        <g transform="translate(194, 228) rotate(28)">
+          <ellipse cx="0" cy="0" rx="22" ry="30" fill="url(#pussyBud)" stroke="#cfd8dc" stroke-width="3" stroke-dasharray="3 2"/>
+          <circle cx="8" cy="-10" r="2.5" fill="#ffd54f"/><circle cx="11" cy="2" r="2.5" fill="#ffd54f"/>
+          <path d="M-18,12 Q0,38 18,12 Q4,22 -18,12 Z" fill="#5d3120"/>
+        </g>
+        <!-- Котик 3 (ліворуч внизу) -->
+        <g transform="translate(138, 276) rotate(-26)">
+          <ellipse cx="0" cy="0" rx="21" ry="29" fill="url(#pussyBud)" stroke="#cfd8dc" stroke-width="3" stroke-dasharray="3 2"/>
+          <circle cx="-7" cy="-8" r="2.5" fill="#ffd54f"/>
+          <path d="M-17,12 Q0,36 17,12 Q4,22 -17,12 Z" fill="#5d3120"/>
+        </g>
+        <!-- Котик 4 (праворуч внизу) -->
+        <g transform="translate(190, 310) rotate(26)">
+          <ellipse cx="0" cy="0" rx="20" ry="27" fill="url(#pussyBud)" stroke="#cfd8dc" stroke-width="3" stroke-dasharray="3 2"/>
+          <path d="M-16,11 Q0,34 16,11 Q4,20 -16,11 Z" fill="#5d3120"/>
+        </g>
+      </svg>`;
+
+    // ---------------- 5. СОСНА: Вгорі пишні пучки довгих голок хвої, внизу під гілочкою — шишка ----------------
+    case 'pine':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <radialGradient id="scaleDark" cx="50%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#a1887f"/>
+            <stop offset="55%" stop-color="#6d4c41"/>
+            <stop offset="100%" stop-color="#3e2723"/>
+          </radialGradient>
+          <radialGradient id="scaleLight" cx="50%" cy="25%" r="70%">
+            <stop offset="0%" stop-color="#d7ccc8"/>
+            <stop offset="45%" stop-color="#8d6e63"/>
+            <stop offset="100%" stop-color="#4e342e"/>
+          </radialGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: Пучки довгих гострих соснових голок, спрямовані вгору над гілкою (y: 15..158) -->
+        <g stroke="#1b5e20" stroke-width="3.2" stroke-linecap="round">
+          <!-- Лівий пучок голок -->
+          <line x1="115" y1="158" x2="35" y2="95"/>
+          <line x1="115" y1="158" x2="48" y2="62"/>
+          <line x1="115" y1="158" x2="75" y2="35"/>
+          <line x1="115" y1="158" x2="108" y2="22"/>
+          <!-- Центральний пучок голок -->
+          <line x1="170" y1="155" x2="135" y2="24"/>
+          <line x1="170" y1="155" x2="158" y2="16"/>
+          <line x1="170" y1="155" x2="182" y2="16"/>
+          <line x1="170" y1="155" x2="205" y2="24"/>
+          <!-- Правий пучок голок -->
+          <line x1="225" y1="158" x2="232" y2="22"/>
+          <line x1="225" y1="158" x2="265" y2="35"/>
+          <line x1="225" y1="158" x2="292" y2="62"/>
+          <line x1="225" y1="158" x2="305" y2="95"/>
+        </g>
+        <!-- Світліші смарагдові голки поверх для об'єму -->
+        <g stroke="#66bb6a" stroke-width="2.4" stroke-linecap="round">
+          <line x1="115" y1="158" x2="55" y2="78"/>
+          <line x1="115" y1="158" x2="92" y2="32"/>
+          <line x1="170" y1="155" x2="148" y2="22"/>
+          <line x1="170" y1="155" x2="194" y2="22"/>
+          <line x1="225" y1="158" x2="248" y2="32"/>
+          <line x1="225" y1="158" x2="285" y2="78"/>
+        </g>
+
+        <!-- Луската соснова гілочка посередині -->
+        <path d="M65,162 Q170,176 275,162" fill="none" stroke="#5d4037" stroke-width="11" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ХВОЄЮ, y: 170..355): Велика рельєфна соснова шишка -->
+        <g transform="translate(170, 170) scale(0.9)">
+          <path d="M0,0 C-65,30 -72,145 0,202 C72,145 65,30 0,0 Z" fill="#271714"/>
+          <!-- Ряд 1 -->
+          <ellipse cx="-18" cy="30" rx="18" ry="22" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="18" cy="30" rx="18" ry="22" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="0" cy="26" rx="20" ry="24" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <!-- Ряд 2 -->
+          <ellipse cx="-34" cy="62" rx="22" ry="26" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="34" cy="62" rx="22" ry="26" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="-16" cy="66" rx="22" ry="26" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="16" cy="66" rx="22" ry="26" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <!-- Ряд 3 -->
+          <ellipse cx="-42" cy="100" rx="22" ry="26" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="42" cy="100" rx="22" ry="26" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="-22" cy="104" rx="23" ry="27" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="22" cy="104" rx="23" ry="27" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="0" cy="100" rx="24" ry="28" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <!-- Ряд 4 -->
+          <ellipse cx="-30" cy="142" rx="20" ry="24" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="30" cy="142" rx="20" ry="24" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="-14" cy="146" rx="20" ry="25" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="14" cy="146" rx="20" ry="25" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+          <!-- Ряд 5 -->
+          <ellipse cx="-14" cy="174" rx="16" ry="20" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="14" cy="174" rx="16" ry="20" fill="url(#scaleDark)" stroke="#271714" stroke-width="2"/>
+          <ellipse cx="0" cy="182" rx="17" ry="22" fill="url(#scaleLight)" stroke="#271714" stroke-width="2"/>
+        </g>
+      </svg>`;
+
+    // ---------------- 6. КАШТАН: Вгорі віяло пальчастого листка, внизу — колючий їжачок і блискучий каштан ----------------
+    case 'chestnut':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <radialGradient id="chestnutNut" cx="35%" cy="30%" r="68%">
+            <stop offset="0%" stop-color="#a14828"/>
+            <stop offset="45%" stop-color="#6d2611"/>
+            <stop offset="85%" stop-color="#3e1305"/>
+            <stop offset="100%" stop-color="#210802"/>
+          </radialGradient>
+          <radialGradient id="spikyHusk" cx="40%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#aed581"/>
+            <stop offset="65%" stop-color="#689f38"/>
+            <stop offset="100%" stop-color="#33691e"/>
+          </radialGradient>
+          <linearGradient id="chestnutLeafGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#66bb6a"/>
+            <stop offset="100%" stop-color="#2e7d32"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: Пальчастий семилисток каштана віялом у верхній половині (y: 16..165) -->
+        <g fill="url(#chestnutLeafGrad)" stroke="#1b5e20" stroke-width="2.2">
+          <!-- Центральний листочок -->
+          <path d="M170,158 C148,105 148,45 170,16 C192,45 192,105 170,158 Z"/>
+          <!-- Друга пара -->
+          <path d="M170,158 C122,118 102,65 112,34 C138,48 158,98 170,158 Z"/>
+          <path d="M170,158 C218,118 238,65 228,34 C202,48 182,98 170,158 Z"/>
+          <!-- Третя пара -->
+          <path d="M170,158 C102,138 62,102 62,72 C92,72 138,108 170,158 Z"/>
+          <path d="M170,158 C238,138 278,102 278,72 C248,72 202,108 170,158 Z"/>
+          <!-- Нижня мала пара листочків віяла -->
+          <path d="M170,158 C110,162 68,148 52,126 C85,122 132,138 170,158 Z"/>
+          <path d="M170,158 C230,162 272,148 288,126 C255,122 208,138 170,158 Z"/>
+        </g>
+        <!-- Світлі центральні прожилки кожного пальчика листка -->
+        <g stroke="#c5e1a5" stroke-width="1.8" fill="none">
+          <line x1="170" y1="158" x2="170" y2="24"/>
+          <line x1="170" y1="158" x2="116" y2="42"/>
+          <line x1="170" y1="158" x2="224" y2="42"/>
+          <line x1="170" y1="158" x2="70" y2="76"/>
+          <line x1="170" y1="158" x2="270" y2="76"/>
+        </g>
+
+        <!-- Гілочка посередині -->
+        <path d="M55,172 Q170,184 285,172" fill="none" stroke="#4e342e" stroke-width="7.5" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ЛИСТКОМ, y: 192..352): Колюча зелена коробочка та глянцевий горіх каштана -->
+        <g transform="translate(115, 268)">
+          <circle cx="0" cy="0" r="56" fill="url(#spikyHusk)" stroke="#33691e" stroke-width="3"/>
+          <g stroke="#33691e" stroke-width="3.5" stroke-linecap="round">
+            <line x1="-54" y1="0" x2="-68" y2="0"/><line x1="-48" y1="-26" x2="-62" y2="-34"/>
+            <line x1="-30" y1="-46" x2="-40" y2="-60"/><line x1="0" y1="-54" x2="0" y2="-68"/>
+            <line x1="30" y1="-46" x2="40" y2="-60"/><line x1="-48" y1="26" x2="-62" y2="34"/>
+            <line x1="-30" y1="46" x2="-40" y2="60"/><line x1="0" y1="54" x2="0" y2="68"/>
+          </g>
+          <ellipse cx="10" cy="6" rx="40" ry="36" fill="#f1f8e9" stroke="#558b2f" stroke-width="2.5"/>
+        </g>
+
+        <g transform="translate(205, 285)">
+          <path d="M-54,10 C-60,-38 -25,-56 8,-52 C44,-48 62,-18 54,20 C44,50 -44,52 -54,10 Z" fill="url(#chestnutNut)" stroke="#210802" stroke-width="3"/>
+          <path d="M-35,22 C-16,10 20,14 35,28 C18,44 -20,42 -35,22 Z" fill="#d7ccc8" stroke="#8d6e63" stroke-width="2"/>
+          <ellipse cx="-14" cy="-20" rx="16" ry="7" transform="rotate(-22 -14 -20)" fill="#ffffff" opacity="0.48"/>
+        </g>
+      </svg>`;
+
+    // ---------------- 7. ТОПОЛЯ: Вгорі трикутні листочки тополі, внизу під гілкою — пухнасте гроно пуху ----------------
+    case 'poplar':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <radialGradient id="fluffCloud" cx="45%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="65%" stop-color="#f5f5f5"/>
+            <stop offset="90%" stop-color="#e0e0e0"/>
+            <stop offset="100%" stop-color="#cfd8dc" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="poplarLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#aed581"/>
+            <stop offset="100%" stop-color="#558b2f"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: Два трикутно-серцеподібні листочки тополі, спрямовані вгору (y: 18..165) -->
+        <g transform="translate(115, 162) rotate(-22)">
+          <line x1="0" y1="0" x2="0" y2="14" stroke="#689f38" stroke-width="3.5"/>
+          <path d="M0,0 C-48,-6 -54,-52 0,-112 C54,-52 48,-6 0,0 Z" fill="url(#poplarLeaf)" stroke="#33691e" stroke-width="2.5"/>
+          <path d="M0,0 L0,-104 M0,-26 L-26,-42 M0,-48 L24,-62 M0,-68 L-18,-80" stroke="#e6ee9c" stroke-width="2" fill="none"/>
+        </g>
+        <g transform="translate(225, 162) rotate(22)">
+          <line x1="0" y1="0" x2="0" y2="14" stroke="#689f38" stroke-width="3.5"/>
+          <path d="M0,0 C-48,-6 -54,-52 0,-112 C54,-52 48,-6 0,0 Z" fill="url(#poplarLeaf)" stroke="#33691e" stroke-width="2.5"/>
+          <path d="M0,0 L0,-104 M0,-26 L-26,-42 M0,-48 L24,-62 M0,-68 L-18,-80" stroke="#e6ee9c" stroke-width="2" fill="none"/>
+        </g>
+
+        <!-- Гілочка тополі посередині -->
+        <path d="M45,174 Q170,188 295,172" fill="none" stroke="#6d6552" stroke-width="8" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ЛИСТКАМИ, y: 185..355): Гроно тополиного пуху та летючі пушинки -->
+        <path d="M170,182 Q160,255 172,335" fill="none" stroke="#689f38" stroke-width="4"/>
+
+        <g>
+          <circle cx="152" cy="222" r="36" fill="url(#fluffCloud)"/>
+          <circle cx="188" cy="240" r="38" fill="url(#fluffCloud)"/>
+          <circle cx="148" cy="275" r="40" fill="url(#fluffCloud)"/>
+          <circle cx="186" cy="295" r="38" fill="url(#fluffCloud)"/>
+          <circle cx="165" cy="322" r="34" fill="url(#fluffCloud)"/>
+          <g stroke="#ffffff" stroke-width="2" stroke-linecap="round">
+            <line x1="120" y1="220" x2="102" y2="212"/><line x1="115" y1="275" x2="96" y2="280"/>
+            <line x1="220" y1="238" x2="238" y2="230"/><line x1="218" y1="295" x2="236" y2="302"/>
+          </g>
+          <path d="M145,208 Q155,195 165,208" fill="none" stroke="#558b2f" stroke-width="4" stroke-linecap="round"/>
+          <path d="M172,255 Q182,242 192,255" fill="none" stroke="#558b2f" stroke-width="4" stroke-linecap="round"/>
+          <path d="M145,295 Q155,282 165,295" fill="none" stroke="#558b2f" stroke-width="4" stroke-linecap="round"/>
+        </g>
+
+        <!-- Окремі пушинки з насінинками збоку внизу -->
+        <g transform="translate(72, 265)">
+          <circle cx="0" cy="0" r="20" fill="url(#fluffCloud)"/>
+          <circle cx="0" cy="9" r="2.4" fill="#5d4037"/>
+        </g>
+        <g transform="translate(268, 275)">
+          <circle cx="0" cy="0" r="22" fill="url(#fluffCloud)"/>
+          <circle cx="0" cy="10" r="2.4" fill="#5d4037"/>
+        </g>
+      </svg>`;
+
+    // ---------------- 8. ЛИПА: Вгорі серцеподібний листок липи, внизу під гілкою — крильце з цвітом і горішками ----------------
+    case 'linden':
+      return `
+      <svg viewBox="0 0 340 370">
+        <defs>
+          <linearGradient id="bractWing" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f0f4c3"/>
+            <stop offset="50%" stop-color="#dce775"/>
+            <stop offset="100%" stop-color="#9ccc65"/>
+          </linearGradient>
+          <radialGradient id="lindenNut" cx="35%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#aed581"/>
+            <stop offset="60%" stop-color="#7cb342"/>
+            <stop offset="100%" stop-color="#5d4037"/>
+          </radialGradient>
+          <linearGradient id="lindenLeafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#66bb6a"/>
+            <stop offset="100%" stop-color="#2e7d32"/>
+          </linearGradient>
+        </defs>
+
+        <!-- ВЕРХНЯ ЗОНА: Серцеподібний листок липи, розташований чисто у верхній половині (y: 16..165) -->
+        <g transform="translate(170, 156)">
+          <line x1="0" y1="0" x2="0" y2="16" stroke="#558b2f" stroke-width="4"/>
+          <path d="M0,-12 C-48,12 -82,-38 -52,-85 C-32,-115 -8,-128 0,-142 C8,-128 32,-115 52,-85 C82,-38 48,12 0,-12 Z" fill="url(#lindenLeafGrad)" stroke="#1b5e20" stroke-width="2.5"/>
+          <path d="M0,-12 L0,-134 M0,-38 L-42,-58 M0,-62 L42,-82 M0,-85 L-32,-102" stroke="#c5e1a5" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        </g>
+
+        <!-- Гілочка липи посередині -->
+        <path d="M55,172 Q170,184 285,172" fill="none" stroke="#4e342e" stroke-width="7.5" stroke-linecap="round"/>
+
+        <!-- НИЖНЯ ЗОНА (ПІД ЛИСТКОМ, y: 185..355): Салатовий приквітковий листок-крильце, запашний цвіт та горішки -->
+        <path d="M145,178 L145,202" stroke="#689f38" stroke-width="3.5"/>
+        <!-- Крильце-приквіток -->
+        <path d="M92,198 C132,178 232,188 265,222 C275,235 255,254 222,245 C175,234 122,218 92,198 Z" fill="url(#bractWing)" stroke="#827717" stroke-width="2.5"/>
+        <path d="M92,198 Q178,215 258,228" fill="none" stroke="#9e9d24" stroke-width="2"/>
+
+        <!-- Квітконіжки від середини крильця вниз -->
+        <path d="M168,214 L155,268 M155,268 L108,312 M155,268 L168,325 M155,268 L222,302" fill="none" stroke="#689f38" stroke-width="3.5" stroke-linecap="round"/>
+
+        <!-- Суцвіття липи (квіточки) -->
+        <g transform="translate(108, 312)">
+          <circle cx="-12" cy="-6" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="12" cy="-6" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="-8" cy="12" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="8" cy="12" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="0" cy="-14" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="0" cy="0" r="10" fill="#fdd835"/>
+          <circle cx="-4" cy="-3" r="2" fill="#f57f17"/><circle cx="4" cy="-3" r="2" fill="#f57f17"/><circle cx="0" cy="4" r="2" fill="#f57f17"/>
+        </g>
+
+        <g transform="translate(168, 326) scale(0.95)">
+          <circle cx="-12" cy="-6" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="12" cy="-6" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="-8" cy="12" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="8" cy="12" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="0" cy="-14" r="11" fill="#fffde7" stroke="#fbc02d" stroke-width="1.5"/>
+          <circle cx="0" cy="0" r="10" fill="#fdd835"/>
+          <circle cx="-4" cy="-3" r="2" fill="#f57f17"/><circle cx="4" cy="-3" r="2" fill="#f57f17"/>
+        </g>
+
+        <!-- Круглі горішки липи праворуч внизу -->
+        <circle cx="222" cy="302" r="15" fill="url(#lindenNut)" stroke="#4e342e" stroke-width="2.5"/>
+        <circle cx="246" cy="288" r="13.5" fill="url(#lindenNut)" stroke="#4e342e" stroke-width="2.5"/>
+      </svg>`;
+  }
+}
+
+
+/* ============================================================================
+   6. ПОБУДОВА УСІХ РІВНІВ ГРИ (8 СЛАЙДІВ + 24 ЗАВДАННЯ ВІКТОРИНИ)
+   ============================================================================ */
+const LEVELS = [];
+
+// 1 Рівень: 8 навчальних слайдів для обговорення
+TREES_DATA.forEach((item) => {
+  LEVELS.push({
+    type: 'slide',
+    treeId: item.id,
+    treeName: item.treeName,
+    fruitName: item.fruitName
+  });
+});
+
+// 2 Рівень: 24 завдання з вибором правильного плоду з трьох варіантів
+const quizDefinitions = [
+  { tree: 'oak',      options: ['oak', 'chestnut', 'pine'] },
+  { tree: 'maple',    options: ['linden', 'maple', 'birch'] },
+  { tree: 'birch',    options: ['willow', 'poplar', 'birch'] },
+  { tree: 'willow',   options: ['willow', 'poplar', 'linden'] },
+  { tree: 'pine',     options: ['oak', 'pine', 'chestnut'] },
+  { tree: 'chestnut', options: ['oak', 'maple', 'chestnut'] },
+  { tree: 'poplar',   options: ['poplar', 'willow', 'birch'] },
+  { tree: 'linden',   options: ['maple', 'linden', 'birch'] },
+
+  { tree: 'oak',      options: ['maple', 'oak', 'linden'] },
+  { tree: 'pine',     options: ['pine', 'birch', 'willow'] },
+  { tree: 'chestnut', options: ['chestnut', 'pine', 'poplar'] },
+  { tree: 'maple',    options: ['oak', 'chestnut', 'maple'] },
+  { tree: 'willow',   options: ['birch', 'willow', 'pine'] },
+  { tree: 'poplar',   options: ['linden', 'oak', 'poplar'] },
+  { tree: 'birch',    options: ['maple', 'birch', 'chestnut'] },
+  { tree: 'linden',   options: ['willow', 'linden', 'pine'] },
+
+  { tree: 'oak',      options: ['poplar', 'birch', 'oak'] },
+  { tree: 'maple',    options: ['maple', 'willow', 'pine'] },
+  { tree: 'birch',    options: ['oak', 'birch', 'linden'] },
+  { tree: 'willow',   options: ['chestnut', 'maple', 'willow'] },
+  { tree: 'pine',     options: ['linden', 'poplar', 'pine'] },
+  { tree: 'chestnut', options: ['birch', 'chestnut', 'willow'] },
+  { tree: 'poplar',   options: ['pine', 'poplar', 'maple'] },
+  { tree: 'linden',   options: ['linden', 'oak', 'chestnut'] }
+];
+
+quizDefinitions.forEach((q) => {
+  const treeObj = TREES_DATA.find(t => t.id === q.tree);
+  LEVELS.push({
+    type: 'quiz',
+    treeId: q.tree,
+    treeName: treeObj.treeName,
+    options: q.options
+  });
+});
+
+
+/* ============================================================================
+   7. АКТИВНІ ВІЗУАЛЬНІ ФІДБЕКИ (САЛЮТИ З ЛИСТЯ, КВІТІВ ТА ІСКОР)
+   ============================================================================ */
+const fxCanvas = document.getElementById('fx-canvas');
+const fxCtx = fxCanvas.getContext('2d');
+let particles = [];
+
+function resizeCanvas() {
+  fxCanvas.width = window.innerWidth;
+  fxCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function spawnCelebrationParticles(x, y, styleVariant = 0) {
+  const palettes = [
+    ['#ffd54f', '#8bc34a', '#ff8a65', '#dce775', '#ffffff'],
+    ['#ffee58', '#66bb6a', '#ffb74d', '#aed581', '#fff59d'],
+    ['#ffd740', '#9ccc65', '#ffab40', '#c5e1a5', '#f48fb1']
+  ];
+  const colors = palettes[styleVariant % palettes.length];
+
+  for (let i = 0; i < 46; i++) {
+    const angle = (Math.PI * 2 * i) / 46 + (Math.random() - 0.5) * 0.3;
+    const speed = 4 + Math.random() * 11;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 3,
+      size: 8 + Math.random() * 12,
+      rot: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      shape: i % 3,
+      alpha: 1,
+      gravity: 0.22
+    });
+  }
+}
+
+function animateParticles() {
+  fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.rot += p.vRot;
+    p.alpha -= 0.015;
+
+    if (p.alpha <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    fxCtx.save();
+    fxCtx.globalAlpha = Math.max(0, p.alpha);
+    fxCtx.translate(p.x, p.y);
+    fxCtx.rotate(p.rot);
+    fxCtx.fillStyle = p.color;
+
+    if (p.shape === 0) {
+      fxCtx.beginPath();
+      fxCtx.moveTo(0, -p.size);
+      fxCtx.quadraticCurveTo(p.size, 0, 0, p.size);
+      fxCtx.quadraticCurveTo(-p.size, 0, 0, -p.size);
+      fxCtx.fill();
+    } else if (p.shape === 1) {
+      fxCtx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        fxCtx.lineTo(Math.cos((k * Math.PI) / 2) * p.size, Math.sin((k * Math.PI) / 2) * p.size);
+        fxCtx.lineTo(Math.cos(((k + 0.5) * Math.PI) / 2) * (p.size * 0.35), Math.sin(((k + 0.5) * Math.PI) / 2) * (p.size * 0.35));
+      }
+      fxCtx.closePath();
+      fxCtx.fill();
+    } else {
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, p.size * 0.55, 0, Math.PI * 2);
+      fxCtx.fill();
+    }
+    fxCtx.restore();
+  }
+
+  requestAnimationFrame(animateParticles);
+}
+animateParticles();
+
+
+/* ============================================================================
+   8. ЛОГІКА СЦЕНИ, ЕМОЦІЙ БІЛОЧКИ ТА НАВІГАЦІЇ
+   ============================================================================ */
+let currentLevelIndex = 0;
+const visitedLevels = new Set();
+
+const stageEl = document.getElementById('stage');
+const vineProgressEl = document.getElementById('vine-progress');
+const charContainer = document.getElementById('character-container');
+const eyesNormal = document.getElementById('squirrel-eyes-normal');
+const eyesHappy = document.getElementById('squirrel-eyes-happy');
+const mouthEl = document.getElementById('squirrel-mouth');
+const btnModeSlides = document.getElementById('btn-mode-slides');
+const btnModeQuiz = document.getElementById('btn-mode-quiz');
+
+function triggerSquirrelReaction(type) {
+  charContainer.classList.remove('squirrel-happy', 'squirrel-sad');
+  void charContainer.offsetWidth;
+
+  if (type === 'happy') {
+    charContainer.classList.add('squirrel-happy');
+    eyesNormal.style.display = 'none';
+    eyesHappy.style.display = 'block';
+    mouthEl.setAttribute('d', 'M103,95 Q112,107 121,95');
+    setTimeout(() => {
+      charContainer.classList.remove('squirrel-happy');
+      eyesNormal.style.display = 'block';
+      eyesHappy.style.display = 'none';
+      mouthEl.setAttribute('d', 'M105,97 Q112,104 119,97');
+    }, 1650);
+  } else if (type === 'sad') {
+    charContainer.classList.add('squirrel-sad');
+    mouthEl.setAttribute('d', 'M106,102 Q112,96 118,102');
+    setTimeout(() => {
+      charContainer.classList.remove('squirrel-sad');
+      mouthEl.setAttribute('d', 'M105,97 Q112,104 119,97');
+    }, 800);
+  }
+}
+
+charContainer.addEventListener('click', () => {
+  AudioEngine.playBirdChirp();
+  triggerSquirrelReaction('happy');
+  const rect = charContainer.getBoundingClientRect();
+  spawnCelebrationParticles(rect.left + rect.width / 2, rect.top + 60, 1);
+});
+
+function renderProgressVine() {
+  vineProgressEl.innerHTML = '';
+  const isSlideMode = LEVELS[currentLevelIndex].type === 'slide';
+  const startIdx = isSlideMode ? 0 : 8;
+  const endIdx = isSlideMode ? 8 : LEVELS.length;
+
+  btnModeSlides.classList.toggle('active-mode', isSlideMode);
+  btnModeQuiz.classList.toggle('active-mode', !isSlideMode);
+
+  for (let i = startIdx; i < endIdx; i++) {
+    const leaf = document.createElement('div');
+    leaf.className = 'progress-leaf';
+    if (i === currentLevelIndex) leaf.classList.add('active');
+    else if (visitedLevels.has(i)) leaf.classList.add('visited');
+
+    leaf.addEventListener('click', () => {
+      AudioEngine.playWoodTap(600);
+      goToLevel(i);
+    });
+    vineProgressEl.appendChild(leaf);
+  }
+}
+
+function renderCurrentLevel() {
+  visitedLevels.add(currentLevelIndex);
+  renderProgressVine();
+  stageEl.innerHTML = '';
+
+  const level = LEVELS[currentLevelIndex];
+
+  // ---------------- 1 РІВЕНЬ: СЛАЙД (ДЕРЕВО + ЛИСТОК І ПЛІД + ВІДКРИТТЯ ПІДПИСІВ ПО КЛІКУ) ----------------
+  if (level.type === 'slide') {
+    const treePlaque = document.createElement('div');
+    treePlaque.className = 'wood-plaque tree-card';
+    treePlaque.innerHTML = `
+      <div class="illustration-frame">
+        ${getTreeSVG(level.treeId)}
+      </div>
+      <div class="label-plaque" id="tree-label-box">
+        <span class="label-text">${level.treeName}</span>
+        <div class="leaf-shutter"></div>
+      </div>
+    `;
+
+    const fruitPlaque = document.createElement('div');
+    fruitPlaque.className = 'wood-plaque fruit-showcase-card';
+    fruitPlaque.innerHTML = `
+      <div class="illustration-frame fruit-frame-bg">
+        ${getFruitSVG(level.treeId)}
+      </div>
+      <div class="label-plaque" id="fruit-label-box">
+        <span class="label-text">${level.fruitName}</span>
+        <div class="leaf-shutter"></div>
+      </div>
+    `;
+
+    treePlaque.addEventListener('click', () => {
+      const box = treePlaque.querySelector('#tree-label-box');
+      const wasRevealed = box.classList.contains('revealed');
+      box.classList.toggle('revealed');
+      AudioEngine.playWoodTap(wasRevealed ? 440 : 660);
+      if (!wasRevealed) {
+        triggerSquirrelReaction('happy');
+        const rect = box.getBoundingClientRect();
+        spawnCelebrationParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, 0);
+      }
+    });
+
+    fruitPlaque.addEventListener('click', () => {
+      const box = fruitPlaque.querySelector('#fruit-label-box');
+      const wasRevealed = box.classList.contains('revealed');
+      box.classList.toggle('revealed');
+      AudioEngine.playBirdChirp();
+      if (!wasRevealed) {
+        triggerSquirrelReaction('happy');
+        const rect = box.getBoundingClientRect();
+        spawnCelebrationParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, 1);
+      }
+    });
+
+    stageEl.appendChild(treePlaque);
+    stageEl.appendChild(fruitPlaque);
+  }
+
+  // ---------------- 2 РІВЕНЬ: ВІКТОРИНА (ДЕРЕВО ТА 3 ПЛОДИ НА ВИБІР) ----------------
+  else if (level.type === 'quiz') {
+    const treePlaque = document.createElement('div');
+    treePlaque.className = 'wood-plaque tree-card';
+    treePlaque.innerHTML = `
+      <div class="illustration-frame">
+        ${getTreeSVG(level.treeId)}
+      </div>
+      <div class="label-plaque" id="quiz-tree-label">
+        <span class="label-text">${level.treeName}</span>
+        <div class="leaf-shutter"></div>
+      </div>
+    `;
+
+    treePlaque.addEventListener('click', () => {
+      const box = treePlaque.querySelector('#quiz-tree-label');
+      box.classList.toggle('revealed');
+      AudioEngine.playWoodTap(580);
+    });
+
+    const optionsCol = document.createElement('div');
+    optionsCol.className = 'quiz-options-column';
+
+    let roundSolved = false;
+
+    level.options.forEach((optTreeId) => {
+      const optCard = document.createElement('div');
+      optCard.className = 'wood-plaque quiz-option-card';
+      optCard.innerHTML = `
+        <div class="illustration-frame fruit-frame-bg">
+          ${getFruitSVG(optTreeId)}
+        </div>
+      `;
+
+      optCard.addEventListener('click', () => {
+        const rect = optCard.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        if (optTreeId === level.treeId) {
+          optCard.classList.add('correct-choice');
+          AudioEngine.playSuccessMelody(currentLevelIndex % 4);
+          triggerSquirrelReaction('happy');
+          spawnCelebrationParticles(centerX, centerY, currentLevelIndex % 3);
+
+          treePlaque.querySelector('#quiz-tree-label').classList.add('revealed');
+
+          if (!roundSolved) {
+            roundSolved = true;
+            setTimeout(() => {
+              if (currentLevelIndex < LEVELS.length - 1) {
+                goToLevel(currentLevelIndex + 1);
+              }
+            }, 1750);
+          }
+        } else {
+          optCard.classList.remove('wrong-choice');
+          void optCard.offsetWidth;
+          optCard.classList.add('wrong-choice');
+          AudioEngine.playWrongSound();
+          triggerSquirrelReaction('sad');
+        }
+      });
+
+      optionsCol.appendChild(optCard);
+    });
+
+    stageEl.appendChild(treePlaque);
+    stageEl.appendChild(optionsCol);
+  }
+}
+
+function goToLevel(index) {
+  if (index < 0) index = LEVELS.length - 1;
+  if (index >= LEVELS.length) index = 0;
+  currentLevelIndex = index;
+  renderCurrentLevel();
+}
+
+document.getElementById('btn-prev').addEventListener('click', () => {
+  AudioEngine.playWoodTap(460);
+  goToLevel(currentLevelIndex - 1);
+});
+
+document.getElementById('btn-next').addEventListener('click', () => {
+  AudioEngine.playWoodTap(580);
+  goToLevel(currentLevelIndex + 1);
+});
+
+btnModeSlides.addEventListener('click', () => {
+  AudioEngine.playWoodTap(520);
+  goToLevel(0);
+});
+
+btnModeQuiz.addEventListener('click', () => {
+  AudioEngine.playWoodTap(640);
+  goToLevel(8);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') {
+    AudioEngine.playWoodTap(580);
+    goToLevel(currentLevelIndex + 1);
+  } else if (e.key === 'ArrowLeft') {
+    AudioEngine.playWoodTap(460);
+    goToLevel(currentLevelIndex - 1);
+  }
+});
+
+renderCurrentLevel();
+</script>
+</body>
+</html>
