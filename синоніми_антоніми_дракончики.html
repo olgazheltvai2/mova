@@ -1,0 +1,1777 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Дракончики: Синоніми та Антоніми</title>
+  <style>
+    /* ==========================================================================
+       ОСНОВНІ СТИЛІ ТА СКИДАННЯ (ЖОДНИХ БІЛИХ ПРЯМОКУТНИКІВ)
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+      background: #140f26;
+    }
+
+    #game-wrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Фонове полотно замку на весь екран */
+    #castle-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* ==========================================================================
+       ВЕРХНЯ ПАНЕЛЬ НАВІГАЦІЇ (НАЗАД, ДАЛІ, МОВА)
+       ========================================================================== */
+    .top-bar {
+      position: relative;
+      z-index: 30;
+      width: 100%;
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .nav-group {
+      display: flex;
+      gap: 14px;
+      pointer-events: auto;
+    }
+
+    /* Мінімалістичні кам'яно-золоті кнопки навігації */
+    .stone-btn {
+      pointer-events: auto;
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 3px solid #f6c760;
+      background: radial-gradient(circle at 30% 30%, #5c4b7d 0%, #34284a 65%, #201730 100%);
+      box-shadow:
+        0 6px 0 #160e24,
+        0 10px 20px rgba(0, 0, 0, 0.55),
+        inset 0 2px 4px rgba(255, 255, 255, 0.35);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease, filter 0.15s ease;
+    }
+
+    .stone-btn:hover {
+      transform: translateY(-3px) scale(1.06);
+      filter: brightness(1.15);
+    }
+
+    .stone-btn:active {
+      transform: translateY(4px) scale(0.96);
+      box-shadow: 0 2px 0 #160e24, 0 4px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .stone-btn svg {
+      width: 30px;
+      height: 30px;
+      filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
+    }
+
+    /* Кнопка перемикання мови (одна кнопка: УКР або РУС) */
+    #lang-btn {
+      width: auto;
+      min-width: 82px;
+      padding: 0 18px;
+      border-radius: 30px;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 1.5px;
+      color: #ffe89e;
+      text-shadow: 0 2px 4px #000;
+    }
+
+    /* ==========================================================================
+       ДОШКА НА ЛАНЦЮГАХ ЗІ СЛОВАМИ (ЗВЕРХУ)
+       ========================================================================== */
+    #chain-rig {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%) translateY(-420px);
+      z-index: 20;
+      width: min(760px, 92vw);
+      transition: transform 0.75s cubic-bezier(0.22, 1.35, 0.5, 1);
+      pointer-events: none;
+    }
+
+    /* Стан, коли дошка опущена */
+    #chain-rig.dropped {
+      transform: translateX(-50%) translateY(0px);
+    }
+
+    /* Стан похитування при помилці */
+    #chain-rig.shake {
+      animation: signShake 0.6s ease-in-out;
+    }
+
+    @keyframes signShake {
+      0%, 100% { transform: translateX(-50%) translateY(0) rotate(0deg); }
+      20% { transform: translateX(-53%) translateY(4px) rotate(-3deg); }
+      40% { transform: translateX(-47%) translateY(-3px) rotate(3deg); }
+      60% { transform: translateX(-52%) translateY(2px) rotate(-2deg); }
+      80% { transform: translateX(-48%) translateY(0) rotate(2deg); }
+    }
+
+    /* Легке природне погойдування на ланцюгах */
+    #sign-swing-group {
+      transform-box: fill-box;
+      transform-origin: 50% 0%;
+      animation: gentleSwing 5s ease-in-out infinite;
+    }
+
+    @keyframes gentleSwing {
+      0%, 100% { transform: rotate(-0.6deg); }
+      50% { transform: rotate(0.6deg); }
+    }
+
+    /* Стилі тексту слів на дерев'яно-кованій дошці */
+    .word-text {
+      font-family: 'Segoe UI', 'Arial Black', sans-serif;
+      font-weight: 900;
+      fill: #fff6d6;
+      text-anchor: middle;
+      dominant-baseline: central;
+      paint-order: stroke fill;
+      stroke: #2b1506;
+      stroke-width: 8px;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.65));
+      letter-spacing: 1px;
+    }
+
+    /* ==========================================================================
+       СЦЕНА З ДВОМА ДРАКОНЧИКАМИ НА КАМ'ЯНОМУ ПОМОСТІ
+       ========================================================================== */
+    #stage-area {
+      position: relative;
+      z-index: 15;
+      width: 100vw;
+      height: 62vh;
+      margin-top: auto;
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+
+    #dragons-svg {
+      width: min(1240px, 100vw);
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Плавний строго горизонтальний рух дракончиків по кам'яній підлозі */
+    #dragon-left-mover,
+    #dragon-right-mover {
+      transition: transform 0.75s cubic-bezier(0.34, 1.35, 0.64, 1);
+    }
+
+    /* Дихання дракончиків у спокої (від нижньої точки лапок, щоб не відривалися від підлоги) */
+    .dragon-breathe-left {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+      animation: breatheLeft 2.8s ease-in-out infinite;
+    }
+
+    .dragon-breathe-right {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+      animation: breatheRight 3.1s ease-in-out infinite;
+    }
+
+    @keyframes breatheLeft {
+      0%, 100% { transform: scaleY(1) scaleX(1); }
+      50% { transform: scaleY(1.028) scaleX(0.985); }
+    }
+
+    @keyframes breatheRight {
+      0%, 100% { transform: scaleY(1) scaleX(1); }
+      50% { transform: scaleY(1.032) scaleX(0.982); }
+    }
+
+    /* Махання крилами (локальна точка кріплення крила) */
+    .wing-left-anim {
+      transform-box: fill-box;
+      transform-origin: 90% 70%;
+      animation: flapLeft 1.9s ease-in-out infinite;
+    }
+
+    .wing-right-anim {
+      transform-box: fill-box;
+      transform-origin: 10% 70%;
+      animation: flapRight 2.1s ease-in-out infinite;
+    }
+
+    @keyframes flapLeft {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(-13deg) scaleY(1.04); }
+    }
+
+    @keyframes flapRight {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(14deg) scaleY(1.04); }
+    }
+
+    /* Помахування хвостами */
+    .tail-left-anim {
+      transform-box: fill-box;
+      transform-origin: 95% 80%;
+      animation: tailWagLeft 2.4s ease-in-out infinite;
+    }
+
+    .tail-right-anim {
+      transform-box: fill-box;
+      transform-origin: 5% 80%;
+      animation: tailWagRight 2.2s ease-in-out infinite;
+    }
+
+    @keyframes tailWagLeft {
+      0%, 100% { transform: rotate(-5deg); }
+      50% { transform: rotate(9deg); }
+    }
+
+    @keyframes tailWagRight {
+      0%, 100% { transform: rotate(5deg); }
+      50% { transform: rotate(-10deg); }
+    }
+
+    /* Моргання очей */
+    .eyelid-blink {
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+      animation: blinkEyes 4.5s infinite;
+    }
+
+    @keyframes blinkEyes {
+      0%, 92%, 100% { transform: scaleY(0); }
+      96% { transform: scaleY(1); }
+    }
+
+    /* ==========================================================================
+       СТАН ОБІЙМІВ (СИНОНІМИ) — СТРОГО ГОРИЗОНТАЛЬНО ПО ПІДЛОЗІ
+       ========================================================================== */
+    /* Лівий дракончик підходить вправо строго по підлозі (Y = 0) */
+    #dragons-svg.state-hug #dragon-left-mover {
+      transform: translate(104px, 0px);
+    }
+
+    /* Правий дракончик підходить вліво строго по підлозі (Y = 0) */
+    #dragons-svg.state-hug #dragon-right-mover {
+      transform: translate(-104px, 0px);
+    }
+
+    /* Голови ніжно нахиляються одна до одної в обіймах */
+    #dragon-left-head,
+    #dragon-right-head {
+      transform-box: fill-box;
+      transform-origin: 50% 90%;
+      transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #dragons-svg.state-hug #dragon-left-head {
+      transform: rotate(7deg) translate(6px, 4px);
+    }
+
+    #dragons-svg.state-hug #dragon-right-head {
+      transform: rotate(-7deg) translate(-6px, 4px);
+    }
+
+    /* Лапки простягаються вперед для обіймів */
+    #dragon-left-arm-front {
+      transform-box: fill-box;
+      transform-origin: 15% 50%;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #dragon-right-arm-front {
+      transform-box: fill-box;
+      transform-origin: 85% 50%;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #dragons-svg.state-hug #dragon-left-arm-front {
+      transform: translate(22px, -12px) rotate(-25deg) scaleX(1.18);
+    }
+
+    #dragons-svg.state-hug #dragon-right-arm-front {
+      transform: translate(-22px, -12px) rotate(25deg) scaleX(1.18);
+    }
+
+    /* Щасливі примружені очі під час обіймів */
+    .happy-eyes {
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+
+    #dragons-svg.state-hug .happy-eyes {
+      opacity: 1;
+    }
+
+    #dragons-svg.state-hug .normal-eyes {
+      opacity: 0;
+    }
+
+    /* ==========================================================================
+       СТАН РОЗХОДЖЕННЯ В РІЗНІ СТОРОНИ (АНТОНІМИ) — СТРОГО ГОРИЗОНТАЛЬНО
+       ========================================================================== */
+    /* Лівий дракончик відходить далеко вліво по рівній підлозі (Y = 0) */
+    #dragons-svg.state-apart #dragon-left-mover {
+      transform: translate(-225px, 0px);
+    }
+
+    /* Правий дракончик відходить далеко вправо по рівній підлозі (Y = 0) */
+    #dragons-svg.state-apart #dragon-right-mover {
+      transform: translate(225px, 0px);
+    }
+
+    /* Кумедно задирають носики в різні боки */
+    #dragons-svg.state-apart #dragon-left-head {
+      transform: rotate(-8deg) translate(-6px, -2px);
+    }
+
+    #dragons-svg.state-apart #dragon-right-head {
+      transform: rotate(8deg) translate(6px, -2px);
+    }
+
+    #dragons-svg.state-apart #dragon-left-arm-front {
+      transform: rotate(18deg);
+    }
+
+    #dragons-svg.state-apart #dragon-right-arm-front {
+      transform: rotate(-18deg);
+    }
+
+    /* ==========================================================================
+       СТАН ПОМИЛКИ (ЗДИВУВАННЯ ТА ХИТАННЯ ПО ГОРИЗОНТАЛІ)
+       ========================================================================== */
+    #dragons-svg.state-wrong #dragon-left-mover {
+      animation: dragonNoLeft 0.55s ease-in-out;
+    }
+
+    #dragons-svg.state-wrong #dragon-right-mover {
+      animation: dragonNoRight 0.55s ease-in-out;
+    }
+
+    @keyframes dragonNoLeft {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(-18px, 0); }
+      50% { transform: translate(14px, 0); }
+      75% { transform: translate(-10px, 0); }
+    }
+
+    @keyframes dragonNoRight {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(18px, 0); }
+      50% { transform: translate(-14px, 0); }
+      75% { transform: translate(10px, 0); }
+    }
+
+    /* ==========================================================================
+       НИЖНЯ ПАНЕЛЬ ВИБОРУ (ДВА ГЕРАЛЬДИЧНІ ЩИТИ: СИНОНІМИ ТА АНТОНІМИ)
+       ========================================================================== */
+    .bottom-controls {
+      position: relative;
+      z-index: 25;
+      width: min(860px, 94vw);
+      padding-bottom: 14px;
+      margin-top: -12px;
+      display: flex;
+      justify-content: center;
+      gap: clamp(20px, 5vw, 64px);
+    }
+
+    .choice-shield {
+      position: relative;
+      flex: 1;
+      max-width: 370px;
+      height: 108px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      padding: 0;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.18s ease;
+      filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.65));
+    }
+
+    .choice-shield:hover:not(:disabled) {
+      transform: translateY(-6px) scale(1.04);
+      filter: drop-shadow(0 14px 20px rgba(0, 0, 0, 0.75)) brightness(1.1);
+    }
+
+    .choice-shield:active:not(:disabled) {
+      transform: translateY(3px) scale(0.97);
+    }
+
+    .choice-shield:disabled {
+      cursor: default;
+    }
+
+    .choice-shield svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .shield-label {
+      font-family: 'Segoe UI', 'Arial Black', sans-serif;
+      font-weight: 900;
+      font-size: 27px;
+      fill: #fff8dc;
+      stroke: #1e1105;
+      stroke-width: 6px;
+      paint-order: stroke fill;
+      letter-spacing: 1.5px;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    /* ==========================================================================
+       АНІМАЦІЯ ПОЛУМ'Я СМОЛОСКИПІВ (СТРОГО В МЕЖАХ ФАКЕЛА!)
+       Використано transform-box: fill-box, щоб вогонь ніколи не зсувався з чаші
+       ========================================================================== */
+    .torch-flame-outer {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+      animation: flameFlickerOuter 0.45s ease-in-out infinite alternate;
+    }
+
+    .torch-flame-inner {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+      animation: flameFlickerInner 0.32s ease-in-out infinite alternate;
+    }
+
+    @keyframes flameFlickerOuter {
+      0% { transform: scaleX(0.93) scaleY(0.94) rotate(-2deg); }
+      100% { transform: scaleX(1.06) scaleY(1.07) rotate(2deg); }
+    }
+
+    @keyframes flameFlickerInner {
+      0% { transform: scaleX(1.04) scaleY(0.92) rotate(2deg); }
+      100% { transform: scaleX(0.92) scaleY(1.08) rotate(-2deg); }
+    }
+
+    /* Анімація хмар у небі */
+    .cloud-drift-1 {
+      animation: driftCloud1 42s linear infinite;
+    }
+    .cloud-drift-2 {
+      animation: driftCloud2 56s linear infinite;
+    }
+
+    @keyframes driftCloud1 {
+      0% { transform: translateX(-250px); }
+      100% { transform: translateX(1450px); }
+    }
+
+    @keyframes driftCloud2 {
+      0% { transform: translateX(1400px); }
+      100% { transform: translateX(-300px); }
+    }
+
+    /* Анімація прапорів на вежах замку (локальна прив'язка до древка) */
+    .castle-banner {
+      transform-box: fill-box;
+      transform-origin: 0% 50%;
+      animation: bannerWave 2.2s ease-in-out infinite alternate;
+    }
+
+    @keyframes bannerWave {
+      0% { transform: scaleX(0.95) skewY(-3deg); }
+      100% { transform: scaleX(1.04) skewY(4deg); }
+    }
+
+    /* Адаптивність для менших екранів */
+    @media (max-width: 720px) {
+      .choice-shield {
+        height: 90px;
+      }
+      #stage-area {
+        height: 55vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-wrapper">
+
+    <!-- ========================================================================
+         ЖИВИЙ СЮЖЕТНИЙ ФОН: КАМ'ЯНИЙ ЗАМОК З ВЕЖАМИ, ПРАПОРАМИ ТА СМОЛОСКИПАМИ
+         ======================================================================== -->
+    <svg id="castle-bg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <!-- Градієнт вечірнього неба -->
+        <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#191338" />
+          <stop offset="45%" stop-color="#352563" />
+          <stop offset="80%" stop-color="#6b3b78" />
+          <stop offset="100%" stop-color="#b85d6f" />
+        </linearGradient>
+
+        <!-- Сяйво за замком -->
+        <radialGradient id="sunGlow" cx="50%" cy="44%" r="42%">
+          <stop offset="0%" stop-color="#ffcf75" stop-opacity="0.65" />
+          <stop offset="45%" stop-color="#eb786b" stop-opacity="0.28" />
+          <stop offset="100%" stop-color="#352563" stop-opacity="0" />
+        </radialGradient>
+
+        <!-- Градієнти каменю замку -->
+        <linearGradient id="stoneWallGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#5d5875" />
+          <stop offset="50%" stop-color="#454059" />
+          <stop offset="100%" stop-color="#2c283b" />
+        </linearGradient>
+
+        <linearGradient id="towerGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#39344a" />
+          <stop offset="45%" stop-color="#635d7a" />
+          <stop offset="85%" stop-color="#433e57" />
+          <stop offset="100%" stop-color="#2b2738" />
+        </linearGradient>
+
+        <linearGradient id="roofGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#9e2a45" />
+          <stop offset="55%" stop-color="#6e1930" />
+          <stop offset="100%" stop-color="#3d0b1a" />
+        </linearGradient>
+
+        <!-- Візерунок кам'яної кладки -->
+        <pattern id="brickPattern" width="90" height="48" patternUnits="userSpaceOnUse">
+          <rect width="90" height="48" fill="#49435e" />
+          <rect x="2" y="2" width="41" height="20" rx="3" fill="#595270" />
+          <rect x="46" y="2" width="42" height="20" rx="3" fill="#524b69" />
+          <rect x="2" y="26" width="24" height="20" rx="3" fill="#4f4863" />
+          <rect x="29" y="26" width="42" height="20" rx="3" fill="#5d5675" />
+          <rect x="74" y="26" width="14" height="20" rx="3" fill="#514b66" />
+          <path d="M 8,8 L 32,8 M 55,14 L 78,14 M 36,34 L 60,34" stroke="#6c6587" stroke-width="1.5" stroke-linecap="round" opacity="0.5" />
+        </pattern>
+
+        <!-- Візерунок бруківки двору замку -->
+        <linearGradient id="floorStoneGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#5d5370" />
+          <stop offset="35%" stop-color="#413a52" />
+          <stop offset="100%" stop-color="#231e2e" />
+        </linearGradient>
+
+        <!-- Сяйво смолоскипів -->
+        <radialGradient id="torchGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffae33" stop-opacity="0.65" />
+          <stop offset="45%" stop-color="#ff5e1a" stop-opacity="0.25" />
+          <stop offset="100%" stop-color="#ff5e1a" stop-opacity="0" />
+        </radialGradient>
+      </defs>
+
+      <!-- Небо та світило -->
+      <rect width="1440" height="900" fill="url(#skyGrad)" />
+      <circle cx="720" cy="380" r="520" fill="url(#sunGlow)" />
+
+      <!-- Зірки на небі -->
+      <g fill="#fff6cc" opacity="0.75">
+        <circle cx="150" cy="95" r="2.2" />
+        <circle cx="290" cy="60" r="1.6" />
+        <circle cx="480" cy="110" r="2.5" />
+        <circle cx="960" cy="75" r="2" />
+        <circle cx="1170" cy="105" r="2.6" />
+        <circle cx="1330" cy="65" r="1.8" />
+        <circle cx="740" cy="50" r="2.2" />
+      </g>
+
+      <!-- Рухомі хмари -->
+      <g class="cloud-drift-1" opacity="0.32" fill="#f7c5b4">
+        <path d="M50,140 Q80,110 120,125 Q155,95 200,120 Q240,115 255,145 Q275,165 245,180 L55,180 Q25,165 50,140 Z" />
+      </g>
+      <g class="cloud-drift-2" opacity="0.25" fill="#e5a4cb">
+        <path d="M100,200 Q135,170 175,185 Q215,160 255,185 Q290,185 295,212 L95,212 Q70,208 100,200 Z" />
+      </g>
+
+      <!-- Далекі гори -->
+      <path d="M0,540 L140,360 L290,465 L470,310 L650,450 L820,330 L1020,460 L1210,300 L1370,425 L1440,370 L1440,650 L0,650 Z" fill="#2c2147" />
+      <path d="M0,570 L210,430 L380,510 L570,400 L760,500 L950,390 L1140,505 L1310,415 L1440,490 L1440,660 L0,660 Z" fill="#3b2d5c" />
+
+      <!-- ================= ЗАМОК НА ЗАДНЬОМУ ПЛАНІ ================= -->
+      <!-- Ліва висока вежа -->
+      <g transform="translate(65, 130)">
+        <line x1="95" y1="-75" x2="95" y2="5" stroke="#d4af37" stroke-width="5" />
+        <path class="castle-banner" d="M97,-72 L175,-56 L152,-38 L175,-20 L97,-32 Z" fill="#e63956" stroke="#ffcb69" stroke-width="2" />
+        <polygon points="95,-15 -10,120 200,120" fill="url(#roofGrad)" stroke="#290913" stroke-width="4" />
+        <rect x="10" y="120" width="170" height="470" fill="url(#towerGrad)" stroke="#231f30" stroke-width="4" />
+        <rect x="14" y="124" width="162" height="462" fill="url(#brickPattern)" opacity="0.55" />
+        <path d="M0,105 H35 V122 H60 V105 H95 V122 H120 V105 H155 V122 H180 V105 H195 V138 H0 Z" fill="#57516d" stroke="#231f30" stroke-width="3" />
+        <rect x="70" y="190" width="50" height="85" rx="25" fill="#21162b" stroke="#37314a" stroke-width="6" />
+        <rect x="76" y="196" width="38" height="73" rx="19" fill="#ffbe4f" opacity="0.8" />
+        <line x1="95" y1="196" x2="95" y2="269" stroke="#2b1e38" stroke-width="4" />
+        <line x1="76" y1="232" x2="114" y2="232" stroke="#2b1e38" stroke-width="4" />
+      </g>
+
+      <!-- Права висока вежа -->
+      <g transform="translate(1185, 130)">
+        <line x1="95" y1="-75" x2="95" y2="5" stroke="#d4af37" stroke-width="5" />
+        <path class="castle-banner" d="M97,-72 L175,-56 L152,-38 L175,-20 L97,-32 Z" fill="#1fb58f" stroke="#ffcb69" stroke-width="2" />
+        <polygon points="95,-15 -10,120 200,120" fill="url(#roofGrad)" stroke="#290913" stroke-width="4" />
+        <rect x="10" y="120" width="170" height="470" fill="url(#towerGrad)" stroke="#231f30" stroke-width="4" />
+        <rect x="14" y="124" width="162" height="462" fill="url(#brickPattern)" opacity="0.55" />
+        <path d="M0,105 H35 V122 H60 V105 H95 V122 H120 V105 H155 V122 H180 V105 H195 V138 H0 Z" fill="#57516d" stroke="#231f30" stroke-width="3" />
+        <rect x="70" y="190" width="50" height="85" rx="25" fill="#21162b" stroke="#37314a" stroke-width="6" />
+        <rect x="76" y="196" width="38" height="73" rx="19" fill="#ffbe4f" opacity="0.8" />
+        <line x1="95" y1="196" x2="95" y2="269" stroke="#2b1e38" stroke-width="4" />
+        <line x1="76" y1="232" x2="114" y2="232" stroke="#2b1e38" stroke-width="4" />
+      </g>
+
+      <!-- Центральний мур замку -->
+      <rect x="235" y="280" width="970" height="420" fill="url(#stoneWallGrad)" stroke="#211d2e" stroke-width="4" />
+      <rect x="239" y="284" width="962" height="412" fill="url(#brickPattern)" opacity="0.72" />
+
+      <!-- Зубці центрального муру -->
+      <path d="M235,252
+               H285 V280 H325 V252 H375 V280 H415 V252 H465 V280 H505 V252
+               H555 V280 H595 V252 H645 V280 H685 V252 H755 V280 H795 V252
+               H845 V280 H885 V252 H935 V280 H975 V252 H1025 V280 H1065 V252
+               H1115 V280 H1155 V252 H1205 V292 H235 Z"
+            fill="#5d5678" stroke="#221e30" stroke-width="3.5" />
+
+      <!-- Велика замкова арка (ворота позаду дракончиків) -->
+      <g transform="translate(720, 480)">
+        <path d="M-210,190 L-210,-40 A210,195 0 0,1 210,-40 L210,190 Z" fill="#181226" stroke="#362f4b" stroke-width="14" />
+        <path d="M-218,190 L-218,-40 A218,203 0 0,1 218,-40 L218,190" fill="none" stroke="#6d658c" stroke-width="10" stroke-dasharray="36 8" />
+        <!-- Ковані ґрати воріт -->
+        <g stroke="#2d293b" stroke-width="7" opacity="0.8">
+          <line x1="-150" y1="-195" x2="-150" y2="160" />
+          <line x1="-100" y1="-220" x2="-100" y2="160" />
+          <line x1="-50" y1="-235" x2="-50" y2="160" />
+          <line x1="0" y1="-240" x2="0" y2="160" />
+          <line x1="50" y1="-235" x2="50" y2="160" />
+          <line x1="100" y1="-220" x2="100" y2="160" />
+          <line x1="150" y1="-195" x2="150" y2="160" />
+          <line x1="-175" y1="-130" x2="175" y2="-130" />
+          <line x1="-195" y1="-50" x2="195" y2="-50" />
+          <line x1="-205" y1="30" x2="205" y2="30" />
+        </g>
+      </g>
+
+      <!-- Зелений плющ на стінах замку -->
+      <g fill="#2e7d5b" stroke="#184a34" stroke-width="2">
+        <path d="M250,295 Q275,345 255,395 Q285,440 265,500" fill="none" stroke="#245e43" stroke-width="5" />
+        <circle cx="268" cy="330" r="11" />
+        <circle cx="250" cy="360" r="13" />
+        <circle cx="275" cy="400" r="10" />
+        <circle cx="256" cy="440" r="12" />
+        <path d="M1180,300 Q1150,355 1170,410 Q1145,455 1165,515" fill="none" stroke="#245e43" stroke-width="5" />
+        <circle cx="1158" cy="335" r="12" />
+        <circle cx="1175" cy="370" r="11" />
+        <circle cx="1150" cy="410" r="13" />
+      </g>
+
+      <!-- Лівий та правий палаючі смолоскипи (вогонь строго прив'язаний до чаші факела!) -->
+      <g transform="translate(380, 425)">
+        <circle cx="0" cy="-35" r="105" fill="url(#torchGlow)" />
+        <!-- Металевий тримач -->
+        <path d="M-12,35 L12,35 L18,-5 L-18,-5 Z" fill="#3b324a" stroke="#1a1524" stroke-width="3" />
+        <rect x="-22" y="-12" width="44" height="10" rx="4" fill="#d49b35" stroke="#4a3008" stroke-width="2.5" />
+        <!-- Зовнішнє та внутрішнє полум'я без зміщення з факела -->
+        <path class="torch-flame-outer" d="M-17,-12 Q-24,-52 0,-82 Q24,-52 17,-12 Z" fill="#ff5e1a" />
+        <path class="torch-flame-inner" d="M-9,-12 Q-14,-40 0,-60 Q14,-40 9,-12 Z" fill="#ffd23f" />
+      </g>
+
+      <g transform="translate(1060, 425)">
+        <circle cx="0" cy="-35" r="105" fill="url(#torchGlow)" />
+        <!-- Металевий тримач -->
+        <path d="M-12,35 L12,35 L18,-5 L-18,-5 Z" fill="#3b324a" stroke="#1a1524" stroke-width="3" />
+        <rect x="-22" y="-12" width="44" height="10" rx="4" fill="#d49b35" stroke="#4a3008" stroke-width="2.5" />
+        <!-- Зовнішнє та внутрішнє полум'я без зміщення з факела -->
+        <path class="torch-flame-outer" d="M-17,-12 Q-24,-52 0,-82 Q24,-52 17,-12 Z" fill="#ff5e1a" />
+        <path class="torch-flame-inner" d="M-9,-12 Q-14,-40 0,-60 Q14,-40 9,-12 Z" fill="#ffd23f" />
+      </g>
+
+      <!-- Широке кам'яне подвір'я замку (починається вище, щоб дракончики стояли на ньому) -->
+      <g transform="translate(0, 595)">
+        <rect x="0" y="0" width="1440" height="305" fill="url(#floorStoneGrad)" stroke="#221c30" stroke-width="4" />
+        <!-- Лінії перспективи кам'яної бруківки -->
+        <g fill="#4c4360" stroke="#282236" stroke-width="3" opacity="0.7">
+          <rect x="50" y="18" width="190" height="45" rx="10" />
+          <rect x="270" y="18" width="220" height="45" rx="10" />
+          <rect x="520" y="18" width="190" height="45" rx="10" />
+          <rect x="740" y="18" width="210" height="45" rx="10" />
+          <rect x="980" y="18" width="195" height="45" rx="10" />
+          <rect x="1205" y="18" width="190" height="45" rx="10" />
+
+          <rect x="90" y="80" width="210" height="52" rx="12" />
+          <rect x="330" y="80" width="205" height="52" rx="12" />
+          <rect x="565" y="80" width="250" height="52" rx="12" />
+          <rect x="845" y="80" width="220" height="52" rx="12" />
+          <rect x="1095" y="80" width="240" height="52" rx="12" />
+
+          <rect x="35" y="150" width="230" height="60" rx="12" />
+          <rect x="295" y="150" width="215" height="60" rx="12" />
+          <rect x="540" y="150" width="235" height="60" rx="12" />
+          <rect x="805" y="150" width="225" height="60" rx="12" />
+          <rect x="1060" y="150" width="250" height="60" rx="12" />
+        </g>
+      </g>
+    </svg>
+
+    <!-- ========================================================================
+         ВЕРХНЯ ПАНЕЛЬ КЕРУВАННЯ (НАЗАД, ДАЛІ, МОВА)
+         ======================================================================== -->
+    <div class="top-bar">
+      <div class="nav-group">
+        <!-- Кнопка "Назад" (попередній рівень) -->
+        <button id="prev-btn" class="stone-btn" aria-label="Попередній рівень">
+          <svg viewBox="0 0 40 40">
+            <path d="M25,8 L11,20 L25,32" fill="none" stroke="#ffe58f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+
+        <!-- Кнопка "Далі" (одразу перехід на наступне завдання) -->
+        <button id="next-btn" class="stone-btn" aria-label="Наступний рівень">
+          <svg viewBox="0 0 40 40">
+            <path d="M15,8 L29,20 L15,32" fill="none" stroke="#ffe58f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Єдина кнопка перемикання мови (УКР / РУС) -->
+      <button id="lang-btn" class="stone-btn">УКР</button>
+    </div>
+
+    <!-- ========================================================================
+         ДОШКА НА КОВАНИХ ЛАНЦЮГАХ (СПУСКАЄТЬСЯ ЗВЕРХУ З ПАРОЮ СЛІВ)
+         ======================================================================== -->
+    <div id="chain-rig">
+      <svg viewBox="0 0 760 275" width="100%" height="100%" overflow="visible">
+        <defs>
+          <!-- Градієнт кованого металу ланцюгів -->
+          <linearGradient id="ironGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#2c303d" />
+            <stop offset="40%" stop-color="#7c859e" />
+            <stop offset="70%" stop-color="#434959" />
+            <stop offset="100%" stop-color="#1e212b" />
+          </linearGradient>
+
+          <!-- Градієнт різьбленого дерева дошки -->
+          <linearGradient id="woodSignGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#8c4f27" />
+            <stop offset="25%" stop-color="#6e3a17" />
+            <stop offset="75%" stop-color="#52290e" />
+            <stop offset="100%" stop-color="#381a06" />
+          </linearGradient>
+
+          <!-- Золота оправа дошки -->
+          <linearGradient id="goldRimGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffe680" />
+            <stop offset="50%" stop-color="#d49424" />
+            <stop offset="100%" stop-color="#7d4e09" />
+          </linearGradient>
+        </defs>
+
+        <g id="sign-swing-group">
+          <!-- ЛІВИЙ КОВАНИЙ ЛАНЦЮГ -->
+          <g transform="translate(155, -130)">
+            <rect x="-12" y="0" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <rect x="-5" y="30" width="10" height="36" rx="5" fill="url(#ironGrad)" />
+            <rect x="-12" y="55" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <rect x="-5" y="85" width="10" height="36" rx="5" fill="url(#ironGrad)" />
+            <rect x="-12" y="110" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <rect x="-5" y="140" width="10" height="36" rx="5" fill="url(#ironGrad)" />
+            <rect x="-12" y="165" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <circle cx="0" cy="212" r="14" fill="url(#ironGrad)" stroke="#171922" stroke-width="3" />
+          </g>
+
+          <!-- ПРАВИЙ КОВАНИЙ ЛАНЦЮГ -->
+          <g transform="translate(605, -130)">
+            <rect x="-12" y="0" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <rect x="-5" y="30" width="10" height="36" rx="5" fill="url(#ironGrad)" />
+            <rect x="-12" y="55" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <rect x="-5" y="85" width="10" height="36" rx="5" fill="url(#ironGrad)" />
+            <rect x="-12" y="110" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <rect x="-5" y="140" width="10" height="36" rx="5" fill="url(#ironGrad)" />
+            <rect x="-12" y="165" width="24" height="42" rx="10" fill="none" stroke="url(#ironGrad)" stroke-width="9" />
+            <circle cx="0" cy="212" r="14" fill="url(#ironGrad)" stroke="#171922" stroke-width="3" />
+          </g>
+
+          <!-- ДЕРЕВ'ЯНО-КОВАНА ДОШКА ДЛЯ ПАРИ СЛІВ -->
+          <g transform="translate(30, 72)">
+            <!-- Тінь дошки -->
+            <rect x="8" y="12" width="684" height="172" rx="28" fill="rgba(0,0,0,0.48)" />
+
+            <!-- Основа з темного дуба -->
+            <rect x="0" y="0" width="700" height="170" rx="26" fill="url(#woodSignGrad)" stroke="url(#goldRimGrad)" stroke-width="8" />
+
+            <!-- Текстура деревних волокон -->
+            <path d="M25,32 Q190,22 360,34 T675,28" fill="none" stroke="#3b1b06" stroke-width="3" opacity="0.55" />
+            <path d="M20,85 Q240,95 450,80 T680,88" fill="none" stroke="#3b1b06" stroke-width="2.5" opacity="0.5" />
+            <path d="M25,138 Q210,128 410,142 T675,135" fill="none" stroke="#3b1b06" stroke-width="3" opacity="0.55" />
+
+            <!-- Металеві ковані кутики та заклепки -->
+            <path d="M0,26 A26,26 0 0,1 26,0 H70 L55,22 H22 L22,55 L0,70 Z" fill="url(#ironGrad)" stroke="#191b24" stroke-width="2" />
+            <path d="M700,26 A26,26 0 0,0 674,0 H630 L645,22 H678 L678,55 L700,70 Z" fill="url(#ironGrad)" stroke="#191b24" stroke-width="2" />
+            <path d="M0,144 A26,26 0 0,0 26,170 H70 L55,148 H22 L22,115 L0,100 Z" fill="url(#ironGrad)" stroke="#191b24" stroke-width="2" />
+            <path d="M700,144 A26,26 0 0,1 674,170 H630 L645,148 H678 L678,115 L700,100 Z" fill="url(#ironGrad)" stroke="#191b24" stroke-width="2" />
+
+            <!-- Золоті заклепки -->
+            <circle cx="34" cy="34" r="6" fill="#ffd966" stroke="#593706" stroke-width="2" />
+            <circle cx="666" cy="34" r="6" fill="#ffd966" stroke="#593706" stroke-width="2" />
+            <circle cx="34" cy="136" r="6" fill="#ffd966" stroke="#593706" stroke-width="2" />
+            <circle cx="666" cy="136" r="6" fill="#ffd966" stroke="#593706" stroke-width="2" />
+
+            <!-- Декоративний рубіновий кристал посередині між словами -->
+            <g transform="translate(350, 85)">
+              <polygon points="0,-24 18,0 0,24 -18,0" fill="#ff3b6b" stroke="#ffd86b" stroke-width="3.5" />
+              <polygon points="0,-14 9,0 0,14 -9,0" fill="#ff94b2" />
+            </g>
+
+            <!-- КРУПНИЙ ЧІТКИЙ ТЕКСТ ПЕРШОГО ТА ДРУГОГО СЛОВА -->
+            <text id="word-left" class="word-text" x="172" y="85" font-size="38">СМІЛИВИЙ</text>
+            <text id="word-right" class="word-text" x="528" y="85" font-size="38">ХОРОБРИЙ</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <!-- ========================================================================
+         ЦЕНТРАЛЬНА СЦЕНА: КАМ'ЯНИЙ ПОМІСТ ЗАМКУ + ДВА ДРАКОНЧИКИ, ЩО СТОЯТЬ НА НЬОМУ
+         ======================================================================== -->
+    <div id="stage-area">
+      <svg id="dragons-svg" viewBox="0 0 1150 470">
+        <defs>
+          <!-- Градієнти Смарагдового Дракончика (зліва) -->
+          <linearGradient id="greenSkin" x1="0.2" y1="0" x2="0.8" y2="1">
+            <stop offset="0%" stop-color="#3ce8a0" />
+            <stop offset="55%" stop-color="#17b57a" />
+            <stop offset="100%" stop-color="#0b6e4f" />
+          </linearGradient>
+
+          <linearGradient id="greenBelly" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#fff394" />
+            <stop offset="60%" stop-color="#ffd047" />
+            <stop offset="100%" stop-color="#e09019" />
+          </linearGradient>
+
+          <linearGradient id="greenWing" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffe169" />
+            <stop offset="50%" stop-color="#ff9933" />
+            <stop offset="100%" stop-color="#cc4414" />
+          </linearGradient>
+
+          <!-- Градієнти Рубіново-Бурштинового Дракончика (справа) -->
+          <linearGradient id="orangeSkin" x1="0.2" y1="0" x2="0.8" y2="1">
+            <stop offset="0%" stop-color="#ff8c52" />
+            <stop offset="55%" stop-color="#e8483d" />
+            <stop offset="100%" stop-color="#991728" />
+          </linearGradient>
+
+          <linearGradient id="orangeBelly" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffe89e" />
+            <stop offset="65%" stop-color="#ffAE42" />
+            <stop offset="100%" stop-color="#d46b15" />
+          </linearGradient>
+
+          <linearGradient id="orangeWing" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#a864ff" />
+            <stop offset="55%" stop-color="#6c2bd9" />
+            <stop offset="100%" stop-color="#3c1185" />
+          </linearGradient>
+
+          <!-- Градієнт ріжків та кігтиків -->
+          <linearGradient id="hornGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#fff8dc" />
+            <stop offset="65%" stop-color="#deb878" />
+            <stop offset="100%" stop-color="#8a6229" />
+          </linearGradient>
+
+          <!-- Градієнт кам'яного помосту безпосередньо під лапками дракончиків -->
+          <linearGradient id="stagePlatformTop" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7c7299" />
+            <stop offset="45%" stop-color="#5d5475" />
+            <stop offset="100%" stop-color="#3f3852" />
+          </linearGradient>
+
+          <linearGradient id="stagePlatformFront" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#4b4361" />
+            <stop offset="100%" stop-color="#282236" />
+          </linearGradient>
+        </defs>
+
+        <!-- ==================== КАМ'ЯНИЙ ПОМІСТ ПІД ЛАПКАМИ ДРАКОНЧИКІВ ==================== -->
+        <!-- Завдяки цьому помосту в одній системі координат з драконами, вони твердо стоять на камені на будь-якому екрані -->
+        <g id="dragon-stone-stage">
+          <!-- Верхня горизонтальна площина каменю, по якій ходять дракончики -->
+          <path d="M-350,392 L1500,392 L1560,436 L-410,436 Z" fill="url(#stagePlatformTop)" stroke="#231d30" stroke-width="4" />
+          <!-- Передній об'ємний бортик кам'яних плит -->
+          <rect x="-410" y="436" width="1970" height="44" fill="url(#stagePlatformFront)" stroke="#1d1829" stroke-width="4" />
+          <!-- Стилізовані шви між кам'яними плитами помосту -->
+          <g stroke="#2c253d" stroke-width="3.5" opacity="0.85">
+            <line x1="80" y1="392" x2="50" y2="436" />
+            <line x1="50" y1="436" x2="50" y2="480" />
+
+            <line x1="250" y1="392" x2="230" y2="436" />
+            <line x1="230" y1="436" x2="230" y2="480" />
+
+            <line x1="420" y1="392" x2="410" y2="436" />
+            <line x1="410" y1="436" x2="410" y2="480" />
+
+            <line x1="575" y1="392" x2="575" y2="436" />
+            <line x1="575" y1="436" x2="575" y2="480" />
+
+            <line x1="730" y1="392" x2="740" y2="436" />
+            <line x1="740" y1="436" x2="740" y2="480" />
+
+            <line x1="900" y1="392" x2="920" y2="436" />
+            <line x1="920" y1="436" x2="920" y2="480" />
+
+            <line x1="1070" y1="392" x2="1100" y2="436" />
+            <line x1="1100" y1="436" x2="1100" y2="480" />
+          </g>
+          <!-- Світлий блік на грані каменю -->
+          <line x1="-390" y1="438" x2="1540" y2="438" stroke="#998eb8" stroke-width="2.5" opacity="0.6" />
+        </g>
+
+        <!-- ==================== ЛІВИЙ СМАРАГДОВИЙ ДРАКОНЧИК ==================== -->
+        <g id="dragon-left-mover">
+          <!-- Контактна тінь безпосередньо на кам'яній плиті під лапками -->
+          <ellipse cx="430" cy="415" rx="96" ry="16" fill="rgba(14, 9, 26, 0.55)" />
+
+          <g class="dragon-breathe-left">
+            <!-- Рухомий хвіст з гребінцем -->
+            <g class="tail-left-anim">
+              <path d="M365,355 Q275,365 240,305 Q220,270 250,245 Q268,265 275,295 Q300,328 365,322 Z"
+                    fill="url(#greenSkin)" stroke="#074732" stroke-width="4" stroke-linejoin="round" />
+              <polygon points="242,235 220,255 246,268 265,244" fill="url(#greenWing)" stroke="#702306" stroke-width="3" />
+              <polygon points="282,315 270,295 296,310" fill="#ffd047" stroke="#854f08" stroke-width="2" />
+              <polygon points="315,326 308,304 330,324" fill="#ffd047" stroke="#854f08" stroke-width="2" />
+            </g>
+
+            <!-- Крила смарагдового дракончика -->
+            <g class="wing-left-anim">
+              <path d="M375,255 Q300,155 245,190 Q275,225 268,255 Q305,248 312,282 Q342,272 372,285 Z"
+                    fill="url(#greenWing)" stroke="#6e2208" stroke-width="4" stroke-linejoin="round" />
+              <path d="M368,255 L268,215 M368,262 L292,255" stroke="#ffdf80" stroke-width="3" stroke-linecap="round" />
+            </g>
+
+            <!-- Задня лапка (твердо стоїть на кам'яній плиті y=416) -->
+            <g>
+              <ellipse cx="385" cy="390" rx="34" ry="24" fill="url(#greenSkin)" stroke="#074732" stroke-width="4" />
+              <path d="M352,404 Q362,418 395,416 L418,412 Q420,392 396,392 Z" fill="url(#greenSkin)" stroke="#074732" stroke-width="4" />
+              <polygon points="355,412 342,417 358,400" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="370,415 358,419 372,403" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="385,416 375,420 387,405" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+            </g>
+
+            <!-- Тулуб смарагдового дракончика -->
+            <path d="M352,270 C338,335 355,405 430,408 C505,408 520,345 498,275 C482,225 368,225 352,270 Z"
+                  fill="url(#greenSkin)" stroke="#074732" stroke-width="4.5" />
+
+            <!-- Ребристий золотий животик -->
+            <path d="M388,268 C378,325 390,392 442,396 C492,395 504,335 488,272 C475,238 400,238 388,268 Z"
+                  fill="url(#greenBelly)" stroke="#9e620b" stroke-width="3.5" />
+            <path d="M392,292 Q442,306 490,290" fill="none" stroke="#bd7611" stroke-width="3" />
+            <path d="M390,322 Q445,336 493,318" fill="none" stroke="#bd7611" stroke-width="3" />
+            <path d="M395,352 Q445,365 488,348" fill="none" stroke="#bd7611" stroke-width="3" />
+            <path d="M408,378 Q445,388 475,375" fill="none" stroke="#bd7611" stroke-width="3" />
+
+            <!-- Луска на боці -->
+            <g fill="#0e875b" opacity="0.65">
+              <circle cx="368" cy="305" r="7" />
+              <circle cx="376" cy="324" r="6" />
+              <circle cx="364" cy="336" r="8" />
+              <circle cx="375" cy="354" r="6.5" />
+            </g>
+
+            <!-- Передня опорна ніжка (твердо стоїть на кам'яній плиті y=416) -->
+            <g>
+              <ellipse cx="472" cy="396" rx="34" ry="22" fill="url(#greenSkin)" stroke="#074732" stroke-width="4" />
+              <polygon points="496,412 510,417 492,400" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="482,415 495,419 478,403" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="466,416 478,420 464,404" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+            </g>
+
+            <!-- Голова смарагдового дракончика -->
+            <g id="dragon-left-head">
+              <!-- Вигнуті ріжки -->
+              <path d="M388,155 Q348,110 330,132 Q345,158 375,175 Z" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="3.5" />
+              <path d="M442,148 Q425,102 400,115 Q412,142 426,162 Z" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="3.5" />
+
+              <!-- Вушка-плавники -->
+              <path d="M368,185 Q325,175 335,205 Q352,215 375,205 Z" fill="url(#greenWing)" stroke="#6e2208" stroke-width="3" />
+
+              <!-- Череп та велика кумедна мордочка -->
+              <path d="M368,195 C358,142 448,132 478,175 C522,182 535,232 495,252 C455,268 372,258 368,195 Z"
+                    fill="url(#greenSkin)" stroke="#074732" stroke-width="4.5" />
+
+              <!-- Рум'янець на щічках -->
+              <ellipse cx="412" cy="222" rx="16" ry="9" fill="#ff6b8b" opacity="0.55" />
+
+              <!-- Ніздрі на мордочці -->
+              <ellipse cx="496" cy="202" rx="5" ry="7" transform="rotate(-15 496 202)" fill="#063b29" />
+              <ellipse cx="512" cy="206" rx="4" ry="6" transform="rotate(-10 512 206)" fill="#063b29" />
+
+              <!-- Широка усмішка з білим іклом -->
+              <path d="M438,228 Q475,248 508,226" fill="none" stroke="#063b29" stroke-width="4.5" stroke-linecap="round" />
+              <polygon points="462,235 468,248 475,236" fill="#ffffff" stroke="#063b29" stroke-width="2" />
+              <polygon points="488,234 493,245 499,232" fill="#ffffff" stroke="#063b29" stroke-width="2" />
+
+              <!-- Очі (звичайний стан) -->
+              <g class="normal-eyes">
+                <ellipse cx="416" cy="186" rx="18" ry="21" fill="#ffffff" stroke="#074732" stroke-width="3.5" />
+                <ellipse cx="456" cy="184" rx="16" ry="19" fill="#ffffff" stroke="#074732" stroke-width="3.5" />
+                <circle class="pupil-track" cx="422" cy="186" r="10" fill="#1b1429" />
+                <circle class="pupil-track" cx="461" cy="184" r="9" fill="#1b1429" />
+                <circle cx="418" cy="180" r="4" fill="#ffffff" />
+                <circle cx="458" cy="178" r="3.5" fill="#ffffff" />
+                <ellipse class="eyelid-blink" cx="416" cy="186" rx="19" ry="21" fill="#21bd82" />
+                <ellipse class="eyelid-blink" cx="456" cy="184" rx="17" ry="19" fill="#21bd82" />
+              </g>
+
+              <!-- Щасливі примружені очі для обіймів -->
+              <g class="happy-eyes">
+                <path d="M400,188 Q416,170 432,188" fill="none" stroke="#063b29" stroke-width="5" stroke-linecap="round" />
+                <path d="M442,186 Q456,168 470,186" fill="none" stroke="#063b29" stroke-width="5" stroke-linecap="round" />
+              </g>
+
+              <!-- Рухомі брови -->
+              <path d="M398,162 Q416,154 430,164" fill="none" stroke="#063b29" stroke-width="4.5" stroke-linecap="round" />
+              <path d="M442,160 Q458,152 472,162" fill="none" stroke="#063b29" stroke-width="4.5" stroke-linecap="round" />
+            </g>
+
+            <!-- Передня лапка (ручка для обіймів) -->
+            <g id="dragon-left-arm-front">
+              <path d="M442,285 Q495,290 515,315 Q525,332 502,338 Q475,336 438,312 Z"
+                    fill="url(#greenSkin)" stroke="#074732" stroke-width="4" />
+              <polygon points="516,315 529,318 515,326" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="514,327 527,332 510,336" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+            </g>
+          </g>
+        </g>
+
+        <!-- ==================== ПРАВИЙ РУБІНОВО-БУРШТИНОВИЙ ДРАКОНЧИК ==================== -->
+        <g id="dragon-right-mover">
+          <!-- Контактна тінь безпосередньо на кам'яній плиті під лапками -->
+          <ellipse cx="720" cy="415" rx="98" ry="16" fill="rgba(14, 9, 26, 0.55)" />
+
+          <g class="dragon-breathe-right">
+            <!-- Рухомий хвіст із фіолетовим гребінцем -->
+            <g class="tail-right-anim">
+              <path d="M785,360 Q875,370 912,312 Q930,278 902,250 Q882,272 872,300 Q848,332 785,328 Z"
+                    fill="url(#orangeSkin)" stroke="#610c18" stroke-width="4" stroke-linejoin="round" />
+              <path d="M902,252 C915,232 938,245 922,265 C938,278 912,292 898,270 Z"
+                    fill="url(#orangeWing)" stroke="#2b0963" stroke-width="3" />
+            </g>
+
+            <!-- Фіолетові крильця рубінового дракончика -->
+            <g class="wing-right-anim">
+              <path d="M775,260 Q852,160 908,195 Q878,232 885,260 Q846,255 838,288 Q808,278 778,290 Z"
+                    fill="url(#orangeWing)" stroke="#2b0963" stroke-width="4" stroke-linejoin="round" />
+              <path d="M782,260 L880,220 M782,268 L858,260" stroke="#d5b3ff" stroke-width="3" stroke-linecap="round" />
+            </g>
+
+            <!-- Задня лапка (твердо стоїть на кам'яній плиті y=416) -->
+            <g>
+              <ellipse cx="768" cy="392" rx="36" ry="24" fill="url(#orangeSkin)" stroke="#610c18" stroke-width="4" />
+              <polygon points="798,412 812,417 794,400" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="784,415 796,419 780,403" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="768,416 780,420 766,404" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+            </g>
+
+            <!-- Пухкенький тулуб рубінового дракончика -->
+            <path d="M645,278 C625,345 642,410 722,410 C802,410 822,340 798,272 C780,220 665,222 645,278 Z"
+                  fill="url(#orangeSkin)" stroke="#610c18" stroke-width="4.5" />
+
+            <!-- Кумедні фіолетові цяточки на спинці й боці -->
+            <g fill="#8c38ff" opacity="0.65">
+              <circle cx="776" cy="302" r="9" />
+              <circle cx="762" cy="325" r="6.5" />
+              <circle cx="782" cy="338" r="10" />
+              <circle cx="766" cy="358" r="7" />
+            </g>
+
+            <!-- Жовтогарячий животик -->
+            <path d="M658,274 C644,332 656,396 710,398 C762,396 774,332 760,272 C748,238 672,238 658,274 Z"
+                  fill="url(#orangeBelly)" stroke="#9e470b" stroke-width="3.5" />
+            <path d="M658,298 Q708,312 760,296" fill="none" stroke="#c4590e" stroke-width="3" />
+            <path d="M655,328 Q708,342 762,326" fill="none" stroke="#c4590e" stroke-width="3" />
+            <path d="M660,358 Q708,372 756,356" fill="none" stroke="#c4590e" stroke-width="3" />
+
+            <!-- Передня ніжка (твердо стоїть на кам'яній плиті y=416) -->
+            <g>
+              <ellipse cx="676" cy="396" rx="35" ry="22" fill="url(#orangeSkin)" stroke="#610c18" stroke-width="4" />
+              <polygon points="650,412 636,417 654,400" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="665,415 652,419 668,403" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="680,416 668,420 682,404" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+            </g>
+
+            <!-- Голова рубінового дракончика -->
+            <g id="dragon-right-head">
+              <!-- Закручені кумедні ріжки -->
+              <path d="M760,155 Q802,108 820,134 Q805,160 774,176 Z" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="3.5" />
+              <path d="M708,148 Q725,100 750,115 Q738,142 724,162 Z" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="3.5" />
+
+              <!-- Вушка-крильця -->
+              <path d="M780,188 Q825,178 815,210 Q796,220 774,208 Z" fill="url(#orangeWing)" stroke="#2b0963" stroke-width="3" />
+
+              <!-- Кругла кумедна мордочка -->
+              <path d="M782,198 C792,140 698,130 668,175 C620,180 608,232 650,254 C692,272 778,260 782,198 Z"
+                    fill="url(#orangeSkin)" stroke="#610c18" stroke-width="4.5" />
+
+              <!-- Рожеві щічки -->
+              <ellipse cx="738" cy="224" rx="17" ry="10" fill="#ff9ebb" opacity="0.6" />
+
+              <!-- Ніздрі -->
+              <ellipse cx="652" cy="202" rx="5" ry="7" transform="rotate(15 652 202)" fill="#4d0712" />
+              <ellipse cx="636" cy="206" rx="4" ry="6" transform="rotate(10 636 206)" fill="#4d0712" />
+
+              <!-- Весела усмішка з кумедним зубчиком -->
+              <path d="M712,230 Q672,252 640,228" fill="none" stroke="#4d0712" stroke-width="4.5" stroke-linecap="round" />
+              <rect x="668" y="236" width="11" height="11" rx="3" fill="#ffffff" stroke="#4d0712" stroke-width="2" />
+
+              <!-- Очі (звичайний стан) -->
+              <g class="normal-eyes">
+                <ellipse cx="732" cy="186" rx="18" ry="21" fill="#ffffff" stroke="#610c18" stroke-width="3.5" />
+                <ellipse cx="692" cy="184" rx="16" ry="19" fill="#ffffff" stroke="#610c18" stroke-width="3.5" />
+                <circle class="pupil-track" cx="726" cy="186" r="10" fill="#1b1429" />
+                <circle class="pupil-track" cx="687" cy="184" r="9" fill="#1b1429" />
+                <circle cx="722" cy="180" r="4" fill="#ffffff" />
+                <circle cx="684" cy="178" r="3.5" fill="#ffffff" />
+                <ellipse class="eyelid-blink" cx="732" cy="186" rx="19" ry="21" fill="#eb5040" />
+                <ellipse class="eyelid-blink" cx="692" cy="184" rx="17" ry="19" fill="#eb5040" />
+              </g>
+
+              <!-- Щасливі примружені очі для обіймів -->
+              <g class="happy-eyes">
+                <path d="M716,188 Q732,170 748,188" fill="none" stroke="#4d0712" stroke-width="5" stroke-linecap="round" />
+                <path d="M678,186 Q692,168 706,186" fill="none" stroke="#4d0712" stroke-width="5" stroke-linecap="round" />
+              </g>
+
+              <!-- Брови -->
+              <path d="M750,162 Q732,154 718,164" fill="none" stroke="#4d0712" stroke-width="4.5" stroke-linecap="round" />
+              <path d="M706,160 Q690,152 676,162" fill="none" stroke="#4d0712" stroke-width="4.5" stroke-linecap="round" />
+            </g>
+
+            <!-- Передня лапка (ручка для обіймів) -->
+            <g id="dragon-right-arm-front">
+              <path d="M708,285 Q655,290 635,315 Q625,332 648,338 Q675,336 712,312 Z"
+                    fill="url(#orangeSkin)" stroke="#610c18" stroke-width="4" />
+              <polygon points="634,315 621,318 635,326" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+              <polygon points="636,327 623,332 640,336" fill="url(#hornGrad)" stroke="#5c4018" stroke-width="2" />
+            </g>
+          </g>
+        </g>
+
+        <!-- Контейнер для динамічних SVG-ефектів (сердечка обіймів, дим з ніздрів, іскри) -->
+        <g id="fx-layer"></g>
+      </svg>
+    </div>
+
+    <!-- ========================================================================
+         НИЖНІ ГЕРАЛЬДИЧНІ ЩИТИ ВИБОРУ: СИНОНІМИ ТА АНТОНІМИ
+         ======================================================================== -->
+    <div class="bottom-controls">
+      <!-- Кнопка "СИНОНІМИ" -->
+      <button id="btn-syn" class="choice-shield">
+        <svg viewBox="0 0 360 110">
+          <defs>
+            <linearGradient id="synShieldGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#2ee09b" />
+              <stop offset="55%" stop-color="#129c68" />
+              <stop offset="100%" stop-color="#08593b" />
+            </linearGradient>
+          </defs>
+          <path d="M22,10 H338 A14,14 0 0,1 352,24 V66 C352,92 315,104 180,106 C45,104 8,92 8,66 V24 A14,14 0 0,1 22,10 Z"
+                fill="url(#synShieldGrad)" stroke="url(#goldRimGrad)" stroke-width="7" />
+          <path d="M26,20 H334 V62 C334,80 302,92 180,94 C58,92 26,80 26,62 Z"
+                fill="none" stroke="#85ffd0" stroke-width="2" stroke-dasharray="10 6" opacity="0.55" />
+          <g transform="translate(52, 54)">
+            <path d="M0,-8 C-10,-22 -28,-10 -28,6 C-28,18 -8,28 0,34 C8,28 28,18 28,6 C28,-10 10,-22 0,-8 Z"
+                  fill="#ff477e" stroke="#fff3b0" stroke-width="3" transform="scale(0.85) translate(0, -8)" />
+          </g>
+          <text id="label-syn" class="shield-label" x="202" y="56">СИНОНІМИ</text>
+        </svg>
+      </button>
+
+      <!-- Кнопка "АНТОНІМИ" -->
+      <button id="btn-ant" class="choice-shield">
+        <svg viewBox="0 0 360 110">
+          <defs>
+            <linearGradient id="antShieldGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff5e7e" />
+              <stop offset="55%" stop-color="#c91e4a" />
+              <stop offset="100%" stop-color="#6e0926" />
+            </linearGradient>
+          </defs>
+          <path d="M22,10 H338 A14,14 0 0,1 352,24 V66 C352,92 315,104 180,106 C45,104 8,92 8,66 V24 A14,14 0 0,1 22,10 Z"
+                fill="url(#antShieldGrad)" stroke="url(#goldRimGrad)" stroke-width="7" />
+          <path d="M26,20 H334 V62 C334,80 302,92 180,94 C58,92 26,80 26,62 Z"
+                fill="none" stroke="#ffb3c6" stroke-width="2" stroke-dasharray="10 6" opacity="0.55" />
+          <g transform="translate(54, 54)" stroke="#ffe885" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M-6,0 H-24 M-16,-9 L-26,0 L-16,9" />
+            <path d="M6,0 H24 M16,-9 L26,0 L16,9" />
+          </g>
+          <text id="label-ant" class="shield-label" x="204" y="56">АНТОНІМИ</text>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       БАЗА ДАНИХ СЛІВ (24 ПАРИ СИНОНІМІВ + 24 ПАРИ АНТОНІМІВ = 48 УНІКАЛЬНИХ ПАР)
+       Усі 96 слів у кожній мові повністю унікальні та не повторюються!
+       Ви можете легко редагувати або додавати власні пари у списки нижче.
+       ========================================================================== */
+    const SYNONYM_PAIRS = [
+      { type: 'syn', uk: ['СМІЛИВИЙ', 'ХОРОБРИЙ'], ru: ['СМЕЛЫЙ', 'ХРАБРЫЙ'] },
+      { type: 'syn', uk: ['РАДІСНИЙ', 'ВЕСЕЛИЙ'], ru: ['РАДОСТНЫЙ', 'ВЕСЁЛЫЙ'] },
+      { type: 'syn', uk: ['ШВИДКИЙ', 'ПРУДКИЙ'], ru: ['БЫСТРЫЙ', 'ШУСТРЫЙ'] },
+      { type: 'syn', uk: ['ВЕЛИЧЕЗНИЙ', 'ГІГАНТСЬКИЙ'], ru: ['ОГРОМНЫЙ', 'ГИГАНТСКИЙ'] },
+      { type: 'syn', uk: ['КРАСИВИЙ', 'ГАРНИЙ'], ru: ['КРАСИВЫЙ', 'ПРЕКРАСНЫЙ'] },
+      { type: 'syn', uk: ['МУДРИЙ', 'РОЗУМНИЙ'], ru: ['МУДРЫЙ', 'УМНЫЙ'] },
+      { type: 'syn', uk: ['БЛИЩАТИ', 'СЯЯТИ'], ru: ['БЛЕСТЕТЬ', 'СИЯТЬ'] },
+      { type: 'syn', uk: ['ДРУГ', 'ТОВАРИШ'], ru: ['ДРУГ', 'ТОВАРИЩ'] },
+      { type: 'syn', uk: ['ЇЖА', 'СТРАВА'], ru: ['ЕДА', 'ПИЩА'] },
+      { type: 'syn', uk: ['ЛІС', 'ГАЙ'], ru: ['ЛЕС', 'РОЩА'] },
+      { type: 'syn', uk: ['ВІТЕР', 'БУРЕВІЙ'], ru: ['ВЕТЕР', 'УРАГАН'] },
+      { type: 'syn', uk: ['СТЕЖКА', 'ДОРОГА'], ru: ['ТРОПИНКА', 'ДОРОГА'] },
+      { type: 'syn', uk: ['БУДИНОК', 'ОСЕЛЯ'], ru: ['ДОМ', 'ЖИЛИЩЕ'] },
+      { type: 'syn', uk: ['КРИЧАТИ', 'ГАЛАСУВАТИ'], ru: ['КРИЧАТЬ', 'ШУМЕТЬ'] },
+      { type: 'syn', uk: ['СТРИБАТИ', 'СКАКАТИ'], ru: ['ПРЫГАТЬ', 'СКАКАТЬ'] },
+      { type: 'syn', uk: ['ХУРТОВИНА', 'ЗАМЕТІЛЬ'], ru: ['ВЬЮГА', 'МЕТЕЛЬ'] },
+      { type: 'syn', uk: ['ЛАГІДНИЙ', 'НІЖНИЙ'], ru: ['ЛАСКОВЫЙ', 'НЕЖНЫЙ'] },
+      { type: 'syn', uk: ['ДУЖИЙ', 'МОГУТНІЙ'], ru: ['КРЕПКИЙ', 'МОГУЧИЙ'] },
+      { type: 'syn', uk: ['МРІЯТИ', 'ФАНТАЗУВАТИ'], ru: ['МЕЧТАТЬ', 'ФАНТАЗИРОВАТЬ'] },
+      { type: 'syn', uk: ['ОХОРОНЕЦЬ', 'ВАРТОВИЙ'], ru: ['ОХРАННИК', 'СТРАЖНИК'] },
+      { type: 'syn', uk: ['ЗАПАШНИЙ', 'ДУХМЯНИЙ'], ru: ['АРОМАТНЫЙ', 'ДУШИСТЫЙ'] },
+      { type: 'syn', uk: ['ДЖЕРЕЛО', 'КРИНИЦЯ'], ru: ['РОДНИК', 'КЛЮЧ'] },
+      { type: 'syn', uk: ['СПЕКА', 'ЖАРА'], ru: ['ЖАРА', 'ЗНОЙ'] },
+      { type: 'syn', uk: ['ОХАЙНИЙ', 'ЧЕПУРНИЙ'], ru: ['АККУРАТНЫЙ', 'ОПРЯТНЫЙ'] }
+    ];
+
+    const ANTONYM_PAIRS = [
+      { type: 'ant', uk: ['ДЕНЬ', 'НІЧ'], ru: ['ДЕНЬ', 'НОЧЬ'] },
+      { type: 'ant', uk: ['ГАРЯЧИЙ', 'ХОЛОДНИЙ'], ru: ['ГОРЯЧИЙ', 'ХОЛОДНЫЙ'] },
+      { type: 'ant', uk: ['ВИСОКИЙ', 'НИЗЬКИЙ'], ru: ['ВЫСОКИЙ', 'НИЗКИЙ'] },
+      { type: 'ant', uk: ['СОЛОДКИЙ', 'ГІРКИЙ'], ru: ['СЛАДКИЙ', 'ГОРЬКИЙ'] },
+      { type: 'ant', uk: ['ПРАВДА', 'БРЕХНЯ'], ru: ['ПРАВДА', 'ЛОЖЬ'] },
+      { type: 'ant', uk: ['ПОЧАТОК', 'КІНЕЦЬ'], ru: ['НАЧАЛО', 'КОНЕЦ'] },
+      { type: 'ant', uk: ['ШИРОКИЙ', 'ВУЗЬКИЙ'], ru: ['ШИРОКИЙ', 'УЗКИЙ'] },
+      { type: 'ant', uk: ['ВАЖКИЙ', 'ЛЕГКИЙ'], ru: ['ТЯЖЁЛЫЙ', 'ЛЁГКИЙ'] },
+      { type: 'ant', uk: ['ГОСТРИЙ', 'ТУПИЙ'], ru: ['ОСТРЫЙ', 'ТУПОЙ'] },
+      { type: 'ant', uk: ['ЧИСТИЙ', 'БРУДНИЙ'], ru: ['ЧИСТЫЙ', 'ГРЯЗНЫЙ'] },
+      { type: 'ant', uk: ['ТВЕРДИЙ', "М'ЯКИЙ"], ru: ['ТВЁРДЫЙ', 'МЯГКИЙ'] },
+      { type: 'ant', uk: ['ГЛИБОКИЙ', 'МІЛКИЙ'], ru: ['ГЛУБОКИЙ', 'МЕЛКИЙ'] },
+      { type: 'ant', uk: ['ГУЧНИЙ', 'ТИХИЙ'], ru: ['ГРОМКИЙ', 'ТИХИЙ'] },
+      { type: 'ant', uk: ['СУХИЙ', 'МОКРИЙ'], ru: ['СУХОЙ', 'МОКРЫЙ'] },
+      { type: 'ant', uk: ['ДОВГИЙ', 'КОРОТКИЙ'], ru: ['ДЛИННЫЙ', 'КОРОТКИЙ'] },
+      { type: 'ant', uk: ['СВІТЛО', 'ТЕМРЯВА'], ru: ['СВЕТ', 'ТЕМНОТА'] },
+      { type: 'ant', uk: ['ЛІТО', 'ЗИМА'], ru: ['ЛЕТО', 'ЗИМА'] },
+      { type: 'ant', uk: ['КУПУВАТИ', 'ПРОДАВАТИ'], ru: ['ПОКУПАТЬ', 'ПРОДАВАТЬ'] },
+      { type: 'ant', uk: ['ПЛАКАТИ', 'СМІЯТИСЯ'], ru: ['ПЛАКАТЬ', 'СМЕЯТЬСЯ'] },
+      { type: 'ant', uk: ['ВІДКРИТИ', 'ЗАКРИТИ'], ru: ['ОТКРЫТЬ', 'ЗАКРЫТЬ'] },
+      { type: 'ant', uk: ['БАГАТИЙ', 'БІДНИЙ'], ru: ['БОГАТЫЙ', 'БЕДНЫЙ'] },
+      { type: 'ant', uk: ['РАНОК', 'ВЕЧІР'], ru: ['УТРО', 'ВЕЧЕР'] },
+      { type: 'ant', uk: ['МИР', 'ВІЙНА'], ru: ['МИР', 'ВОЙНА'] },
+      { type: 'ant', uk: ['ЩЕДРИЙ', 'СКУПИЙ'], ru: ['ЩЕДРЫЙ', 'ЖАДНЫЙ'] }
+    ];
+
+    /* ==========================================================================
+       РОЗУМНЕ ПЕРЕМІШУВАННЯ СЛІВ
+       1) Окремо ретельно тасуємо синоніми і антоніми.
+       2) Випадково міняємо місцями ліве і праве слово всередині пар.
+       3) Формуємо колоду так, щоб синоніми й антоніми чергувалися живо і ніколи
+          не йшли довгими одноманітними серіями (максимум 1-2 підряд одного типу).
+       ========================================================================== */
+    function shuffleArray(arr) {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function buildSmartShuffledDeck() {
+      const syns = shuffleArray(SYNONYM_PAIRS);
+      const ants = shuffleArray(ANTONYM_PAIRS);
+      const result = [];
+
+      let sIdx = 0;
+      let aIdx = 0;
+      let lastType = null;
+      let streak = 0;
+
+      while (sIdx < syns.length || aIdx < ants.length) {
+        let pickSyn;
+
+        if (sIdx >= syns.length) {
+          pickSyn = false;
+        } else if (aIdx >= ants.length) {
+          pickSyn = true;
+        } else if (streak >= 2) {
+          // Забороняємо більше ніж 2 однакових типи підряд
+          pickSyn = lastType !== 'syn';
+        } else {
+          // Збалансована випадкова ймовірність з урахуванням залишку
+          const synRemaining = syns.length - sIdx;
+          const antRemaining = ants.length - aIdx;
+          pickSyn = Math.random() < synRemaining / (synRemaining + antRemaining);
+        }
+
+        const rawItem = pickSyn ? syns[sIdx++] : ants[aIdx++];
+        // Випадково міняємо порядок слів у парі (ліве <-> праве)
+        const swapOrder = Math.random() < 0.5;
+        const item = {
+          type: rawItem.type,
+          uk: swapOrder ? [rawItem.uk[1], rawItem.uk[0]] : [...rawItem.uk],
+          ru: swapOrder ? [rawItem.ru[1], rawItem.ru[0]] : [...rawItem.ru]
+        };
+
+        if (item.type === lastType) {
+          streak++;
+        } else {
+          lastType = item.type;
+          streak = 1;
+        }
+
+        result.push(item);
+      }
+
+      return result;
+    }
+
+    const deck = buildSmartShuffledDeck();
+
+    /* ==========================================================================
+       ЗВУКОВИЙ СИНТЕЗАТОР (Web Audio API — активні звукові ефекти без зовнішніх файлів)
+       ========================================================================== */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Звук металевого ланцюга, коли спускається дошка зі словами
+      playChainDrop() {
+        this.init();
+        const now = this.ctx.currentTime;
+        for (let i = 0; i < 6; i++) {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(520 + (i % 2) * 190 + i * 35, now + i * 0.065);
+          osc.frequency.exponentialRampToValueAtTime(160, now + i * 0.065 + 0.05);
+
+          gain.gain.setValueAtTime(0.11, now + i * 0.065);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.065 + 0.055);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + i * 0.065);
+          osc.stop(now + i * 0.065 + 0.06);
+        }
+      }
+
+      // Радісний звук обіймів для СИНОНІМІВ
+      playHugSuccess() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+          osc.frequency.exponentialRampToValueAtTime(freq * 1.03, now + idx * 0.08 + 0.35);
+
+          gain.gain.setValueAtTime(0.18, now + idx * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.45);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.08);
+          osc.stop(now + idx * 0.08 + 0.46);
+        });
+      }
+
+      // Бадьорий звук розходження в різні сторони для АНТОНІМІВ
+      playApartSuccess() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const steps = [
+          { f1: 330, f2: 440, t: 0 },
+          { f1: 392, f2: 523, t: 0.12 },
+          { f1: 493, f2: 659, t: 0.24 },
+          { f1: 587, f2: 880, t: 0.38 }
+        ];
+        steps.forEach((s) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(s.f1, now + s.t);
+          osc.frequency.exponentialRampToValueAtTime(s.f2, now + s.t + 0.11);
+
+          gain.gain.setValueAtTime(0.22, now + s.t);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + s.t + 0.14);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + s.t);
+          osc.stop(now + s.t + 0.15);
+        });
+      }
+
+      // Звук помилки
+      playWrong() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.linearRampToValueAtTime(145, now + 0.22);
+        osc.frequency.linearRampToValueAtTime(180, now + 0.32);
+        osc.frequency.linearRampToValueAtTime(115, now + 0.52);
+
+        gain.gain.setValueAtTime(0.16, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.56);
+      }
+
+      // Короткий клік по кнопці
+      playClick() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(680, now);
+        osc.frequency.exponentialRampToValueAtTime(320, now + 0.05);
+        gain.gain.setValueAtTime(0.14, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.065);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* ==========================================================================
+       СТАН ГРИ ТА КЕРУВАННЯ ЕЛЕМЕНТАМИ
+       ========================================================================== */
+    let currentLang = 'uk'; // 'uk' або 'ru'
+    let currentIndex = 0;
+    let isBusy = false;
+    let nextTimer = null;
+
+    const chainRig = document.getElementById('chain-rig');
+    const wordLeftEl = document.getElementById('word-left');
+    const wordRightEl = document.getElementById('word-right');
+    const dragonsSvg = document.getElementById('dragons-svg');
+    const fxLayer = document.getElementById('fx-layer');
+    const btnSyn = document.getElementById('btn-syn');
+    const btnAnt = document.getElementById('btn-ant');
+    const labelSyn = document.getElementById('label-syn');
+    const labelAnt = document.getElementById('label-ant');
+    const langBtn = document.getElementById('lang-btn');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+
+    /* ==========================================================================
+       ВІДОБРАЖЕННЯ ТЕКСТУ ТА АВТОМАТИЧНЕ МАСШТАБУВАННЯ ДОВГИХ СЛІВ
+       ========================================================================== */
+    function updateWordsText() {
+      const item = deck[currentIndex];
+      const pair = currentLang === 'uk' ? item.uk : item.ru;
+
+      wordLeftEl.textContent = pair[0];
+      wordRightEl.textContent = pair[1];
+
+      const sizeLeft = pair[0].length > 10 ? 30 : pair[0].length > 8 ? 34 : 38;
+      const sizeRight = pair[1].length > 10 ? 30 : pair[1].length > 8 ? 34 : 38;
+
+      wordLeftEl.setAttribute('font-size', sizeLeft);
+      wordRightEl.setAttribute('font-size', sizeRight);
+
+      if (currentLang === 'uk') {
+        langBtn.textContent = 'УКР';
+        labelSyn.textContent = 'СИНОНІМИ';
+        labelAnt.textContent = 'АНТОНІМИ';
+      } else {
+        langBtn.textContent = 'РУС';
+        labelSyn.textContent = 'СИНОНИМЫ';
+        labelAnt.textContent = 'АНТОНИМЫ';
+      }
+    }
+
+    /* ==========================================================================
+       ВІЗУАЛЬНІ SVG-ЕФЕКТИ БЕЗ СЛІВ (СЕРДЕЧКА ОБІЙМІВ, ХМАРИНКИ ДИМУ, ІСКРИ)
+       ========================================================================== */
+    function clearEffects() {
+      fxLayer.innerHTML = '';
+    }
+
+    // Ефект сердечок, коли дракончики обіймаються (Синоніми)
+    function spawnHugEffects() {
+      clearEffects();
+      const colors = ['#ff477e', '#ff85a9', '#ffd166', '#ff5e5b'];
+      for (let i = 0; i < 12; i++) {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const startX = 575 + (Math.random() - 0.5) * 160;
+        const startY = 210 + (Math.random() - 0.5) * 80;
+        const scale = 0.55 + Math.random() * 0.65;
+        const color = colors[i % colors.length];
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute(
+          'd',
+          'M0,-8 C-10,-22 -28,-10 -28,6 C-28,18 -8,28 0,34 C8,28 28,18 28,6 C28,-10 10,-22 0,-8 Z'
+        );
+        path.setAttribute('fill', color);
+        path.setAttribute('stroke', '#fff8d6');
+        path.setAttribute('stroke-width', '2.5');
+
+        g.appendChild(path);
+        fxLayer.appendChild(g);
+
+        const dx = (Math.random() - 0.5) * 140;
+        const dy = -90 - Math.random() * 110;
+        g.animate(
+          [
+            { transform: `translate(${startX}px, ${startY}px) scale(0)`, opacity: 0 },
+            { transform: `translate(${startX + dx * 0.4}px, ${startY + dy * 0.4}px) scale(${scale})`, opacity: 1, offset: 0.35 },
+            { transform: `translate(${startX + dx}px, ${startY + dy}px) scale(0.2)`, opacity: 0 }
+          ],
+          {
+            duration: 1400 + Math.random() * 500,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+            fill: 'forwards'
+          }
+        );
+      }
+    }
+
+    // Ефект іскор на кам'яній підлозі, коли дракончики розходяться врізнобіч (Антоніми)
+    function spawnApartEffects() {
+      clearEffects();
+      for (let i = 0; i < 14; i++) {
+        const dir = i % 2 === 0 ? -1 : 1;
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        const startX = 575 + dir * 40;
+        const startY = 360 + (Math.random() - 0.5) * 60;
+        circle.setAttribute('cx', '0');
+        circle.setAttribute('cy', '0');
+        circle.setAttribute('r', String(7 + Math.random() * 11));
+        circle.setAttribute('fill', dir === -1 ? '#3ce8a0' : '#ff8c52');
+        circle.setAttribute('stroke', '#fff6cc');
+        circle.setAttribute('stroke-width', '2.5');
+        fxLayer.appendChild(circle);
+
+        const moveX = dir * (120 + Math.random() * 180);
+        const moveY = (Math.random() - 0.6) * 55;
+
+        circle.animate(
+          [
+            { transform: `translate(${startX}px, ${startY}px) scale(0.3)`, opacity: 1 },
+            { transform: `translate(${startX + moveX}px, ${startY + moveY}px) scale(1.2)`, opacity: 0 }
+          ],
+          {
+            duration: 950 + Math.random() * 400,
+            easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+            fill: 'forwards'
+          }
+        );
+      }
+    }
+
+    // Ефект димків з ніздрів при неправильній відповіді
+    function spawnWrongPuffs() {
+      clearEffects();
+      const puffs = [
+        { x: 505, y: 195, dir: 1 },
+        { x: 645, y: 195, dir: -1 }
+      ];
+      puffs.forEach((p) => {
+        for (let i = 0; i < 4; i++) {
+          const cloud = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          cloud.setAttribute('cx', '0');
+          cloud.setAttribute('cy', '0');
+          cloud.setAttribute('r', String(10 + i * 4));
+          cloud.setAttribute('fill', '#d9d2e9');
+          cloud.setAttribute('opacity', '0.75');
+          fxLayer.appendChild(cloud);
+
+          cloud.animate(
+            [
+              { transform: `translate(${p.x}px, ${p.y}px) scale(0.3)`, opacity: 0.85 },
+              {
+                transform: `translate(${p.x + p.dir * (35 + i * 18)}px, ${p.y - 35 - i * 14}px) scale(1.5)`,
+                opacity: 0
+              }
+            ],
+            { duration: 650 + i * 100, easing: 'ease-out', fill: 'forwards' }
+          );
+        }
+      });
+    }
+
+    /* ==========================================================================
+       ПЕРЕХІД МІЖ ЗАВДАННЯМИ (ДРАКОНЧИКИ СХОДЯТЬСЯ ПО ПІДЛОЗІ, СПУСКАЄТЬСЯ ЛАНЦЮГ)
+       ========================================================================== */
+    function loadLevel(index) {
+      if (nextTimer) {
+        clearTimeout(nextTimer);
+        nextTimer = null;
+      }
+
+      isBusy = true;
+      btnSyn.disabled = true;
+      btnAnt.disabled = true;
+
+      // Піднімаємо ланцюг угору та повертаємо дракончиків докупи по горизонталі
+      chainRig.classList.remove('dropped', 'shake');
+      dragonsSvg.classList.remove('state-hug', 'state-apart', 'state-wrong');
+      clearEffects();
+
+      currentIndex = (index + deck.length) % deck.length;
+
+      setTimeout(() => {
+        updateWordsText();
+        chainRig.classList.add('dropped');
+        sound.playChainDrop();
+
+        setTimeout(() => {
+          isBusy = false;
+          btnSyn.disabled = false;
+          btnAnt.disabled = false;
+        }, 450);
+      }, 420);
+    }
+
+    /* ==========================================================================
+       ПЕРЕВІРКА ВІДПОВІДІ ДИТИНИ
+       ========================================================================== */
+    function handleAnswer(chosenType) {
+      if (isBusy) return;
+
+      const currentPair = deck[currentIndex];
+
+      if (chosenType === currentPair.type) {
+        isBusy = true;
+        btnSyn.disabled = true;
+        btnAnt.disabled = true;
+        dragonsSvg.classList.remove('state-wrong');
+
+        if (chosenType === 'syn') {
+          // Синоніми — дракончики підходять один до одного по підлозі та обіймаються
+          dragonsSvg.classList.add('state-hug');
+          sound.playHugSuccess();
+          spawnHugEffects();
+        } else {
+          // Антоніми — дракончики розходяться в різні сторони по підлозі
+          dragonsSvg.classList.add('state-apart');
+          sound.playApartSuccess();
+          spawnApartEffects();
+        }
+
+        // Перед наступним завданням знову сходяться і спускається нова пара слів
+        nextTimer = setTimeout(() => {
+          loadLevel(currentIndex + 1);
+        }, 2100);
+      } else {
+        // Помилка — активний невербальний фідбек
+        sound.playWrong();
+        chainRig.classList.remove('shake');
+        dragonsSvg.classList.remove('state-wrong');
+        void chainRig.offsetWidth;
+        chainRig.classList.add('shake');
+        dragonsSvg.classList.add('state-wrong');
+        spawnWrongPuffs();
+      }
+    }
+
+    /* ==========================================================================
+       ОБРОБНИКИ ПОДІЙ (КНОПКИ ВИБОРУ, НАЗАД/ДАЛІ, МОВА, СТЕЖЕННЯ ОЧЕЙ)
+       ========================================================================== */
+    btnSyn.addEventListener('click', () => handleAnswer('syn'));
+    btnAnt.addEventListener('click', () => handleAnswer('ant'));
+
+    prevBtn.addEventListener('click', () => {
+      sound.playClick();
+      loadLevel(currentIndex - 1);
+    });
+
+    nextBtn.addEventListener('click', () => {
+      sound.playClick();
+      loadLevel(currentIndex + 1);
+    });
+
+    langBtn.addEventListener('click', () => {
+      sound.playClick();
+      currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+      updateWordsText();
+    });
+
+    // Зіниці дракончиків стежать за курсором
+    const pupils = document.querySelectorAll('.pupil-track');
+    window.addEventListener('pointermove', (e) => {
+      const normX = (e.clientX / window.innerWidth - 0.5) * 7;
+      const normY = (e.clientY / window.innerHeight - 0.5) * 6;
+      pupils.forEach((pupil) => {
+        pupil.style.transform = `translate(${normX}px, ${normY}px)`;
+      });
+    });
+
+    // Старт гри
+    window.addEventListener('DOMContentLoaded', () => {
+      updateWordsText();
+      setTimeout(() => {
+        chainRig.classList.add('dropped');
+      }, 200);
+    });
+  </script>
+</body>
+</html>
