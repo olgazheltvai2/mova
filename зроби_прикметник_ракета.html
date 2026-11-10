@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Космічні Прикметники</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            margin: 0;
+            padding: 0;
+        }
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #02040a;
+            font-family: 'Montserrat', sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        .cosmic-btn {
+            position: fixed;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            color: #7ef9ff;
+            background: radial-gradient(circle at 30% 30%, rgba(14, 45, 78, 0.95), rgba(4, 12, 28, 0.98));
+            border: 2px solid #00d2ff;
+            box-shadow: 0 0 16px rgba(0, 210, 255, 0.4), inset 0 0 10px rgba(0, 210, 255, 0.2);
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+            outline: none;
+        }
+        .cosmic-btn:hover {
+            transform: scale(1.06);
+            border-color: #ffffff;
+            box-shadow: 0 0 24px rgba(0, 240, 255, 0.75), inset 0 0 15px rgba(0, 240, 255, 0.4);
+            color: #ffffff;
+        }
+        .cosmic-btn:active {
+            transform: scale(0.95);
+        }
+        #langBtn {
+            top: 22px;
+            left: 26px;
+            width: 96px;
+            height: 58px;
+            clip-path: polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%);
+            font-size: 1.3rem;
+        }
+        #nextBtn {
+            top: 22px;
+            right: 26px;
+            padding: 0 32px;
+            height: 58px;
+            clip-path: polygon(12% 0%, 88% 0%, 100% 50%, 88% 100%, 12% 100%, 0% 50%);
+            font-size: 1.2rem;
+            gap: 12px;
+            background: radial-gradient(circle at 30% 30%, rgba(58, 16, 94, 0.95), rgba(16, 6, 35, 0.98));
+            border-color: #c864ff;
+            color: #f0d0ff;
+            box-shadow: 0 0 16px rgba(200, 100, 255, 0.4), inset 0 0 10px rgba(200, 100, 255, 0.2);
+        }
+        #nextBtn:hover {
+            border-color: #ffffff;
+            box-shadow: 0 0 24px rgba(215, 120, 255, 0.75), inset 0 0 15px rgba(215, 120, 255, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <button id="langBtn" class="cosmic-btn" aria-label="Language">УКР</button>
+
+    <button id="nextBtn" class="cosmic-btn" aria-label="Next">
+        <span id="nextBtnText">ДАЛІ</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" fill-opacity="0.3"></polygon>
+            <line x1="19" y1="5" x2="19" y2="19"></line>
+        </svg>
+    </button>
+
+    <canvas id="spaceCanvas"></canvas>
+
+    <script>
+        /* ============================================================================
+           1. GLOBAL STATE & WORD BANK INITIALIZATION
+           ============================================================================ */
+        let W = window.innerWidth;
+        let H = window.innerHeight;
+        const canvas = document.getElementById('spaceCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const pointer = {
+            x: W * 0.3,
+            y: H * 0.5,
+            isDown: false,
+            hoveredAsteroid: null
+        };
+
+        const keys = { w: false, s: false, a: false, d: false, up: false, down: false, left: false, right: false };
+
+        let currentLang = 'uk';
+        let currentWordIndex = 0;
+        let wordDeck = [];
+        let isTransitioning = false;
+        let warpFactor = 1.0;
+
+        const stars = [];
+        const nebulae = [];
+        const asteroids = [];
+        const lasers = [];
+        const shockwaves = [];
+        const fragments = [];
+        const debrisSparks = [];
+
+        const ringedPlanet = { drift: 0 };
+
+        const rocket = {
+            x: W * 0.22,
+            y: H * 0.5,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            targetAngle: 0,
+            recoilX: 0,
+            thrusterPhase: 0,
+            shakeTimer: 0,
+            shieldFlash: 0,
+            exhaustParticles: []
+        };
+
+        /* ============================================================================
+           2. AUDIO SYNTHESIZER (WEB AUDIO API)
+           ============================================================================ */
+        const audio = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            playLaserAndShatter() {
+                if (!this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(880, now);
+                    osc.frequency.exponentialRampToValueAtTime(120, now + 0.35);
+
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+
+                    // Shatter noise
+                    const bufferSize = this.ctx.sampleRate * 0.4;
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = Math.random() * 2 - 1;
+                    }
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buffer;
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(1200, now);
+                    filter.frequency.exponentialRampToValueAtTime(300, now + 0.4);
+
+                    const noiseGain = this.ctx.createGain();
+                    noiseGain.gain.setValueAtTime(0.3, now);
+                    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+                    noise.connect(filter);
+                    filter.connect(noiseGain);
+                    noiseGain.connect(this.ctx.destination);
+                    noise.start(now);
+                    noise.stop(now + 0.4);
+                } catch(e) {}
+            },
+            playRicochet() {
+                if (!this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.exponentialRampToValueAtTime(900, now + 0.2);
+
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                } catch(e) {}
+            },
+            playWarpBoost() {
+                if (!this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.exponentialRampToValueAtTime(600, now + 0.3);
+
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } catch(e) {}
+            }
+        };
+
+        /* ============================================================================
+           3. WORD BANK (28 NOUNS WITH UKRAINIAN & RUSSIAN ADJECTIVES)
+           ============================================================================ */
+        const WORD_BANK = [
+            {
+                uk: { noun: "ВЕСНА", correct: "ВЕСНЯНИЙ", wrong: ["ВЕСНІЙ", "ВЕСНОВИЙ"] },
+                ru: { noun: "ВЕСНА", correct: "ВЕСЕННИЙ", wrong: ["ВЕСНИЙ", "ВЕСНОВЫЙ"] }
+            },
+            {
+                uk: { noun: "ЛІТО", correct: "ЛІТНІЙ", wrong: ["ЛІТОВИЙ", "ЛІТЯЧИЙ"] },
+                ru: { noun: "ЛЕТО", correct: "ЛЕТНИЙ", wrong: ["ЛЕТОВЫЙ", "ЛЕТЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ЗИМА", correct: "ЗИМОВИЙ", wrong: ["ЗИМНІЙ", "ЗИМЯЧИЙ"] },
+                ru: { noun: "ЗИМА", correct: "ЗИМНИЙ", wrong: ["ЗИМОВЫЙ", "ЗИМЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ОСІНЬ", correct: "ОСІННІЙ", wrong: ["ОСІНОВИЙ", "ОСІНЧИЙ"] },
+                ru: { noun: "ОСЕНЬ", correct: "ОСЕННИЙ", wrong: ["ОСЕНОВЫЙ", "ОСЕНЧИЙ"] }
+            },
+            {
+                uk: { noun: "ДЕНЬ", correct: "ДЕННИЙ", wrong: ["ДНЬОВИЙ", "ДЕНЯЧИЙ"] },
+                ru: { noun: "ДЕНЬ", correct: "ДНЕВНОЙ", wrong: ["ДЕННЫЙ", "ДЕНЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "НІЧ", correct: "НІЧНИЙ", wrong: ["НОЧОВИЙ", "НІЧЯЧИЙ"] },
+                ru: { noun: "НОЧЬ", correct: "НОЧНОЙ", wrong: ["НОЧЕВЫЙ", "НОЧНЫЙ"] }
+            },
+            {
+                uk: { noun: "РАНОК", correct: "РАННІЙ", wrong: ["РАНКОВИЙ", "РАНЧИЙ"] },
+                ru: { noun: "УТРО", correct: "УТРЕННИЙ", wrong: ["УТРОВЫЙ", "УТРЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ВЕЧІР", correct: "ВЕЧІРНІЙ", wrong: ["ВЕЧІРОВИЙ", "ВЕЧІРЯЧИЙ"] },
+                ru: { noun: "ВЕЧЕР", correct: "ВЕЧЕРНИЙ", wrong: ["ВЕЧЕРОВЫЙ", "ВЕЧЕРЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "МОРЕ", correct: "МОРСЬКИЙ", wrong: ["МОРОВИЙ", "МОРЯЧИЙ"] },
+                ru: { noun: "МОРЕ", correct: "МОРСКОЙ", wrong: ["МОРОВЫЙ", "МОРЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ГОРА", correct: "ГІРСЬКИЙ", wrong: ["ГОРОВИЙ", "ГОРЯЧИЙ"] },
+                ru: { noun: "ГОРА", correct: "ГОРНЫЙ", wrong: ["ГОРОВЫЙ", "ГОРСКИЙ"] }
+            },
+            {
+                uk: { noun: "ЛІС", correct: "ЛІСОВИЙ", wrong: ["ЛІСНИЙ", "ЛІСЯЧИЙ"] },
+                ru: { noun: "ЛЕС", correct: "ЛЕСНОЙ", wrong: ["ЛЕСНИЙ", "ЛЕСЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ПОЛЕ", correct: "ПОЛЬОВИЙ", wrong: ["ПОЛІВЫЙ", "ПОЛЯЧИЙ"] },
+                ru: { noun: "ПОЛЕ", correct: "ПОЛЕВОЙ", wrong: ["ПОЛЬНЫЙ", "ПОЛЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "СОНЦЕ", correct: "СОНЯЧНИЙ", wrong: ["СОНЦЕВИЙ", "СОНЦЯЧИЙ"] },
+                ru: { noun: "СОЛНЦЕ", correct: "СОЛНЕЧНЫЙ", wrong: ["СОЛНЦЕВЫЙ", "СОЛНЦЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ЗІРКА", correct: "ЗОРЯНИЙ", wrong: ["ЗІРКОВИЙ", "ЗІРЧИЙ"] },
+                ru: { noun: "ЗВЕЗДА", correct: "ЗВЕЗДНЫЙ", wrong: ["ЗВЕЗДОВЫЙ", "ЗВЕЗДЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ДОЩ", correct: "ДОЩОВИЙ", wrong: ["ДОЩНИЙ", "ДОЩЯЧИЙ"] },
+                ru: { noun: "ДОЖДЬ", correct: "ДОЖДЕВОЙ", wrong: ["ДОЖДНЫЙ", "ДОЖДЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "СНІГ", correct: "СНІГОВИЙ", wrong: ["СНІЖНИЙ", "СНІГЯЧИЙ"] },
+                ru: { noun: "СНЕГ", correct: "СНЕЖНЫЙ", wrong: ["СНЕГОВЫЙ", "СНЕГЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ВІТЕР", correct: "ВІТРЯНИЙ", wrong: ["ВІТРОВИЙ", "ВІТРИЙ"] },
+                ru: { noun: "ВЕТЕР", correct: "ВЕТРЕНЫЙ", wrong: ["ВЕТРОВЫЙ", "ВЕТРИЙ"] }
+            },
+            {
+                uk: { noun: "ГРІМ", correct: "ГРОМОВИЙ", wrong: ["ГРОМНИЙ", "ГРОМЯЧИЙ"] },
+                ru: { noun: "ГРОМ", correct: "ГРОМОВОЙ", wrong: ["ГРОМНЫЙ", "ГРОМЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "КАМІНЬ", correct: "КАМ'ЯНИЙ", wrong: ["КАМІННИЙ", "КАМІНОВИЙ"] },
+                ru: { noun: "КАМЕНЬ", correct: "КАМЕННЫЙ", wrong: ["КАМЕНЕВЫЙ", "КАМЕНЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ЗАЛІЗО", correct: "ЗАЛІЗНИЙ", wrong: ["ЗАЛІЗОВИЙ", "ЗАЛІЗЯЧИЙ"] },
+                ru: { noun: "ЖЕЛЕЗО", correct: "ЖЕЛЕЗНЫЙ", wrong: ["ЖЕЛЕЗОВЫЙ", "ЖЕЛЕЗЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ЗОЛОТО", correct: "ЗОЛОТИЙ", wrong: ["ЗОЛОТОВИЙ", "ЗОЛОТЯЧИЙ"] },
+                ru: { noun: "ЗОЛОТО", correct: "ЗОЛОТОЙ", wrong: ["ЗОЛОТОВЫЙ", "ЗОЛОТЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "СРІБЛО", correct: "СРІБНИЙ", wrong: ["СРІБЛОВИЙ", "СРІБЛЯЧИЙ"] },
+                ru: { noun: "СЕРЕБРО", correct: "СЕРЕБРЯНЫЙ", wrong: ["СЕРЕБРОВЫЙ", "СЕРЕБРИЙ"] }
+            },
+            {
+                uk: { noun: "МЕД", correct: "МЕДОВИЙ", wrong: ["МЕДНИЙ", "МЕДЯЧИЙ"] },
+                ru: { noun: "МЕД", correct: "МЕДОВЫЙ", wrong: ["МЕДНЫЙ", "МЕДЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "МОЛОКО", correct: "МОЛОЧНИЙ", wrong: ["МОЛОКОВИЙ", "МОЛОКЯЧИЙ"] },
+                ru: { noun: "МОЛОКО", correct: "МОЛОЧНЫЙ", wrong: ["МОЛОКОВЫЙ", "МОЛОКЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ШКІРА", correct: "ШКІРЯНИЙ", wrong: ["ШКІРОВИЙ", "ШКІРНИЙ"] },
+                ru: { noun: "КОЖА", correct: "КОЖНЫЙ", wrong: ["КОЖЕВЫЙ", "КОЖЯЧИЙ"] }
+            },
+            {
+                uk: { noun: "ДЕРЕВО", correct: "ДЕРЕВ'ЯНИЙ", wrong: ["ДЕРЕВНИЙ", "ДЕРЕВОВИЙ"] },
+                ru: { noun: "ДЕРЕВО", correct: "ДЕРЕВЯННЫЙ", wrong: ["ДЕРЕВНЫЙ", "ДЕРЕВОВЫЙ"] }
+            },
+            {
+                uk: { noun: "ПІСОК", correct: "ПІСЧАНИЙ", wrong: ["ПІСКОВИЙ", "ПІСНИЙ"] },
+                ru: { noun: "ПЕСОК", correct: "ПЕСЧАНЫЙ", wrong: ["ПЕСКОВЫЙ", "ПЕСНЫЙ"] }
+            },
+            {
+                uk: { noun: "ХМАРА", correct: "ХМАРНИЙ", wrong: ["ХМАРОВИЙ", "ХМАРЯЧИЙ"] },
+                ru: { noun: "ТУЧА", correct: "ТУЧНЫЙ", wrong: ["ТУЧЕВЫЙ", "ТУЧЯЧИЙ"] }
+            }
+        ];
+
+        function shuffleDeck() {
+            wordDeck = [...Array(WORD_BANK.length).keys()];
+            for (let i = wordDeck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [wordDeck[i], wordDeck[j]] = [wordDeck[j], wordDeck[i]];
+            }
+        }
+
+        function getNextWordIndex() {
+            if (wordDeck.length === 0) {
+                shuffleDeck();
+            }
+            currentWordIndex = wordDeck.pop();
+        }
+
+        const ASTEROID_PALETTES = [
+            { light: '#64748b', mid: '#475569', dark: '#1e293b', highlight: '#94a3b8' },
+            { light: '#78716c', mid: '#57534e', dark: '#292524', highlight: '#a8a29e' },
+            { light: '#6b7280', mid: '#4b5563', dark: '#1f2937', highlight: '#9ca3af' }
+        ];
+
+        function buildAsteroidsForCurrentWord() {
+            asteroids.length = 0;
+            const currentPair = WORD_BANK[currentWordIndex][currentLang];
+            const options = [
+                { text: currentPair.correct, isCorrect: true },
+                { text: currentPair.wrong[0], isCorrect: false },
+                { text: currentPair.wrong[1], isCorrect: false }
+            ];
+
+            for (let i = options.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [options[i], options[j]] = [options[j], options[i]];
+            }
+
+            const laneYs = [H * 0.28, H * 0.54, H * 0.80];
+            const targetX = W * 0.74;
+
+            options.forEach((opt, idx) => {
+                const rx = Math.min(W * 0.14, 155);
+                const ry = Math.min(H * 0.11, 78);
+                const vertices = [];
+                const numPts = 12;
+                for (let v = 0; v < numPts; v++) {
+                    const ang = (v / numPts) * Math.PI * 2;
+                    const radiusVar = 0.88 + Math.sin(v * 3.1 + idx * 1.5) * 0.12 + Math.cos(v * 2.0) * 0.08;
+                    vertices.push({ ang, rRatio: radiusVar });
+                }
+
+                const craters = [
+                    { cx: -0.32, cy: -0.22, r: 0.18 },
+                    { cx: 0.35, cy: 0.3, r: 0.15 },
+                    { cx: -0.15, cy: 0.4, r: 0.12 }
+                ];
+
+                asteroids.push({
+                    laneIndex: idx,
+                    x: W + 250 + idx * 100,
+                    targetX: targetX + (idx === 1 ? 40 : -20),
+                    y: laneYs[idx],
+                    baseY: laneYs[idx],
+                    rx,
+                    ry,
+                    vertices,
+                    craters,
+                    palette: ASTEROID_PALETTES[idx % ASTEROID_PALETTES.length],
+                    text: opt.text,
+                    isCorrect: opt.isCorrect,
+                    floatPhase: idx * 2.2,
+                    rotAngle: Math.random() * Math.PI,
+                    rotSpeed: (idx % 2 === 0 ? 1 : -1) * (0.0008 + Math.random() * 0.0012),
+                    wobbleTimer: 0,
+                    wrongFlash: 0,
+                    destroyed: false,
+                    hoverScale: 1
+                });
+            });
+        }
+
+        function getRocketNoun() {
+            return WORD_BANK[currentWordIndex][currentLang].noun;
+        }
+
+        /* ============================================================================
+           5. ENVIRONMENT INITIALIZATION
+           ============================================================================ */
+        function initSpaceScene() {
+            stars.length = 0;
+            const starColors = ['#ffffff', '#d6f0ff', '#fff4e0', '#e0cfff', '#a8ffff'];
+            for (let i = 0; i < 220; i++) {
+                const depth = Math.random();
+                stars.push({
+                    x: Math.random() * W,
+                    y: Math.random() * H,
+                    size: 0.5 + depth * 2.5,
+                    speed: 0.2 + depth * 3.2,
+                    color: starColors[Math.floor(Math.random() * starColors.length)],
+                    twinkleSpeed: 0.015 + Math.random() * 0.04,
+                    twinklePhase: Math.random() * Math.PI * 2
+                });
+            }
+
+            nebulae.length = 0;
+            const nebColors = [
+                'rgba(76, 29, 149, 0.16)',
+                'rgba(14, 116, 144, 0.15)',
+                'rgba(157, 23, 77, 0.14)',
+                'rgba(30, 58, 138, 0.16)'
+            ];
+            for (let i = 0; i < 6; i++) {
+                nebulae.push({
+                    x: Math.random() * W,
+                    y: Math.random() * H,
+                    radius: Math.max(W, H) * (0.22 + Math.random() * 0.22),
+                    color: nebColors[i % nebColors.length],
+                    vx: -(0.1 + Math.random() * 0.18)
+                });
+            }
+        }
+
+        function resizeCanvas() {
+            W = window.innerWidth;
+            H = window.innerHeight;
+            canvas.width = W;
+            canvas.height = H;
+
+            const laneYs = [H * 0.28, H * 0.54, H * 0.80];
+            const targetX = W * 0.74;
+            asteroids.forEach((ast, idx) => {
+                ast.baseY = laneYs[idx];
+                ast.targetX = targetX + (idx === 1 ? 40 : -20);
+                ast.rx = Math.min(W * 0.14, 155);
+                ast.ry = Math.min(H * 0.11, 78);
+            });
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        /* ============================================================================
+           6. INTERACTION & GAMEPLAY
+           ============================================================================ */
+        function fireAtAsteroid(ast) {
+            if (isTransitioning || ast.destroyed) return;
+
+            const dx = ast.x - rocket.x;
+            const dy = ast.y - rocket.y;
+            rocket.targetAngle = Math.atan2(dy, dx) * 0.6;
+            rocket.recoilX = -20;
+
+            const wingOffsets = [-28, 28];
+
+            if (ast.isCorrect) {
+                isTransitioning = true;
+                audio.playLaserAndShatter();
+
+                wingOffsets.forEach(offsetY => {
+                    lasers.push({
+                        x1: rocket.x + 85,
+                        y1: rocket.y + offsetY,
+                        x2: ast.x,
+                        y2: ast.y + offsetY * 0.25,
+                        color: '#00f7ff',
+                        coreColor: '#ffffff',
+                        width: 10,
+                        alpha: 1.0,
+                        isRicochet: false
+                    });
+                });
+
+                ast.destroyed = true;
+                spawnCinematicExplosion(ast);
+
+                setTimeout(() => {
+                    warpFactor = 16;
+                    getNextWordIndex();
+                    buildAsteroidsForCurrentWord();
+                    rocket.targetAngle = 0;
+                    setTimeout(() => {
+                        isTransitioning = false;
+                    }, 350);
+                }, 1000);
+
+            } else {
+                audio.playRicochet();
+                ast.wobbleTimer = 30;
+                ast.wrongFlash = 1.0;
+                rocket.shakeTimer = 20;
+                rocket.shieldFlash = 1.0;
+
+                const ricochetAngle = (Math.random() > 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.6);
+                lasers.push({
+                    x1: rocket.x + 85,
+                    y1: rocket.y,
+                    x2: ast.x - ast.rx * 0.7,
+                    y2: ast.y,
+                    rx3: (ast.x - ast.rx * 0.7) + Math.cos(ricochetAngle) * 220,
+                    ry3: ast.y + Math.sin(ricochetAngle) * 220,
+                    color: '#ff3344',
+                    coreColor: '#ffcccc',
+                    width: 6,
+                    alpha: 1.0,
+                    isRicochet: true
+                });
+
+                for (let i = 0; i < 18; i++) {
+                    const ang = Math.PI + (Math.random() - 0.5) * 2;
+                    const spd = 4 + Math.random() * 8;
+                    debrisSparks.push({
+                        x: ast.x - ast.rx * 0.7,
+                        y: ast.y,
+                        vx: Math.cos(ang) * spd,
+                        vy: Math.sin(ang) * spd,
+                        size: 2 + Math.random() * 4,
+                        alpha: 1,
+                        color: i % 2 === 0 ? '#ff4444' : '#ffaa22'
+                    });
+                }
+            }
+        }
+
+        function spawnCinematicExplosion(ast) {
+            shockwaves.push({
+                x: ast.x,
+                y: ast.y,
+                radius: 10,
+                maxRadius: Math.max(ast.rx, ast.ry) * 2.2,
+                color: '#00f2ff',
+                alpha: 1.0,
+                lineWidth: 8
+            });
+
+            for (let i = 0; i < 50; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const spd = 3 + Math.random() * 14;
+                fragments.push({
+                    x: ast.x + (Math.random() - 0.5) * ast.rx * 0.8,
+                    y: ast.y + (Math.random() - 0.5) * ast.ry * 0.8,
+                    vx: Math.cos(ang) * spd,
+                    vy: Math.sin(ang) * spd,
+                    size: 6 + Math.random() * 16,
+                    rot: Math.random() * Math.PI * 2,
+                    vRot: (Math.random() - 0.5) * 0.3,
+                    color: i % 2 === 0 ? ast.palette.light : ast.palette.mid,
+                    alpha: 1.0
+                });
+            }
+        }
+
+        /* ============================================================================
+           7. RENDER FUNCTIONS (HIGHLY DETAILED VECTOR ROCKET & CLEAN UI PANELS)
+           ============================================================================ */
+        function drawSpaceBackground() {
+            const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+            bgGrad.addColorStop(0, '#010206');
+            bgGrad.addColorStop(0.5, '#040614');
+            bgGrad.addColorStop(1, '#09031a');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, W, H);
+
+            nebulae.forEach(neb => {
+                neb.x += neb.vx * warpFactor;
+                if (neb.x + neb.radius < 0) neb.x = W + neb.radius;
+
+                const grad = ctx.createRadialGradient(neb.x, neb.y, 10, neb.x, neb.y, neb.radius);
+                grad.addColorStop(0, neb.color);
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(neb.x, neb.y, neb.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ringedPlanet.drift += 0.0015;
+            const px = W * 0.55 + Math.sin(ringedPlanet.drift) * 18;
+            const py = H * 0.18;
+            const pr = Math.min(W, H) * 0.055;
+
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.strokeStyle = 'rgba(100, 180, 255, 0.2)';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, pr * 2.2, pr * 0.45, -0.25, Math.PI, Math.PI * 2);
+            ctx.stroke();
+
+            const pGrad = ctx.createRadialGradient(-pr * 0.35, -pr * 0.35, pr * 0.08, 0, 0, pr);
+            pGrad.addColorStop(0, '#38bdf8');
+            pGrad.addColorStop(0.5, '#1d4ed8');
+            pGrad.addColorStop(1, '#020617');
+            ctx.fillStyle = pGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, pr, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(186, 230, 253, 0.4)';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, pr * 2.2, pr * 0.45, -0.25, 0, Math.PI);
+            ctx.stroke();
+            ctx.restore();
+
+            stars.forEach(st => {
+                st.x -= st.speed * warpFactor;
+                st.twinklePhase += st.twinkleSpeed;
+                if (st.x < 0) {
+                    st.x = W + Math.random() * 50;
+                    st.y = Math.random() * H;
+                }
+                const alpha = 0.4 + Math.sin(st.twinklePhase) * 0.5;
+                ctx.fillStyle = st.color;
+                ctx.globalAlpha = Math.max(0.1, Math.min(1, alpha));
+
+                if (warpFactor > 2) {
+                    ctx.strokeStyle = st.color;
+                    ctx.lineWidth = st.size;
+                    ctx.beginPath();
+                    ctx.moveTo(st.x, st.y);
+                    ctx.lineTo(st.x + st.speed * warpFactor * 2.5, st.y);
+                    ctx.stroke();
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(st.x, st.y, st.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function updateRocketPhysics() {
+            let targetY = rocket.y;
+            let targetX = rocket.x;
+
+            if (pointer.isDown) {
+                targetY = pointer.y;
+                targetX = Math.min(W * 0.42, Math.max(W * 0.15, pointer.x));
+            } else if (pointer.hoveredAsteroid && !isTransitioning) {
+                const ast = pointer.hoveredAsteroid;
+                const dx = ast.x - rocket.x;
+                const dy = ast.y - rocket.y;
+                rocket.targetAngle = Math.atan2(dy, dx) * 0.4;
+                targetY = H * 0.5 + (ast.y - H * 0.5) * 0.25;
+            } else {
+                if (keys.w || keys.up) targetY -= 8;
+                if (keys.s || keys.down) targetY += 8;
+                if (keys.a || keys.left) targetX -= 6;
+                if (keys.d || keys.right) targetX += 6;
+
+                rocket.targetAngle = Math.sin(rocket.thrusterPhase * 0.03) * 0.03;
+                if (!keys.w && !keys.s && !keys.up && !keys.down && !pointer.hoveredAsteroid) {
+                    targetY = H * 0.5 + Math.sin(rocket.thrusterPhase * 0.035) * 12;
+                }
+            }
+
+            const ay = (targetY - rocket.y) * 0.09;
+            const ax = (targetX - rocket.x) * 0.09;
+            rocket.vy = rocket.vy * 0.8 + ay * 0.2;
+            rocket.vx = rocket.vx * 0.8 + ax * 0.2;
+            rocket.y += rocket.vy;
+            rocket.x += rocket.vx;
+
+            rocket.y = Math.max(H * 0.12, Math.min(H * 0.88, rocket.y));
+            rocket.x = Math.max(W * 0.12, Math.min(W * 0.45, rocket.x));
+
+            rocket.angle += (rocket.targetAngle - rocket.angle) * 0.12;
+            rocket.recoilX *= 0.8;
+            rocket.thrusterPhase += 1;
+
+            if (rocket.shakeTimer > 0) rocket.shakeTimer--;
+            if (rocket.shieldFlash > 0) rocket.shieldFlash = Math.max(0, rocket.shieldFlash - 0.04);
+
+            const numExhaust = warpFactor > 2 ? 5 : 2;
+            for (let i = 0; i < numExhaust; i++) {
+                const spread = (Math.random() - 0.5) * 26;
+                rocket.exhaustParticles.push({
+                    x: rocket.x + rocket.recoilX - 130 * Math.cos(rocket.angle) - spread * Math.sin(rocket.angle),
+                    y: rocket.y - 130 * Math.sin(rocket.angle) + spread * Math.cos(rocket.angle),
+                    vx: (-7 - Math.random() * 6) * Math.cos(rocket.angle),
+                    vy: (-7 - Math.random() * 6) * Math.sin(rocket.angle),
+                    size: 9 + Math.random() * 12,
+                    alpha: 0.9,
+                    hue: Math.random() > 0.3 ? 190 : 20
+                });
+            }
+
+            for (let i = rocket.exhaustParticles.length - 1; i >= 0; i--) {
+                const p = rocket.exhaustParticles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.size *= 0.92;
+                p.alpha -= 0.04;
+                if (p.alpha <= 0.02) {
+                    rocket.exhaustParticles.splice(i, 1);
+                    continue;
+                }
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                const pGrad = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, p.size);
+                pGrad.addColorStop(0, `hsla(${p.hue}, 100%, 75%, ${p.alpha})`);
+                pGrad.addColorStop(1, `hsla(${p.hue}, 100%, 50%, 0)`);
+                ctx.fillStyle = pGrad;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function drawRocket() {
+            updateRocketPhysics();
+
+            let shakeX = 0, shakeY = 0;
+            if (rocket.shakeTimer > 0) {
+                shakeX = (Math.random() - 0.5) * 12;
+                shakeY = (Math.random() - 0.5) * 12;
+            }
+
+            const scale = Math.min(1.08, Math.max(0.8, W / 1300));
+
+            ctx.save();
+            ctx.translate(rocket.x + rocket.recoilX + shakeX, rocket.y + shakeY);
+            ctx.rotate(rocket.angle);
+            ctx.scale(scale, scale);
+
+            // Thruster flame
+            const flameLen = 85 + Math.sin(rocket.thrusterPhase * 0.6) * 18 + (warpFactor > 2 ? 60 : 0);
+            const flameGrad = ctx.createLinearGradient(-120, 0, -120 - flameLen, 0);
+            flameGrad.addColorStop(0, '#ffffff');
+            flameGrad.addColorStop(0.3, '#00f2ff');
+            flameGrad.addColorStop(1, 'rgba(0, 100, 255, 0)');
+            ctx.fillStyle = flameGrad;
+            ctx.beginPath();
+            ctx.moveTo(-120, -24);
+            ctx.quadraticCurveTo(-120 - flameLen * 0.5, 0, -120 - flameLen, 0);
+            ctx.quadraticCurveTo(-120 - flameLen * 0.5, 0, -120, 24);
+            ctx.closePath();
+            ctx.fill();
+
+            // Wings
+            const wingGrad = ctx.createLinearGradient(-50, -100, 40, 100);
+            wingGrad.addColorStop(0, '#e11d48');
+            wingGrad.addColorStop(1, '#881337');
+            ctx.fillStyle = wingGrad;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2.2;
+
+            ctx.beginPath();
+            ctx.moveTo(-90, -32);
+            ctx.lineTo(-125, -98);
+            ctx.lineTo(-60, -92);
+            ctx.lineTo(15, -40);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(-90, 32);
+            ctx.lineTo(-125, 98);
+            ctx.lineTo(-60, 92);
+            ctx.lineTo(15, 40);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Wingtip guns
+            ctx.fillStyle = '#00f5d4';
+            ctx.beginPath();
+            ctx.roundRect(65, -32, 32, 7, 3);
+            ctx.roundRect(65, 25, 32, 7, 3);
+            ctx.fill();
+
+            // Fuselage
+            const bodyGrad = ctx.createLinearGradient(0, -55, 0, 55);
+            bodyGrad.addColorStop(0, '#64748b');
+            bodyGrad.addColorStop(0.25, '#cbd5e1');
+            bodyGrad.addColorStop(0.5, '#1e293b');
+            bodyGrad.addColorStop(1, '#0f172a');
+
+            ctx.fillStyle = bodyGrad;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2.8;
+            ctx.beginPath();
+            ctx.moveTo(-110, -38);
+            ctx.quadraticCurveTo(5, -58, 90, -32);
+            ctx.quadraticCurveTo(140, 0, 90, 32);
+            ctx.quadraticCurveTo(5, 58, -110, 38);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Nose cone
+            const noseGrad = ctx.createLinearGradient(80, -32, 135, 32);
+            noseGrad.addColorStop(0, '#fb7185');
+            noseGrad.addColorStop(1, '#9f1239');
+            ctx.fillStyle = noseGrad;
+            ctx.beginPath();
+            ctx.moveTo(80, -33);
+            ctx.quadraticCurveTo(142, 0, 80, 33);
+            ctx.closePath();
+            ctx.fill();
+
+            // Noun bay window (Increased font size for maximum clarity)
+            const bayGrad = ctx.createLinearGradient(-95, -28, 65, 28);
+            bayGrad.addColorStop(0, '#020617');
+            bayGrad.addColorStop(0.5, '#0f172a');
+            bayGrad.addColorStop(1, '#020617');
+            ctx.fillStyle = bayGrad;
+            ctx.strokeStyle = '#00f7ff';
+            ctx.lineWidth = 2.5;
+
+            ctx.beginPath();
+            ctx.roundRect(-98, -28, 166, 56, 24);
+            ctx.fill();
+            ctx.stroke();
+
+            const nounText = getRocketNoun();
+            ctx.fillStyle = '#ffffff';
+            const fontSize = nounText.length > 7 ? 24 : 30;
+            ctx.font = `900 ${fontSize}px 'Montserrat', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(nounText, -15, 0);
+
+            if (rocket.shieldFlash > 0) {
+                ctx.strokeStyle = `rgba(255, 60, 60, ${rocket.shieldFlash})`;
+                ctx.lineWidth = 4.5;
+                ctx.beginPath();
+                ctx.ellipse(-5, 0, 150, 82, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function drawAsteroids() {
+            pointer.hoveredAsteroid = null;
+
+            asteroids.forEach(ast => {
+                if (ast.destroyed) return;
+
+                ast.x += (ast.targetX - ast.x) * 0.08;
+                ast.floatPhase += 0.025;
+                ast.y = ast.baseY + Math.sin(ast.floatPhase) * 8;
+                ast.rotAngle += ast.rotSpeed;
+
+                const dx = pointer.x - ast.x;
+                const dy = pointer.y - ast.y;
+                const isHovered = (dx * dx) / (ast.rx * ast.rx) + (dy * dy) / (ast.ry * ast.ry) <= 1.1;
+                if (isHovered && !isTransitioning) {
+                    pointer.hoveredAsteroid = ast;
+                    ast.hoverScale += (1.06 - ast.hoverScale) * 0.15;
+                } else {
+                    ast.hoverScale += (1.0 - ast.hoverScale) * 0.15;
+                }
+
+                let wobbleX = 0, wobbleRot = 0;
+                if (ast.wobbleTimer > 0) {
+                    ast.wobbleTimer--;
+                    wobbleX = Math.sin(ast.wobbleTimer * 1.5) * 10;
+                    wobbleRot = Math.cos(ast.wobbleTimer * 1.3) * 0.08;
+                }
+                if (ast.wrongFlash > 0) {
+                    ast.wrongFlash = Math.max(0, ast.wrongFlash - 0.04);
+                }
+
+                ctx.save();
+                ctx.translate(ast.x + wobbleX, ast.y);
+                ctx.rotate(ast.rotAngle + wobbleRot);
+                ctx.scale(ast.hoverScale, ast.hoverScale);
+
+                // Organic Rounded Pebble / Boulder Asteroid with Smooth Bézier Curves
+                const rockGrad = ctx.createRadialGradient(-ast.rx * 0.3, -ast.ry * 0.3, 10, 0, 0, ast.rx);
+                rockGrad.addColorStop(0, ast.palette.highlight);
+                rockGrad.addColorStop(0.4, ast.palette.light);
+                rockGrad.addColorStop(0.75, ast.palette.mid);
+                rockGrad.addColorStop(1, ast.palette.dark);
+
+                ctx.fillStyle = rockGrad;
+                ctx.strokeStyle = ast.wrongFlash > 0 ? '#ff3333' : (isHovered ? '#ffffff' : '#475569');
+                ctx.lineWidth = isHovered ? 3.5 : 2.2;
+
+                ctx.beginPath();
+                const pts = ast.vertices;
+                const len = pts.length;
+                
+                // Build smooth rounded organic shape using quadratic/cubic curves through vertices
+                for (let i = 0; i < len; i++) {
+                    const curr = pts[i];
+                    const next = pts[(i + 1) % len];
+                    
+                    const x1 = Math.cos(curr.ang) * ast.rx * curr.rRatio;
+                    const y1 = Math.sin(curr.ang) * ast.ry * curr.rRatio;
+                    const x2 = Math.cos(next.ang) * ast.rx * next.rRatio;
+                    const y2 = Math.sin(next.ang) * ast.ry * next.rRatio;
+                    
+                    const mx = (x1 + x2) * 0.5;
+                    const my = (y1 + y2) * 0.5;
+
+                    if (i === 0) {
+                        ctx.moveTo(mx, my);
+                    } else {
+                        ctx.quadraticCurveTo(x1, y1, mx, my);
+                    }
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Realistic Craters on Asteroid Surface
+                ast.craters.forEach(c => {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.ellipse(c.cx * ast.rx, c.cy * ast.ry, c.r * ast.rx, c.r * ast.ry, 0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                });
+
+                ctx.restore();
+
+                // Crisp UI Panel for Adjective Word (Larger Font, Perfectly Clear)
+                const panelW = Math.min(280, ast.rx * 1.9);
+                const panelH = 56;
+                const panelX = ast.x;
+                const panelY = ast.y - ast.ry - 46;
+
+                ctx.save();
+                ctx.fillStyle = 'rgba(4, 8, 20, 0.94)';
+                ctx.strokeStyle = isHovered ? '#00ffff' : '#334155';
+                ctx.lineWidth = isHovered ? 2.5 : 1.8;
+
+                ctx.beginPath();
+                ctx.roundRect(panelX - panelW / 2, panelY - panelH / 2, panelW, panelH, 14);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                const fontSize = Math.min(25, Math.max(17, Math.floor(panelW / Math.max(6, ast.text.length * 0.62))));
+                ctx.font = `800 ${fontSize}px 'Montserrat', sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ast.text, panelX, panelY);
+
+                if (isHovered && !isTransitioning) {
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(ast.x, ast.y, Math.max(ast.rx, ast.ry) * 1.12, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            });
+
+            canvas.style.cursor = pointer.hoveredAsteroid ? 'pointer' : 'crosshair';
+        }
+
+        function drawEffects() {
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                const l = lasers[i];
+                l.alpha -= 0.05;
+                if (l.alpha <= 0) {
+                    lasers.splice(i, 1);
+                    continue;
+                }
+                ctx.save();
+                ctx.globalAlpha = l.alpha;
+                ctx.strokeStyle = l.color;
+                ctx.lineWidth = l.width;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(l.x1, l.y1);
+                ctx.lineTo(l.x2, l.y2);
+                if (l.isRicochet) ctx.lineTo(l.rx3, l.ry3);
+                ctx.stroke();
+
+                ctx.strokeStyle = l.coreColor;
+                ctx.lineWidth = l.width * 0.4;
+                ctx.beginPath();
+                ctx.moveTo(l.x1, l.y1);
+                ctx.lineTo(l.x2, l.y2);
+                if (l.isRicochet) ctx.lineTo(l.rx3, l.ry3);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.radius += (sw.maxRadius - sw.radius) * 0.15;
+                sw.alpha -= 0.03;
+                if (sw.alpha <= 0) {
+                    shockwaves.splice(i, 1);
+                    continue;
+                }
+                ctx.save();
+                ctx.globalAlpha = sw.alpha;
+                ctx.strokeStyle = sw.color;
+                ctx.lineWidth = sw.lineWidth * sw.alpha;
+                ctx.beginPath();
+                ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            for (let i = fragments.length - 1; i >= 0; i--) {
+                const f = fragments[i];
+                f.x += f.vx;
+                f.y += f.vy;
+                f.vx *= 0.98;
+                f.vy *= 0.98;
+                f.rot += f.vRot;
+                f.alpha -= 0.02;
+                if (f.alpha <= 0) {
+                    fragments.splice(i, 1);
+                    continue;
+                }
+                ctx.save();
+                ctx.translate(f.x, f.y);
+                ctx.rotate(f.rot);
+                ctx.globalAlpha = f.alpha;
+                ctx.fillStyle = f.color;
+                ctx.beginPath();
+                ctx.moveTo(-f.size * 0.6, -f.size * 0.5);
+                ctx.lineTo(f.size * 0.5, -f.size * 0.7);
+                ctx.lineTo(f.size * 0.7, f.size * 0.3);
+                ctx.lineTo(0, f.size * 0.6);
+                ctx.lineTo(-f.size * 0.6, f.size * 0.3);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            for (let i = debrisSparks.length - 1; i >= 0; i--) {
+                const ds = debrisSparks[i];
+                ds.x += ds.vx;
+                ds.y += ds.vy;
+                ds.alpha -= 0.04;
+                if (ds.alpha <= 0) {
+                    debrisSparks.splice(i, 1);
+                    continue;
+                }
+                ctx.save();
+                ctx.globalAlpha = ds.alpha;
+                ctx.fillStyle = ds.color;
+                ctx.beginPath();
+                ctx.arc(ds.x, ds.y, ds.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        /* ============================================================================
+           8. EVENT LISTENERS & MAIN LOOP
+           ============================================================================ */
+        window.addEventListener('mousemove', e => {
+            pointer.x = e.clientX;
+            pointer.y = e.clientY;
+        });
+
+        window.addEventListener('mousedown', e => {
+            pointer.x = e.clientX;
+            pointer.y = e.clientY;
+            pointer.isDown = true;
+            audio.init();
+
+            for (let i = 0; i < asteroids.length; i++) {
+                const ast = asteroids[i];
+                if (ast.destroyed) continue;
+                const dx = e.clientX - ast.x;
+                const dy = e.clientY - ast.y;
+                if ((dx * dx) / (ast.rx * ast.rx) + (dy * dy) / (ast.ry * ast.ry) <= 1.2) {
+                    fireAtAsteroid(ast);
+                    break;
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', () => { pointer.isDown = false; });
+
+        window.addEventListener('touchstart', e => {
+            if (e.touches.length > 0) {
+                pointer.x = e.touches[0].clientX;
+                pointer.y = e.touches[0].clientY;
+                pointer.isDown = true;
+                audio.init();
+
+                for (let i = 0; i < asteroids.length; i++) {
+                    const ast = asteroids[i];
+                    if (ast.destroyed) continue;
+                    const dx = pointer.x - ast.x;
+                    const dy = pointer.y - ast.y;
+                    if ((dx * dx) / (ast.rx * ast.rx) + (dy * dy) / (ast.ry * ast.ry) <= 1.2) {
+                        fireAtAsteroid(ast);
+                        break;
+                    }
+                }
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchmove', e => {
+            if (e.touches.length > 0) {
+                pointer.x = e.touches[0].clientX;
+                pointer.y = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', () => { pointer.isDown = false; });
+
+        window.addEventListener('keydown', e => {
+            if (e.key === 'w' || e.key === 'W') keys.w = true;
+            if (e.key === 's' || e.key === 'S') keys.s = true;
+            if (e.key === 'a' || e.key === 'A') keys.a = true;
+            if (e.key === 'd' || e.key === 'D') keys.d = true;
+            if (e.key === 'ArrowUp') keys.up = true;
+            if (e.key === 'ArrowDown') keys.down = true;
+            if (e.key === 'ArrowLeft') keys.left = true;
+            if (e.key === 'ArrowRight') keys.right = true;
+        });
+
+        window.addEventListener('keyup', e => {
+            if (e.key === 'w' || e.key === 'W') keys.w = false;
+            if (e.key === 's' || e.key === 'S') keys.s = false;
+            if (e.key === 'a' || e.key === 'A') keys.a = false;
+            if (e.key === 'd' || e.key === 'D') keys.d = false;
+            if (e.key === 'ArrowUp') keys.up = false;
+            if (e.key === 'ArrowDown') keys.down = false;
+            if (e.key === 'ArrowLeft') keys.left = false;
+            if (e.key === 'ArrowRight') keys.right = false;
+        });
+
+        const langBtn = document.getElementById('langBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const nextBtnText = document.getElementById('nextBtnText');
+
+        langBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            audio.playWarpBoost();
+            if (currentLang === 'uk') {
+                currentLang = 'ru';
+                langBtn.textContent = 'РУС';
+                nextBtnText.textContent = 'ДАЛЕЕ';
+            } else {
+                currentLang = 'uk';
+                langBtn.textContent = 'УКР';
+                nextBtnText.textContent = 'ДАЛІ';
+            }
+        });
+
+        nextBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            audio.playWarpBoost();
+            isTransitioning = false;
+            warpFactor = 14;
+            getNextWordIndex();
+            buildAsteroidsForCurrentWord();
+            rocket.targetAngle = 0;
+        });
+
+        function gameLoop() {
+            warpFactor += (1 - warpFactor) * 0.08;
+
+            drawSpaceBackground();
+            drawAsteroids();
+            drawEffects();
+            drawRocket();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function () {
+            resizeCanvas();
+            initSpaceScene();
+            shuffleDeck();
+            getNextWordIndex();
+            buildAsteroidsForCurrentWord();
+            gameLoop();
+        };
+    </script>
+</body>
+</html>
