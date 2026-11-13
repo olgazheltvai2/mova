@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Пригоди Монстрика — А та О</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html, body { width: 100vw; height: 100vh; overflow: hidden; background: #0d2b1d; font-family: 'Segoe UI', system-ui, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: pointer; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = window.innerWidth, H = window.innerHeight;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// 11 предметів: Автобус, Апельсин, Ананас, Акула, Акваріум (А) та Олівець, Огірок, Окуляри, Острів, Олень, Оса (О)
+const ITEMS = [
+  { id: 'bus',       letter: 'А', hasWater: false },
+  { id: 'orange',    letter: 'А', hasWater: false },
+  { id: 'pineapple', letter: 'А', hasWater: false },
+  { id: 'shark',     letter: 'А', hasWater: true  },
+  { id: 'aquarium',  letter: 'А', hasWater: false },
+  { id: 'pencil',    letter: 'О', hasWater: false },
+  { id: 'cucumber',  letter: 'О', hasWater: false },
+  { id: 'glasses',   letter: 'О', hasWater: false },
+  { id: 'island',    letter: 'О', hasWater: true  },
+  { id: 'deer',      letter: 'О', hasWater: false },
+  { id: 'wasp',      letter: 'О', hasWater: false }
+];
+
+// Синтезатор звуків Web Audio API (без зовнішніх файлів)
+class SoundEngine {
+  constructor() { this.ctx = null; this.danceInterval = null; }
+  init() {
+    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+  tone(freq, type, dur, vol = 0.15, delay = 0, slideTo = null) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime + delay;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    g.gain.setValueAtTime(0.001, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(g); g.connect(this.ctx.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.02);
+  }
+  footstep(step) {
+    this.tone(step % 2 === 0 ? 115 : 138, 'triangle', 0.08, 0.08, 0, 55);
+  }
+  appear() {
+    this.tone(392, 'sine', 0.14, 0.12, 0, 523.25);
+    this.tone(659.25, 'triangle', 0.22, 0.12, 0.09, 783.99);
+  }
+  click() { this.tone(620, 'sine', 0.06, 0.1, 0, 880); }
+  correct(id) {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 'triangle', 0.24, 0.16, i * 0.07));
+    if (id === 'bus') { this.tone(293.66, 'sawtooth', 0.2, 0.1, 0.1); this.tone(369.99, 'sawtooth', 0.3, 0.1, 0.25); }
+    if (id === 'wasp') { this.tone(220, 'sawtooth', 0.45, 0.08, 0.05, 310); }
+  }
+  wrong() {
+    this.tone(240, 'sawtooth', 0.18, 0.13, 0, 145);
+    this.tone(165, 'sawtooth', 0.28, 0.13, 0.14, 98);
+  }
+  startDance() {
+    this.stopDance();
+    const notes = [523.25, 659.25, 783.99, 659.25, 880, 783.99, 698.46, 587.33];
+    let step = 0;
+    this.danceInterval = setInterval(() => {
+      if (!this.ctx) return;
+      const f = notes[step % notes.length];
+      this.tone(f, 'triangle', 0.18, 0.14);
+      this.tone(f * 0.5, 'sine', 0.14, 0.12);
+      step++;
+    }, 210);
+  }
+  stopDance() {
+    if (this.danceInterval) { clearInterval(this.danceInterval); this.danceInterval = null; }
+  }
+}
+const sound = new SoundEngine();
+
+const state = {
+  lang: 'УКР',
+  phase: 'WALKING', // WALKING | ENCOUNTER | CELEBRATE | DANCE
+  worldX: 0,
+  targetWorldX: 0,
+  walkSpeed: 0,
+  maxWalkSpeed: 330,
+  time: 0,
+  queue: [],
+  completedCount: 0,
+  worldObjects: [],
+  currentEncounter: null,
+  danceTimer: 0,
+  wearingGlasses: 0,
+  swapLetters: false,
+  mouse: { x: 0, y: 0 },
+  buttons: {
+    letterA: { x: 0, y: 0, r: 74, scale: 0, targetScale: 0, hover: 0, shake: 0 },
+    letterO: { x: 0, y: 0, r: 74, scale: 0, targetScale: 0, hover: 0, shake: 0 },
+    nextBtn: { x: 0, y: 0, r: 32, hover: 0 },
+    langBtn: { x: 0, y: 0, w: 84, h: 46, hover: 0 }
+  },
+  monster: {
+    x: 0, y: 0, walkCycle: 0, lastStep: -1, vy: 0, jumpY: 0,
+    squashX: 1, squashY: 1, lean: 0, mood: 'happy', moodTimer: 0, blinkTimer: 2
+  },
+  particles: [],
+  clouds: Array.from({ length: 7 }, (_, i) => ({ x: i * 320, y: 55 + (i % 3) * 48, s: 0.7 + (i % 3) * 0.25, spd: 12 + (i % 4) * 5 })),
+  trees: Array.from({ length: 16 }, (_, i) => ({ wx: i * 270 + (i % 3) * 35, s: 0.85 + (i % 3) * 0.16, type: i % 2, hue: (i * 17) % 26 })),
+  bushes: Array.from({ length: 24 }, (_, i) => ({ wx: i * 175 + 40, s: 0.75 + (i % 3) * 0.2, hue: (i * 11) % 20 })),
+  flowers: Array.from({ length: 42 }, (_, i) => ({ wx: i * 95, col: ['#FF595E', '#FFCA3A', '#FF924C', '#C77DFF', '#FFF3B0'][i % 5], sz: 8 + (i % 3) * 2.5, bend: 0 })),
+  butterflies: Array.from({ length: 6 }, (_, i) => ({ x: i * 330, y: 150 + (i % 3) * 85, ph: i * 1.3, col: ['#FFBE0B', '#FF006E', '#00F5D4'][i % 3] }))
+};
+
+function refillQueue() {
+  const copy = [...ITEMS];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  if (state.currentEncounter && copy[0].id === state.currentEncounter.item.id) copy.push(copy.shift());
+  state.queue = copy;
+}
+
+function spawnNextEncounter() {
+  if (state.queue.length === 0) refillQueue();
+  const nextItem = state.queue.shift();
+  const encounterScreenX = W * 0.63;
+  // Завжди розміщуємо наступний предмет за правим краєм екрана, щоб він плавно виїжджав назустріч монстрику
+  const minSpawnX = state.worldX + W + 240;
+  const prevX = state.currentEncounter ? state.currentEncounter.worldX : state.worldX;
+  const spawnWorldX = Math.max(minSpawnX, prevX + Math.max(W * 0.68, 680));
+
+  const enc = { item: nextItem, worldX: spawnWorldX, solved: false, solveTimer: 0 };
+  state.worldObjects.push(enc);
+  state.currentEncounter = enc;
+  state.targetWorldX = spawnWorldX - encounterScreenX;
+  state.worldObjects = state.worldObjects.filter(o => o.worldX - state.worldX > -600);
+
+  state.phase = 'WALKING';
+  state.monster.mood = 'happy';
+  state.swapLetters = Math.random() < 0.5;
+  state.buttons.letterA.targetScale = 0;
+  state.buttons.letterO.targetScale = 0;
+}
+
+refillQueue();
+spawnNextEncounter();
+
+function spawnParticles(x, y, count, colors, type = 'star') {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = 70 + Math.random() * 230;
+    state.particles.push({
+      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - 90,
+      size: 6 + Math.random() * 9, color: colors[i % colors.length],
+      life: 1, decay: 0.7 + Math.random() * 0.6, rot: Math.random() * 6, vRot: (Math.random() - 0.5) * 8, type
+    });
+  }
+}
+
+function drawStarShape(x, y, spikes, outerR, innerR, rot = 0) {
+  ctx.beginPath();
+  for (let i = 0; i < spikes * 2; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const a = rot + (i * Math.PI) / spikes - Math.PI / 2;
+    if (i === 0) ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+    else ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+  }
+  ctx.closePath();
+}
+
+// Малювання живого фону з багатошаровим паралаксом
+function drawBackground(t) {
+  const groundY = H * 0.77;
+  const skyG = ctx.createLinearGradient(0, 0, 0, groundY);
+  skyG.addColorStop(0, '#38A3A5');
+  skyG.addColorStop(0.48, '#80ED99');
+  skyG.addColorStop(1, '#FFF3B0');
+  ctx.fillStyle = skyG;
+  ctx.fillRect(0, 0, W, groundY + 20);
+
+  // Тепле сонце з променями
+  const sunX = W * 0.16, sunY = H * 0.17;
+  const sunG = ctx.createRadialGradient(sunX, sunY, 12, sunX, sunY, 150);
+  sunG.addColorStop(0, 'rgba(255, 248, 200, 0.95)');
+  sunG.addColorStop(0.4, 'rgba(255, 214, 102, 0.4)');
+  sunG.addColorStop(1, 'rgba(255, 214, 102, 0)');
+  ctx.fillStyle = sunG;
+  ctx.beginPath(); ctx.arc(sunX, sunY, 150, 0, Math.PI * 2); ctx.fill();
+
+  // Хмари
+  state.clouds.forEach(c => {
+    const cx = ((c.x - state.worldX * 0.08 + t * c.spd) % (W + 360) + (W + 360)) % (W + 360) - 180;
+    ctx.save(); ctx.translate(cx, c.y); ctx.scale(c.s, c.s);
+    ctx.fillStyle = 'rgba(255, 253, 240, 0.78)';
+    [[-35, 6, 26], [0, -6, 36], [38, 4, 28], [12, 12, 26]].forEach(([ox, oy, r]) => {
+      ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.restore();
+  });
+
+  // Далекі гори та пагорби
+  [[0.14, '#57A773', 135, 0.0022], [0.28, '#388659', 88, 0.0038]].forEach(([p, col, hOff, freq]) => {
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(0, groundY);
+    for (let x = 0; x <= W + 40; x += 40) {
+      const wx = x + state.worldX * p;
+      const y = groundY - hOff + Math.sin(wx * freq) * 42 + Math.cos(wx * freq * 2.1) * 20;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, groundY + 20); ctx.lineTo(0, groundY + 20); ctx.closePath(); ctx.fill();
+  });
+
+  // Дерева середнього плану
+  const treeSpan = 16 * 270;
+  state.trees.forEach(tr => {
+    const sx = ((tr.wx - state.worldX * 0.55) % treeSpan + treeSpan) % treeSpan - 200;
+    if (sx < -220 || sx > W + 220) return;
+    ctx.save(); ctx.translate(sx, groundY + 8); ctx.scale(tr.s, tr.s);
+    ctx.rotate(Math.sin(t * 1.6 + tr.wx) * 0.018);
+    const trunkG = ctx.createLinearGradient(-16, 0, 16, 0);
+    trunkG.addColorStop(0, '#7F4F24'); trunkG.addColorStop(1, '#4A2C11');
+    ctx.fillStyle = trunkG;
+    ctx.beginPath();
+    ctx.moveTo(-16, 10); ctx.quadraticCurveTo(-8, -75, -10, -145);
+    ctx.lineTo(10, -145); ctx.quadraticCurveTo(8, -75, 18, 10); ctx.closePath(); ctx.fill();
+    [[-42, -145, 52], [42, -142, 50], [0, -182, 64], [0, -135, 56]].forEach(([cx, cy, r], idx) => {
+      const cg = ctx.createRadialGradient(cx - 12, cy - 14, 6, cx, cy, r);
+      cg.addColorStop(0, `hsl(${108 + tr.hue + idx * 4}, 70%, 52%)`);
+      cg.addColorStop(1, `hsl(${128 + tr.hue}, 74%, 24%)`);
+      ctx.fillStyle = cg;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.restore();
+  });
+
+  // Кущі вздовж галявини
+  const bushSpan = 24 * 175;
+  state.bushes.forEach(b => {
+    const bx = ((b.wx - state.worldX * 0.78) % bushSpan + bushSpan) % bushSpan - 120;
+    if (bx < -140 || bx > W + 140) return;
+    ctx.save(); ctx.translate(bx, groundY + 12); ctx.scale(b.s, b.s);
+    const g = ctx.createRadialGradient(0, -28, 6, 0, -14, 52);
+    g.addColorStop(0, `hsl(${114 + b.hue}, 68%, 48%)`);
+    g.addColorStop(1, `hsl(${134 + b.hue}, 75%, 22%)`);
+    ctx.fillStyle = g;
+    [[-24, -14, 22], [24, -14, 22], [0, -25, 30]].forEach(([ox, oy, r]) => {
+      ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.restore();
+  });
+
+  // Основна трава та тепла звивиста стежка
+  const meadowG = ctx.createLinearGradient(0, groundY - 12, 0, H);
+  meadowG.addColorStop(0, '#6EDE8A'); meadowG.addColorStop(0.3, '#2DC653'); meadowG.addColorStop(1, '#0F471C');
+  ctx.fillStyle = meadowG;
+  ctx.beginPath(); ctx.moveTo(0, groundY);
+  for (let x = 0; x <= W + 40; x += 40) ctx.lineTo(x, groundY + Math.sin((x + state.worldX) * 0.006) * 7);
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+
+  const pathY = groundY + 42;
+  const pathG = ctx.createLinearGradient(0, pathY - 30, 0, pathY + 46);
+  pathG.addColorStop(0, '#D4A373'); pathG.addColorStop(0.25, '#E9C46A'); pathG.addColorStop(0.75, '#CCA071'); pathG.addColorStop(1, '#8D6346');
+  ctx.fillStyle = pathG;
+  ctx.beginPath(); ctx.moveTo(0, pathY - 24);
+  for (let x = 0; x <= W + 40; x += 40) ctx.lineTo(x, pathY - 24 + Math.sin((x + state.worldX) * 0.007) * 6);
+  for (let x = W + 40; x >= 0; x -= 40) ctx.lineTo(x, pathY + 40 + Math.sin((x + state.worldX) * 0.007 + 1) * 7);
+  ctx.closePath(); ctx.fill();
+
+  // Водні лагуни для Акули та Острова — рухаються разом зі світом!
+  state.worldObjects.forEach(obj => {
+    if (obj.item.hasWater) {
+      const lx = obj.worldX - state.worldX;
+      if (lx > -420 && lx < W + 420) drawCrystalLagoon(lx, pathY + 6, t);
+    }
+  });
+
+  // Квіти, що схиляються від кроків монстрика
+  const flSpan = 42 * 95;
+  const mX = W * 0.28;
+  state.flowers.forEach(fl => {
+    const fx = ((fl.wx - state.worldX) % flSpan + flSpan) % flSpan - 80;
+    if (fx < -60 || fx > W + 60) return;
+    const dist = fx - mX;
+    const targetBend = Math.abs(dist) < 85 ? (dist > 0 ? 0.42 : -0.42) * (1 - Math.abs(dist) / 85) : 0;
+    fl.bend += (targetBend - fl.bend) * 0.15;
+    const fy = (fl.wx % 2 === 0) ? groundY + 6 : pathY + 52;
+    drawMeadowFlower(fx, fy, fl.sz, fl.col, fl.bend + Math.sin(t * 2.5 + fl.wx) * 0.1);
+  });
+
+  // Метелики
+  state.butterflies.forEach(b => {
+    const bx = ((b.x - state.worldX * 0.35 + t * 42) % (W + 180) + (W + 180)) % (W + 180) - 90;
+    const by = b.y + Math.sin(t * 3.4 + b.ph) * 24;
+    const wing = Math.abs(Math.sin(t * 16 + b.ph));
+    ctx.save(); ctx.translate(bx, by); ctx.rotate(0.25); ctx.fillStyle = b.col;
+    ctx.beginPath();
+    ctx.ellipse(-4, 0, 7, 2 + wing * 9, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(4, 0, 5, 2 + wing * 7, 0.3, 0, Math.PI * 2);
+    ctx.fill(); ctx.restore();
+  });
+}
+
+function drawMeadowFlower(x, y, sz, col, bend) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(bend);
+  ctx.strokeStyle = '#2B9348'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(bend * 12, -sz * 1.2, 0, -sz * 2.1); ctx.stroke();
+  ctx.translate(0, -sz * 2.1);
+  ctx.fillStyle = col;
+  for (let i = 0; i < 5; i++) {
+    const a = (i * Math.PI * 2) / 5;
+    ctx.beginPath(); ctx.arc(Math.cos(a) * sz * 0.58, Math.sin(a) * sz * 0.58, sz * 0.45, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#FFBE0B'; ctx.beginPath(); ctx.arc(0, 0, sz * 0.36, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawCrystalLagoon(x, y, t) {
+  ctx.save(); ctx.translate(x, y);
+  const sandG = ctx.createRadialGradient(0, 0, 60, 0, 0, 215);
+  sandG.addColorStop(0, '#E9C46A'); sandG.addColorStop(0.75, '#F4A261'); sandG.addColorStop(1, 'rgba(212,163,115,0)');
+  ctx.fillStyle = sandG; ctx.beginPath(); ctx.ellipse(0, 2, 215, 60, 0, 0, Math.PI * 2); ctx.fill();
+
+  const wg = ctx.createRadialGradient(-20, -10, 16, 0, 0, 182);
+  wg.addColorStop(0, '#90E0EF'); wg.addColorStop(0.45, '#00B4D8'); wg.addColorStop(0.85, '#0077B6'); wg.addColorStop(1, '#023E8A');
+  ctx.fillStyle = wg; ctx.beginPath(); ctx.ellipse(0, 0, 182, 46, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(0, 0, 176 + Math.sin(t * 3) * 3, 42 + Math.cos(t * 3) * 1.5, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+// Підставки для предметів у світі: дерев'яний пеньок з корою та замшілий валун
+function drawWoodStumpPedestal(w = 136, h = 26) {
+  ctx.fillStyle = 'rgba(12, 32, 16, 0.36)';
+  ctx.beginPath(); ctx.ellipse(0, 13, w * 0.66, 15, 0, 0, Math.PI * 2); ctx.fill();
+  const barkG = ctx.createLinearGradient(-w * 0.5, 0, w * 0.5, 0);
+  barkG.addColorStop(0, '#4A2C11'); barkG.addColorStop(0.35, '#7F4F24'); barkG.addColorStop(0.7, '#582F0E'); barkG.addColorStop(1, '#381D06');
+  ctx.fillStyle = barkG;
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.46, -h); ctx.quadraticCurveTo(-w * 0.5, 0, -w * 0.55, 10);
+  ctx.quadraticCurveTo(0, 17, w * 0.55, 10); ctx.quadraticCurveTo(w * 0.5, 0, w * 0.46, -h);
+  ctx.closePath(); ctx.fill();
+
+  const topG = ctx.createRadialGradient(0, -h, 4, 0, -h, w * 0.46);
+  topG.addColorStop(0, '#F3D5B5'); topG.addColorStop(0.68, '#D4A373'); topG.addColorStop(1, '#582F0E');
+  ctx.fillStyle = topG;
+  ctx.beginPath(); ctx.ellipse(0, -h, w * 0.46, 12, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawMossyRockPedestal(w = 136, h = 25) {
+  ctx.fillStyle = 'rgba(12, 32, 16, 0.36)';
+  ctx.beginPath(); ctx.ellipse(0, 13, w * 0.64, 15, 0, 0, Math.PI * 2); ctx.fill();
+  const rg = ctx.createLinearGradient(-w * 0.5, -h * 1.3, w * 0.5, 14);
+  rg.addColorStop(0, '#ADB5BD'); rg.addColorStop(0.5, '#6C757D'); rg.addColorStop(1, '#343A40');
+  ctx.fillStyle = rg;
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.52, 8); ctx.quadraticCurveTo(-w * 0.54, -h, -w * 0.24, -h * 1.15);
+  ctx.quadraticCurveTo(0, -h * 1.24, w * 0.3, -h * 1.1); ctx.quadraticCurveTo(w * 0.54, -h * 0.8, w * 0.52, 8);
+  ctx.quadraticCurveTo(0, 17, -w * 0.52, 8); ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#52B788';
+  ctx.beginPath(); ctx.ellipse(0, -h * 0.95, w * 0.38, 8.5, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// ==========================================
+// РЕАЛІСТИЧНІ ІЛЮСТРАЦІЇ ВСІХ 11 ПРЕДМЕТІВ
+// ==========================================
+function drawWorldObjects(t) {
+  const groundY = H * 0.77 + 28;
+  state.worldObjects.forEach(obj => {
+    const sx = obj.worldX - state.worldX;
+    if (sx < -420 || sx > W + 420) return;
+    ctx.save(); ctx.translate(sx, groundY);
+    const s = obj.solved, st = obj.solveTimer;
+    switch (obj.item.id) {
+      case 'bus':       drawBus(t, s, st); break;
+      case 'orange':    drawOrange(t, s, st); break;
+      case 'pineapple': drawPineapple(t, s, st); break;
+      case 'shark':     drawShark(t, s, st); break;
+      case 'aquarium':  drawAquarium(t, s, st); break;
+      case 'pencil':    drawPencil(t, s, st); break;
+      case 'cucumber':  drawCucumber(t, s, st); break;
+      case 'glasses':   drawGlasses(t, s, st, sx); break;
+      case 'island':    drawIsland(t, s, st); break;
+      case 'deer':      drawDeer(t, s, st); break;
+      case 'wasp':      drawWasp(t, s, st); break;
+    }
+    ctx.restore();
+  });
+}
+
+// 1. АВТОБУС (А) — 3/4 об'ємний автобус з лобовим склом, салоном, дверима, фарами та дисками
+function drawBus(t, solved, st) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(18, 24, 28, 0.38)';
+  ctx.beginPath(); ctx.ellipse(4, 12, 142, 20, 0, 0, Math.PI * 2); ctx.fill();
+  const vib = Math.sin(t * (solved ? 26 : 14)) * (solved ? 3 : 1.1);
+  const bounce = solved ? -Math.abs(Math.sin(st * 8)) * 14 : 0;
+  ctx.translate(0, bounce + vib);
+
+  drawWheel(-92, -12, 25, t * (solved ? 14 : 2));
+  const bodyG = ctx.createLinearGradient(0, -138, 0, -8);
+  bodyG.addColorStop(0, '#FFF3B0'); bodyG.addColorStop(0.16, '#FFD166');
+  bodyG.addColorStop(0.55, '#FFB703'); bodyG.addColorStop(0.9, '#FB8500'); bodyG.addColorStop(1, '#CC5803');
+  ctx.fillStyle = bodyG;
+  ctx.beginPath();
+  ctx.moveTo(-116, -22); ctx.quadraticCurveTo(-122, -78, -104, -122);
+  ctx.quadraticCurveTo(-92, -138, -62, -138); ctx.lineTo(106, -136);
+  ctx.quadraticCurveTo(126, -136, 128, -112); ctx.lineTo(128, -18);
+  ctx.quadraticCurveTo(128, -8, 112, -8); ctx.lineTo(-108, -8);
+  ctx.quadraticCurveTo(-116, -8, -116, -22); ctx.closePath(); ctx.fill();
+
+  // Білий глянцевий дах
+  ctx.fillStyle = '#F8F9FA';
+  ctx.beginPath();
+  ctx.moveTo(-98, -124); ctx.quadraticCurveTo(-88, -142, -55, -142);
+  ctx.lineTo(102, -140); ctx.quadraticCurveTo(122, -140, 125, -124); ctx.closePath(); ctx.fill();
+
+  // Лобове скло у ракурсі 3/4 з кермом
+  const windG = ctx.createLinearGradient(-112, -118, -56, -58);
+  windG.addColorStop(0, '#1D3557'); windG.addColorStop(0.5, '#457B9D'); windG.addColorStop(1, '#A8DADC');
+  ctx.fillStyle = windG;
+  ctx.beginPath();
+  ctx.moveTo(-112, -62); ctx.quadraticCurveTo(-114, -96, -98, -118);
+  ctx.lineTo(-60, -118); ctx.lineTo(-56, -58); ctx.closePath(); ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#2B2D42'; ctx.stroke();
+
+  // Пасажирські вікна з кріслами та бліками
+  for (let i = 0; i < 3; i++) {
+    const wx = -14 + i * 44;
+    const wg = ctx.createLinearGradient(wx, -116, wx + 36, -62);
+    wg.addColorStop(0, '#1D3557'); wg.addColorStop(0.55, '#48CAE4'); wg.addColorStop(1, '#CAF0F8');
+    ctx.fillStyle = wg;
+    ctx.beginPath(); ctx.roundRect(wx, -116, 37, 52, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(29,53,87,0.55)'; ctx.beginPath(); ctx.roundRect(wx + 14, -88, 14, 24, 4); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.42)';
+    ctx.beginPath(); ctx.moveTo(wx + 6, -114); ctx.lineTo(wx + 18, -114); ctx.lineTo(wx + 6, -72); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#2B2D42'; ctx.lineWidth = 3; ctx.strokeRect(wx, -116, 37, 52);
+  }
+
+  // Складні двері
+  ctx.fillStyle = '#2B2D42'; ctx.beginPath(); ctx.roundRect(-48, -116, 28, 96, 5); ctx.fill();
+  ctx.fillStyle = '#90E0EF'; ctx.fillRect(-45, -112, 10, 86); ctx.fillRect(-32, -112, 10, 86);
+
+  // Червона смуга, решітка та фари
+  ctx.fillStyle = '#D62828'; ctx.fillRect(-16, -54, 142, 10);
+  ctx.fillStyle = '#2B2D42'; ctx.beginPath(); ctx.roundRect(-113, -52, 26, 24, 4); ctx.fill();
+  [[-112, -38], [-84, -36]].forEach(([hx, hy]) => {
+    ctx.fillStyle = '#FFF3B0'; ctx.beginPath(); ctx.arc(hx, hy, 8, 0, Math.PI * 2); ctx.fill();
+  });
+  if (solved) {
+    const beamG = ctx.createLinearGradient(-112, -36, -260, -10);
+    beamG.addColorStop(0, 'rgba(255,243,176,0.85)'); beamG.addColorStop(1, 'rgba(255,243,176,0)');
+    ctx.fillStyle = beamG;
+    ctx.beginPath(); ctx.moveTo(-112, -44); ctx.lineTo(-260, -80); ctx.lineTo(-260, 20); ctx.lineTo(-84, -30); ctx.closePath(); ctx.fill();
+  }
+
+  // Хромований бампер і колеса
+  ctx.fillStyle = '#CED4DA'; ctx.beginPath(); ctx.roundRect(-122, -20, 254, 12, 6); ctx.fill();
+  drawWheel(-62, -10, 29, t * (solved ? 14 : 2));
+  drawWheel(74, -10, 29, t * (solved ? 14 : 2));
+  ctx.restore();
+}
+
+function drawWheel(x, y, r, rot) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = '#141619'; ctx.beginPath(); ctx.arc(0, 0, r + 4, Math.PI, 0); ctx.fill();
+  ctx.rotate(rot);
+  ctx.fillStyle = '#212529'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#CED4DA'; ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFB703'; ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// 2. АПЕЛЬСИН (А) — Цілий текстурований апельсин з листям + соковита розрізана половинка
+function drawOrange(t, solved, st) {
+  ctx.save();
+  drawWoodStumpPedestal(144, 27);
+  const jump = solved ? Math.abs(Math.sin(st * 9)) * 26 : 0;
+  ctx.translate(0, -27 - jump);
+
+  // Цілий плід
+  ctx.save(); ctx.translate(-22, -46);
+  const og = ctx.createRadialGradient(-16, -18, 6, 0, 0, 50);
+  og.addColorStop(0, '#FFF3B0'); og.addColorStop(0.2, '#FFB703'); og.addColorStop(0.65, '#FB8500'); og.addColorStop(1, '#7F2300');
+  ctx.fillStyle = og; ctx.beginPath(); ctx.ellipse(0, 0, 48, 45, 0, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 28; i++) {
+    const a = i * 2.4, rad = Math.sqrt(i / 28) * 39;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(130,35,0,0.25)' : 'rgba(255,230,140,0.28)';
+    ctx.beginPath(); ctx.arc(Math.cos(a) * rad, Math.sin(a) * rad * 0.9, 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+  // Листок
+  ctx.fillStyle = '#2B9348';
+  ctx.beginPath(); ctx.moveTo(0, -44); ctx.quadraticCurveTo(22, -68, 44, -52); ctx.quadraticCurveTo(22, -34, 0, -44); ctx.fill();
+  ctx.restore();
+
+  // Розрізана соковита половинка з часточками
+  ctx.save(); ctx.translate(30, -26); ctx.rotate(0.22);
+  ctx.fillStyle = '#D64500'; ctx.beginPath(); ctx.arc(0, 0, 36, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = '#FFF8E7'; ctx.beginPath(); ctx.ellipse(0, 0, 36, 21, 0, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 8; i++) {
+    const a1 = (i * Math.PI * 2) / 8 + 0.06, a2 = ((i + 1) * Math.PI * 2) / 8 - 0.06;
+    ctx.save(); ctx.scale(1, 21 / 36);
+    ctx.fillStyle = '#FB8500';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 31, a1, a2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+// 3. АНАНАС (А) — Детальний ананас з ромбовидними лусочками та пишною короною листя
+function drawPineapple(t, solved, st) {
+  ctx.save();
+  drawMossyRockPedestal(138, 25);
+  const jump = solved ? Math.abs(Math.sin(st * 9)) * 28 : 0;
+  ctx.translate(0, -26 - jump);
+  ctx.rotate(Math.sin(t * (solved ? 14 : 3)) * (solved ? 0.16 : 0.04));
+
+  [[-0.85, 62, '#1B4332'], [0.85, 62, '#1B4332'], [-0.5, 78, '#2D6A4F'], [0.5, 78, '#2D6A4F'], [-0.2, 92, '#40916C'], [0.2, 92, '#40916C'], [0, 98, '#52B788']].forEach(([ang, len, col]) => {
+    ctx.save(); ctx.translate(0, -104); ctx.rotate(ang);
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(-10, 4); ctx.quadraticCurveTo(-14, -len * 0.5, ang * 16, -len); ctx.quadraticCurveTo(14, -len * 0.5, 10, 4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  });
+
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(0, -54, 46, 58, 0, 0, Math.PI * 2); ctx.clip();
+  const bg = ctx.createRadialGradient(-14, -68, 8, 0, -54, 62);
+  bg.addColorStop(0, '#FFE66D'); bg.addColorStop(0.55, '#F77F00'); bg.addColorStop(1, '#7F2B0A');
+  ctx.fillStyle = bg; ctx.fillRect(-52, -116, 104, 124);
+  for (let r = -5; r <= 5; r++) {
+    for (let c = -3; c <= 3; c++) {
+      const cx = c * 19 + (r % 2 !== 0 ? 9.5 : 0), cy = -54 + r * 12;
+      ctx.strokeStyle = 'rgba(90, 25, 0, 0.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy - 9); ctx.lineTo(cx + 10, cy); ctx.lineTo(cx, cy + 9); ctx.lineTo(cx - 10, cy); ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = '#FFF3B0'; ctx.beginPath(); ctx.arc(cx, cy - 2, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+// 4. АКУЛА (А) — Анатомічна акула в лагуні зі зябрами, плавцями та зубами
+function drawShark(t, solved, st) {
+  ctx.save();
+  const jump = solved ? Math.sin(Math.min(st * 2.6, Math.PI)) * 130 : Math.sin(t * 3) * 5;
+  const pitch = solved ? Math.cos(Math.min(st * 2.6, Math.PI)) * -0.52 : Math.sin(t * 2.2) * 0.05;
+  ctx.translate(0, -14 - jump); ctx.rotate(pitch);
+
+  // Хвостовий та спинний плавці
+  ctx.fillStyle = '#1B263B';
+  ctx.beginPath(); ctx.moveTo(70, -10); ctx.quadraticCurveTo(110, -56, 116, -64); ctx.quadraticCurveTo(96, -16, 88, -6); ctx.quadraticCurveTo(100, 18, 108, 32); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-14, -40); ctx.quadraticCurveTo(8, -94, 30, -92); ctx.quadraticCurveTo(20, -60, 24, -36); ctx.closePath(); ctx.fill();
+
+  // Тіло та біле черевце
+  const bodyG = ctx.createLinearGradient(0, -54, 0, 22);
+  bodyG.addColorStop(0, '#1B263B'); bodyG.addColorStop(0.6, '#415A77'); bodyG.addColorStop(1, '#778DA9');
+  ctx.fillStyle = bodyG;
+  ctx.beginPath(); ctx.moveTo(-104, -18); ctx.quadraticCurveTo(-54, -54, 8, -42); ctx.quadraticCurveTo(50, -30, 82, -10); ctx.quadraticCurveTo(44, 16, -12, 22); ctx.quadraticCurveTo(-66, 22, -104, -18); ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#F8F9FA';
+  ctx.beginPath(); ctx.moveTo(-100, -14); ctx.quadraticCurveTo(-50, -4, 65, -4); ctx.quadraticCurveTo(32, 18, -16, 22); ctx.quadraticCurveTo(-64, 20, -100, -14); ctx.closePath(); ctx.fill();
+
+  // Паща із зубами та зябра
+  ctx.fillStyle = '#641220';
+  ctx.beginPath(); ctx.moveTo(-86, -8); ctx.quadraticCurveTo(-64, -12, -46, -4); ctx.quadraticCurveTo(-64, 10, -82, 4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  for (let tx = -80; tx <= -52; tx += 6) {
+    ctx.beginPath(); ctx.moveTo(tx, -8); ctx.lineTo(tx + 3, -2); ctx.lineTo(tx + 6, -8); ctx.fill();
+  }
+  ctx.strokeStyle = '#1B263B'; ctx.lineWidth = 2.2;
+  for (let g = 0; g < 5; g++) {
+    const gx = -32 + g * 6.5;
+    ctx.beginPath(); ctx.moveTo(gx, -22); ctx.quadraticCurveTo(gx - 3, -10, gx, 2); ctx.stroke();
+  }
+  ctx.fillStyle = '#0D1B2A'; ctx.beginPath(); ctx.arc(-70, -24, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(-72, -26, 1.8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2B4162'; ctx.beginPath(); ctx.moveTo(-24, 2); ctx.quadraticCurveTo(-12, 36, 10, 34); ctx.quadraticCurveTo(4, 12, -4, 2); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// 5. АКВАРІУМ (А) — Скляна куля з водою, камінцями, рослинами та золотими рибками
+function drawAquarium(t, solved, st) {
+  ctx.save();
+  drawWoodStumpPedestal(138, 26);
+  ctx.translate(0, -86);
+
+  ctx.fillStyle = 'rgba(144, 224, 239, 0.28)';
+  ctx.beginPath(); ctx.arc(0, 0, 62, 0, Math.PI * 2); ctx.fill();
+
+  ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 59, 0, Math.PI * 2); ctx.clip();
+  const wg = ctx.createLinearGradient(0, -32, 0, 60);
+  wg.addColorStop(0, 'rgba(144,224,239,0.55)'); wg.addColorStop(0.6, 'rgba(0,180,216,0.68)'); wg.addColorStop(1, 'rgba(3,4,94,0.85)');
+  ctx.fillStyle = wg; ctx.fillRect(-64, -28 + Math.sin(t * 3.5) * 2, 128, 92);
+
+  for (let i = 0; i < 18; i++) {
+    ctx.fillStyle = ['#E9C46A', '#F4A261', '#E76F51', '#8ECAE6'][i % 4];
+    ctx.beginPath(); ctx.ellipse(-46 + (i % 6) * 18, 44 + Math.floor(i / 6) * 6, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  [[-30, 48, '#2B9348'], [-20, 52, '#52B788'], [26, 50, '#40916C']].forEach(([rx, h, col], i) => {
+    ctx.strokeStyle = col; ctx.lineWidth = 4.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(rx, 46); ctx.quadraticCurveTo(rx + Math.sin(t * 3 + i) * 9, 20, rx, 46 - h); ctx.stroke();
+  });
+  ctx.restore();
+
+  // Золота рибка
+  const fx = solved ? Math.cos(st * 5) * 24 : Math.sin(t * 2.2) * 20;
+  const fy = solved ? -Math.sin(Math.min(st * 2.8, Math.PI)) * 84 + 6 : 6 + Math.cos(t * 3.2) * 6;
+  ctx.save(); ctx.translate(fx, fy);
+  ctx.fillStyle = '#FB8500';
+  ctx.beginPath(); ctx.moveTo(10, 0); ctx.quadraticCurveTo(26, -16, 32, -10); ctx.quadraticCurveTo(24, 0, 32, 12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#FFB703'; ctx.beginPath(); ctx.ellipse(0, 0, 16, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#0D1B2A'; ctx.beginPath(); ctx.arc(-9, -2, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(0, 0, 54, Math.PI * 0.72, Math.PI * 1.18); ctx.stroke();
+  ctx.strokeStyle = '#CAF0F8'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.ellipse(0, -47, 38, 8, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+// 6. ОЛІВЕЦЬ (О) — Шестигранний олівець з гранями, металевою обоймою, гумкою та грифелем
+function drawPencil(t, solved, st) {
+  ctx.save();
+  drawMossyRockPedestal(134, 24);
+  if (solved) {
+    ctx.strokeStyle = '#FF006E'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let a = 0; a < st * 8.5; a += 0.14) {
+      const r = 18 + a * 7.5, lx = Math.cos(a) * r, ly = -94 + Math.sin(a) * r * 0.58;
+      if (a === 0) ctx.moveTo(lx, ly); else ctx.lineTo(lx, ly);
+    }
+    ctx.stroke();
+  }
+  const tipX = solved ? Math.cos(st * 8.5) * (18 + st * 64) : -10;
+  const tipY = solved ? -94 + Math.sin(st * 8.5) * 40 : -24;
+  ctx.translate(tipX, tipY);
+  ctx.rotate(-0.62 + (solved ? Math.sin(st * 8) * 0.24 : Math.sin(t * 2.5) * 0.02));
+  ctx.translate(0, -80);
+
+  const wf = 11, bTop = -56, bBot = 40;
+  [[-wf * 1.5, -wf * 0.5, '#FFF3B0'], [-wf * 0.5, wf * 0.5, '#FFB703'], [wf * 0.5, wf * 1.5, '#CC5803']].forEach(([x1, x2, col]) => {
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(x1, bTop); ctx.lineTo(x2, bTop); ctx.lineTo(x2, bBot); ctx.quadraticCurveTo((x1 + x2) * 0.5, bBot + 5, x1, bBot); ctx.closePath(); ctx.fill();
+  });
+  ctx.fillStyle = '#E6B88A';
+  ctx.beginPath(); ctx.moveTo(-wf * 1.5, bBot); ctx.lineTo(wf * 1.5, bBot); ctx.lineTo(0, 80); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#212529';
+  ctx.beginPath(); ctx.moveTo(-6, 63); ctx.lineTo(6, 63); ctx.lineTo(0, 80); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#CED4DA'; ctx.fillRect(-wf * 1.5, bTop - 20, wf * 3, 20);
+  ctx.fillStyle = '#FF758F'; ctx.beginPath(); ctx.roundRect(-wf * 1.5, bTop - 38, wf * 3, 19, [8, 8, 0, 0]); ctx.fill();
+  ctx.restore();
+}
+
+// 7. ОГІРОК (О) — Хрусткий зелений огірок з пухирцями, квіткою та двома кружальцями
+function drawCucumber(t, solved, st) {
+  ctx.save();
+  drawWoodStumpPedestal(146, 26);
+  const bounce = solved ? Math.abs(Math.sin(st * 10)) * 24 : 0;
+  ctx.save(); ctx.translate(-6, -46 - bounce); ctx.rotate(-0.14);
+  const cg = ctx.createLinearGradient(0, -26, 0, 24);
+  cg.addColorStop(0, '#95D5B2'); cg.addColorStop(0.28, '#40916C'); cg.addColorStop(0.75, '#1B4332'); cg.addColorStop(1, '#081C15');
+  ctx.fillStyle = cg;
+  ctx.beginPath(); ctx.moveTo(-72, 6); ctx.bezierCurveTo(-40, -36, 40, -36, 70, 2); ctx.bezierCurveTo(44, 28, -36, 28, -72, 6); ctx.closePath(); ctx.fill();
+
+  [[-48, -4], [-28, -14], [-6, -16], [18, -14], [40, -8], [-22, 4], [8, 4], [32, 6]].forEach(([bx, by]) => {
+    ctx.fillStyle = '#74C69D'; ctx.beginPath(); ctx.arc(bx, by, 3.2, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.fillStyle = '#FFBE0B'; ctx.beginPath(); ctx.arc(72, 2, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // Два свіжі кружальця огірка
+  [[24, -28, 21], [50, -24, 19]].forEach(([sx, sy, r]) => {
+    ctx.save(); ctx.translate(sx, sy);
+    ctx.fillStyle = '#1B4332'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#D8F3DC'; ctx.beginPath(); ctx.arc(0, 0, r * 0.82, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+// 8. ОКУЛЯРИ (О) — Стильні окуляри з лінзами та дужками, що перелітають монстрику на очі
+function drawGlasses(t, solved, st, itemScreenX) {
+  ctx.save();
+  drawMossyRockPedestal(142, 26);
+  let gx = 0, gy = -42 + Math.sin(t * 3) * 2, sc = 1;
+  if (solved) {
+    const p = Math.min(1, st * 1.45);
+    gx = (W * 0.28 - itemScreenX) * p;
+    gy = -42 - Math.sin(p * Math.PI) * 90 - p * 36;
+    sc = 1 - p * 0.28;
+  }
+  ctx.translate(gx, gy); ctx.scale(sc, sc);
+  ctx.strokeStyle = '#3D1E05'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-62, -18); ctx.lineTo(-20, -40); ctx.moveTo(62, -18); ctx.lineTo(84, -40); ctx.stroke();
+  ctx.strokeStyle = '#FFD166'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-10, -18); ctx.quadraticCurveTo(0, -24, 10, -18); ctx.stroke();
+
+  [-36, 36].forEach(lx => {
+    ctx.fillStyle = 'rgba(72, 202, 228, 0.7)';
+    ctx.strokeStyle = '#582F0E'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.roundRect(lx - 26, -28, 52, 38, [10, 10, 16, 16]); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.52)';
+    ctx.beginPath(); ctx.moveTo(lx - 16, -24); ctx.lineTo(lx - 4, -24); ctx.lineTo(lx - 14, 6); ctx.closePath(); ctx.fill();
+  });
+  ctx.restore();
+}
+
+// 9. ОСТРІВ (О) — Піщаний острів у лагуні з кокосовими пальмами та скелями
+function drawIsland(t, solved, st) {
+  ctx.save(); ctx.translate(0, -4);
+  const sandG = ctx.createRadialGradient(-14, -32, 10, 0, -10, 102);
+  sandG.addColorStop(0, '#FFF3B0'); sandG.addColorStop(0.55, '#F4A261'); sandG.addColorStop(1, '#BC6C25');
+  ctx.fillStyle = sandG;
+  ctx.beginPath(); ctx.moveTo(-102, 5); ctx.quadraticCurveTo(-52, -56, 4, -54); ctx.quadraticCurveTo(58, -52, 102, 5); ctx.closePath(); ctx.fill();
+
+  [[-16, -0.2, 1], [22, 0.25, 0.82]].forEach(([px, lean, sc]) => {
+    ctx.save(); ctx.translate(px, -36); ctx.scale(sc, sc);
+    const sway = lean + Math.sin(t * (solved ? 10 : 2.5) + px) * (solved ? 0.14 : 0.04);
+    ctx.strokeStyle = '#7F4F24'; ctx.lineWidth = 13; ctx.lineCap = 'round';
+    const tx = Math.sin(sway * 1.5) * 48, ty = -94;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(tx * 0.4, ty * 0.5, tx, ty); ctx.stroke();
+    ctx.translate(tx, ty);
+    [[-6, 5], [5, 6], [0, 9]].forEach(([kx, ky]) => {
+      ctx.fillStyle = '#4A2C11'; ctx.beginPath(); ctx.arc(kx, ky, 6, 0, Math.PI * 2); ctx.fill();
+    });
+    [-2.1, -1.3, -0.4, 0.4, 1.3, 2.1].forEach(fa => {
+      ctx.save(); ctx.rotate(fa);
+      ctx.fillStyle = '#2D6A4F';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(26, -16, 54, 8); ctx.quadraticCurveTo(26, -4, 0, 0); ctx.fill();
+      ctx.restore();
+    });
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+// 10. ОЛЕНЬ (О) — Плямистий лісовий олень з гіллястими рогами та стрункими ногами
+function drawDeer(t, solved, st) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(15, 35, 18, 0.34)';
+  ctx.beginPath(); ctx.ellipse(0, 10, 66, 15, 0, 0, Math.PI * 2); ctx.fill();
+  const leap = solved ? Math.abs(Math.sin(st * 6.5)) * 60 : 0;
+  ctx.translate(0, -leap);
+
+  const sw = solved ? Math.sin(st * 13) * 18 : 0;
+  [[-22, -46, -24 - sw, 6, '#7F4F24'], [32, -46, 36 + sw, 6, '#7F4F24'], [-30, -46, -32 + sw, 8, '#9C6644'], [24, -46, 26 - sw, 8, '#9C6644']].forEach(([x1, y1, x2, y2, col]) => {
+    ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  });
+
+  const coatG = ctx.createLinearGradient(-36, -86, 44, -36);
+  coatG.addColorStop(0, '#D48C46'); coatG.addColorStop(0.6, '#B5651D'); coatG.addColorStop(1, '#7F4F24');
+  ctx.fillStyle = coatG;
+  ctx.beginPath();
+  ctx.moveTo(-36, -74); ctx.quadraticCurveTo(0, -82, 38, -76);
+  ctx.quadraticCurveTo(54, -70, 50, -48); ctx.quadraticCurveTo(42, -36, -34, -42); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-36, -64); ctx.quadraticCurveTo(-46, -92, -42, -118); ctx.lineTo(-22, -112); ctx.quadraticCurveTo(-18, -86, -16, -64); ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,248,231,0.8)';
+  [[-4, -66], [10, -70], [24, -66], [4, -56], [18, -58], [30, -56]].forEach(([sx, sy]) => {
+    ctx.beginPath(); ctx.ellipse(sx, sy, 3.8, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Гіллясті роги та голова
+  ctx.strokeStyle = '#6F4518'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-26, -126); ctx.bezierCurveTo(-20, -154, 4, -170, 12, -182);
+  ctx.moveTo(-18, -144); ctx.lineTo(-32, -156); ctx.moveTo(-8, -158); ctx.lineTo(-14, -174);
+  ctx.stroke();
+
+  ctx.fillStyle = '#C87D32';
+  ctx.beginPath(); ctx.moveTo(-22, -128); ctx.quadraticCurveTo(-44, -132, -68, -110); ctx.quadraticCurveTo(-68, -98, -22, -110); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#1D1E2C'; ctx.beginPath(); ctx.arc(-65, -107, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-38, -116, 4.8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(-39.5, -117.5, 1.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// 11. ОСА (О) — Реалістична смугаста оса біля гілки з паперовим вуликом
+function drawWasp(t, solved, st) {
+  ctx.save();
+  ctx.strokeStyle = '#582F0E'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(82, -182); ctx.quadraticCurveTo(35, -176, -5, -166); ctx.stroke();
+  ctx.fillStyle = '#B08968'; ctx.beginPath(); ctx.ellipse(28, -142, 21, 25, 0.08, 0, Math.PI * 2); ctx.fill();
+
+  const wx = solved ? Math.sin(st * 8) * 64 : Math.sin(t * 4.2) * 14 - 8;
+  const wy = solved ? -92 + Math.sin(st * 16) * 30 : -88 + Math.cos(t * 5.6) * 10;
+  ctx.translate(wx, wy);
+
+  const wb = Math.sin(t * 56) * 0.4;
+  [-0.35 + wb, -0.55 - wb].forEach(ang => {
+    ctx.save(); ctx.translate(-4, -14); ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(202, 240, 248, 0.65)'; ctx.strokeStyle = 'rgba(127,79,36,0.45)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.ellipse(18, -15, 22, 7, -0.65, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  });
+
+  // Смугасте черевце, грудка, голова та жало
+  ctx.fillStyle = '#141619'; ctx.beginPath(); ctx.moveTo(50, 14); ctx.lineTo(64, 18); ctx.lineTo(49, 19); ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(6, 2); ctx.bezierCurveTo(22, -14, 48, -6, 54, 16); ctx.bezierCurveTo(38, 28, 16, 20, 6, 2); ctx.clip();
+  ctx.fillStyle = '#FFBE0B'; ctx.fillRect(0, -20, 60, 50);
+  ctx.fillStyle = '#141619';
+  [10, 22, 34, 45].forEach(sx => ctx.fillRect(sx, -20, 6, 50));
+  ctx.restore();
+
+  ctx.fillStyle = '#212529'; ctx.beginPath(); ctx.ellipse(-10, -4, 14, 11, -0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFBE0B'; ctx.beginPath(); ctx.ellipse(-28, -5, 10, 11, 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#141619'; ctx.beginPath(); ctx.ellipse(-30, -6, 5, 8, -0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// ==========================================
+// КУМЕДНИЙ ПУХНАСТИЙ ЛІСОВИЙ МОНСТРИК
+// ==========================================
+function drawMonster(t) {
+  const m = state.monster;
+  const baseX = W * 0.28, baseY = H * 0.77 + 28;
+  m.x = baseX; m.y = baseY + m.jumpY;
+
+  const spdRatio = Math.min(1, state.walkSpeed / state.maxWalkSpeed);
+  const walking = spdRatio > 0.05, dancing = state.phase === 'DANCE';
+  const walkSin = Math.sin(m.walkCycle) * spdRatio, walkCos = Math.cos(m.walkCycle) * spdRatio;
+  const bounceY = walking ? -Math.abs(walkSin) * 15 : dancing ? -Math.abs(Math.sin(t * 9)) * 26 : Math.sin(t * 3.2) * 4;
+  m.lean += ((walking ? spdRatio * 0.09 : state.phase === 'ENCOUNTER' ? 0.07 : 0) - m.lean) * 0.12;
+  const tilt = m.lean + (walking ? walkSin * 0.05 : dancing ? Math.sin(t * 4.5) * 0.2 : m.mood === 'wrong' ? Math.sin(t * 28) * 0.15 : 0);
+
+  ctx.save(); ctx.translate(baseX, baseY);
+  const shScale = Math.max(0.45, 1 - Math.abs(m.jumpY + bounceY) / 160);
+  ctx.fillStyle = 'rgba(10, 35, 20, 0.32)';
+  ctx.beginPath(); ctx.ellipse(0, 12, 64 * shScale, 17 * shScale, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.translate(0, m.jumpY + bounceY);
+  ctx.scale(m.squashX, m.squashY);
+  ctx.rotate(tilt);
+
+  // Ноги та задня рука
+  const swL = walking ? walkSin * 28 : dancing ? Math.sin(t * 9) * 24 : 0;
+  const lfL = walking ? Math.max(0, -walkCos) * 18 : dancing ? Math.max(0, Math.sin(t * 9)) * 20 : 0;
+  const swR = walking ? -walkSin * 28 : dancing ? -Math.sin(t * 9) * 24 : 0;
+  const lfR = walking ? Math.max(0, walkCos) * 18 : dancing ? Math.max(0, -Math.sin(t * 9)) * 20 : 0;
+  drawLimb(-22, -24, -22 + swL, 8 - lfL, '#5A189A', true);
+  drawLimb(22, -24, 22 + swR, 8 - lfR, '#7209B7', true);
+
+  const armR = dancing ? -1.8 + Math.sin(t * 9) * 0.6 : m.mood === 'excited' ? -1.5 + Math.sin(t * 16) * 0.4 : walking ? walkSin * 0.55 : 0.25;
+  drawArm(42, -82, armR, '#7209B7');
+
+  // Вушка-ріжки
+  [[-38, -142, -0.45 - Math.sin(t * 4) * 0.08], [38, -142, 0.45 + Math.cos(t * 4) * 0.08]].forEach(([ex, ey, rot]) => {
+    ctx.save(); ctx.translate(ex, ey); ctx.rotate(rot);
+    const eg = ctx.createLinearGradient(0, 0, 0, -46);
+    eg.addColorStop(0, '#7209B7'); eg.addColorStop(0.6, '#F72585'); eg.addColorStop(1, '#4CC9F0');
+    ctx.fillStyle = eg;
+    ctx.beginPath(); ctx.moveTo(-14, 0); ctx.quadraticCurveTo(-18, -32, 0, -46); ctx.quadraticCurveTo(18, -32, 14, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  });
+
+  // Пухнасте тіло монстрика з шерстинками по контуру
+  const bodyG = ctx.createRadialGradient(-18, -108, 14, 0, -82, 86);
+  bodyG.addColorStop(0, '#B5179E'); bodyG.addColorStop(0.55, '#7209B7'); bodyG.addColorStop(1, '#3C096C');
+  ctx.fillStyle = bodyG;
+  ctx.beginPath();
+  const tufts = 28;
+  for (let i = 0; i <= tufts; i++) {
+    const a = (i / tufts) * Math.PI * 2;
+    const rx = 68 + Math.sin(i * 5) * 4, ry = 74 + Math.cos(i * 5) * 4;
+    const px = Math.cos(a) * rx, py = -84 + Math.sin(a) * ry;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath(); ctx.fill();
+
+  // Світлий животик з плямками
+  const bellyG = ctx.createRadialGradient(4, -68, 6, 4, -62, 46);
+  bellyG.addColorStop(0, '#FF9E00'); bellyG.addColorStop(0.7, '#F72585'); bellyG.addColorStop(1, 'rgba(247,37,133,0)');
+  ctx.fillStyle = bellyG; ctx.beginPath(); ctx.ellipse(5, -62, 42, 44, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Виразні очі, що дивляться на предмет попереду
+  let lx = 5, ly = 1;
+  if (state.currentEncounter) {
+    const dx = (state.currentEncounter.worldX - state.worldX) - baseX;
+    const dy = (H * 0.72) - (baseY - 95);
+    const d = Math.hypot(dx, dy) || 1;
+    lx = (dx / d) * 6; ly = (dy / d) * 4;
+  }
+  [[-18, -106, 21], [24, -104, 19]].forEach(([ox, oy, r]) => {
+    ctx.save(); ctx.translate(ox, oy);
+    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    if (m.blinkTimer < 0.12) {
+      ctx.fillStyle = '#7209B7'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = '#00B4D8'; ctx.beginPath(); ctx.arc(lx, ly, r * 0.56, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0D1B2A'; ctx.beginPath(); ctx.arc(lx * 1.1, ly * 1.1, r * 0.32, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(lx - 3, ly - 4, r * 0.16, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  // Окуляри на очах монстрика після зустрічі з Окулярами!
+  if (state.wearingGlasses > 0) {
+    ctx.strokeStyle = '#3D1E05'; ctx.lineWidth = 5;
+    [-18, 24].forEach(gx => {
+      ctx.fillStyle = 'rgba(72, 202, 228, 0.45)';
+      ctx.beginPath(); ctx.roundRect(gx - 22, -124, 44, 34, 10); ctx.fill(); ctx.stroke();
+    });
+  }
+
+  // Емоційний ротик з кумедними зубками
+  ctx.save(); ctx.translate(4, -68);
+  ctx.fillStyle = '#4A0E2E';
+  ctx.beginPath();
+  if (m.mood === 'excited' || dancing) ctx.arc(0, -2, 22, 0, Math.PI);
+  else if (m.mood === 'curious') ctx.ellipse(4, 2, 11, 13, 0, 0, Math.PI * 2);
+  else if (m.mood === 'wrong') ctx.ellipse(0, 6, 15, 7, 0, Math.PI, 0);
+  else ctx.arc(0, -4, 17, 0.15, Math.PI - 0.15);
+  ctx.fill();
+  if (m.mood !== 'curious' && m.mood !== 'wrong') {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath(); ctx.moveTo(-10, -3); ctx.lineTo(-6, 5); ctx.lineTo(-2, -3); ctx.moveTo(4, -3); ctx.lineTo(8, 5); ctx.lineTo(12, -3); ctx.fill();
+  }
+  ctx.restore();
+
+  // Передня рука
+  const armL = dancing ? -1.8 - Math.sin(t * 9) * 0.6 : m.mood === 'excited' ? -1.5 - Math.sin(t * 16) * 0.4 : walking ? -walkSin * 0.55 : -0.25;
+  drawArm(-46, -82, armL, '#9D4EDD');
+  ctx.restore();
+}
+
+function drawLimb(x1, y1, x2, y2, col, isFoot) {
+  ctx.strokeStyle = col; ctx.lineWidth = 18; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo((x1 + x2) * 0.5 + 8, (y1 + y2) * 0.5, x2, y2); ctx.stroke();
+  if (isFoot) {
+    ctx.fillStyle = '#F72585'; ctx.beginPath(); ctx.ellipse(x2 + 6, y2 + 4, 16, 9, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawArm(x, y, ang, col) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+  ctx.strokeStyle = col; ctx.lineWidth = 15; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-8, 20, 0, 38); ctx.stroke();
+  ctx.restore();
+}
+
+// ==========================================
+// ОРГАНІЧНИЙ ІНТЕРФЕЙС БЕЗ БІЛИХ ПРЯМОКУТНИКІВ
+// ==========================================
+function drawUI(t) {
+  const bA = state.buttons.letterA, bO = state.buttons.letterO;
+  const centerX = W * 0.48, topY = H * 0.25, spacing = Math.min(W * 0.2, 165);
+  bA.x = state.swapLetters ? centerX + spacing : centerX - spacing;
+  bO.x = state.swapLetters ? centerX - spacing : centerX + spacing;
+  bA.y = topY + Math.sin(t * 3.2) * 7;
+  bO.y = topY + Math.cos(t * 3.2) * 7;
+
+  drawMedallion(bA, 'А', '#FF9E00', '#D62828', t);
+  drawMedallion(bO, 'О', '#00B4D8', '#023E8A', t);
+
+  // Кнопки у правому верхньому куті: мова (УКР / РУС) та кнопка "Далі" (>>)
+  const nb = state.buttons.nextBtn, lb = state.buttons.langBtn;
+  nb.x = W - 54; nb.y = 46;
+  lb.x = W - 154; lb.y = 46;
+
+  // Дерев'яна плашка мови УКР / РУС
+  ctx.save(); ctx.translate(lb.x, lb.y);
+  ctx.scale(1 + lb.hover * 0.08, 1 + lb.hover * 0.08);
+  const wg = ctx.createLinearGradient(0, -23, 0, 23);
+  wg.addColorStop(0, '#E9C46A'); wg.addColorStop(1, '#9C6644');
+  ctx.fillStyle = wg; ctx.strokeStyle = '#582F0E'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.roundRect(-lb.w / 2, -lb.h / 2, lb.w, lb.h, 22); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#381D06'; ctx.font = '900 21px "Segoe UI", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(state.lang, 0, 1);
+  ctx.restore();
+
+  // Кругла смарагдова кнопка "Далі" (>>)
+  ctx.save(); ctx.translate(nb.x, nb.y);
+  ctx.scale(1 + nb.hover * 0.1, 1 + nb.hover * 0.1);
+  const ng = ctx.createRadialGradient(-8, -8, 4, 0, 0, nb.r);
+  ng.addColorStop(0, '#80ED99'); ng.addColorStop(1, '#2B9348');
+  ctx.fillStyle = ng; ctx.strokeStyle = '#1B4332'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(0, 0, nb.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  [-7, 5].forEach(ox => {
+    ctx.beginPath(); ctx.moveTo(ox - 5, -9); ctx.lineTo(ox + 5, 0); ctx.lineTo(ox - 5, 9); ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawMedallion(btn, letter, col1, col2, t) {
+  if (btn.scale <= 0.02) return;
+  ctx.save();
+  const shakeX = btn.shake > 0 ? Math.sin(t * 45) * btn.shake * 14 : 0;
+  ctx.translate(btn.x + shakeX, btn.y);
+  const sc = btn.scale * (1 + btn.hover * 0.1);
+  ctx.scale(sc, sc);
+
+  // Зелені листочки зверху медальйона
+  ctx.fillStyle = '#52B788';
+  ctx.beginPath(); ctx.ellipse(-18, -btn.r + 4, 16, 8, -0.4, 0, Math.PI * 2);
+  ctx.ellipse(18, -btn.r + 4, 16, 8, 0.4, 0, Math.PI * 2); ctx.fill();
+
+  // Дерев'яний обідок
+  const rimG = ctx.createRadialGradient(-16, -16, 10, 0, 0, btn.r + 8);
+  rimG.addColorStop(0, '#F3D5B5'); rimG.addColorStop(0.6, '#B5651D'); rimG.addColorStop(1, '#4A2C11');
+  ctx.fillStyle = rimG;
+  ctx.beginPath(); ctx.arc(0, 0, btn.r + 8, 0, Math.PI * 2); ctx.fill();
+
+  // Самоцвітна серединка
+  const gemG = ctx.createRadialGradient(-20, -24, 8, 0, 0, btn.r);
+  gemG.addColorStop(0, '#FFF3B0'); gemG.addColorStop(0.35, col1); gemG.addColorStop(1, col2);
+  ctx.fillStyle = gemG;
+  ctx.beginPath(); ctx.arc(0, 0, btn.r, 0, Math.PI * 2); ctx.fill();
+
+  // Об'ємна літера А або О
+  ctx.font = '900 84px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.32)'; ctx.fillText(letter, 3, 7);
+  ctx.fillStyle = '#FFFFFF'; ctx.fillText(letter, 0, 3);
+  ctx.restore();
+}
+
+function updateAndDrawParticles(dt) {
+  for (let i = state.particles.length - 1; i >= 0; i--) {
+    const p = state.particles[i];
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 360 * dt;
+    p.rot += p.vRot * dt; p.life -= p.decay * dt;
+    if (p.life <= 0) { state.particles.splice(i, 1); continue; }
+    ctx.save(); ctx.globalAlpha = Math.max(0, p.life);
+    ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color;
+    if (p.type === 'star') { drawStarShape(0, 0, 5, p.size, p.size * 0.45); ctx.fill(); }
+    else { ctx.beginPath(); ctx.ellipse(0, 0, p.size, p.size * 0.55, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+}
+
+function checkAnswer(chosenLetter, btn) {
+  const enc = state.currentEncounter;
+  if (!enc) return;
+  if (chosenLetter === enc.item.letter) {
+    sound.correct(enc.item.id);
+    state.phase = 'CELEBRATE';
+    enc.solved = true; enc.solveTimer = 0;
+    state.monster.mood = 'excited';
+    state.monster.vy = -420;
+    state.monster.squashX = 0.82; state.monster.squashY = 1.22;
+    if (enc.item.id === 'glasses') state.wearingGlasses = 12;
+    state.buttons.letterA.targetScale = 0;
+    state.buttons.letterO.targetScale = 0;
+    const ix = enc.worldX - state.worldX;
+    spawnParticles(btn.x, btn.y, 22, ['#FFE66D', '#FF006E', '#00F5D4', '#FF9E00'], 'star');
+    spawnParticles(ix, H * 0.77 - 40, 26, ['#FFBE0B', '#FB5607', '#80ED99', '#4CC9F0'], 'petal');
+    state.completedCount++;
+  } else {
+    sound.wrong();
+    btn.shake = 1;
+    state.monster.mood = 'wrong';
+    state.monster.moodTimer = 0.9;
+    state.monster.squashX = 1.2; state.monster.squashY = 0.82;
+    spawnParticles(btn.x, btn.y, 10, ['#FF595E', '#FF924C'], 'petal');
+  }
+}
+
+function handlePointer(e) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX || (e.touches && e.touches[0].clientX) || 0) - rect.left;
+  const py = (e.clientY || (e.touches && e.touches[0].clientY) || 0) - rect.top;
+  state.mouse.x = px; state.mouse.y = py;
+
+  if (e.type === 'pointerdown') {
+    sound.init();
+    const { letterA, letterO, nextBtn, langBtn } = state.buttons;
+    if (Math.abs(px - langBtn.x) <= langBtn.w / 2 && Math.abs(py - langBtn.y) <= langBtn.h / 2) {
+      sound.click();
+      state.lang = state.lang === 'УКР' ? 'РУС' : 'УКР';
+      return;
+    }
+    if (Math.hypot(px - nextBtn.x, py - nextBtn.y) <= nextBtn.r + 6) {
+      sound.click();
+      sound.stopDance();
+      spawnNextEncounter();
+      return;
+    }
+    if (state.phase === 'ENCOUNTER') {
+      if (letterA.scale > 0.5 && Math.hypot(px - letterA.x, py - letterA.y) <= letterA.r + 10) {
+        checkAnswer('А', letterA); return;
+      }
+      if (letterO.scale > 0.5 && Math.hypot(px - letterO.x, py - letterO.y) <= letterO.r + 10) {
+        checkAnswer('О', letterO); return;
+      }
+    }
+  }
+}
+canvas.addEventListener('pointermove', handlePointer);
+canvas.addEventListener('pointerdown', handlePointer);
+
+// Головний ігровий цикл
+let lastTime = performance.now();
+function gameLoop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  state.time += dt;
+  const t = state.time, m = state.monster;
+
+  if (state.wearingGlasses > 0) state.wearingGlasses -= dt;
+  m.blinkTimer -= dt;
+  if (m.blinkTimer <= 0) m.blinkTimer = 2.4 + Math.random() * 2.5;
+  if (m.moodTimer > 0) {
+    m.moodTimer -= dt;
+    if (m.moodTimer <= 0 && state.phase === 'ENCOUNTER') m.mood = 'curious';
+  }
+
+  // Пружинна фізика стрибка монстрика
+  if (m.jumpY < 0 || m.vy !== 0) {
+    m.jumpY += m.vy * dt; m.vy += 1250 * dt;
+    if (m.jumpY >= 0) { m.jumpY = 0; m.vy = 0; m.squashX = 1.18; m.squashY = 0.84; }
+  }
+  m.squashX += (1 - m.squashX) * Math.min(1, dt * 10);
+  m.squashY += (1 - m.squashY) * Math.min(1, dt * 10);
+
+  // Анімація кнопок
+  const { letterA, letterO, nextBtn, langBtn } = state.buttons;
+  [letterA, letterO].forEach(b => {
+    b.scale += (b.targetScale - b.scale) * Math.min(1, dt * 10);
+    if (b.shake > 0) b.shake = Math.max(0, b.shake - dt * 2.5);
+    const h = b.scale > 0.5 && Math.hypot(state.mouse.x - b.x, state.mouse.y - b.y) <= b.r + 8 ? 1 : 0;
+    b.hover += (h - b.hover) * 0.2;
+  });
+  nextBtn.hover += ((Math.hypot(state.mouse.x - nextBtn.x, state.mouse.y - nextBtn.y) <= nextBtn.r + 6 ? 1 : 0) - nextBtn.hover) * 0.2;
+  langBtn.hover += ((Math.abs(state.mouse.x - langBtn.x) <= langBtn.w / 2 && Math.abs(state.mouse.y - langBtn.y) <= langBtn.h / 2 ? 1 : 0) - langBtn.hover) * 0.2;
+
+  if (state.phase === 'WALKING') {
+    const rem = state.targetWorldX - state.worldX;
+    const desired = rem < 220 ? Math.max(48, (rem / 220) * state.maxWalkSpeed) : state.maxWalkSpeed;
+    state.walkSpeed += (desired - state.walkSpeed) * Math.min(1, dt * 8);
+    const spdRatio = state.walkSpeed / state.maxWalkSpeed;
+    m.walkCycle += dt * (4 + spdRatio * 7.5);
+    const stepIdx = Math.floor(m.walkCycle / Math.PI);
+    if (stepIdx !== m.lastStep && spdRatio > 0.2) {
+      m.lastStep = stepIdx;
+      sound.footstep(stepIdx);
+    }
+    state.worldX += state.walkSpeed * dt;
+    if (state.worldX >= state.targetWorldX) {
+      state.worldX = state.targetWorldX;
+      state.walkSpeed = 0;
+      state.phase = 'ENCOUNTER';
+      m.mood = 'curious'; m.squashX = 0.9; m.squashY = 1.12;
+      letterA.targetScale = 1; letterO.targetScale = 1;
+      sound.appear();
+    }
+  } else if (state.phase === 'CELEBRATE') {
+    state.walkSpeed = 0;
+    if (state.currentEncounter) {
+      state.currentEncounter.solveTimer += dt;
+      if (state.currentEncounter.solveTimer >= 1.75) {
+        if (state.completedCount >= 11) {
+          state.completedCount = 0;
+          state.phase = 'DANCE';
+          state.danceTimer = 0;
+          m.mood = 'dance';
+          sound.startDance();
+        } else {
+          spawnNextEncounter();
+        }
+      }
+    }
+  } else if (state.phase === 'DANCE') {
+    state.walkSpeed = 0;
+    state.danceTimer += dt;
+    if (Math.random() < 0.35) {
+      spawnParticles(W * 0.15 + Math.random() * W * 0.7, 40, 2, ['#FFBE0B', '#FF006E', '#00F5D4', '#80ED99'], 'star');
+    }
+    if (m.jumpY === 0 && Math.sin(t * 9) > 0.85) m.vy = -330;
+    if (state.danceTimer >= 6.5) {
+      sound.stopDance();
+      spawnNextEncounter();
+    }
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  drawBackground(t);
+  drawWorldObjects(t);
+  drawMonster(t);
+  updateAndDrawParticles(dt);
+  drawUI(t);
+  requestAnimationFrame(gameLoop);
+}
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
