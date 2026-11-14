@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Forest Parcel</title>
+<style>
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
+    background: #14221a;
+  }
+
+  #app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+  }
+
+  /* Живий сюжетний фон */
+  #scene-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Верхня панель управління та полиця трофеїв */
+  #top-bar {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 1vh 1.8vw;
+    height: 11.5vh;
+  }
+
+  #trophy-shelf {
+    flex: 1;
+    height: 9.8vh;
+    margin-right: 1.8vw;
+    background: linear-gradient(180deg, rgba(62,36,19,0.88) 0%, rgba(43,24,12,0.96) 85%, #241308 100%);
+    border-radius: 18px;
+    border: 3px solid #6b4226;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5), inset 0 -6px 0 #1e0f06, inset 0 2px 8px rgba(255,210,140,0.2);
+    display: flex;
+    align-items: center;
+    padding: 0 1.2vw;
+    gap: 0.9vw;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  #trophy-shelf::-webkit-scrollbar {
+    display: none;
+  }
+
+  .shelf-item {
+    width: 7.8vh;
+    height: 7.8vh;
+    flex-shrink: 0;
+    filter: drop-shadow(0 4px 5px rgba(0,0,0,0.45));
+    animation: shelfPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, gentleBob 3s ease-in-out infinite;
+  }
+
+  @keyframes shelfPop {
+    0% { transform: scale(0) translateY(30px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+
+  @keyframes gentleBob {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-4px) rotate(3deg); }
+  }
+
+  #controls {
+    display: flex;
+    gap: 0.9vw;
+    align-items: center;
+  }
+
+  .wood-btn {
+    height: 7.6vh;
+    min-width: 7.6vh;
+    padding: 0 1.3vw;
+    background: radial-gradient(circle at 30% 25%, #9c6234, #633919 75%, #47270f 100%);
+    border: 3px solid #c98c53;
+    border-radius: 18px;
+    box-shadow: 0 6px 0 #2e1808, 0 8px 15px rgba(0,0,0,0.45), inset 0 2px 3px rgba(255,230,190,0.4);
+    color: #ffeed6;
+    font-weight: 900;
+    font-size: 2.7vh;
+    letter-spacing: 1px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.12s, filter 0.15s;
+  }
+
+  .wood-btn:hover {
+    filter: brightness(1.12);
+  }
+
+  .wood-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 #2e1808, 0 4px 8px rgba(0,0,0,0.45);
+  }
+
+  .wood-btn.active-mode {
+    background: radial-gradient(circle at 30% 25%, #688f38, #3d5c1a 75%, #273d0e 100%);
+    border-color: #a8d170;
+    box-shadow: 0 6px 0 #1b2b08, 0 8px 15px rgba(0,0,0,0.45);
+  }
+
+  .wood-btn svg {
+    width: 4.2vh;
+    height: 4.2vh;
+    fill: #ffeed6;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4));
+  }
+
+  /* Центральна ігрова сцена (Єнот + Скриня + Слово) */
+  #stage {
+    position: relative;
+    z-index: 5;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 0.6vh;
+  }
+
+  #character-and-crate {
+    position: relative;
+    width: 96vw;
+    max-width: 1500px;
+    height: 47vh;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  #stage-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Укрупнена дерев'яна дошка для вписування слова */
+  #word-board {
+    position: relative;
+    z-index: 8;
+    margin-top: -1vh;
+    padding: 1.5vh 3.2vw;
+    background: linear-gradient(135deg, #6e411f 0%, #4d2b12 50%, #3b200c 100%);
+    border: 4px solid #a66c38;
+    border-radius: 28px;
+    box-shadow: 0 10px 0 #241205, 0 14px 28px rgba(0,0,0,0.65), inset 0 3px 6px rgba(255,215,160,0.3);
+    display: flex;
+    gap: 1.4vw;
+    align-items: center;
+    justify-content: center;
+    min-height: 14.5vh;
+  }
+
+  .letter-slot {
+    width: 11.6vh;
+    height: 11.6vh;
+    border-radius: 22px;
+    background: radial-gradient(circle at 50% 35%, #2b1708, #160b03 85%);
+    border: 4px solid #8a5629;
+    box-shadow: inset 0 6px 12px rgba(0,0,0,0.8), 0 2px 0 rgba(255,215,150,0.28);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .letter-slot.current {
+    border-color: #ffca4b;
+    box-shadow: inset 0 5px 12px rgba(0,0,0,0.65), 0 0 22px rgba(255, 202, 75, 0.75);
+    animation: slotPulse 1.5s infinite ease-in-out;
+  }
+
+  @keyframes slotPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+  }
+
+  .ghost-letter {
+    font-size: 7.2vh;
+    font-weight: 900;
+    color: rgba(255, 228, 185, 0.34);
+    pointer-events: none;
+    transition: opacity 0.22s;
+  }
+
+  .hide-hints .ghost-letter {
+    opacity: 0;
+  }
+
+  .filled-tile {
+    position: absolute;
+    inset: 3px;
+    border-radius: 17px;
+    background: linear-gradient(160deg, #f5b942 0%, #d98218 65%, #b35e08 100%);
+    border: 3px solid #ffe596;
+    box-shadow: 0 5px 0 #6e3602, inset 0 2px 4px rgba(255,255,255,0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7.4vh;
+    font-weight: 900;
+    color: #361902;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.55);
+    animation: tileDrop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes tileDrop {
+    0% { transform: scale(1.6) translateY(-24px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+
+  /* Укрупнена клавіатура з дерев'яних плашок */
+  #keyboard-area {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    padding: 0.8vh 2vw 1.8vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9vh;
+    min-height: 26vh;
+  }
+
+  .kb-row {
+    display: flex;
+    gap: 0.65vw;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .key-tile {
+    width: 8.6vh;
+    height: 8.1vh;
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at 25% 20%, rgba(255,235,200,0.24), transparent 55%),
+      linear-gradient(175deg, #8f5629 0%, #693b16 65%, #4d290c 100%);
+    border: 3px solid #bd7f48;
+    box-shadow: 0 6px 0 #2b1505, 0 8px 14px rgba(0,0,0,0.48), inset 0 2px 2px rgba(255,230,190,0.38);
+    color: #fff3de;
+    font-size: 4.7vh;
+    font-weight: 900;
+    text-shadow: 0 2px 3px rgba(0,0,0,0.65);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s, filter 0.15s, background 0.2s;
+  }
+
+  .key-tile.large-bank {
+    width: 11.6vh;
+    height: 11.6vh;
+    font-size: 6.5vh;
+    border-radius: 24px;
+    border-width: 4px;
+  }
+
+  .key-tile:hover {
+    filter: brightness(1.14);
+    transform: translateY(-2px);
+  }
+
+  .key-tile:active {
+    transform: translateY(5px);
+    box-shadow: 0 1px 0 #2b1505, 0 3px 6px rgba(0,0,0,0.4);
+  }
+
+  .key-tile.wrong-shake {
+    animation: wrongShake 0.38s ease;
+    background: linear-gradient(175deg, #9e3324 0%, #6e1c11 100%);
+    border-color: #e06b5a;
+  }
+
+  .key-tile.hint-glow {
+    border-color: #ffda66;
+    box-shadow: 0 6px 0 #2b1505, 0 0 22px rgba(255, 215, 80, 0.95);
+  }
+
+  @keyframes wrongShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-8px) rotate(-5deg); }
+    50% { transform: translateX(8px) rotate(5deg); }
+    75% { transform: translateX(-5px) rotate(-3deg); }
+  }
+
+  /* Анімації перемоги для слотів */
+  .win-bounce .filled-tile {
+    background: linear-gradient(160deg, #9ef056 0%, #52b814 65%, #348006 100%);
+    border-color: #dcff9e;
+    color: #143602;
+    animation: winJump 0.55s ease infinite alternate;
+  }
+
+  @keyframes winJump {
+    0% { transform: translateY(0) scale(1); }
+    100% { transform: translateY(-9px) scale(1.07); }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ЖИВИЙ ЛІСОВИЙ ФОН -->
+  <svg id="scene-bg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1d3c45"/>
+        <stop offset="45%" stop-color="#2c5e4f"/>
+        <stop offset="85%" stop-color="#5d8a52"/>
+        <stop offset="100%" stop-color="#365934"/>
+      </linearGradient>
+      <radialGradient id="sunGlow" cx="0.75" cy="0.25" r="0.45">
+        <stop offset="0%" stop-color="#ffe596" stop-opacity="0.65"/>
+        <stop offset="50%" stop-color="#f7b15c" stop-opacity="0.2"/>
+        <stop offset="100%" stop-color="#f7b15c" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="riverGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#26646e"/>
+        <stop offset="50%" stop-color="#41939c"/>
+        <stop offset="100%" stop-color="#1e4e57"/>
+      </linearGradient>
+      <linearGradient id="woodPlank" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#613718"/>
+        <stop offset="50%" stop-color="#4d2a10"/>
+        <stop offset="100%" stop-color="#331a08"/>
+      </linearGradient>
+      <radialGradient id="lanternLight" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0%" stop-color="#fff3b0" stop-opacity="0.95"/>
+        <stop offset="40%" stop-color="#ffae33" stop-opacity="0.45"/>
+        <stop offset="100%" stop-color="#ffae33" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+
+    <!-- Небо і сонячне сяйво -->
+    <rect width="1600" height="900" fill="url(#skyGrad)"/>
+    <circle cx="1200" cy="220" r="550" fill="url(#sunGlow)"/>
+
+    <!-- Далекі гори і смереки -->
+    <path d="M0 560 Q240 430 480 520 T980 490 T1420 530 L1600 500 L1600 700 L0 700 Z" fill="#23473b" opacity="0.7"/>
+    <path d="M0 600 Q320 510 660 580 T1280 540 L1600 580 L1600 740 L0 740 Z" fill="#1c3b2e"/>
+
+    <!-- Силуети лісу -->
+    <g fill="#163023">
+      <polygon points="90,340 30,580 150,580"/>
+      <polygon points="90,260 45,460 135,460"/>
+      <polygon points="210,380 150,600 270,600"/>
+      <polygon points="1390,310 1320,590 1460,590"/>
+      <polygon points="1390,230 1340,450 1440,450"/>
+      <polygon points="1510,360 1450,610 1570,610"/>
+    </g>
+
+    <!-- Річка на задньому плані -->
+    <path d="M0 610 Q450 580 850 625 T1600 605 L1600 710 L0 710 Z" fill="url(#riverGrad)"/>
+    <g id="river-ripples" stroke="#9bebf2" stroke-width="3" stroke-linecap="round" opacity="0.45">
+      <line x1="200" y1="640" x2="290" y2="640"/>
+      <line x1="650" y1="655" x2="770" y2="655"/>
+      <line x1="1150" y1="635" x2="1260" y2="635"/>
+      <line x1="920" y1="675" x2="1010" y2="675"/>
+    </g>
+
+    <!-- Зелені пагорби та кущі біля веранди -->
+    <path d="M0 665 Q360 630 720 680 T1600 660 L1600 900 L0 900 Z" fill="#23451e"/>
+    <circle cx="140" cy="680" r="85" fill="#2d5724"/>
+    <circle cx="240" cy="700" r="65" fill="#3a6b2e"/>
+    <circle cx="1460" cy="675" r="95" fill="#2d5724"/>
+    <circle cx="1360" cy="700" r="70" fill="#3a6b2e"/>
+
+    <!-- Дерев'яні стовпи веранди -->
+    <rect x="40" y="0" width="46" height="900" fill="url(#woodPlank)"/>
+    <rect x="1514" y="0" width="46" height="900" fill="url(#woodPlank)"/>
+
+    <!-- Гілки зверху -->
+    <g id="swaying-branches">
+      <path d="M0 80 Q180 130 290 70 Q190 190 0 170 Z" fill="#1e3d19"/>
+      <path d="M1600 90 Q1410 150 1290 85 Q1410 210 1600 185 Z" fill="#1e3d19"/>
+    </g>
+
+    <!-- Лівий ліхтарик -->
+    <g id="lantern-left" transform="translate(155, 140)">
+      <line x1="0" y1="-60" x2="0" y2="0" stroke="#3b2210" stroke-width="5"/>
+      <circle cx="0" cy="30" r="95" fill="url(#lanternLight)"/>
+      <path d="M-22 0 L22 0 L28 45 L-28 45 Z" fill="#ffdf78" stroke="#4a2810" stroke-width="5"/>
+      <path d="M-26 0 Q0 -18 26 0 Z" fill="#4a2810"/>
+      <rect x="-24" y="45" width="48" height="8" rx="4" fill="#4a2810"/>
+    </g>
+
+    <!-- Правий ліхтарик -->
+    <g id="lantern-right" transform="translate(1445, 140)">
+      <line x1="0" y1="-60" x2="0" y2="0" stroke="#3b2210" stroke-width="5"/>
+      <circle cx="0" cy="30" r="95" fill="url(#lanternLight)"/>
+      <path d="M-22 0 L22 0 L28 45 L-28 45 Z" fill="#ffdf78" stroke="#4a2810" stroke-width="5"/>
+      <path d="M-26 0 Q0 -18 26 0 Z" fill="#4a2810"/>
+      <rect x="-24" y="45" width="48" height="8" rx="4" fill="#4a2810"/>
+    </g>
+
+    <!-- Стіл-прилавок веранди -->
+    <rect x="0" y="655" width="1600" height="245" fill="url(#woodPlank)"/>
+    <rect x="0" y="650" width="1600" height="22" fill="#7d4922"/>
+    <path d="M0 725 L1600 725 M0 795 L1600 795 M0 865 L1600 865" stroke="#291406" stroke-width="4" opacity="0.55"/>
+
+    <!-- Світлячки -->
+    <g id="fireflies"></g>
+  </svg>
+
+  <!-- ВЕРХНЯ ПАНЕЛЬ: Полиця відкритих сюрпризів + Кнопки управління -->
+  <div id="top-bar">
+    <div id="trophy-shelf"></div>
+    <div id="controls">
+      <!-- Перемикач мови -->
+      <button class="wood-btn" id="btn-lang" title="Мова">УКР</button>
+
+      <!-- Підказка (око: за замовчуванням вимкнена, щоб дитина думала сама) -->
+      <button class="wood-btn" id="btn-hint" title="Підказка літер">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+        </svg>
+      </button>
+
+      <!-- Перемикач розміру клавіатури (компактний банк букв / повна абетка) -->
+      <button class="wood-btn" id="btn-kb-mode" title="Режим клавіатури">
+        <svg viewBox="0 0 24 24">
+          <path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>
+        </svg>
+      </button>
+
+      <!-- Мінімалістична кнопка "Далі" -->
+      <button class="wood-btn" id="btn-next" title="Далі">
+        <svg viewBox="0 0 24 24">
+          <path d="M5.59 7.41L10.18 12l-4.59 4.59L7 18l6-6-6-6zM16 6h2v12h-2z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ЦЕНТРАЛЬНА СЦЕНА: Укрупнені Єнот, Скриня з великим віконцем та Слово -->
+  <div id="stage">
+    <div id="character-and-crate">
+      <svg id="stage-svg" viewBox="0 0 1100 450">
+        <defs>
+          <radialGradient id="furMain" cx="0.5" cy="0.4" r="0.6">
+            <stop offset="0%" stop-color="#9e8c7a"/>
+            <stop offset="65%" stop-color="#6e5d4f"/>
+            <stop offset="100%" stop-color="#473b31"/>
+          </radialGradient>
+          <linearGradient id="furBelly" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#e8dccb"/>
+            <stop offset="100%" stop-color="#b8a693"/>
+          </linearGradient>
+          <linearGradient id="crateWood" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#9c6234"/>
+            <stop offset="50%" stop-color="#784720"/>
+            <stop offset="100%" stop-color="#522d11"/>
+          </linearGradient>
+          <radialGradient id="lensGlass" cx="0.35" cy="0.3" r="0.7">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="75%" stop-color="#f7ebd2"/>
+            <stop offset="100%" stop-color="#dfc396"/>
+          </radialGradient>
+        </defs>
+
+        <!-- Тінь на столі під Єнотом і скринею -->
+        <ellipse cx="365" cy="418" rx="220" ry="28" fill="rgba(0,0,0,0.4)"/>
+        <ellipse cx="775" cy="420" rx="210" ry="28" fill="rgba(0,0,0,0.44)"/>
+
+        <!-- ================= УКРУПНЕНИЙ РЕАЛІСТИЧНИЙ ЄНОТ ================= -->
+        <g id="raccoon-Base" transform="translate(365, 250) scale(1.18)">
+          <g id="raccoon-root">
+            <!-- Смугастий пухнастий хвіст -->
+            <g id="rac-tail" transform="translate(-115, 75)">
+              <path d="M0 0 C-95 -10, -145 -85, -100 -135 C-65 -170, -15 -115, 10 -35 Z" fill="url(#furMain)" stroke="#382e26" stroke-width="3"/>
+              <path d="M-85 -35 Q-55 -55 -28 -45" stroke="#29211b" stroke-width="18" stroke-linecap="round" fill="none"/>
+              <path d="M-112 -75 Q-75 -95 -45 -78" stroke="#29211b" stroke-width="18" stroke-linecap="round" fill="none"/>
+              <path d="M-112 -118 Q-85 -132 -65 -115" stroke="#29211b" stroke-width="16" stroke-linecap="round" fill="none"/>
+            </g>
+
+            <!-- Тулуб -->
+            <g id="rac-body">
+              <path d="M-110 135 C-125 20, -85 -45, 0 -45 C85 -45, 125 20, 110 135 Z" fill="url(#furMain)" stroke="#3b3028" stroke-width="3"/>
+              <ellipse cx="0" cy="60" rx="68" ry="72" fill="url(#furBelly)"/>
+              <path d="M-25 5 L-12 22 L0 8 L12 22 L25 5" fill="none" stroke="#cfbfa9" stroke-width="4" stroke-linecap="round"/>
+            </g>
+
+            <!-- Голова Єнота -->
+            <g id="rac-head" transform="translate(0, -65)">
+              <g id="rac-ear-l" transform="translate(-78, -62)">
+                <path d="M-18 25 C-32 -25, -5 -48, 22 -18 Z" fill="#524439" stroke="#e8dccb" stroke-width="5" stroke-linejoin="round"/>
+                <path d="M-10 15 C-18 -12, -2 -26, 12 -10 Z" fill="#cfa593"/>
+              </g>
+              <g id="rac-ear-r" transform="translate(78, -62)">
+                <path d="M18 25 C32 -25, 5 -48, -22 -18 Z" fill="#524439" stroke="#e8dccb" stroke-width="5" stroke-linejoin="round"/>
+                <path d="M10 15 C18 -12, 2 -26, -12 -10 Z" fill="#cfa593"/>
+              </g>
+
+              <path d="M0 -82 C65 -82, 105 -35, 122 10 C130 32, 95 68, 0 68 C-95 68, -130 32, -122 10 C-105 -35, -65 -82, 0 -82 Z" fill="url(#furMain)" stroke="#3b3028" stroke-width="3"/>
+              <path d="M-98 -5 C-75 -48, -22 -52, -8 -18 M98 -5 C75 -48, 22 -52, 8 -18" fill="none" stroke="#f0e6d8" stroke-width="10" stroke-linecap="round"/>
+
+              <!-- Маска -->
+              <path d="M-105 8 C-95 -32, -35 -38, -12 -5 C-35 28, -88 32, -105 8 Z" fill="#261f1a"/>
+              <path d="M105 8 C95 -32, 35 -38, 12 -5 C35 28, 88 32, 105 8 Z" fill="#261f1a"/>
+
+              <!-- Щічки -->
+              <g id="rac-cheeks">
+                <ellipse cx="-68" cy="34" rx="34" ry="22" fill="#e8dccb"/>
+                <ellipse cx="68" cy="34" rx="34" ry="22" fill="#e8dccb"/>
+                <circle cx="-72" cy="38" r="14" fill="#f29b88" opacity="0.35"/>
+                <circle cx="72" cy="38" r="14" fill="#f29b88" opacity="0.35"/>
+              </g>
+
+              <!-- Очі -->
+              <g id="rac-eyes">
+                <g transform="translate(-46, -6)">
+                  <ellipse cx="0" cy="0" rx="18" ry="20" fill="#ffffff"/>
+                  <g class="pupil">
+                    <circle cx="3" cy="1" r="12" fill="#4f2d12"/>
+                    <circle cx="3" cy="1" r="7" fill="#170d05"/>
+                    <circle cx="-2" cy="-5" r="4.5" fill="#ffffff"/>
+                    <circle cx="7" cy="5" r="2" fill="#ffffff"/>
+                  </g>
+                  <ellipse class="eyelid" cx="0" cy="0" rx="19" ry="21" fill="#261f1a" transform="scale(1, 0)" style="transform-origin: center -20px;"/>
+                </g>
+                <g transform="translate(46, -6)">
+                  <ellipse cx="0" cy="0" rx="18" ry="20" fill="#ffffff"/>
+                  <g class="pupil">
+                    <circle cx="3" cy="1" r="12" fill="#4f2d12"/>
+                    <circle cx="3" cy="1" r="7" fill="#170d05"/>
+                    <circle cx="-2" cy="-5" r="4.5" fill="#ffffff"/>
+                    <circle cx="7" cy="5" r="2" fill="#ffffff"/>
+                  </g>
+                  <ellipse class="eyelid" cx="0" cy="0" rx="19" ry="21" fill="#261f1a" transform="scale(1, 0)" style="transform-origin: center -20px;"/>
+                </g>
+              </g>
+
+              <!-- Мордочка і носик -->
+              <ellipse cx="0" cy="24" rx="38" ry="26" fill="#f5ece0"/>
+              <path id="rac-mouth" d="M-18 36 Q0 48 18 36" fill="none" stroke="#36281e" stroke-width="4" stroke-linecap="round"/>
+              <path id="rac-mouth-open" d="M-20 34 Q0 62 20 34 Z" fill="#9e3535" stroke="#36281e" stroke-width="3" opacity="0"/>
+
+              <ellipse cx="0" cy="14" rx="16" ry="11" fill="#1f1916"/>
+              <ellipse cx="-5" cy="10" rx="6" ry="3.5" fill="#ffffff" opacity="0.65"/>
+
+              <g stroke="#f5ece0" stroke-width="2.2" stroke-linecap="round" opacity="0.8">
+                <line x1="-32" y1="22" x2="-85" y2="16"/>
+                <line x1="-32" y1="28" x2="-88" y2="30"/>
+                <line x1="32" y1="22" x2="85" y2="16"/>
+                <line x1="32" y1="28" x2="88" y2="30"/>
+              </g>
+            </g>
+
+            <!-- Лапки -->
+            <g id="rac-paw-l" transform="translate(-85, 95)">
+              <ellipse cx="0" cy="0" rx="28" ry="20" fill="#473b31" stroke="#292019" stroke-width="3"/>
+              <line x1="-10" y1="8" x2="-10" y2="18" stroke="#292019" stroke-width="3" stroke-linecap="round"/>
+              <line x1="0" y1="10" x2="0" y2="20" stroke="#292019" stroke-width="3" stroke-linecap="round"/>
+              <line x1="10" y1="8" x2="10" y2="18" stroke="#292019" stroke-width="3" stroke-linecap="round"/>
+            </g>
+            <g id="rac-paw-r" transform="translate(85, 95)">
+              <ellipse cx="0" cy="0" rx="28" ry="20" fill="#473b31" stroke="#292019" stroke-width="3"/>
+              <line x1="-10" y1="8" x2="-10" y2="18" stroke="#292019" stroke-width="3" stroke-linecap="round"/>
+              <line x1="0" y1="10" x2="0" y2="20" stroke="#292019" stroke-width="3" stroke-linecap="round"/>
+              <line x1="10" y1="8" x2="10" y2="18" stroke="#292019" stroke-width="3" stroke-linecap="round"/>
+            </g>
+          </g>
+        </g>
+
+        <!-- ================= УКРУПНЕНА ДУБОВА СКРИНЯ ================= -->
+        <g id="crate-group" transform="translate(775, 265)">
+          <!-- 1. Корпус скрині (нижній шар) -->
+          <g id="crate-box">
+            <rect x="-170" y="-80" width="340" height="235" rx="22" fill="url(#crateWood)" stroke="#3b1f0a" stroke-width="5.5"/>
+            <line x1="-166" y1="-5" x2="166" y2="-5" stroke="#3b1f0a" stroke-width="4.5"/>
+            <line x1="-166" y1="75" x2="166" y2="75" stroke="#3b1f0a" stroke-width="4.5"/>
+            <!-- Металеві окуття по кутах -->
+            <rect x="-170" y="-80" width="32" height="235" rx="8" fill="#4a5259" stroke="#262b30" stroke-width="3.5"/>
+            <rect x="138" y="-80" width="32" height="235" rx="8" fill="#4a5259" stroke="#262b30" stroke-width="3.5"/>
+            <circle cx="-154" cy="-50" r="5" fill="#9aa4ad"/>
+            <circle cx="-154" cy="35" r="5" fill="#9aa4ad"/>
+            <circle cx="-154" cy="120" r="5" fill="#9aa4ad"/>
+            <circle cx="154" cy="-50" r="5" fill="#9aa4ad"/>
+            <circle cx="154" cy="35" r="5" fill="#9aa4ad"/>
+            <circle cx="154" cy="120" r="5" fill="#9aa4ad"/>
+          </g>
+
+          <!-- 2. Кришка скрині та замок (середній шар, піднятий високо над віконцем) -->
+          <g id="crate-lid" style="transform-origin: -170px -80px; transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);">
+            <path d="M-178 -75 C-178 -145, 178 -145, 178 -75 Z" fill="#875125" stroke="#3b1f0a" stroke-width="5.5"/>
+            <rect x="-182" y="-86" width="364" height="22" rx="9" fill="#ab6b35" stroke="#3b1f0a" stroke-width="4.5"/>
+            <!-- Замок розташований високо на верхній дузі кришки, щоб ніколи не перекривати картинку -->
+            <g id="crate-lock" transform="translate(0, -96)" style="transition: transform 0.3s ease;">
+              <circle cx="0" cy="0" r="22" fill="#f5bd42" stroke="#6e4807" stroke-width="4"/>
+              <rect x="-4" y="-10" width="8" height="14" rx="3" fill="#3b2302"/>
+              <circle cx="0" cy="5" r="5" fill="#3b2302"/>
+            </g>
+          </g>
+
+          <!-- 3. ВЕЛИКЕ ВІКОНЦЕ З КАРТИНКОЮ НА НАЙВИЩОМУ ШАРІ (нічого його не закриває) -->
+          <g id="crate-lens-top-layer" transform="translate(0, 42)">
+            <circle cx="0" cy="0" r="106" fill="#d49b35" stroke="#5e3d08" stroke-width="6"/>
+            <circle cx="0" cy="0" r="94" fill="url(#lensGlass)" stroke="#8c5c11" stroke-width="4"/>
+            <!-- Укрупнена ілюстрація загаданого предмета -->
+            <g id="crate-preview-icon" transform="scale(1.65)"></g>
+            <!-- Легкий скляний відблиск скраю -->
+            <path d="M-64 -42 Q-28 -74 32 -62" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="7" stroke-linecap="round"/>
+          </g>
+
+          <!-- 4. Предмет, що вилітає зі скрині під час нагороди (поверх усього) -->
+          <g id="reward-actor" transform="translate(0, 0) scale(0)" opacity="0"></g>
+        </g>
+
+        <!-- Шар для спецефектів (крихти, бульбашки, зірочки) -->
+        <g id="fx-layer"></g>
+      </svg>
+    </div>
+
+    <!-- Укрупнена дерев'яна дошка зі слотами для літер -->
+    <div id="word-board" class="hide-hints"></div>
+  </div>
+
+  <!-- Нижня панель: Укрупнена дерев'яна клавіатура -->
+  <div id="keyboard-area"></div>
+</div>
+
+<script>
+/* ============================================================================
+   1. СЛОВНИК ТА КАТЕГОРІЇ СЮЖЕТНИХ НАГОРОД (УКР / РУС)
+============================================================================ */
+const WORDS_DB = [
+  { id: 'cheese',   ukr: 'СИР',   rus: 'СЫР',   type: 'food'  },
+  { id: 'juice',    ukr: 'СІК',   rus: 'СОК',   type: 'drink' },
+  { id: 'honey',    ukr: 'МЕД',   rus: 'МЁД',   type: 'food'  },
+  { id: 'cake',     ukr: 'ТОРТ',  rus: 'ТОРТ',  type: 'food'  },
+  { id: 'fish',     ukr: 'РИБА',  rus: 'РЫБА',  type: 'pet'   },
+  { id: 'frog',     ukr: 'ЖАБА',  rus: 'ЖАБА',  type: 'pet'   },
+  { id: 'crab',     ukr: 'КРАБ',  rus: 'КРАБ',  type: 'pet'   },
+  { id: 'owl',      ukr: 'СОВА',  rus: 'СОВА',  type: 'pet'   },
+  { id: 'mushroom', ukr: 'ГРИБ',  rus: 'ГРИБ',  type: 'food'  },
+  { id: 'balloon',  ukr: 'КУЛЯ',  rus: 'ШАР',   type: 'fly'   },
+  { id: 'elephant', ukr: 'СЛОН',  rus: 'СЛОН',  type: 'pet'   },
+  { id: 'bread',    ukr: 'ХЛІБ',  rus: 'ХЛЕБ',  type: 'food'  },
+  { id: 'pear',     ukr: 'ГРУША', rus: 'ГРУША', type: 'drink' },
+  { id: 'lemon',    ukr: 'ЛИМОН', rus: 'ЛИМОН', type: 'drink' },
+  { id: 'soup',     ukr: 'СУП',   rus: 'СУП',   type: 'food'  },
+  { id: 'tea',      ukr: 'ЧАЙ',   rus: 'ЧАЙ',   type: 'drink' },
+  { id: 'beetle',   ukr: 'ЖУК',   rus: 'ЖУК',   type: 'pet'   },
+  { id: 'cat',      ukr: 'КІТ',   rus: 'КОТ',   type: 'pet'   },
+  { id: 'dog',      ukr: 'ПЕС',   rus: 'ПЁС',   type: 'pet'   },
+  { id: 'fox',      ukr: 'ЛИС',   rus: 'ЛИС',   type: 'pet'   },
+  { id: 'key',      ukr: 'КЛЮЧ',  rus: 'КЛЮЧ',  type: 'fly'   },
+  { id: 'porridge', ukr: 'КАША',  rus: 'КАША',  type: 'food'  }
+];
+
+/* ============================================================================
+   2. ВЕКТОРНІ ІЛЮСТРАЦІЇ ДЛЯ ВСІХ 22 ПРЕДМЕТІВ
+============================================================================ */
+function getItemSVG(id) {
+  switch (id) {
+    case 'cheese':
+      return `<g>
+        <path d="M-42 20 L38 25 L15 -30 Z" fill="#ffd633" stroke="#b57c00" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M-42 20 L38 25 L38 -5 L15 -30 Z" fill="#ffbe19" stroke="#b57c00" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="-12" cy="8" r="7" fill="#e09600"/>
+        <circle cx="14" cy="12" r="5" fill="#e09600"/>
+        <circle cx="8" cy="-6" r="6" fill="#e09600"/>
+      </g>`;
+    case 'juice':
+      return `<g>
+        <path d="M-20 -18 L20 -18 L15 34 L-15 34 Z" fill="#ff9419" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M-22 -24 L22 -24 L20 -16 L-20 -16 Z" fill="#e8f7ff" opacity="0.8"/>
+        <path d="M4 -18 L14 -42 L26 -40" fill="none" stroke="#ff3b56" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="-20" cy="-18" r="11" fill="#ffba08" stroke="#e85d04" stroke-width="3"/>
+      </g>`;
+    case 'honey':
+      return `<g>
+        <path d="M-28 -8 C-38 15, -28 36, 0 36 C28 36, 38 15, 28 -8 Z" fill="#d97724" stroke="#6e3508" stroke-width="3"/>
+        <rect x="-24" y="-20" width="48" height="14" rx="6" fill="#f5b82e" stroke="#6e3508" stroke-width="3"/>
+        <path d="M-18 -8 Q-10 10 -4 -2 Q4 14 12 -4 Q18 8 22 -8" fill="#ffcf40" stroke="#b86b00" stroke-width="2"/>
+        <line x1="0" y1="-38" x2="0" y2="-20" stroke="#8c4a15" stroke-width="5" stroke-linecap="round"/>
+      </g>`;
+    case 'cake':
+      return `<g>
+        <rect x="-34" y="2" width="68" height="30" rx="6" fill="#d4724a" stroke="#6e2e14" stroke-width="3"/>
+        <path d="M-36 2 Q-24 16 -12 4 Q0 16 12 4 Q24 16 36 2 L34 -10 L-34 -10 Z" fill="#fff0f5" stroke="#d98a9e" stroke-width="2.5"/>
+        <rect x="-5" y="-32" width="10" height="22" fill="#4cc9f0" stroke="#1d708a" stroke-width="2"/>
+        <path d="M0 -46 C8 -36, 5 -30, 0 -30 C-5 -30, -8 -36, 0 -46 Z" fill="#ffbe0b"/>
+        <circle cx="-18" cy="-12" r="6" fill="#e63946"/>
+        <circle cx="18" cy="-12" r="6" fill="#e63946"/>
+      </g>`;
+    case 'fish':
+      return `<g>
+        <path d="M22 0 L44 -18 L40 0 L44 18 Z" fill="#ff7b00" stroke="#9e4700" stroke-width="2.5"/>
+        <ellipse cx="-4" cy="0" rx="32" ry="20" fill="#ffaa00" stroke="#9e4700" stroke-width="3"/>
+        <path d="M-8 -19 Q4 -32 14 -16" fill="#ff5400" stroke="#9e4700" stroke-width="2.5"/>
+        <circle cx="-20" cy="-4" r="5" fill="#ffffff"/>
+        <circle cx="-21" cy="-4" r="2.5" fill="#000000"/>
+        <path d="M-4 -12 Q4 0 -4 12 M8 -10 Q15 0 8 10" fill="none" stroke="#ffdd75" stroke-width="3" stroke-linecap="round"/>
+      </g>`;
+    case 'frog':
+      return `<g>
+        <ellipse cx="0" cy="10" rx="34" ry="24" fill="#52b788" stroke="#1b4332" stroke-width="3"/>
+        <ellipse cx="0" cy="16" rx="22" ry="14" fill="#d8f3dc"/>
+        <circle cx="-18" cy="-14" r="12" fill="#52b788" stroke="#1b4332" stroke-width="3"/>
+        <circle cx="18" cy="-14" r="12" fill="#52b788" stroke="#1b4332" stroke-width="3"/>
+        <circle cx="-18" cy="-15" r="7" fill="#ffffff"/><circle cx="-18" cy="-15" r="4" fill="#111"/>
+        <circle cx="18" cy="-15" r="7" fill="#ffffff"/><circle cx="18" cy="-15" r="4" fill="#111"/>
+        <path d="M-12 6 Q0 14 12 6" fill="none" stroke="#1b4332" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="-20" cy="4" r="5" fill="#ff758f" opacity="0.6"/>
+        <circle cx="20" cy="4" r="5" fill="#ff758f" opacity="0.6"/>
+      </g>`;
+    case 'crab':
+      return `<g>
+        <g stroke="#9b2226" stroke-width="4" stroke-linecap="round">
+          <line x1="-25" y1="10" x2="-42" y2="22"/><line x1="-22" y1="18" x2="-36" y2="32"/>
+          <line x1="25" y1="10" x2="42" y2="22"/><line x1="22" y1="18" x2="36" y2="32"/>
+        </g>
+        <path d="M-24 -6 C-42 -22, -38 -38, -22 -30 L-28 -20 L-16 -22 Z" fill="#e63946" stroke="#800f17" stroke-width="2.5"/>
+        <path d="M24 -6 C42 -22, 38 -38, 22 -30 L28 -20 L16 -22 Z" fill="#e63946" stroke="#800f17" stroke-width="2.5"/>
+        <ellipse cx="0" cy="8" rx="28" ry="19" fill="#e63946" stroke="#800f17" stroke-width="3"/>
+        <circle cx="-10" cy="-12" r="6" fill="#fff" stroke="#800f17" stroke-width="2"/><circle cx="-10" cy="-12" r="3" fill="#111"/>
+        <circle cx="10" cy="-12" r="6" fill="#fff" stroke="#800f17" stroke-width="2"/><circle cx="10" cy="-12" r="3" fill="#111"/>
+        <path d="M-8 10 Q0 16 8 10" fill="none" stroke="#800f17" stroke-width="2.5" stroke-linecap="round"/>
+      </g>`;
+    case 'owl':
+      return `<g>
+        <ellipse cx="0" cy="6" rx="28" ry="32" fill="#8d5b4c" stroke="#472920" stroke-width="3"/>
+        <ellipse cx="0" cy="14" rx="18" ry="20" fill="#e6ccb2"/>
+        <path d="M-22 -22 L-10 -12 M22 -22 L10 -12" stroke="#472920" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="-11" cy="-6" r="11" fill="#fff" stroke="#472920" stroke-width="2.5"/><circle cx="-11" cy="-6" r="5.5" fill="#222"/>
+        <circle cx="11" cy="-6" r="11" fill="#fff" stroke="#472920" stroke-width="2.5"/><circle cx="11" cy="-6" r="5.5" fill="#222"/>
+        <polygon points="-5,0 5,0 0,9" fill="#ffb703" stroke="#996b00" stroke-width="1.5"/>
+      </g>`;
+    case 'mushroom':
+      return `<g>
+        <path d="M-14 4 L-18 34 C-18 42, 18 42, 18 34 L14 4 Z" fill="#f5ebe0" stroke="#9c7a54" stroke-width="3"/>
+        <path d="M-40 6 C-42 -28, 42 -28, 40 6 Z" fill="#c94a29" stroke="#6e200c" stroke-width="3"/>
+        <circle cx="-16" cy="-10" r="6" fill="#fff3e6"/>
+        <circle cx="12" cy="-14" r="5" fill="#fff3e6"/>
+        <circle cx="4" cy="-3" r="4" fill="#fff3e6"/>
+      </g>`;
+    case 'balloon':
+      return `<g>
+        <path d="M0 24 Q-8 38 4 46" fill="none" stroke="#555" stroke-width="2.5"/>
+        <polygon points="-5,24 5,24 0,18" fill="#d90429"/>
+        <ellipse cx="0" cy="-8" rx="26" ry="31" fill="#ef233c" stroke="#9b0014" stroke-width="3"/>
+        <ellipse cx="-9" cy="-18" rx="6" ry="11" transform="rotate(-20 -9 -18)" fill="#ffffff" opacity="0.55"/>
+      </g>`;
+    case 'elephant':
+      return `<g>
+        <!-- Великі вуха слоника -->
+        <ellipse cx="-28" cy="-2" rx="18" ry="24" fill="#7c98b3" stroke="#3b5266" stroke-width="3"/>
+        <ellipse cx="-27" cy="0" rx="11" ry="16" fill="#f4acb7" opacity="0.7"/>
+        <ellipse cx="28" cy="-2" rx="18" ry="24" fill="#7c98b3" stroke="#3b5266" stroke-width="3"/>
+        <ellipse cx="27" cy="0" rx="11" ry="16" fill="#f4acb7" opacity="0.7"/>
+        <!-- Голова -->
+        <circle cx="0" cy="-2" r="23" fill="#8da9c4" stroke="#3b5266" stroke-width="3"/>
+        <!-- Очі -->
+        <circle cx="-9" cy="-7" r="4.5" fill="#fff"/><circle cx="-9" cy="-7" r="2.5" fill="#111"/>
+        <circle cx="9" cy="-7" r="4.5" fill="#fff"/><circle cx="9" cy="-7" r="2.5" fill="#111"/>
+        <!-- Хобот -->
+        <path d="M-6 2 C-6 24, 14 28, 18 16 C20 10, 13 9, 12 14" fill="none" stroke="#8da9c4" stroke-width="11" stroke-linecap="round"/>
+        <path d="M-6 2 C-6 24, 14 28, 18 16 C20 10, 13 9, 12 14" fill="none" stroke="#3b5266" stroke-width="3" stroke-linecap="round"/>
+      </g>`;
+    case 'bread':
+      return `<g>
+        <path d="M-36 18 C-40 -14, -22 -24, 0 -24 C22 -24, 40 -14, 36 18 Z" fill="#d98a3c" stroke="#6e3c0c" stroke-width="3"/>
+        <rect x="-36" y="14" width="72" height="12" rx="5" fill="#b86b23" stroke="#6e3c0c" stroke-width="2.5"/>
+        <path d="M-16 -14 Q-10 -2 -14 4 M0 -16 Q6 -4 2 4 M16 -14 Q22 -2 18 4" fill="none" stroke="#fff0d4" stroke-width="3.5" stroke-linecap="round"/>
+      </g>`;
+    case 'pear':
+      return `<g>
+        <path d="M0 -36 Q14 -42 18 -30 Q6 -24 0 -36 Z" fill="#52b788" stroke="#1b4332" stroke-width="2"/>
+        <path d="M0 -28 C-14 -28, -14 -8, -24 6 C-34 22, -20 38, 0 38 C20 38, 34 22, 24 6 C14 -8, 14 -28, 0 -28 Z" fill="#c7f952" stroke="#5c8001" stroke-width="3"/>
+        <circle cx="10" cy="14" r="9" fill="#ff9f1c" opacity="0.35"/>
+        <ellipse cx="-8" cy="6" rx="4" ry="9" fill="#ffffff" opacity="0.5"/>
+      </g>`;
+    case 'lemon':
+      return `<g>
+        <path d="M-38 0 C-30 -26, 30 -26, 38 0 C30 26, -30 26, -38 0 Z" fill="#ffea00" stroke="#b59400" stroke-width="3"/>
+        <ellipse cx="-10" cy="-8" rx="10" ry="4" fill="#ffffff" opacity="0.55"/>
+        <path d="M0 -20 Q14 -36 26 -24 Q12 -12 0 -20 Z" fill="#40916c" stroke="#1b4332" stroke-width="2"/>
+      </g>`;
+    case 'soup':
+      return `<g>
+        <path d="M12 -4 L28 -28" stroke="#adb5bd" stroke-width="6" stroke-linecap="round"/>
+        <path d="M-36 0 L36 0 C34 28, 18 36, 0 36 C-18 36, -34 28, -36 0 Z" fill="#e63946" stroke="#780000" stroke-width="3"/>
+        <ellipse cx="0" cy="0" rx="36" ry="9" fill="#ff9f1c" stroke="#780000" stroke-width="3"/>
+        <path d="M-12 -14 Q-16 -24 -10 -32 M4 -16 Q0 -26 6 -34" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+      </g>`;
+    case 'tea':
+      return `<g>
+        <path d="M20 -4 C36 -4, 36 18, 18 18" fill="none" stroke="#4cc9f0" stroke-width="6" stroke-linecap="round"/>
+        <path d="M-26 -10 L24 -10 C22 22, 14 30, 0 30 C-14 30, -22 22, -26 -10 Z" fill="#4cc9f0" stroke="#184e77" stroke-width="3"/>
+        <ellipse cx="0" cy="30" rx="30" ry="6" fill="#90e0ef" stroke="#184e77" stroke-width="2.5"/>
+        <path d="M-8 -18 Q-12 -28 -6 -36 M8 -18 Q4 -28 10 -36" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.75"/>
+      </g>`;
+    case 'beetle':
+      return `<g>
+        <g stroke="#1d1e2c" stroke-width="3.5" stroke-linecap="round">
+          <line x1="-20" y1="-8" x2="-34" y2="-16"/><line x1="-24" y1="6" x2="-38" y2="6"/><line x1="-20" y1="20" x2="-34" y2="28"/>
+          <line x1="20" y1="-8" x2="34" y2="-16"/><line x1="24" y1="6" x2="38" y2="6"/><line x1="20" y1="20" x2="34" y2="28"/>
+        </g>
+        <circle cx="0" cy="-18" r="14" fill="#1d1e2c"/>
+        <ellipse cx="0" cy="8" rx="24" ry="26" fill="#e63946" stroke="#1d1e2c" stroke-width="3"/>
+        <line x1="0" y1="-16" x2="0" y2="34" stroke="#1d1e2c" stroke-width="3"/>
+        <circle cx="-10" cy="0" r="4.5" fill="#1d1e2c"/><circle cx="10" cy="0" r="4.5" fill="#1d1e2c"/>
+        <circle cx="-9" cy="16" r="4.5" fill="#1d1e2c"/><circle cx="9" cy="16" r="4.5" fill="#1d1e2c"/>
+      </g>`;
+    case 'cat':
+      return `<g>
+        <polygon points="-26,-6 -22,-34 -4,-16" fill="#ff9f1c" stroke="#9c5200" stroke-width="3" stroke-linejoin="round"/>
+        <polygon points="26,-6 22,-34 4,-16" fill="#ff9f1c" stroke="#9c5200" stroke-width="3" stroke-linejoin="round"/>
+        <ellipse cx="0" cy="4" rx="28" ry="24" fill="#ff9f1c" stroke="#9c5200" stroke-width="3"/>
+        <circle cx="-10" cy="0" r="5" fill="#2b2d42"/><circle cx="-11" cy="-2" r="2" fill="#fff"/>
+        <circle cx="10" cy="0" r="5" fill="#2b2d42"/><circle cx="9" cy="-2" r="2" fill="#fff"/>
+        <polygon points="-4,8 4,8 0,13" fill="#ff758f"/>
+        <path d="M-8 15 Q0 20 8 15" fill="none" stroke="#9c5200" stroke-width="2.5" stroke-linecap="round"/>
+      </g>`;
+    case 'dog':
+      return `<g>
+        <ellipse cx="-26" cy="4" rx="10" ry="18" transform="rotate(15 -26 4)" fill="#7f4f24" stroke="#47280c" stroke-width="2.5"/>
+        <ellipse cx="26" cy="4" rx="10" ry="18" transform="rotate(-15 26 4)" fill="#7f4f24" stroke="#47280c" stroke-width="2.5"/>
+        <ellipse cx="0" cy="4" rx="26" ry="23" fill="#ddb892" stroke="#582f0e" stroke-width="3"/>
+        <circle cx="-9" cy="-2" r="6" fill="#7f4f24"/>
+        <circle cx="-9" cy="-2" r="4" fill="#111"/><circle cx="9" cy="-2" r="4" fill="#111"/>
+        <ellipse cx="0" cy="8" rx="6" ry="4.5" fill="#222"/>
+        <path d="M-4 15 Q0 24 4 15" fill="#ff758f" stroke="#582f0e" stroke-width="2"/>
+      </g>`;
+    case 'fox':
+      return `<g>
+        <polygon points="-28,-8 -24,-36 -4,-18" fill="#f77f00" stroke="#7a3800" stroke-width="3"/>
+        <polygon points="28,-8 24,-36 4,-18" fill="#f77f00" stroke="#7a3800" stroke-width="3"/>
+        <path d="M-32 4 C-26 -22, 26 -22, 32 4 L0 26 Z" fill="#f77f00" stroke="#7a3800" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M-30 4 Q-12 4 0 26 Q12 4 30 4 L0 26 Z" fill="#fff8f0"/>
+        <circle cx="-11" cy="-1" r="4" fill="#111"/><circle cx="11" cy="-1" r="4" fill="#111"/>
+        <circle cx="0" cy="24" r="5" fill="#111"/>
+      </g>`;
+    case 'key':
+      return `<g transform="rotate(-30)">
+        <circle cx="-18" cy="0" r="16" fill="none" stroke="#ffbe0b" stroke-width="7"/>
+        <circle cx="-18" cy="0" r="16" fill="none" stroke="#996600" stroke-width="2"/>
+        <line x1="-2" y1="0" x2="34" y2="0" stroke="#ffbe0b" stroke-width="7" stroke-linecap="round"/>
+        <line x1="20" y1="0" x2="20" y2="12" stroke="#ffbe0b" stroke-width="6" stroke-linecap="round"/>
+        <line x1="30" y1="0" x2="30" y2="14" stroke="#ffbe0b" stroke-width="6" stroke-linecap="round"/>
+      </g>`;
+    case 'porridge':
+      return `<g>
+        <path d="M-34 2 C-34 -14, 34 -14, 34 2 Z" fill="#fff3b0" stroke="#b08968" stroke-width="2.5"/>
+        <circle cx="-10" cy="-4" r="4.5" fill="#e63946"/><circle cx="8" cy="-5" r="4.5" fill="#e63946"/><circle cx="0" cy="-1" r="4" fill="#3a86ff"/>
+        <path d="M-36 2 L36 2 C32 28, 18 34, 0 34 C-18 34, -32 28, -36 2 Z" fill="#9c6644" stroke="#582f0e" stroke-width="3"/>
+        <path d="M-24 14 L24 14" stroke="#ffd166" stroke-width="4" stroke-linecap="round"/>
+      </g>`;
+  }
+}
+
+/* ============================================================================
+   3. ЗВУКОВИЙ СИНТЕЗАТОР (Web Audio API — активні різноманітні звуки без слів)
+============================================================================ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  playLetterGood(stepIndex) {
+    this.init();
+    const now = this.ctx.currentTime;
+    const scale = [330, 392, 440, 523.25, 587.33, 659.25];
+    const freq = scale[stepIndex % scale.length];
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.03, now + 0.14);
+
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.22);
+
+    const clickOsc = this.ctx.createOscillator();
+    const clickGain = this.ctx.createGain();
+    clickOsc.type = 'sine';
+    clickOsc.frequency.setValueAtTime(950, now + 0.05);
+    clickGain.gain.setValueAtTime(0.12, now + 0.05);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    clickOsc.connect(clickGain);
+    clickGain.connect(this.ctx.destination);
+    clickOsc.start(now + 0.05);
+    clickOsc.stop(now + 0.1);
+  }
+
+  playWrong() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(165, now);
+    osc.frequency.exponentialRampToValueAtTime(95, now + 0.18);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+  }
+
+  playRewardSound(category) {
+    this.init();
+    const now = this.ctx.currentTime;
+
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, now + idx * 0.07);
+      gain.gain.setValueAtTime(0.18, now + idx * 0.07);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.45);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + idx * 0.07);
+      osc.stop(now + idx * 0.07 + 0.45);
+    });
+
+    if (category === 'food') {
+      [0.45, 0.85, 1.25].forEach(delay => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now + delay);
+        osc.frequency.exponentialRampToValueAtTime(420, now + delay + 0.12);
+        gain.gain.setValueAtTime(0.14, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.15);
+      });
+    } else if (category === 'drink') {
+      const slurp = this.ctx.createOscillator();
+      const sGain = this.ctx.createGain();
+      slurp.type = 'sine';
+      slurp.frequency.setValueAtTime(260, now + 0.4);
+      slurp.frequency.exponentialRampToValueAtTime(780, now + 1.1);
+      sGain.gain.setValueAtTime(0.2, now + 0.4);
+      sGain.gain.exponentialRampToValueAtTime(0.001, now + 1.15);
+      slurp.connect(sGain);
+      sGain.connect(this.ctx.destination);
+      slurp.start(now + 0.4);
+      slurp.stop(now + 1.15);
+
+      [1.2, 1.38, 1.55].forEach((d, i) => {
+        const pop = this.ctx.createOscillator();
+        const pGain = this.ctx.createGain();
+        pop.frequency.setValueAtTime(600 + i * 180, now + d);
+        pop.frequency.exponentialRampToValueAtTime(1200 + i * 200, now + d + 0.08);
+        pGain.gain.setValueAtTime(0.18, now + d);
+        pGain.gain.exponentialRampToValueAtTime(0.001, now + d + 0.09);
+        pop.connect(pGain);
+        pGain.connect(this.ctx.destination);
+        pop.start(now + d);
+        pop.stop(now + d + 0.09);
+      });
+    } else if (category === 'pet') {
+      [0.45, 0.8, 1.15].forEach((d, i) => {
+        const boing = this.ctx.createOscillator();
+        const bGain = this.ctx.createGain();
+        boing.type = 'sine';
+        boing.frequency.setValueAtTime(340 + i * 90, now + d);
+        boing.frequency.exponentialRampToValueAtTime(680 + i * 110, now + d + 0.22);
+        bGain.gain.setValueAtTime(0.22, now + d);
+        bGain.gain.exponentialRampToValueAtTime(0.001, now + d + 0.24);
+        boing.connect(bGain);
+        bGain.connect(this.ctx.destination);
+        boing.start(now + d);
+        boing.stop(now + d + 0.24);
+      });
+    } else if (category === 'fly') {
+      const flyOsc = this.ctx.createOscillator();
+      const flyGain = this.ctx.createGain();
+      flyOsc.type = 'triangle';
+      flyOsc.frequency.setValueAtTime(280, now + 0.4);
+      flyOsc.frequency.exponentialRampToValueAtTime(880, now + 1.4);
+      flyGain.gain.setValueAtTime(0.22, now + 0.4);
+      flyGain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+      flyOsc.connect(flyGain);
+      flyGain.connect(this.ctx.destination);
+      flyOsc.start(now + 0.4);
+      flyOsc.stop(now + 1.5);
+    }
+  }
+}
+
+const sfx = new SoundEngine();
+
+/* ============================================================================
+   4. ЛОГІКА ГРИ (БЕЗ ПІДКАЗОК У КОМІРКАХ ЗА ЗАМОВЧУВАННЯМ)
+============================================================================ */
+let currentLang = 'ukr';
+let showHints = false;         // За замовчуванням літери-підказки сховані
+let fullKeyboardMode = false;
+let deck = [];
+let currentItem = null;
+let targetWord = '';
+let currentSlotIndex = 0;
+let isAnimatingReward = false;
+let wrongAttemptsOnSlot = 0;
+
+const UKR_ALPHABET = [
+  ['А','Б','В','Г','Ґ','Д','Е','Є','Ж','З','И'],
+  ['І','Ї','Й','К','Л','М','Н','О','П','Р','С'],
+  ['Т','У','Ф','Х','Ц','Ч','Ш','Щ','Ь','Ю','Я']
+];
+
+const RUS_ALPHABET = [
+  ['А','Б','В','Г','Д','Е','Ё','Ж','З','И','Й'],
+  ['К','Л','М','Н','О','П','Р','С','Т','У','Ф'],
+  ['Х','Ц','Ч','Ш','Щ','Ъ','Ы','Ь','Э','Ю','Я']
+];
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function getNextItem() {
+  if (deck.length === 0) {
+    deck = shuffle(WORDS_DB);
+    if (currentItem && deck[0].id === currentItem.id) {
+      deck.push(deck.shift());
+    }
+  }
+  return deck.shift();
+}
+
+function loadTask(keepSameItem = false) {
+  isAnimatingReward = false;
+  wrongAttemptsOnSlot = 0;
+  currentSlotIndex = 0;
+
+  if (!keepSameItem || !currentItem) {
+    currentItem = getNextItem();
+  }
+
+  targetWord = currentItem[currentLang];
+
+  // Скидаємо стан скрині, а підказку вимикаємо на кожне нове слово
+  showHints = false;
+  document.getElementById('btn-hint').classList.remove('active-mode');
+
+  document.getElementById('crate-lid').style.transform = 'rotate(0deg)';
+  document.getElementById('crate-lock').style.transform = 'translate(0px, -96px) rotate(0deg)';
+  const actor = document.getElementById('reward-actor');
+  actor.style.opacity = '0';
+  actor.setAttribute('transform', 'translate(0, 0) scale(0)');
+  document.getElementById('fx-layer').innerHTML = '';
+
+  // Малюємо великий предмет у віконці скрині на верхньому шарі
+  const preview = document.getElementById('crate-preview-icon');
+  preview.innerHTML = getItemSVG(currentItem.id);
+
+  renderWordBoard();
+  renderKeyboard();
+}
+
+function renderWordBoard() {
+  const board = document.getElementById('word-board');
+  board.classList.remove('win-bounce');
+  board.classList.toggle('hide-hints', !showHints);
+  board.innerHTML = '';
+
+  for (let i = 0; i < targetWord.length; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'letter-slot' + (i === currentSlotIndex ? ' current' : '');
+    slot.dataset.index = i;
+
+    const ghost = document.createElement('span');
+    ghost.className = 'ghost-letter';
+    ghost.textContent = targetWord[i];
+    slot.appendChild(ghost);
+
+    if (i < currentSlotIndex) {
+      const filled = document.createElement('div');
+      filled.className = 'filled-tile';
+      filled.textContent = targetWord[i];
+      slot.appendChild(filled);
+    }
+
+    board.appendChild(slot);
+  }
+}
+
+function renderKeyboard() {
+  const kb = document.getElementById('keyboard-area');
+  kb.innerHTML = '';
+
+  if (fullKeyboardMode) {
+    const rows = currentLang === 'ukr' ? UKR_ALPHABET : RUS_ALPHABET;
+    rows.forEach(rowLetters => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'kb-row';
+      rowLetters.forEach(ch => {
+        rowEl.appendChild(createKeyTile(ch, false));
+      });
+      kb.appendChild(rowEl);
+    });
+  } else {
+    // Укрупнений банк на 9 літер для зручного вибору
+    const neededSet = Array.from(new Set(targetWord.split('')));
+    const allLetters = (currentLang === 'ukr' ? UKR_ALPHABET : RUS_ALPHABET).flat();
+    const distractors = shuffle(allLetters.filter(l => !neededSet.includes(l)));
+    const totalCount = 9;
+    const bankLetters = shuffle([...neededSet, ...distractors.slice(0, totalCount - neededSet.length)]);
+
+    const row1 = document.createElement('div');
+    row1.className = 'kb-row';
+    bankLetters.forEach(ch => {
+      row1.appendChild(createKeyTile(ch, true));
+    });
+    kb.appendChild(row1);
+  }
+}
+
+function createKeyTile(letter, isLarge) {
+  const btn = document.createElement('button');
+  btn.className = 'key-tile' + (isLarge ? ' large-bank' : '');
+  btn.textContent = letter;
+  btn.dataset.letter = letter;
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handleLetterInput(letter, btn);
+  });
+  return btn;
+}
+
+function handleLetterInput(letter, btnEl = null) {
+  if (isAnimatingReward || currentSlotIndex >= targetWord.length) return;
+
+  const expected = targetWord[currentSlotIndex];
+  const isMatch = (letter === expected) || (expected === 'Ё' && letter === 'Е');
+
+  if (isMatch) {
+    sfx.playLetterGood(currentSlotIndex);
+    wrongAttemptsOnSlot = 0;
+
+    document.querySelectorAll('.key-tile.hint-glow').forEach(k => k.classList.remove('hint-glow'));
+
+    const slots = document.querySelectorAll('.letter-slot');
+    const activeSlot = slots[currentSlotIndex];
+    if (activeSlot) {
+      activeSlot.classList.remove('current');
+      const filled = document.createElement('div');
+      filled.className = 'filled-tile';
+      filled.textContent = expected;
+      activeSlot.appendChild(filled);
+    }
+
+    currentSlotIndex++;
+
+    // Повертаємо замок високо на кришці
+    const lockAngle = currentSlotIndex * 45;
+    document.getElementById('crate-lock').style.transform = `translate(0px, -96px) rotate(${lockAngle}deg) scale(1.12)`;
+    perkRaccoonExcitement(currentSlotIndex / targetWord.length);
+
+    if (currentSlotIndex < targetWord.length) {
+      slots[currentSlotIndex].classList.add('current');
+    } else {
+      triggerRewardSequence();
+    }
+  } else {
+    sfx.playWrong();
+    wrongAttemptsOnSlot++;
+
+    if (btnEl) {
+      btnEl.classList.remove('wrong-shake');
+      void btnEl.offsetWidth;
+      btnEl.classList.add('wrong-shake');
+    }
+
+    if (wrongAttemptsOnSlot >= 2) {
+      document.querySelectorAll(`.key-tile[data-letter="${expected}"]`).forEach(k => {
+        k.classList.add('hint-glow');
+      });
+    }
+  }
+}
+
+/* ============================================================================
+   5. ЖИВА АНІМАЦІЯ ЄНОТА ТА 4 СЮЖЕТНІ НАГОРОДИ
+============================================================================ */
+let racState = {
+  excitement: 0,
+  rewardMode: null,
+  rewardStartTime: 0
+};
+
+function perkRaccoonExcitement(ratio) {
+  racState.excitement = Math.min(1, ratio);
+}
+
+function triggerRewardSequence() {
+  isAnimatingReward = true;
+  document.getElementById('word-board').classList.add('win-bounce');
+
+  // Розкриваємо кришку скрині
+  document.getElementById('crate-lid').style.transform = 'rotate(110deg)';
+  sfx.playRewardSound(currentItem.type);
+
+  // Виліт великого предмета до Єнота
+  const actor = document.getElementById('reward-actor');
+  actor.innerHTML = getItemSVG(currentItem.id);
+  actor.style.opacity = '1';
+
+  racState.rewardMode = currentItem.type;
+  racState.rewardStartTime = performance.now();
+
+  spawnBurstParticles(775, 230, '#ffdf6b', 20);
+
+  setTimeout(() => {
+    addTrophyToShelf(currentItem.id);
+    racState.rewardMode = null;
+    racState.excitement = 0;
+    loadTask(false);
+  }, 2750);
+}
+
+function addTrophyToShelf(itemId) {
+  const shelf = document.getElementById('trophy-shelf');
+  const svgWrap = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svgWrap.setAttribute('viewBox', '-55 -55 110 110');
+  svgWrap.classList.add('shelf-item');
+  svgWrap.innerHTML = getItemSVG(itemId);
+  shelf.appendChild(svgWrap);
+  shelf.scrollLeft = shelf.scrollWidth;
+}
+
+function spawnBurstParticles(cx, cy, color, count) {
+  const fx = document.getElementById('fx-layer');
+  for (let i = 0; i < count; i++) {
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
+    const dist = 65 + Math.random() * 95;
+    const r = 4.5 + Math.random() * 6.5;
+    c.setAttribute('cx', cx);
+    c.setAttribute('cy', cy);
+    c.setAttribute('r', r);
+    c.setAttribute('fill', i % 2 === 0 ? color : '#ffffff');
+    fx.appendChild(c);
+
+    c.animate([
+      { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+      { transform: `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist - 30}px) scale(0)`, opacity: 0 }
+    ], {
+      duration: 750 + Math.random() * 350,
+      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      fill: 'forwards'
+    });
+  }
+}
+
+const firefliesGroup = document.getElementById('fireflies');
+const firefliesData = Array.from({ length: 16 }, () => ({
+  x: Math.random() * 1600,
+  y: 120 + Math.random() * 500,
+  s: 2.5 + Math.random() * 4,
+  phase: Math.random() * Math.PI * 2,
+  speed: 0.4 + Math.random() * 0.7
+}));
+
+firefliesData.forEach(f => {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  el.setAttribute('r', f.s);
+  el.setAttribute('fill', '#fff599');
+  firefliesGroup.appendChild(el);
+  f.el = el;
+});
+
+function animateScene(now) {
+  const t = now * 0.001;
+
+  const sway = Math.sin(t * 1.6) * 4;
+  document.getElementById('lantern-left').setAttribute('transform', `translate(155, 140) rotate(${sway})`);
+  document.getElementById('lantern-right').setAttribute('transform', `translate(1445, 140) rotate(${-sway})`);
+  document.getElementById('river-ripples').setAttribute('transform', `translate(${Math.sin(t * 2) * 18}, 0)`);
+
+  firefliesData.forEach(f => {
+    const fx = f.x + Math.sin(t * f.speed + f.phase) * 35;
+    const fy = f.y + Math.cos(t * f.speed * 0.8 + f.phase) * 22;
+    const op = 0.35 + 0.65 * Math.abs(Math.sin(t * 2 + f.phase));
+    f.el.setAttribute('cx', fx);
+    f.el.setAttribute('cy', fy);
+    f.el.setAttribute('opacity', op);
+  });
+
+  const racRoot = document.getElementById('rac-body');
+  const racHead = document.getElementById('rac-head');
+  const racTail = document.getElementById('rac-tail');
+  const pawL = document.getElementById('rac-paw-l');
+  const pawR = document.getElementById('rac-paw-r');
+  const earL = document.getElementById('rac-ear-l');
+  const earR = document.getElementById('rac-ear-r');
+  const cheeks = document.getElementById('rac-cheeks');
+  const mouthOpen = document.getElementById('rac-mouth-open');
+  const actor = document.getElementById('reward-actor');
+
+  const blinkCycle = t % 4.2;
+  const eyelidScale = (blinkCycle > 4.0) ? Math.sin((blinkCycle - 4.0) * Math.PI * 5) : 0;
+  document.querySelectorAll('#rac-eyes .eyelid').forEach(el => {
+    el.setAttribute('transform', `scale(1, ${Math.max(0, eyelidScale)})`);
+  });
+
+  if (!racState.rewardMode) {
+    const exc = racState.excitement;
+    const breath = Math.sin(t * (2.5 + exc * 3)) * (3 + exc * 4);
+    const headTilt = Math.sin(t * 1.8) * 3 + exc * 5;
+    const tailWag = Math.sin(t * (3 + exc * 6)) * (8 + exc * 14);
+
+    document.getElementById('raccoon-root').setAttribute('transform', `translate(0, ${-exc * 12})`);
+    racRoot.setAttribute('transform', `scale(1, ${1 + breath * 0.008})`);
+    racHead.setAttribute('transform', `translate(${exc * 12}, ${-65 + breath}) rotate(${headTilt})`);
+    racTail.setAttribute('transform', `translate(-115, 75) rotate(${tailWag})`);
+    earL.setAttribute('transform', `translate(-78, -62) rotate(${-exc * 12 + Math.sin(t * 4) * 4})`);
+    earR.setAttribute('transform', `translate(78, -62) rotate(${exc * 12 - Math.sin(t * 4) * 4})`);
+    pawL.setAttribute('transform', `translate(-85, ${95 - exc * 15})`);
+    pawR.setAttribute('transform', `translate(85, ${95 - exc * 15})`);
+    cheeks.setAttribute('transform', 'scale(1)');
+    mouthOpen.setAttribute('opacity', exc > 0.5 ? '0.6' : '0');
+
+    document.querySelectorAll('#rac-eyes .pupil').forEach(p => {
+      p.setAttribute('transform', `translate(${4 + exc * 3}, 1)`);
+    });
+  } else {
+    const elapsed = (now - racState.rewardStartTime) * 0.001;
+    const progress = Math.min(1, elapsed / 0.45);
+
+    if (racState.rewardMode === 'food') {
+      const ix = -410 * progress;
+      const iy = -45 * Math.sin(progress * Math.PI) - 12 * progress;
+      const shrink = elapsed > 0.5 ? Math.max(0.25, 1.85 - (elapsed - 0.5) * 0.8) : 1.75;
+      actor.setAttribute('transform', `translate(${ix}, ${iy}) scale(${shrink}) rotate(${Math.sin(t * 14) * 12})`);
+
+      const chew = Math.abs(Math.sin(t * 16));
+      racHead.setAttribute('transform', `translate(0, ${-65 + chew * 6})`);
+      cheeks.setAttribute('transform', `scale(${1 + chew * 0.22}, ${1 + chew * 0.18})`);
+      mouthOpen.setAttribute('opacity', chew > 0.5 ? '1' : '0.1');
+      pawL.setAttribute('transform', `translate(-38, ${-10 + chew * 6}) rotate(-25)`);
+      pawR.setAttribute('transform', `translate(38, ${-10 + chew * 6}) rotate(25)`);
+      racTail.setAttribute('transform', `translate(-115, 75) rotate(${Math.sin(t * 15) * 22})`);
+    }
+    else if (racState.rewardMode === 'drink') {
+      const ix = -410 * progress;
+      const iy = -18 * progress;
+      actor.setAttribute('transform', `translate(${ix}, ${iy}) scale(1.75) rotate(${Math.sin(t * 8) * 8})`);
+
+      const sip = Math.sin(t * 12);
+      racHead.setAttribute('transform', `translate(0, ${-68 + sip * 4}) rotate(${sip * 5})`);
+      cheeks.setAttribute('transform', `scale(${0.92 + sip * 0.12})`);
+      mouthOpen.setAttribute('opacity', '0.85');
+      pawL.setAttribute('transform', `translate(-42, 0) rotate(-20)`);
+      pawR.setAttribute('transform', `translate(42, 0) rotate(20)`);
+      racTail.setAttribute('transform', `translate(-115, 75) rotate(${Math.sin(t * 14) * 20})`);
+
+      if (Math.random() < 0.28) {
+        spawnBurstParticles(365 + (Math.random() - 0.5) * 95, 160, '#72efdd', 2);
+      }
+    }
+    else if (racState.rewardMode === 'pet') {
+      const bounce = Math.abs(Math.sin(t * 11)) * 30;
+      const ix = -410 * progress;
+      const iy = -165 * progress - bounce;
+      actor.setAttribute('transform', `translate(${ix}, ${iy}) scale(1.75) rotate(${Math.sin(t * 10) * 14})`);
+
+      const dance = Math.sin(t * 11) * 12;
+      document.getElementById('raccoon-root').setAttribute('transform', `translate(${dance}, ${-Math.abs(dance)})`);
+      racHead.setAttribute('transform', `translate(0, -65) rotate(${-dance * 0.6})`);
+      mouthOpen.setAttribute('opacity', '1');
+      pawL.setAttribute('transform', `translate(-95, ${40 + dance * 1.5}) rotate(-35)`);
+      pawR.setAttribute('transform', `translate(95, ${40 - dance * 1.5}) rotate(35)`);
+      racTail.setAttribute('transform', `translate(-115, 75) rotate(${dance * 2})`);
+    }
+    else if (racState.rewardMode === 'fly') {
+      const lift = Math.sin(Math.min(1, elapsed / 2.2) * Math.PI) * 115;
+      const swayX = Math.sin(t * 7) * 22;
+      actor.setAttribute('transform', `translate(${-410 * progress + swayX}, ${-160 * progress - lift}) scale(1.9)`);
+
+      document.getElementById('raccoon-root').setAttribute('transform', `translate(${swayX}, ${-lift})`);
+      racHead.setAttribute('transform', `translate(0, -68) rotate(${swayX * 0.4})`);
+      mouthOpen.setAttribute('opacity', '1');
+      pawL.setAttribute('transform', `translate(-35, -85) rotate(-15)`);
+      pawR.setAttribute('transform', `translate(35, -85) rotate(15)`);
+      racTail.setAttribute('transform', `translate(-115, 75) rotate(${Math.sin(t * 16) * 25})`);
+    }
+  }
+
+  requestAnimationFrame(animateScene);
+}
+
+/* ============================================================================
+   6. ОБРОБНИКИ КНОПОК ТА ФІЗИЧНОЇ КЛАВІАТУРИ
+============================================================================ */
+document.getElementById('btn-lang').addEventListener('click', (e) => {
+  currentLang = currentLang === 'ukr' ? 'rus' : 'ukr';
+  e.currentTarget.textContent = currentLang === 'ukr' ? 'УКР' : 'РУС';
+  loadTask(true);
+});
+
+document.getElementById('btn-hint').addEventListener('click', (e) => {
+  showHints = !showHints;
+  e.currentTarget.classList.toggle('active-mode', showHints);
+  document.getElementById('word-board').classList.toggle('hide-hints', !showHints);
+});
+
+document.getElementById('btn-kb-mode').addEventListener('click', (e) => {
+  fullKeyboardMode = !fullKeyboardMode;
+  e.currentTarget.classList.toggle('active-mode', fullKeyboardMode);
+  renderKeyboard();
+});
+
+document.getElementById('btn-next').addEventListener('click', () => {
+  racState.rewardMode = null;
+  racState.excitement = 0;
+  loadTask(false);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const ch = e.key.toUpperCase();
+  if (ch.length === 1 && /[А-ЯІЇЄҐЁ]/.test(ch)) {
+    const matchingBtn = document.querySelector(`.key-tile[data-letter="${ch}"]`);
+    handleLetterInput(ch, matchingBtn);
+  }
+});
+
+// Старт гри
+loadTask(false);
+requestAnimationFrame(animateScene);
+</script>
+</body>
+</html>
