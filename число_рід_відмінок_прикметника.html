@@ -1,0 +1,1688 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Експедиція Аномалій</title>
+<style>
+  :root {
+    --brass-light: #e6c27a;
+    --brass-mid: #b38338;
+    --brass-dark: #593b12;
+    --cyan-glow: #38f9d7;
+    --emerald-deep: #072227;
+    --slate-dark: #0f2027;
+    --amber-glow: #ffaa00;
+  }
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #040d12;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Живий фон на Canvas */
+  #bgCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+
+  /* Декоративний передній план та персонажі */
+  #sceneSvg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* Верхня панель керування (мінімалістична) */
+  .top-controls {
+    position: absolute;
+    top: 2.2vh;
+    right: 2.5vw;
+    z-index: 20;
+    display: flex;
+    gap: 1.2vw;
+    align-items: center;
+  }
+
+  .ctrl-btn {
+    position: relative;
+    cursor: pointer;
+    padding: 10px 22px;
+    font-size: clamp(15px, 1.3vw, 20px);
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: lowercase;
+    color: #fff3d1;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(255, 225, 130, 0.25), transparent 60%),
+      repeating-linear-gradient(45deg, rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 4px, transparent 4px, transparent 8px),
+      linear-gradient(180deg, #6e481b 0%, #3d2409 55%, #241304 100%);
+    border: 2px solid #d4a253;
+    border-radius: 14px;
+    box-shadow:
+      0 6px 18px rgba(0,0,0,0.7),
+      inset 0 2px 3px rgba(255, 236, 179, 0.45),
+      inset 0 -3px 6px rgba(0,0,0,0.8),
+      0 0 12px rgba(56, 249, 215, 0.2);
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, border-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ctrl-btn::before, .ctrl-btn::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ffe49e 20%, #8a5a19 90%);
+    box-shadow: 0 1px 2px #000;
+  }
+
+  .ctrl-btn:hover {
+    transform: translateY(-2px) scale(1.04);
+    border-color: #38f9d7;
+    box-shadow:
+      0 8px 22px rgba(0,0,0,0.8),
+      inset 0 2px 4px rgba(255, 236, 179, 0.6),
+      0 0 18px rgba(56, 249, 215, 0.55);
+  }
+
+  .ctrl-btn:active {
+    transform: translateY(2px) scale(0.97);
+  }
+
+  /* Головна ігрова зона */
+  .stage-wrapper {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 4vh 16vw 6vh 16vw;
+    pointer-events: none;
+  }
+
+  /* Бронзово-смарагдова скрижаль для речення */
+  .anomaly-tablet {
+    pointer-events: auto;
+    position: relative;
+    width: 100%;
+    max-width: 1080px;
+    padding: clamp(26px, 3.8vh, 46px) clamp(32px, 3.6vw, 58px);
+    border-radius: 28px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(56, 249, 215, 0.18), transparent 70%),
+      radial-gradient(circle at 15% 85%, rgba(255, 170, 0, 0.12), transparent 55%),
+      repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0px, rgba(255, 255, 255, 0.02) 2px, transparent 2px, transparent 10px),
+      linear-gradient(165deg, #112d35 0%, #091c24 50%, #051117 100%);
+    border: 4px solid #b8873d;
+    box-shadow:
+      0 22px 50px rgba(0, 0, 0, 0.85),
+      0 0 35px rgba(56, 249, 215, 0.18),
+      inset 0 0 40px rgba(0, 0, 0, 0.85),
+      inset 0 2px 2px rgba(255, 224, 140, 0.5);
+    margin-bottom: 3.8vh;
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
+  }
+
+  /* Орнаментальна латунна рамка всередині скрижалі */
+  .anomaly-tablet::before {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    border-radius: 20px;
+    border: 1.5px dashed rgba(230, 194, 122, 0.35);
+    pointer-events: none;
+  }
+
+  /* Кутові заклепки-кристали */
+  .corner-rivet {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #7affea, #0d8a78 60%, #042e29 100%);
+    border: 2.5px solid #d4a253;
+    box-shadow: 0 0 10px #38f9d7, inset 0 1px 2px #fff;
+  }
+  .corner-rivet.tl { top: 12px; left: 12px; }
+  .corner-rivet.tr { top: 12px; right: 12px; }
+  .corner-rivet.bl { bottom: 12px; left: 12px; }
+  .corner-rivet.br { bottom: 12px; right: 12px; }
+
+  /* Верхній індикатор категорії (РІД / ЧИСЛО / ВІДМІНОК) */
+  .category-crest {
+    position: absolute;
+    top: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 32px;
+    border-radius: 30px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 3px, transparent 3px, transparent 9px),
+      linear-gradient(180deg, #7d521e 0%, #422708 60%, #261402 100%);
+    border: 2.5px solid #e6c27a;
+    box-shadow:
+      0 6px 16px rgba(0,0,0,0.8),
+      0 0 18px rgba(255, 170, 0, 0.35),
+      inset 0 2px 3px rgba(255, 240, 190, 0.5);
+    color: #ffeaad;
+    font-weight: 900;
+    font-size: clamp(14px, 1.25vw, 19px);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .crest-gem {
+    width: 11px;
+    height: 11px;
+    transform: rotate(45deg);
+    background: linear-gradient(135deg, #fff, #38f9d7, #057562);
+    box-shadow: 0 0 8px #38f9d7;
+  }
+
+  /* Текст речення */
+  .sentence-box {
+    font-size: clamp(22px, 2.35vw, 35px);
+    line-height: 1.58;
+    color: #e9f8f5;
+    text-align: center;
+    font-weight: 600;
+    text-shadow: 0 3px 8px rgba(0, 0, 0, 0.9);
+    letter-spacing: 0.3px;
+  }
+
+  /* Виділений прикметник-артефакт */
+  .target-adj {
+    display: inline-block;
+    position: relative;
+    padding: 3px 18px 5px 18px;
+    margin: 0 4px;
+    border-radius: 14px;
+    color: #fff8d6;
+    font-weight: 800;
+    background:
+      radial-gradient(circle at 50% 20%, rgba(255, 215, 90, 0.38), transparent 70%),
+      linear-gradient(135deg, rgba(16, 94, 86, 0.92) 0%, rgba(8, 48, 56, 0.96) 100%);
+    border: 2px solid #56ffe2;
+    box-shadow:
+      0 0 20px rgba(56, 249, 215, 0.5),
+      inset 0 0 12px rgba(56, 249, 215, 0.35);
+    animation: pulseArtifact 2.4s infinite ease-in-out;
+  }
+
+  @keyframes pulseArtifact {
+    0%, 100% {
+      box-shadow: 0 0 16px rgba(56, 249, 215, 0.45), inset 0 0 10px rgba(56, 249, 215, 0.3);
+      transform: translateY(0);
+    }
+    50% {
+      box-shadow: 0 0 28px rgba(255, 200, 70, 0.75), inset 0 0 16px rgba(255, 200, 70, 0.45);
+      transform: translateY(-2px);
+    }
+  }
+
+  /* Контейнер кнопок-відповідей (мінеральні лінзи в бронзовій оправі) */
+  .options-grid {
+    pointer-events: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(14px, 1.8vw, 26px);
+    width: 100%;
+    max-width: 1120px;
+  }
+
+  .option-orb {
+    position: relative;
+    cursor: pointer;
+    min-width: clamp(170px, 16vw, 245px);
+    padding: clamp(14px, 2vh, 22px) clamp(22px, 2.2vw, 34px);
+    border-radius: 22px;
+    border: 3px solid #c99646;
+    background:
+      radial-gradient(circle at 30% 25%, rgba(72, 235, 210, 0.25), transparent 60%),
+      repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 3px, transparent 3px, transparent 9px),
+      linear-gradient(160deg, #1b434d 0%, #0d252e 55%, #07151c 100%);
+    box-shadow:
+      0 12px 26px rgba(0,0,0,0.75),
+      inset 0 2px 5px rgba(255, 232, 166, 0.45),
+      inset 0 -5px 12px rgba(0,0,0,0.85),
+      0 0 15px rgba(56, 249, 215, 0.15);
+    color: #f4fbf9;
+    font-size: clamp(18px, 1.55vw, 24px);
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-align: center;
+    text-shadow: 0 2px 5px rgba(0,0,0,0.95);
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s, box-shadow 0.25s;
+    overflow: hidden;
+  }
+
+  /* Декоративний візерунок всередині кнопки */
+  .option-orb::before {
+    content: '';
+    position: absolute;
+    inset: 5px;
+    border-radius: 16px;
+    border: 1px solid rgba(114, 245, 223, 0.24);
+    pointer-events: none;
+  }
+
+  .option-orb::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -60%;
+    width: 50%;
+    height: 200%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent);
+    transform: rotate(25deg);
+    transition: left 0.45s ease;
+    pointer-events: none;
+  }
+
+  .option-orb:hover {
+    transform: translateY(-6px) scale(1.045);
+    border-color: #56ffe2;
+    box-shadow:
+      0 16px 32px rgba(0,0,0,0.85),
+      inset 0 2px 8px rgba(86, 255, 226, 0.55),
+      0 0 26px rgba(56, 249, 215, 0.55);
+  }
+
+  .option-orb:hover::after {
+    left: 130%;
+  }
+
+  .option-orb:active {
+    transform: translateY(1px) scale(0.97);
+  }
+
+  /* Стан правильної та неправильної відповіді */
+  .option-orb.correct-glow {
+    border-color: #ffe66d !important;
+    background:
+      radial-gradient(circle at 50% 40%, rgba(255, 230, 109, 0.55), transparent 70%),
+      linear-gradient(160deg, #1b6b52 0%, #0b3b2d 100%) !important;
+    box-shadow:
+      0 0 40px #38f9d7,
+      0 0 70px #ffe66d,
+      inset 0 0 25px #ffe66d !important;
+    transform: scale(1.1) !important;
+  }
+
+  .option-orb.wrong-shake {
+    border-color: #ff4e50 !important;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255, 78, 80, 0.35), transparent 70%),
+      linear-gradient(160deg, #3b1518 0%, #1c080a 100%) !important;
+    animation: orbShake 0.48s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+
+  @keyframes orbShake {
+    10%, 90% { transform: translate3d(-5px, 0, 0) rotate(-1.5deg); }
+    20%, 80% { transform: translate3d(7px, 0, 0) rotate(1.5deg); }
+    30%, 50%, 70% { transform: translate3d(-9px, 0, 0) rotate(-2deg); }
+    40%, 60% { transform: translate3d(9px, 0, 0) rotate(2deg); }
+  }
+
+  /* Canvas для активних спецефектів і фідбеків поверх сцени */
+  #fxCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 15;
+    pointer-events: none;
+  }
+
+  /* Анімації персонажів у SVG */
+  .owl-breath {
+    animation: breatheOwl 3.8s infinite ease-in-out;
+    transform-origin: 185px 460px;
+  }
+  @keyframes breatheOwl {
+    0%, 100% { transform: scaleY(1) scaleX(1); }
+    50% { transform: scaleY(1.025) scaleX(1.015); }
+  }
+
+  .cham-breath {
+    animation: breatheCham 3.2s infinite ease-in-out;
+    transform-origin: 1710px 440px;
+  }
+  @keyframes breatheCham {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03, 1.04); }
+  }
+
+  .fern-sway-left {
+    animation: swayLeft 5.5s infinite ease-in-out;
+    transform-origin: 80px 950px;
+  }
+  @keyframes swayLeft {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(3.2deg); }
+  }
+
+  .fern-sway-right {
+    animation: swayRight 6.2s infinite ease-in-out;
+    transform-origin: 1820px 960px;
+  }
+  @keyframes swayRight {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-3.5deg); }
+  }
+
+  .mushroom-pulse {
+    animation: mushGlow 3s infinite alternate ease-in-out;
+  }
+  @keyframes mushGlow {
+    0% { filter: drop-shadow(0 0 6px rgba(56, 249, 215, 0.45)); opacity: 0.88; }
+    100% { filter: drop-shadow(0 0 18px rgba(56, 249, 215, 0.95)); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Живий анімований фон: туман, вода, світлячки, північне сяйво -->
+<canvas id="bgCanvas"></canvas>
+
+<!-- Сюжетна векторна сцена з реалістичною сипухою, хамелеоном і приладами -->
+<svg id="sceneSvg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <!-- Градієнти для дерева, латуні, грибів та персонажів -->
+    <linearGradient id="barkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2c1d12"/>
+      <stop offset="50%" stop-color="#1b110a"/>
+      <stop offset="100%" stop-color="#0d0704"/>
+    </linearGradient>
+
+    <linearGradient id="mossGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2a6f4e"/>
+      <stop offset="100%" stop-color="#0d3324"/>
+    </linearGradient>
+
+    <radialGradient id="mushCapGrad" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#a8ffef"/>
+      <stop offset="45%" stop-color="#19d3b4"/>
+      <stop offset="100%" stop-color="#064e49"/>
+    </radialGradient>
+
+    <linearGradient id="brassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5d78e"/>
+      <stop offset="45%" stop-color="#b58335"/>
+      <stop offset="100%" stop-color="#4f330b"/>
+    </linearGradient>
+
+    <!-- Градієнти оперення Сипухи (Barn Owl) -->
+    <linearGradient id="owlWingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d9a15b"/>
+      <stop offset="45%" stop-color="#a66e32"/>
+      <stop offset="80%" stop-color="#5e3c1b"/>
+      <stop offset="100%" stop-color="#36210e"/>
+    </linearGradient>
+
+    <radialGradient id="owlBreastGrad" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stop-color="#fff9eb"/>
+      <stop offset="65%" stop-color="#ead7b7"/>
+      <stop offset="100%" stop-color="#b8986c"/>
+    </radialGradient>
+
+    <radialGradient id="owlFaceGrad" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#fdf8f0"/>
+      <stop offset="75%" stop-color="#e5cfb0"/>
+      <stop offset="95%" stop-color="#9e6b36"/>
+      <stop offset="100%" stop-color="#5c3814"/>
+    </radialGradient>
+
+    <!-- Градієнти Хамелеона (змінюються динамічно під час фідбеків) -->
+    <linearGradient id="chamBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop id="chamStop1" offset="0%" stop-color="#26e0a5"/>
+      <stop id="chamStop2" offset="55%" stop-color="#118a7e"/>
+      <stop id="chamStop3" offset="100%" stop-color="#073b4c"/>
+    </linearGradient>
+
+    <linearGradient id="chamStripeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop id="chamStripe1" offset="0%" stop-color="#ffe066"/>
+      <stop id="chamStripe2" offset="100%" stop-color="#d97724"/>
+    </linearGradient>
+
+    <radialGradient id="lanternGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="rgba(255, 220, 120, 0.9)"/>
+      <stop offset="45%" stop-color="rgba(56, 249, 215, 0.45)"/>
+      <stop offset="100%" stop-color="rgba(56, 249, 215, 0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Ліва гілка кипариса та коріння -->
+  <g>
+    <path d="M-20,180 Q140,210 260,290 Q340,340 390,325 Q350,375 245,355 Q130,330 -20,310 Z" fill="url(#barkGrad)"/>
+    <path d="M30,245 Q160,260 275,320 Q210,295 85,280 Z" fill="url(#mossGrad)" opacity="0.85"/>
+    <!-- Звисаючий болотяний мох -->
+    <path d="M90,305 Q85,390 100,450 Q112,390 108,310 Z" fill="url(#mossGrad)" opacity="0.75"/>
+    <path d="M295,342 Q288,410 302,460 Q314,405 310,345 Z" fill="url(#mossGrad)" opacity="0.8"/>
+
+    <!-- Лівий берег з папороттю та біолюмінесцентними грибами -->
+    <path d="M-30,780 Q190,760 350,860 Q470,940 520,1090 L-30,1090 Z" fill="url(#barkGrad)"/>
+    <path d="M-10,790 Q180,775 330,865 Q200,840 20,835 Z" fill="url(#mossGrad)"/>
+
+    <g class="fern-sway-left">
+      <path d="M70,840 Q15,690 -10,560 Q45,670 95,830 Z" fill="#124e3f"/>
+      <path d="M95,840 Q120,660 210,540 Q160,695 118,835 Z" fill="#196954"/>
+      <path d="M120,850 Q210,720 310,660 Q230,765 140,855 Z" fill="#135242"/>
+    </g>
+
+    <!-- Сяючі гриби зліва -->
+    <g class="mushroom-pulse">
+      <path d="M225,845 Q230,780 242,745 L252,745 Q245,785 242,845 Z" fill="#8cebe0"/>
+      <path d="M195,750 Q247,695 295,750 Q247,762 195,750 Z" fill="url(#mushCapGrad)"/>
+      <path d="M285,870 Q295,820 305,795 L313,795 Q305,825 300,870 Z" fill="#8cebe0"/>
+      <path d="M270,800 Q309,760 345,800 Q309,810 270,800 Z" fill="url(#mushCapGrad)"/>
+      <path d="M165,835 Q160,800 168,780 L175,780 Q170,805 176,835 Z" fill="#8cebe0"/>
+      <path d="M142,785 Q171,750 198,785 Q171,794 142,785 Z" fill="url(#mushCapGrad)"/>
+    </g>
+  </g>
+
+  <!-- Старовинний експедиційний ліхтар на гілці зліва -->
+  <g id="lanternGroup" transform="translate(328, 330)">
+    <line x1="0" y1="0" x2="0" y2="55" stroke="#c99646" stroke-width="4"/>
+    <circle cx="0" cy="115" r="75" fill="url(#lanternGlow)"/>
+    <path d="M-24,55 L24,55 L34,72 L-34,72 Z" fill="url(#brassGrad)"/>
+    <path d="M-28,72 L28,72 L22,148 L-22,148 Z" fill="rgba(56, 249, 215, 0.22)" stroke="url(#brassGrad)" stroke-width="4"/>
+    <!-- Сяюче ядро всередині ліхтаря -->
+    <ellipse cx="0" cy="110" rx="11" ry="18" fill="#fff8c4" filter="drop-shadow(0 0 12px #38f9d7)"/>
+    <path d="M-28,148 L28,148 L18,162 L-18,162 Z" fill="url(#brassGrad)"/>
+  </g>
+
+  <!-- ==================== ПЕРСОНАЖ 1: РЕАЛІСТИЧНА СИПУХА (BARN OWL) ==================== -->
+  <g id="owlCharacter" class="owl-breath">
+    <!-- Хвіст сови -->
+    <path d="M140,565 L112,655 L168,650 L178,565 Z" fill="#8f5c28"/>
+    <path d="M122,645 L162,642" stroke="#3b230b" stroke-width="3" stroke-dasharray="6,4"/>
+
+    <!-- Ліве крило (може розправлятися при радості) -->
+    <g id="owlWingLeft" style="transform-origin: 145px 430px; transition: transform 0.35s ease;">
+      <path d="M135,405 Q82,455 96,575 Q128,560 155,515 Z" fill="url(#owlWingGrad)" stroke="#3d240c" stroke-width="2"/>
+      <!-- Деталізація пір'я -->
+      <path d="M105,475 Q125,470 138,485 M100,510 Q122,505 135,520 M102,542 Q120,538 132,548" stroke="#f7e3c4" stroke-width="2" fill="none" opacity="0.65"/>
+    </g>
+
+    <!-- Тулуб сипухи з крапчастим візерунком -->
+    <ellipse cx="182" cy="482" rx="58" ry="88" fill="url(#owlBreastGrad)" stroke="#8c6232" stroke-width="2"/>
+    <!-- Крапочки на грудях -->
+    <g fill="#593a18" opacity="0.65">
+      <circle cx="162" cy="455" r="2.2"/><circle cx="185" cy="462" r="2"/><circle cx="205" cy="452" r="2.2"/>
+      <circle cx="152" cy="482" r="2.5"/><circle cx="176" cy="488" r="2.2"/><circle cx="198" cy="480" r="2.4"/><circle cx="215" cy="492" r="2"/>
+      <circle cx="164" cy="512" r="2.3"/><circle cx="188" cy="516" r="2.2"/><circle cx="206" cy="510" r="2.3"/>
+      <circle cx="174" cy="538" r="2"/><circle cx="195" cy="540" r="2"/>
+    </g>
+
+    <!-- Праве крило -->
+    <g id="owlWingRight" style="transform-origin: 220px 430px; transition: transform 0.35s ease;">
+      <path d="M218,400 Q268,455 244,582 Q208,565 196,502 Z" fill="url(#owlWingGrad)" stroke="#3d240c" stroke-width="2"/>
+      <path d="M242,470 Q222,475 210,490 M246,505 Q225,510 212,525 M242,540 Q225,542 215,555" stroke="#f7e3c4" stroke-width="2" fill="none" opacity="0.7"/>
+    </g>
+
+    <!-- Кігті, що тримають гілку -->
+    <g fill="#4a3b2c" stroke="#1f1710" stroke-width="2">
+      <path d="M150,558 Q144,578 152,588 Q158,576 158,560 Z"/>
+      <path d="M162,560 Q160,582 167,590 Q172,578 170,560 Z"/>
+      <path d="M196,560 Q194,580 201,590 Q207,578 205,560 Z"/>
+      <path d="M208,558 Q210,578 217,586 Q220,574 216,558 Z"/>
+    </g>
+
+    <!-- Голова сипухи (повертається за курсором та нахиляється) -->
+    <g id="owlHead" style="transform-origin: 184px 372px; transition: transform 0.25s ease-out;">
+      <!-- Купол голови -->
+      <ellipse cx="184" cy="362" rx="54" ry="48" fill="url(#owlWingGrad)"/>
+      <!-- Характерний серцеподібний лицьовий диск сипухи -->
+      <path d="M184,336
+               C162,316 128,332 132,368
+               C135,398 162,418 184,426
+               C206,418 233,398 236,368
+               C240,332 206,316 184,336 Z"
+            fill="url(#owlFaceGrad)" stroke="#8c5828" stroke-width="3"/>
+
+      <!-- Темні контури навколо очей -->
+      <ellipse cx="163" cy="370" rx="16" ry="14" fill="#c99b68" opacity="0.65"/>
+      <ellipse cx="205" cy="370" rx="16" ry="14" fill="#c99b68" opacity="0.65"/>
+
+      <!-- Очі сипухи (глибокі, темні з живим бліком) -->
+      <g id="owlEyes">
+        <circle cx="163" cy="370" r="11" fill="#140d06" stroke="#3d2610" stroke-width="2"/>
+        <circle id="owlPupilL" cx="163" cy="370" r="9" fill="#050302"/>
+        <circle cx="159" cy="366" r="3.2" fill="#ffffff"/>
+        <circle cx="167" cy="374" r="1.5" fill="#7affea" opacity="0.8"/>
+
+        <circle cx="205" cy="370" r="11" fill="#140d06" stroke="#3d2610" stroke-width="2"/>
+        <circle id="owlPupilR" cx="205" cy="370" r="9" fill="#050302"/>
+        <circle cx="201" cy="366" r="3.2" fill="#ffffff"/>
+        <circle cx="209" cy="374" r="1.5" fill="#7affea" opacity="0.8"/>
+      </g>
+
+      <!-- Повіки для кліпання -->
+      <g id="owlEyelids" opacity="0">
+        <ellipse cx="163" cy="370" rx="12" ry="12" fill="#dfc4a0" stroke="#7a4e24" stroke-width="2"/>
+        <ellipse cx="205" cy="370" rx="12" ry="12" fill="#dfc4a0" stroke="#7a4e24" stroke-width="2"/>
+      </g>
+
+      <!-- Дзьоб зі світлим відблиском -->
+      <path d="M177,378 Q184,372 191,378 L184,404 Z" fill="#e6c79c" stroke="#6e4f28" stroke-width="1.8"/>
+      <path d="M182,380 L184,398" stroke="#fff" stroke-width="1.2" opacity="0.7"/>
+    </g>
+  </g>
+
+  <!-- Права ліана, скеля та біолюмінесцентний генератор-резонатор -->
+  <g>
+    <!-- Гілка та ліана справа для хамелеона -->
+    <path d="M1940,240 Q1760,295 1620,395 Q1540,455 1475,450 Q1525,485 1635,435 Q1775,345 1940,320 Z" fill="url(#barkGrad)"/>
+    <path d="M1920,275 Q1750,320 1625,405 Q1730,360 1890,305 Z" fill="url(#mossGrad)"/>
+
+    <!-- Правий берег і папороть -->
+    <path d="M1950,760 Q1730,750 1560,860 Q1430,945 1380,1090 L1950,1090 Z" fill="url(#barkGrad)"/>
+    <g class="fern-sway-right">
+      <path d="M1830,840 Q1885,680 1920,550 Q1850,670 1805,830 Z" fill="#124e3f"/>
+      <path d="M1795,845 Q1760,665 1675,555 Q1735,700 1775,840 Z" fill="#196954"/>
+      <path d="M1765,855 Q1670,725 1580,670 Q1655,770 1745,860 Z" fill="#135242"/>
+    </g>
+
+    <!-- Латунний польовий резонатор аномалій на правому березі -->
+    <g id="brassApparatus" transform="translate(1660, 815)">
+      <!-- Корпус приладу -->
+      <rect x="-75" y="0" width="150" height="95" rx="14" fill="url(#brassGrad)" stroke="#3d2408" stroke-width="4"/>
+      <rect x="-63" y="10" width="126" height="75" rx="8" fill="#0a1f26" stroke="#d4a253" stroke-width="2"/>
+      <!-- Шкала гальванометра -->
+      <path d="M-45,65 A48,48 0 0,1 45,65" fill="none" stroke="#38f9d7" stroke-width="3" stroke-dasharray="6,4"/>
+      <path d="M-30,32 L0,65" id="gaugeNeedle" stroke="#ffaa00" stroke-width="3.5" stroke-linecap="round" style="transform-origin: 0px 65px; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);"/>
+      <circle cx="0" cy="65" r="7" fill="url(#brassGrad)"/>
+      <!-- Скляна колба Тесла зверху -->
+      <rect x="-22" y="-58" width="44" height="58" rx="18" fill="rgba(56, 249, 215, 0.18)" stroke="url(#brassGrad)" stroke-width="3.5"/>
+      <circle id="teslaCore" cx="0" cy="-29" r="12" fill="#56ffe2" filter="drop-shadow(0 0 14px #38f9d7)"/>
+      <path d="M-26,-4 L26,-4 M-26,-56 L26,-56" stroke="url(#brassGrad)" stroke-width="5" stroke-linecap="round"/>
+    </g>
+
+    <!-- Сяючі гриби справа -->
+    <g class="mushroom-pulse">
+      <path d="M1535,885 Q1525,830 1515,795 L1505,795 Q1514,830 1520,885 Z" fill="#8cebe0"/>
+      <path d="M1470,800 Q1510,752 1550,800 Q1510,810 1470,800 Z" fill="url(#mushCapGrad)"/>
+    </g>
+  </g>
+
+  <!-- ==================== ПЕРСОНАЖ 2: РЕАЛІСТИЧНИЙ ХАМЕЛЕОН ==================== -->
+  <g id="chameleonChar" class="cham-breath">
+    <!-- Закручений у спіраль хвіст хамелеона -->
+    <path d="M1758,342
+             C1815,328 1848,365 1832,405
+             C1818,438 1775,442 1762,415
+             C1750,392 1772,370 1794,378
+             C1810,385 1808,406 1792,408"
+          fill="none" stroke="url(#chamBodyGrad)" stroke-width="18" stroke-linecap="round"/>
+    <path d="M1758,342
+             C1815,328 1848,365 1832,405
+             C1818,438 1775,442 1762,415"
+          fill="none" stroke="url(#chamStripeGrad)" stroke-width="8" stroke-dasharray="7,11" stroke-linecap="round"/>
+
+    <!-- Задні й передні лапки, що тримають гілку -->
+    <path d="M1725,356 L1735,388 L1718,395 M1735,388 L1748,392" stroke="#0d6b63" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M1635,392 L1642,426 L1625,432 M1642,426 L1656,428" stroke="#0d6b63" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+    <!-- Дугоподібний тулуб з гребенем -->
+    <path d="M1605,375
+             C1625,305 1715,288 1768,342
+             C1732,372 1665,398 1605,375 Z"
+          fill="url(#chamBodyGrad)" stroke="#052e3b" stroke-width="2.5"/>
+
+    <!-- Яскраві смужки на тілі хамелеона -->
+    <path d="M1645,325 Q1652,355 1642,378
+             M1678,314 Q1688,348 1676,374
+             M1712,315 Q1722,345 1710,368
+             M1740,324 Q1746,345 1738,358"
+          stroke="url(#chamStripeGrad)" stroke-width="9" stroke-linecap="round" fill="none" opacity="0.88"/>
+
+    <!-- Спинний зубчастий гребінь -->
+    <path d="M1612,352 L1620,340 L1628,346 L1638,330 L1646,338 L1658,322 L1666,330 L1678,315 L1686,325 L1698,312 L1708,322 L1720,314 L1730,324"
+          fill="none" stroke="#ffe066" stroke-width="3.5" stroke-linejoin="round"/>
+
+    <!-- Голова з шоломом (Casque) та рухомим оком-туреллю -->
+    <g id="chamHead" style="transform-origin: 1605px 375px; transition: transform 0.2s ease;">
+      <path d="M1612,350
+               C1602,312 1575,310 1568,336
+               C1550,352 1532,368 1535,384
+               C1542,398 1582,402 1612,386 Z"
+            fill="url(#chamBodyGrad)" stroke="#052e3b" stroke-width="2.5"/>
+
+      <!-- Лінія рота -->
+      <path d="M1536,382 Q1565,388 1592,378" stroke="#04222c" stroke-width="3" fill="none"/>
+
+      <!-- Конічне око-турель хамелеона -->
+      <circle cx="1574" cy="362" r="14" fill="url(#chamStripeGrad)" stroke="#063847" stroke-width="2.5"/>
+      <circle cx="1574" cy="362" r="9" fill="#169c89"/>
+      <circle id="chamPupil" cx="1571" cy="362" r="4.5" fill="#050505"/>
+      <circle cx="1569" cy="359" r="1.8" fill="#ffffff"/>
+    </g>
+  </g>
+</svg>
+
+<!-- Верхні кнопки: мова (укр / рус) та мінімалістична кнопка переходу (далі) -->
+<div class="top-controls">
+  <button id="langBtn" class="ctrl-btn" type="button">укр</button>
+  <button id="nextBtn" class="ctrl-btn" type="button">далі &#10142;</button>
+</div>
+
+<!-- Центральна зона завдання -->
+<div class="stage-wrapper">
+  <div id="tabletCard" class="anomaly-tablet">
+    <div class="corner-rivet tl"></div>
+    <div class="corner-rivet tr"></div>
+    <div class="corner-rivet bl"></div>
+    <div class="corner-rivet br"></div>
+
+    <div class="category-crest">
+      <span class="crest-gem"></span>
+      <span id="categoryLabel">ЧИСЛО</span>
+      <span class="crest-gem"></span>
+    </div>
+
+    <div id="sentenceBox" class="sentence-box"></div>
+  </div>
+
+  <div id="optionsGrid" class="options-grid"></div>
+</div>
+
+<!-- Холст для активних анімованих фідбеків (язик хамелеона, кульова блискавка, спори, розряди) -->
+<canvas id="fxCanvas"></canvas>
+
+<script>
+(() => {
+  /* =========================================================================
+     1. БАЗА ДАНИХ: 15 НАУКОВО-НАДПРИРОДНИХ ФАКТІВ (5 ЧИСЛО, 5 РІД, 5 ВІДМІНОК)
+        Після проходження 15 речень генератор автоматично тасує нові комбінації
+        завдань за цими ж фактами для нескінченної гри.
+     ========================================================================= */
+  const SENTENCES = [
+    // --- 5 ЗАВДАНЬ НА ЧИСЛО (primaryType: 'num') ---
+    {
+      id: 1,
+      primaryType: 'num',
+      ukr: { pre: "Під час грози у повітрі інколи пливе ", adj: "кульова", post: " блискавка, яка проходить крізь зачинені вікна." },
+      rus: { pre: "Во время грозы в воздухе иногда плывёт ", adj: "шаровая", post: " молния, которая проходит сквозь закрытые окна." },
+      answers: { num: 'sg', gen: 'f', case: 'nom' }
+    },
+    {
+      id: 2,
+      primaryType: 'num',
+      ukr: { pre: "Уночі ", adj: "океанічні", post: " хвилі світяться яскравим неоновим сяйвом через мільярди мікроскопічних водоростей." },
+      rus: { pre: "Ночью ", adj: "океанические", post: " волны светятся ярким неоновым сиянием из-за миллиардов микроскопических водорослей." },
+      answers: { num: 'pl', case: 'nom' }
+    },
+    {
+      id: 3,
+      primaryType: 'num',
+      ukr: { pre: "У сухій пустелі ", adj: "піщані", post: " дюни видають низький мелодійний гул, схожий на звучання величезного органа." },
+      rus: { pre: "В сухой пустыне ", adj: "песчаные", post: " дюны издают низкий мелодичный гул, похожий на звучание огромного органа." },
+      answers: { num: 'pl', case: 'nom' }
+    },
+    {
+      id: 4,
+      primaryType: 'num',
+      ukr: { pre: "Над холодним морем виникає ", adj: "складний", post: " міраж Фата-Моргана, що піднімає силуети кораблів прямо в небо." },
+      rus: { pre: "Над холодным морем возникает ", adj: "сложный", post: " мираж Фата-Моргана, поднимающий силуэты кораблей прямо в небо." },
+      answers: { num: 'sg', gen: 'm', case: 'nom' }
+    },
+    {
+      id: 5,
+      primaryType: 'num',
+      ukr: { pre: "У темних печерах Нової Зеландії ", adj: "хижі", post: " личинки грибних комариків плетуть липкі пастки з блакитного світла." },
+      rus: { pre: "В тёмных пещерах Новой Зеландии ", adj: "хищные", post: " личинки грибных комариков плетут липкие ловушки из голубого света." },
+      answers: { num: 'pl', case: 'nom' }
+    },
+
+    // --- 5 ЗАВДАНЬ НА РІД (primaryType: 'gen') ---
+    {
+      id: 6,
+      primaryType: 'gen',
+      ukr: { pre: "Крізь білий льодовик Антарктиди тече ", adj: "кривавий", post: " водоспад, забарвлений окисненим залізом у древній воді." },
+      rus: { pre: "Сквозь белый ледник Антарктиды течёт ", adj: "кровавый", post: " водопад, окрашенный окисленным железом в древней воде." },
+      answers: { num: 'sg', gen: 'm', case: 'nom' }
+    },
+    {
+      id: 7,
+      primaryType: 'gen',
+      ukr: { pre: "Перед бурею на верхівках корабельних щогл спалахує ", adj: "примарне", post: " світіння з холодних електричних розрядів." },
+      rus: { pre: "Перед бурей на верхушках корабельных мачт вспыхивает ", adj: "призрачное", post: " свечение из холодных электрических разрядов." },
+      answers: { num: 'sg', gen: 'n', case: 'nom' }
+    },
+    {
+      id: 8,
+      primaryType: 'gen',
+      ukr: { pre: "Під полярною кригою росте ", adj: "крижана", post: " бурулька-брінікл, яка миттєво заморожує морських зірок на дні." },
+      rus: { pre: "Под полярным льдом растёт ", adj: "ледяная", post: " сосулька-бриникл, которая мгновенно замораживает морских звёзд на дне." },
+      answers: { num: 'sg', gen: 'f', case: 'nom' }
+    },
+    {
+      id: 9,
+      primaryType: 'gen',
+      ukr: { pre: "Над нічною трясовиною безшумно кружляє ", adj: "блукаючий", post: " вогник, народжений самозайманням болотного газу." },
+      rus: { pre: "Над ночной трясиной бесшумно кружит ", adj: "блуждающий", post: " огонёк, рождённый самовозгоранием болотного газа." },
+      answers: { num: 'sg', gen: 'm', case: 'nom' }
+    },
+    {
+      id: 10,
+      primaryType: 'gen',
+      ukr: { pre: "У Східній Африці лежить ", adj: "лужне", post: " озеро Натрон, чия вода муміфікує загиблих птахів у кам'яні статуї." },
+      rus: { pre: "В Восточной Африке лежит ", adj: "щелочное", post: " озеро Натрон, чья вода мумифицирует погибших птиц в каменные статуи." },
+      answers: { num: 'sg', gen: 'n', case: 'nom' }
+    },
+
+    // --- 5 ЗАВДАНЬ НА ВІДМІНОК (primaryType: 'case') ---
+    {
+      id: 11,
+      primaryType: 'case',
+      ukr: { pre: "Над річкою Кататумбо спалахи ", adj: "вічної", post: " грози освітлюють нічне небо майже триста ночей на рік." },
+      rus: { pre: "Над рекой Кататумбо вспышки ", adj: "вечной", post: " грозы освещают ночное небо почти триста ночей в году." },
+      answers: { num: 'sg', gen: 'f', case: 'gen' }
+    },
+    {
+      id: 12,
+      primaryType: 'case',
+      ukr: { pre: "Старі пеньки у вологому лісі вкриті ", adj: "смарагдовим", post: " сяйвом грибниці, яке світиться в повній темряві." },
+      rus: { pre: "Старые пни во влажном лесу покрыты ", adj: "изумрудным", post: " сиянием грибницы, которое светится в полной темноте." },
+      answers: { num: 'sg', gen: 'n', case: 'ins' }
+    },
+    {
+      id: 13,
+      primaryType: 'case',
+      ukr: { pre: "Високо в горах альпініст бачить власну велетенську тінь із райдужним німбом на ", adj: "густому", post: " тумані." },
+      rus: { pre: "Высоко в горах альпинист видит собственную гигантскую тень с радужным нимбом в ", adj: "густом", post: " тумане." },
+      answers: { num: 'sg', gen: 'm', case: 'loc' }
+    },
+    {
+      id: 14,
+      primaryType: 'case',
+      ukr: { pre: "Важкі валуни Долини Смерті самі ковзають пустелею завдяки ", adj: "тонкому", post: " льодовому панциру та вітру." },
+      rus: { pre: "Тяжёлые валуны Долины Смерти сами скользят по пустыне благодаря ", adj: "тонкому", post: " ледяному панцирю и ветру." },
+      answers: { num: 'sg', gen: 'm', case: 'dat' }
+    },
+    {
+      id: 15,
+      primaryType: 'case',
+      ukr: { pre: "Під час лісових пожеж висхідні потоки жару підіймають у небо ", adj: "вогняну", post: " торнадо-спіраль." },
+      rus: { pre: "Во время лесных пожаров восходящие потоки жара поднимают в небо ", adj: "огненную", post: " торнадо-спираль." },
+      answers: { num: 'sg', gen: 'f', case: 'acc' }
+    }
+  ];
+
+  const UI_LOCALE = {
+    ukr: {
+      langBtn: 'укр',
+      nextBtn: 'далі \u279E',
+      categories: {
+        num: 'ЧИСЛО ПРИКМЕТНИКА',
+        gen: 'РІД ПРИКМЕТНИКА',
+        case: 'ВІДМІНОК ПРИКМЕТНИКА'
+      },
+      options: {
+        num: [
+          { code: 'sg', label: 'Однина' },
+          { code: 'pl', label: 'Множина' }
+        ],
+        gen: [
+          { code: 'm', label: 'Чоловічий рід' },
+          { code: 'f', label: 'Жіночий рід' },
+          { code: 'n', label: 'Середній рід' }
+        ],
+        case: [
+          { code: 'nom', label: 'Називний' },
+          { code: 'gen', label: 'Родовий' },
+          { code: 'dat', label: 'Давальний' },
+          { code: 'acc', label: 'Знахідний' },
+          { code: 'ins', label: 'Орудний' },
+          { code: 'loc', label: 'Місцевий' }
+        ]
+      }
+    },
+    rus: {
+      langBtn: 'рус',
+      nextBtn: 'далее \u279E',
+      categories: {
+        num: 'ЧИСЛО ПРИЛАГАТЕЛЬНОГО',
+        gen: 'РОД ПРИЛАГАТЕЛЬНОГО',
+        case: 'ПАДЕЖ ПРИЛАГАТЕЛЬНОГО'
+      },
+      options: {
+        num: [
+          { code: 'sg', label: 'Единственное число' },
+          { code: 'pl', label: 'Множественное число' }
+        ],
+        gen: [
+          { code: 'm', label: 'Мужской род' },
+          { code: 'f', label: 'Женский род' },
+          { code: 'n', label: 'Средний род' }
+        ],
+        case: [
+          { code: 'nom', label: 'Именительный' },
+          { code: 'gen', label: 'Родительный' },
+          { code: 'dat', label: 'Дательный' },
+          { code: 'acc', label: 'Винительный' },
+          { code: 'ins', label: 'Творительный' },
+          { code: 'loc', label: 'Предложный' }
+        ]
+      }
+    }
+  };
+
+  /* =========================================================================
+     2. СТАН ГРИ ТА БЕЗКІНЕЧНИЙ ГЕНЕРАТОР ЧЕРГИ (5 ЧИСЛО + 5 РІД + 5 ВІДМІНОК ВРІЗНОБІЙ)
+     ========================================================================= */
+  let currentLang = 'ukr';
+  let taskQueue = [];
+  let currentTask = null;
+  let isLocked = false;
+  let cycleCount = 0;
+
+  function shuffleArray(arr) {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  function buildNextDeck() {
+    cycleCount++;
+    if (cycleCount === 1) {
+      // Перші 15 завдань — рівно по 5 кожного типу врізнобій
+      const firstPass = SENTENCES.map(item => ({
+        sentence: item,
+        taskType: item.primaryType
+      }));
+      taskQueue = shuffleArray(firstPass);
+    } else {
+      // Безкінечний генератор: формуємо нову збалансовану колоду з 15 завдань (5 num, 5 gen, 5 case)
+      const shuffledSentences = shuffleArray(SENTENCES);
+      const nextDeck = [];
+      let numCount = 0, genCount = 0, caseCount = 0;
+
+      for (const s of shuffledSentences) {
+        const possibleTypes = Object.keys(s.answers);
+        const shuffledTypes = shuffleArray(possibleTypes);
+        let chosen = s.primaryType;
+
+        for (const t of shuffledTypes) {
+          if (t === 'num' && numCount < 5) { chosen = 'num'; numCount++; break; }
+          if (t === 'gen' && genCount < 5) { chosen = 'gen'; genCount++; break; }
+          if (t === 'case' && caseCount < 5) { chosen = 'case'; caseCount++; break; }
+        }
+        nextDeck.push({ sentence: s, taskType: chosen });
+      }
+      taskQueue = shuffleArray(nextDeck);
+    }
+  }
+
+  /* =========================================================================
+     3. СИНТЕЗАТОР ЗВУКІВ (WEB AUDIO API) — РІЗНОМАНІТНІ БЕЗСЛОВЕСНІ ФІДБЕКИ
+     ========================================================================= */
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function playClickSound() {
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
+  }
+
+  // 5 різних звукових сцен для правильних відповідей
+  function playSuccessSound(variant) {
+    ensureAudio();
+    const now = audioCtx.currentTime;
+
+    if (variant === 0) {
+      // 1. Кришталева арфа + ухання сови
+      const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+      notes.forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+        gain.gain.setValueAtTime(0.18, now + idx * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.55);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(now + idx * 0.07);
+        osc.stop(now + idx * 0.07 + 0.56);
+      });
+      // М'який голос сипухи
+      const owlOsc = audioCtx.createOscillator();
+      const owlGain = audioCtx.createGain();
+      owlOsc.type = 'sine';
+      owlOsc.frequency.setValueAtTime(420, now + 0.15);
+      owlOsc.frequency.exponentialRampToValueAtTime(540, now + 0.35);
+      owlOsc.frequency.exponentialRampToValueAtTime(380, now + 0.65);
+      owlGain.gain.setValueAtTime(0.01, now + 0.15);
+      owlGain.gain.linearRampToValueAtTime(0.16, now + 0.28);
+      owlGain.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+      owlOsc.connect(owlGain).connect(audioCtx.destination);
+      owlOsc.start(now + 0.15);
+      owlOsc.stop(now + 0.7);
+    } else if (variant === 1) {
+      // 2. Пружний постріл язика хамелеона + тропічна маримба
+      const zap = audioCtx.createOscillator();
+      const zapGain = audioCtx.createGain();
+      zap.type = 'sine';
+      zap.frequency.setValueAtTime(240, now);
+      zap.frequency.exponentialRampToValueAtTime(1120, now + 0.14);
+      zap.frequency.exponentialRampToValueAtTime(480, now + 0.25);
+      zapGain.gain.setValueAtTime(0.22, now);
+      zapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      zap.connect(zapGain).connect(audioCtx.destination);
+      zap.start(now);
+      zap.stop(now + 0.27);
+
+      [587.33, 739.99, 880, 1174.66].forEach((f, i) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f, now + 0.16 + i * 0.06);
+        g.gain.setValueAtTime(0.2, now + 0.16 + i * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.16 + i * 0.06 + 0.35);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(now + 0.16 + i * 0.06);
+        o.stop(now + 0.16 + i * 0.06 + 0.36);
+      });
+    } else if (variant === 2) {
+      // 3. Електричний резонанс Тесла-котушки
+      const chords = [440, 554.37, 659.25, 880, 1108.73];
+      chords.forEach((f, i) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f, now + i * 0.05);
+        g.gain.setValueAtTime(0.08, now + i * 0.05);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.6);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(now + i * 0.05);
+        o.stop(now + i * 0.05 + 0.62);
+      });
+    } else if (variant === 3) {
+      // 4. Біолюмінесцентні дзвіночки спор
+      const bells = [659.25, 783.99, 987.77, 1318.5, 1567.98];
+      bells.forEach((f, i) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f, now + i * 0.065);
+        g.gain.setValueAtTime(0.16, now + i * 0.065);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.065 + 0.7);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(now + i * 0.065);
+        o.stop(now + i * 0.065 + 0.72);
+      });
+    } else {
+      // 5. Глибокий гармонійний акорд північного сяйва
+      [329.63, 415.30, 493.88, 659.25, 830.61].forEach((f, i) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(f, now + i * 0.04);
+        g.gain.setValueAtTime(0.15, now + i * 0.04);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(now + i * 0.04);
+        o.stop(now + 0.88);
+      });
+    }
+  }
+
+  function playWrongSound() {
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    // Пружинний низький гул приладу
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(195, now);
+    osc.frequency.linearRampToValueAtTime(115, now + 0.28);
+    gain.gain.setValueAtTime(0.16, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.34);
+
+    // Другий короткий імпульс
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(140, now + 0.1);
+    osc2.frequency.exponentialRampToValueAtTime(85, now + 0.32);
+    gain2.gain.setValueAtTime(0.18, now + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+    osc2.connect(gain2).connect(audioCtx.destination);
+    osc2.start(now + 0.1);
+    osc2.stop(now + 0.35);
+  }
+
+  /* =========================================================================
+     4. ВІДМАЛЬОВУВАННЯ ЗАВДАННЯ ТА ПЕРЕМИКАННЯ МОВ
+     ========================================================================= */
+  const sentenceBox = document.getElementById('sentenceBox');
+  const categoryLabel = document.getElementById('categoryLabel');
+  const optionsGrid = document.getElementById('optionsGrid');
+  const langBtn = document.getElementById('langBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const gaugeNeedle = document.getElementById('gaugeNeedle');
+
+  function renderCurrentTask() {
+    if (!currentTask) return;
+    const loc = UI_LOCALE[currentLang];
+    const sData = currentTask.sentence[currentLang];
+    const tType = currentTask.taskType;
+
+    langBtn.textContent = loc.langBtn;
+    nextBtn.textContent = loc.nextBtn;
+    categoryLabel.textContent = loc.categories[tType];
+
+    // Формуємо речення з підсвіченим прикметником
+    sentenceBox.innerHTML = '';
+    const preSpan = document.createTextNode(sData.pre);
+    const adjSpan = document.createElement('span');
+    adjSpan.className = 'target-adj';
+    adjSpan.id = 'targetAdjEl';
+    adjSpan.textContent = sData.adj;
+    const postSpan = document.createTextNode(sData.post);
+
+    sentenceBox.appendChild(preSpan);
+    sentenceBox.appendChild(adjSpan);
+    sentenceBox.appendChild(postSpan);
+
+    // Кнопки варіантів
+    optionsGrid.innerHTML = '';
+    const choices = loc.options[tType];
+    choices.forEach((choice) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'option-orb';
+      btn.dataset.code = choice.code;
+      btn.textContent = choice.label;
+
+      btn.addEventListener('mouseenter', () => {
+        if (!isLocked) {
+          const angle = (Math.random() * 50 - 25).toFixed(1);
+          gaugeNeedle.style.transform = `rotate(${angle}deg)`;
+        }
+      });
+
+      btn.addEventListener('click', (e) => handleOptionClick(choice.code, btn, e));
+      optionsGrid.appendChild(btn);
+    });
+  }
+
+  function loadNextTask() {
+    isLocked = false;
+    if (taskQueue.length === 0) {
+      buildNextDeck();
+    }
+    currentTask = taskQueue.pop();
+
+    // Плавна анімація оновлення скрижалі
+    const card = document.getElementById('tabletCard');
+    card.style.transform = 'scale(0.96) translateY(8px)';
+    setTimeout(() => {
+      renderCurrentTask();
+      card.style.transform = 'scale(1) translateY(0)';
+    }, 130);
+  }
+
+  langBtn.addEventListener('click', () => {
+    playClickSound();
+    currentLang = currentLang === 'ukr' ? 'rus' : 'ukr';
+    renderCurrentTask();
+  });
+
+  nextBtn.addEventListener('click', () => {
+    playClickSound();
+    loadNextTask();
+  });
+
+  /* =========================================================================
+     5. ОБРОБКА ВІДПОВІДЕЙ ТА 5 АКТИВНИХ ВІЗУАЛЬНИХ ФІДБЕКІВ
+     ========================================================================= */
+  const owlHead = document.getElementById('owlHead');
+  const owlWingLeft = document.getElementById('owlWingLeft');
+  const owlWingRight = document.getElementById('owlWingRight');
+  const chamStop1 = document.getElementById('chamStop1');
+  const chamStop2 = document.getElementById('chamStop2');
+  const chamStripe1 = document.getElementById('chamStripe1');
+
+  const CHAM_PALETTES = [
+    { c1: '#26e0a5', c2: '#118a7e', s1: '#ffe066' },
+    { c1: '#ff6bcb', c2: '#8446c4', s1: '#56ffe2' },
+    { c1: '#ffd166', c2: '#ef476f', s1: '#ffffff' },
+    { c1: '#00f5d4', c2: '#00bbf9', s1: '#fee440' },
+    { c1: '#aacc00', c2: '#2b9348', s1: '#ff9f1c' }
+  ];
+
+  function triggerChameleonColorShift() {
+    const pal = CHAM_PALETTES[Math.floor(Math.random() * CHAM_PALETTES.length)];
+    chamStop1.setAttribute('stop-color', pal.c1);
+    chamStop2.setAttribute('stop-color', pal.c2);
+    chamStripe1.setAttribute('stop-color', pal.s1);
+  }
+
+  function triggerOwlCelebration() {
+    owlWingLeft.style.transform = 'rotate(38deg) translate(-12px, -10px)';
+    owlWingRight.style.transform = 'rotate(-38deg) translate(12px, -10px)';
+    owlHead.style.transform = 'translateY(-10px) scale(1.06)';
+    setTimeout(() => {
+      owlWingLeft.style.transform = 'rotate(0deg)';
+      owlWingRight.style.transform = 'rotate(0deg)';
+      owlHead.style.transform = 'rotate(0deg)';
+    }, 850);
+  }
+
+  function triggerOwlPuzzled() {
+    owlHead.style.transform = 'rotate(-22deg)';
+    setTimeout(() => {
+      owlHead.style.transform = 'rotate(16deg)';
+    }, 220);
+    setTimeout(() => {
+      owlHead.style.transform = 'rotate(0deg)';
+    }, 520);
+  }
+
+  function handleOptionClick(selectedCode, btnEl, event) {
+    if (isLocked) return;
+
+    const expectedCode = currentTask.sentence.answers[currentTask.taskType];
+    const rect = btnEl.getBoundingClientRect();
+    const clickX = rect.left + rect.width / 2;
+    const clickY = rect.top + rect.height / 2;
+
+    if (selectedCode === expectedCode) {
+      isLocked = true;
+      btnEl.classList.add('correct-glow');
+      gaugeNeedle.style.transform = 'rotate(55deg)';
+
+      // Випадковий один із 5 яскравих невербальних фідбеків
+      const variant = Math.floor(Math.random() * 5);
+      playSuccessSound(variant);
+      triggerOwlCelebration();
+      triggerChameleonColorShift();
+      spawnSuccessEffect(variant, clickX, clickY);
+
+      setTimeout(() => {
+        loadNextTask();
+      }, 1550);
+    } else {
+      btnEl.classList.remove('wrong-shake');
+      void btnEl.offsetWidth;
+      btnEl.classList.add('wrong-shake');
+      gaugeNeedle.style.transform = 'rotate(-62deg)';
+      playWrongSound();
+      triggerOwlPuzzled();
+      spawnWrongSmoke(clickX, clickY);
+    }
+  }
+
+  /* =========================================================================
+     6. СИСТЕМА АКТИВНИХ ВІЗУАЛЬНИХ ЕФЕКТІВ НА FX-CANVAS
+     ========================================================================= */
+  const fxCanvas = document.getElementById('fxCanvas');
+  const fxCtx = fxCanvas.getContext('2d');
+  let particles = [];
+  let activeEffects = [];
+
+  function resizeCanvases() {
+    fxCanvas.width = window.innerWidth;
+    fxCanvas.height = window.innerHeight;
+    bgCanvas.width = window.innerWidth;
+    bgCanvas.height = window.innerHeight;
+  }
+
+  function spawnSuccessEffect(variant, targetX, targetY) {
+    const w = fxCanvas.width;
+    const h = fxCanvas.height;
+
+    // Іскри навколо правильної кнопки
+    for (let i = 0; i < 48; i++) {
+      const angle = (Math.PI * 2 * i) / 48 + Math.random() * 0.2;
+      const speed = 3 + Math.random() * 9;
+      particles.push({
+        x: targetX,
+        y: targetY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 1.5,
+        radius: 3 + Math.random() * 5,
+        color: i % 2 === 0 ? '#38f9d7' : '#ffe66d',
+        alpha: 1,
+        decay: 0.016 + Math.random() * 0.012,
+        gravity: 0.12
+      });
+    }
+
+    if (variant === 0) {
+      // Фідбек 1: Постріл еластичного язика хамелеона прямо в кнопку!
+      const startX = w * (1540 / 1920);
+      const startY = h * (382 / 1080);
+      activeEffects.push({
+        type: 'tongue',
+        sx: startX,
+        sy: startY,
+        tx: targetX,
+        ty: targetY,
+        progress: 0,
+        duration: 28
+      });
+    } else if (variant === 1) {
+      // Фідбек 2: Електричні розряди Тесла-котушки з правого приладу в кнопку та прикметник
+      const startX = w * (1660 / 1920);
+      const startY = h * (755 / 1080);
+      activeEffects.push({
+        type: 'lightning',
+        sx: startX,
+        sy: startY,
+        tx: targetX,
+        ty: targetY,
+        life: 36
+      });
+    } else if (variant === 2) {
+      // Фідбек 3: Орбітальна кульова блискавка навколо скрижалі
+      activeEffects.push({
+        type: 'ball_lightning',
+        cx: w / 2,
+        cy: h * 0.42,
+        rx: Math.min(w * 0.36, 480),
+        ry: 135,
+        angle: 0,
+        life: 52
+      });
+    } else if (variant === 3) {
+      // Фідбек 4: Фонтан біолюмінесцентних спор із грибів з обох боків
+      for (let i = 0; i < 65; i++) {
+        const fromLeft = i % 2 === 0;
+        const bx = fromLeft ? w * 0.13 : w * 0.8;
+        const by = h * 0.75;
+        particles.push({
+          x: bx + (Math.random() * 60 - 30),
+          y: by,
+          vx: (fromLeft ? 1 : -1) * (2 + Math.random() * 7),
+          vy: -(6 + Math.random() * 9),
+          radius: 4 + Math.random() * 6,
+          color: i % 3 === 0 ? '#a8ffef' : (i % 3 === 1 ? '#38f9d7' : '#ffea79'),
+          alpha: 1,
+          decay: 0.013,
+          gravity: 0.14
+        });
+      }
+    } else {
+      // Фідбек 5: Спалах полярного сяйва Фата-Моргана у верхній частині неба
+      activeEffects.push({
+        type: 'aurora_wave',
+        life: 60,
+        maxLife: 60
+      });
+    }
+  }
+
+  function spawnWrongSmoke(x, y) {
+    for (let i = 0; i < 24; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 4;
+      particles.push({
+        x: x + (Math.random() * 30 - 15),
+        y: y + (Math.random() * 16 - 8),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 1.8,
+        radius: 8 + Math.random() * 12,
+        color: i % 2 === 0 ? '#ff4e50' : '#596e79',
+        alpha: 0.75,
+        decay: 0.025,
+        gravity: -0.05
+      });
+    }
+  }
+
+  function drawLightningBolt(ctx, x1, y1, x2, y2, color, width) {
+    const segments = 12;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    for (let i = 1; i < segments; i++) {
+      const t = i / segments;
+      const nx = x1 + (x2 - x1) * t + (Math.random() - 0.5) * 42;
+      const ny = y1 + (y2 - y1) * t + (Math.random() - 0.5) * 42;
+      ctx.lineTo(nx, ny);
+    }
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.shadowColor = '#38f9d7';
+    ctx.shadowBlur = 20;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* =========================================================================
+     7. ЖИВИЙ СЮЖЕТНИЙ ФОН (ТУМАННА УЩЕЛИНА, ВОДА, СВІТЛЯЧКИ, РУХ ОЧЕЙ)
+     ========================================================================= */
+  const bgCanvas = document.getElementById('bgCanvas');
+  const bgCtx = bgCanvas.getContext('2d');
+
+  const fireflies = Array.from({ length: 42 }, () => ({
+    x: Math.random() * 1920,
+    y: Math.random() * 1080,
+    r: 1.8 + Math.random() * 3.2,
+    vx: (Math.random() - 0.5) * 0.65,
+    vy: (Math.random() - 0.5) * 0.5 - 0.15,
+    phase: Math.random() * Math.PI * 2,
+    hue: Math.random() > 0.3 ? 170 : 45
+  }));
+
+  const mistBands = Array.from({ length: 5 }, (_, i) => ({
+    yRatio: 0.52 + i * 0.09,
+    speed: (i % 2 === 0 ? 1 : -1) * (0.25 + i * 0.08),
+    offset: Math.random() * 1000
+  }));
+
+  let timeTick = 0;
+
+  function renderLoop() {
+    timeTick += 0.016;
+    const w = bgCanvas.width;
+    const h = bgCanvas.height;
+
+    // 1. Сутінкове небо каньйону аномалій
+    const skyGrad = bgCtx.createLinearGradient(0, 0, 0, h);
+    skyGrad.addColorStop(0, '#030b12');
+    skyGrad.addColorStop(0.45, '#082029');
+    skyGrad.addColorStop(0.78, '#0c353d');
+    skyGrad.addColorStop(1, '#041418');
+    bgCtx.fillStyle = skyGrad;
+    bgCtx.fillRect(0, 0, w, h);
+
+    // 2. Далекі базальтові скелі у тумані
+    bgCtx.fillStyle = '#061921';
+    bgCtx.beginPath();
+    bgCtx.moveTo(0, h * 0.72);
+    bgCtx.lineTo(w * 0.15, h * 0.48);
+    bgCtx.lineTo(w * 0.28, h * 0.62);
+    bgCtx.lineTo(w * 0.46, h * 0.43);
+    bgCtx.lineTo(w * 0.65, h * 0.60);
+    bgCtx.lineTo(w * 0.82, h * 0.45);
+    bgCtx.lineTo(w, h * 0.66);
+    bgCtx.lineTo(w, h);
+    bgCtx.lineTo(0, h);
+    bgCtx.closePath();
+    bgCtx.fill();
+
+    // 3. Рухомі пасма містичного туману
+    mistBands.forEach((band, idx) => {
+      band.offset += band.speed;
+      const yBase = h * band.yRatio;
+      const mistGrad = bgCtx.createLinearGradient(0, yBase - 50, 0, yBase + 60);
+      mistGrad.addColorStop(0, 'rgba(56, 249, 215, 0)');
+      mistGrad.addColorStop(0.5, `rgba(40, 180, 165, ${0.06 + idx * 0.012})`);
+      mistGrad.addColorStop(1, 'rgba(56, 249, 215, 0)');
+
+      bgCtx.fillStyle = mistGrad;
+      bgCtx.beginPath();
+      bgCtx.moveTo(0, yBase + 60);
+      for (let x = 0; x <= w; x += 80) {
+        const wave = Math.sin((x + band.offset) * 0.004 + idx) * 22;
+        bgCtx.lineTo(x, yBase + wave);
+      }
+      bgCtx.lineTo(w, yBase + 60);
+      bgCtx.closePath();
+      bgCtx.fill();
+    });
+
+    // 4. Водне плесо внизу з неоновими відблисками
+    const waterY = h * 0.84;
+    const waterGrad = bgCtx.createLinearGradient(0, waterY, 0, h);
+    waterGrad.addColorStop(0, 'rgba(9, 42, 48, 0.85)');
+    waterGrad.addColorStop(1, 'rgba(2, 12, 16, 0.98)');
+    bgCtx.fillStyle = waterGrad;
+    bgCtx.fillRect(0, waterY, w, h - waterY);
+
+    // Хвильки на воді
+    bgCtx.strokeStyle = 'rgba(56, 249, 215, 0.18)';
+    bgCtx.lineWidth = 1.5;
+    for (let i = 0; i < 10; i++) {
+      const ry = waterY + 14 + i * 15;
+      const rw = 90 + Math.sin(timeTick * 2 + i) * 35;
+      const rx = (w * 0.5) + Math.sin(timeTick * 0.7 + i * 1.3) * (w * 0.25);
+      bgCtx.beginPath();
+      bgCtx.moveTo(rx - rw, ry);
+      bgCtx.lineTo(rx + rw, ry);
+      bgCtx.stroke();
+    }
+
+    // 5. Блукаючі болотяні вогники та біолюмінесцентні спори
+    fireflies.forEach((f) => {
+      f.x += f.vx;
+      f.y += f.vy;
+      f.phase += 0.04;
+      if (f.x < 0) f.x = w;
+      if (f.x > w) f.x = 0;
+      if (f.y < 0) f.y = h;
+      if (f.y > h) f.y = 0;
+
+      const alpha = 0.35 + Math.sin(f.phase) * 0.35;
+      const glow = bgCtx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * 5);
+      glow.addColorStop(0, `hsla(${f.hue}, 100%, 75%, ${alpha})`);
+      glow.addColorStop(1, `hsla(${f.hue}, 100%, 50%, 0)`);
+      bgCtx.fillStyle = glow;
+      bgCtx.beginPath();
+      bgCtx.arc(f.x, f.y, f.r * 5, 0, Math.PI * 2);
+      bgCtx.fill();
+    });
+
+    // 6. Рендер активних спецефектів на fxCanvas
+    fxCtx.clearRect(0, 0, w, h);
+
+    // Частинки
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.gravity;
+      p.alpha -= p.decay;
+
+      if (p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      fxCtx.save();
+      fxCtx.globalAlpha = Math.max(0, p.alpha);
+      fxCtx.fillStyle = p.color;
+      fxCtx.shadowColor = p.color;
+      fxCtx.shadowBlur = 12;
+      fxCtx.beginPath();
+      fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      fxCtx.fill();
+      fxCtx.restore();
+    }
+
+    // Спеціальні анімовані ефекти (язик хамелеона, блискавка, кульова блискавка, аврора)
+    for (let i = activeEffects.length - 1; i >= 0; i--) {
+      const ef = activeEffects[i];
+
+      if (ef.type === 'tongue') {
+        ef.progress++;
+        const ratio = ef.progress / ef.duration;
+        const reach = ratio < 0.5 ? (ratio * 2) : (1 - (ratio - 0.5) * 2);
+        const curX = ef.sx + (ef.tx - ef.sx) * reach;
+        const curY = ef.sy + (ef.ty - ef.sy) * reach;
+
+        fxCtx.save();
+        fxCtx.strokeStyle = '#ff5c8a';
+        fxCtx.lineWidth = 10;
+        fxCtx.lineCap = 'round';
+        fxCtx.shadowColor = '#ff9ebb';
+        fxCtx.shadowBlur = 12;
+        fxCtx.beginPath();
+        fxCtx.moveTo(ef.sx, ef.sy);
+        fxCtx.lineTo(curX, curY);
+        fxCtx.stroke();
+
+        fxCtx.fillStyle = '#ff3870';
+        fxCtx.beginPath();
+        fxCtx.arc(curX, curY, 9, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+
+        if (ef.progress >= ef.duration) activeEffects.splice(i, 1);
+      } else if (ef.type === 'lightning') {
+        ef.life--;
+        drawLightningBolt(fxCtx, ef.sx, ef.sy, ef.tx, ef.ty, '#56ffe2', 4);
+        drawLightningBolt(fxCtx, ef.sx, ef.sy, ef.tx, ef.ty, '#ffffff', 1.8);
+        if (ef.life <= 0) activeEffects.splice(i, 1);
+      } else if (ef.type === 'ball_lightning') {
+        ef.life--;
+        ef.angle += 0.22;
+        const bx = ef.cx + Math.cos(ef.angle) * ef.rx;
+        const by = ef.cy + Math.sin(ef.angle) * ef.ry;
+
+        const rad = fxCtx.createRadialGradient(bx, by, 2, bx, by, 38);
+        rad.addColorStop(0, '#ffffff');
+        rad.addColorStop(0.35, '#56ffe2');
+        rad.addColorStop(0.7, 'rgba(255, 210, 80, 0.5)');
+        rad.addColorStop(1, 'rgba(56, 249, 215, 0)');
+
+        fxCtx.save();
+        fxCtx.fillStyle = rad;
+        fxCtx.beginPath();
+        fxCtx.arc(bx, by, 38, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+
+        particles.push({
+          x: bx,
+          y: by,
+          vx: (Math.random() - 0.5) * 3,
+          vy: (Math.random() - 0.5) * 3,
+          radius: 3 + Math.random() * 3,
+          color: '#56ffe2',
+          alpha: 0.9,
+          decay: 0.04,
+          gravity: 0
+        });
+
+        if (ef.life <= 0) activeEffects.splice(i, 1);
+      } else if (ef.type === 'aurora_wave') {
+        ef.life--;
+        const alpha = Math.sin((1 - ef.life / ef.maxLife) * Math.PI) * 0.45;
+        const aGrad = fxCtx.createLinearGradient(0, 0, w, h * 0.45);
+        aGrad.addColorStop(0, `rgba(56, 249, 215, ${alpha})`);
+        aGrad.addColorStop(0.5, `rgba(168, 255, 120, ${alpha * 0.85})`);
+        aGrad.addColorStop(1, `rgba(138, 92, 245, ${alpha})`);
+
+        fxCtx.save();
+        fxCtx.fillStyle = aGrad;
+        fxCtx.beginPath();
+        fxCtx.moveTo(0, 0);
+        for (let x = 0; x <= w; x += 60) {
+          const y = h * 0.25 + Math.sin(x * 0.006 + timeTick * 4) * 55;
+          fxCtx.lineTo(x, y);
+        }
+        fxCtx.lineTo(w, 0);
+        fxCtx.closePath();
+        fxCtx.fill();
+        fxCtx.restore();
+
+        if (ef.life <= 0) activeEffects.splice(i, 1);
+      }
+    }
+
+    requestAnimationFrame(renderLoop);
+  }
+
+  /* =========================================================================
+     8. РЕАЛІСТИЧНЕ СТЕЖЕННЯ ОЧЕЙ СИПУХИ Й ХАМЕЛЕОНА ЗА КУРСОРОМ ТА КЛІПАННЯ
+     ========================================================================= */
+  const owlPupilL = document.getElementById('owlPupilL');
+  const owlPupilR = document.getElementById('owlPupilR');
+  const owlEyelids = document.getElementById('owlEyelids');
+  const chamPupil = document.getElementById('chamPupil');
+
+  window.addEventListener('mousemove', (e) => {
+    const nx = (e.clientX / window.innerWidth) - 0.5;
+    const ny = (e.clientY / window.innerHeight) - 0.5;
+
+    // Зіниці та поворот голови сипухи
+    const ox = nx * 5.5;
+    const oy = ny * 4.5;
+    owlPupilL.setAttribute('cx', (163 + ox).toFixed(1));
+    owlPupilL.setAttribute('cy', (370 + oy).toFixed(1));
+    owlPupilR.setAttribute('cx', (205 + ox).toFixed(1));
+    owlPupilR.setAttribute('cy', (370 + oy).toFixed(1));
+
+    if (!isLocked) {
+      owlHead.style.transform = `rotate(${(nx * 9).toFixed(2)}deg)`;
+    }
+
+    // Незалежне обертання ока хамелеона
+    const cx = nx * 6.5;
+    const cy = ny * 5.5;
+    chamPupil.setAttribute('cx', (1574 + cx).toFixed(1));
+    chamPupil.setAttribute('cy', (362 + cy).toFixed(1));
+  });
+
+  // Періодичне природне кліпання сипухи
+  setInterval(() => {
+    owlEyelids.setAttribute('opacity', '1');
+    setTimeout(() => {
+      owlEyelids.setAttribute('opacity', '0');
+    }, 150);
+  }, 4200);
+
+  window.addEventListener('resize', resizeCanvases);
+  resizeCanvases();
+  buildNextDeck();
+  loadNextTask();
+  requestAnimationFrame(renderLoop);
+})();
+</script>
+</body>
+</html>
