@@ -1,0 +1,2040 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Черга з повітряною кулькою — Звук Р</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #1a2e40;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #scene-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  /* Top right minimalist controls - no plain white rectangles */
+  .hud-controls {
+    position: absolute;
+    top: 2vh;
+    right: 2vw;
+    display: flex;
+    align-items: center;
+    gap: 1.1vw;
+    z-index: 40;
+  }
+
+  .hud-btn {
+    position: relative;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+    filter: drop-shadow(0 6px 12px rgba(25, 40, 65, 0.38));
+    background: transparent;
+    padding: 0;
+  }
+
+  .hud-btn:hover {
+    transform: translateY(-3px) scale(1.07);
+    filter: drop-shadow(0 10px 16px rgba(25, 40, 65, 0.48)) brightness(1.06);
+  }
+
+  .hud-btn:active {
+    transform: translateY(1px) scale(0.95);
+  }
+
+  /* Animations inside SVG */
+  @keyframes ferrisSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes cabinCounterSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
+  }
+  @keyframes cloudDriftSlow {
+    0% { transform: translateX(-120px); }
+    50% { transform: translateX(120px); }
+    100% { transform: translateX(-120px); }
+  }
+  @keyframes cloudDriftMed {
+    0% { transform: translateX(90px); }
+    50% { transform: translateX(-90px); }
+    100% { transform: translateX(90px); }
+  }
+  @keyframes treeSway {
+    0%, 100% { transform: rotate(-1.6deg); }
+    50% { transform: rotate(1.8deg); }
+  }
+  @keyframes idleBreathe {
+    0%, 100% { transform: scaleY(1) translateY(0px); }
+    50% { transform: scaleY(1.018) translateY(-2.5px); }
+  }
+  @keyframes balloonFloat {
+    0%, 100% { transform: translateY(0px) rotate(-1.5deg); }
+    50% { transform: translateY(-11px) rotate(1.8deg); }
+  }
+  @keyframes spotPulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 6px 14px rgba(255, 195, 40, 0.45)); }
+    50% { transform: scale(1.055); filter: drop-shadow(0 10px 24px rgba(255, 215, 70, 0.85)); }
+  }
+  @keyframes waterPulse {
+    0%, 100% { transform: scaleY(1) scaleX(1); opacity: 0.88; }
+    50% { transform: scaleY(1.08) scaleX(1.03); opacity: 1; }
+  }
+  @keyframes eyeBlink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    96% { transform: scaleY(0.08); }
+  }
+  @keyframes queueJump {
+    0%, 100% { transform: translateY(0) scaleY(1); }
+    30% { transform: translateY(-26px) scaleY(1.05); }
+    55% { transform: translateY(0) scaleY(0.95); }
+    78% { transform: translateY(-14px) scaleY(1.03); }
+  }
+  @keyframes wrongWobble {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    18% { transform: translateX(-18px) rotate(-7deg); }
+    36% { transform: translateX(16px) rotate(7deg); }
+    54% { transform: translateX(-12px) rotate(-5deg); }
+    72% { transform: translateX(9px) rotate(4deg); }
+    88% { transform: translateX(-4px) rotate(-2deg); }
+  }
+
+  .ferris-wheel-rotator {
+    transform-origin: 1420px 330px;
+    animation: ferrisSpin 48s linear infinite;
+  }
+  .ferris-cabin {
+    animation: cabinCounterSpin 48s linear infinite;
+  }
+  .cloud-slow {
+    animation: cloudDriftSlow 38s ease-in-out infinite;
+  }
+  .cloud-med {
+    animation: cloudDriftMed 29s ease-in-out infinite;
+  }
+  .sway-tree-1 {
+    transform-origin: 540px 580px;
+    animation: treeSway 6.5s ease-in-out infinite;
+  }
+  .sway-tree-2 {
+    transform-origin: 1120px 560px;
+    animation: treeSway 7.2s ease-in-out infinite reverse;
+  }
+  .sway-tree-3 {
+    transform-origin: 1680px 600px;
+    animation: treeSway 5.8s ease-in-out infinite;
+  }
+  .fountain-jet {
+    transform-origin: 730px 560px;
+    animation: waterPulse 1.4s ease-in-out infinite;
+  }
+  .char-breathe {
+    transform-box: fill-box;
+    transform-origin: bottom center;
+    animation: idleBreathe 3.2s ease-in-out infinite;
+  }
+  .char-blink {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: eyeBlink 4.3s infinite;
+  }
+  .balloon-bob {
+    transform-box: fill-box;
+    transform-origin: bottom center;
+    animation: balloonFloat 3.4s ease-in-out infinite;
+  }
+  .interactive-spot {
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+  }
+  .interactive-spot:hover {
+    filter: brightness(1.12) drop-shadow(0 12px 26px rgba(255, 220, 80, 0.95));
+  }
+  .spot-badge-anim {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: spotPulse 2.3s ease-in-out infinite;
+  }
+  .celebrate-jump {
+    animation: queueJump 0.75s ease-in-out 2;
+  }
+  .wrong-shake {
+    animation: wrongWobble 0.65s ease-in-out;
+  }
+  .clickable-queue-zone {
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <!-- Minimalist Custom-Shaped Top-Right Controls (No plain white boxes, no text feedbacks) -->
+  <div class="hud-controls">
+    <!-- Audio Pronunciation Button -->
+    <button id="btn-speak" class="hud-btn" aria-label="Sound">
+      <svg width="66" height="66" viewBox="0 0 66 66">
+        <defs>
+          <radialGradient id="speakBtnGrad" cx="35%" cy="28%" r="70%">
+            <stop offset="0%" stop-color="#67e8f9"/>
+            <stop offset="55%" stop-color="#0284c7"/>
+            <stop offset="100%" stop-color="#1e3a8a"/>
+          </radialGradient>
+          <linearGradient id="goldRim" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fef08a"/>
+            <stop offset="50%" stop-color="#f59e0b"/>
+            <stop offset="100%" stop-color="#b45309"/>
+          </linearGradient>
+        </defs>
+        <!-- Scalloped medallion shape -->
+        <path d="M33,4 C41,4 46,8 52,14 C58,20 62,25 62,33 C62,41 58,46 52,52 C46,58 41,62 33,62 C25,62 20,58 14,52 C8,46 4,41 4,33 C4,25 8,20 14,14 C20,8 25,4 33,4 Z" fill="url(#speakBtnGrad)" stroke="url(#goldRim)" stroke-width="3.5"/>
+        <ellipse cx="26" cy="16" rx="12" ry="5" transform="rotate(-18 26 16)" fill="rgba(255,255,255,0.35)"/>
+        <!-- Speaker Horn Icon -->
+        <path d="M18,27 L25,27 L34,19 L34,47 L25,39 L18,39 Z" fill="#fef9c3" stroke="#78350f" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M40,24 C44,28 44,38 40,42" fill="none" stroke="#fef08a" stroke-width="3" stroke-linecap="round"/>
+        <path d="M45,19 C52,26 52,40 45,47" fill="none" stroke="#fde047" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+    </button>
+
+    <!-- Single Language Toggle Button (УКР / РУС) -->
+    <button id="btn-lang" class="hud-btn" aria-label="Language">
+      <svg width="84" height="62" viewBox="0 0 84 62">
+        <defs>
+          <linearGradient id="langBtnGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f472b6"/>
+            <stop offset="50%" stop-color="#db2777"/>
+            <stop offset="100%" stop-color="#831843"/>
+          </linearGradient>
+          <pattern id="langDots" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="5" cy="5" r="1.4" fill="rgba(255,255,255,0.16)"/>
+          </pattern>
+        </defs>
+        <path d="M18,6 Q42,2 66,6 Q80,10 80,31 Q80,52 66,56 Q42,60 18,56 Q4,52 4,31 Q4,10 18,6 Z" fill="url(#langBtnGrad)" stroke="url(#goldRim)" stroke-width="3.5"/>
+        <path d="M18,6 Q42,2 66,6 Q80,10 80,31 Q80,52 66,56 Q42,60 18,56 Q4,52 4,31 Q4,10 18,6 Z" fill="url(#langDots)"/>
+        <path d="M20,12 Q42,9 64,12" stroke="rgba(255,255,255,0.45)" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <text id="lang-label" x="42" y="38" text-anchor="middle" fill="#fef9c3" font-size="22" font-weight="900" letter-spacing="1.5" style="text-shadow: 0 2px 4px rgba(0,0,0,0.45);">УКР</text>
+      </svg>
+    </button>
+
+    <!-- Minimalist Next / Skip Button ("Далі") -->
+    <button id="btn-next" class="hud-btn" aria-label="Next">
+      <svg width="72" height="66" viewBox="0 0 72 66">
+        <defs>
+          <radialGradient id="nextBtnGrad" cx="35%" cy="25%" r="75%">
+            <stop offset="0%" stop-color="#fde047"/>
+            <stop offset="55%" stop-color="#f97316"/>
+            <stop offset="100%" stop-color="#9a3412"/>
+          </radialGradient>
+        </defs>
+        <path d="M16,7 Q36,3 56,7 Q68,14 68,33 Q68,52 56,59 Q36,63 16,59 Q4,52 4,33 Q4,14 16,7 Z" fill="url(#nextBtnGrad)" stroke="url(#goldRim)" stroke-width="3.5"/>
+        <ellipse cx="28" cy="15" rx="14" ry="4.5" fill="rgba(255,255,255,0.4)"/>
+        <path d="M22,33 L44,33 M36,21 L49,33 L36,45" fill="none" stroke="#fffbeb" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Main Widescreen 16:9 SVG Scene -->
+  <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Sky & Atmosphere Gradients -->
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#38bdf8"/>
+        <stop offset="42%" stop-color="#7dd3fc"/>
+        <stop offset="78%" stop-color="#bae6fd"/>
+        <stop offset="100%" stop-color="#fef3c7"/>
+      </linearGradient>
+
+      <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fef08a" stop-opacity="1"/>
+        <stop offset="35%" stop-color="#fde047" stop-opacity="0.65"/>
+        <stop offset="70%" stop-color="#facc15" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="#facc15" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Distant Hills & Park Greens -->
+      <linearGradient id="farHillGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#86efac"/>
+        <stop offset="100%" stop-color="#22c55e"/>
+      </linearGradient>
+      <linearGradient id="midHillGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#4ade80"/>
+        <stop offset="100%" stop-color="#15803d"/>
+      </linearGradient>
+      <linearGradient id="lawnGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#84cc16"/>
+        <stop offset="60%" stop-color="#4d7c0f"/>
+        <stop offset="100%" stop-color="#365314"/>
+      </linearGradient>
+
+      <!-- Cobblestone Plaza -->
+      <linearGradient id="plazaBaseGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#fde68a"/>
+        <stop offset="28%" stop-color="#f59e0b"/>
+        <stop offset="65%" stop-color="#d97706"/>
+        <stop offset="100%" stop-color="#92400e"/>
+      </linearGradient>
+
+      <pattern id="cobblePattern" width="96" height="52" patternUnits="userSpaceOnUse">
+        <rect width="96" height="52" fill="#e59838" fill-opacity="0.18"/>
+        <path d="M4,4 Q24,1 44,4 Q47,13 44,22 Q24,25 4,22 Q1,13 4,4 Z" fill="#fef3c7" fill-opacity="0.28" stroke="#92400e" stroke-opacity="0.3" stroke-width="1.5"/>
+        <path d="M52,4 Q72,1 92,4 Q95,13 92,22 Q72,25 52,22 Q49,13 52,4 Z" fill="#fde68a" fill-opacity="0.22" stroke="#78350f" stroke-opacity="0.3" stroke-width="1.5"/>
+        <path d="M28,28 Q48,25 68,28 Q71,37 68,46 Q48,49 28,46 Q25,37 28,28 Z" fill="#fed7aa" fill-opacity="0.25" stroke="#92400e" stroke-opacity="0.3" stroke-width="1.5"/>
+        <path d="M-20,28 Q0,25 20,28 Q23,37 20,46 Q0,49 -20,46 Z" fill="#fef08a" fill-opacity="0.2" stroke="#92400e" stroke-opacity="0.28" stroke-width="1.5"/>
+        <path d="M76,28 Q96,25 116,28 Q119,37 116,46 Q96,49 76,46 Z" fill="#fef08a" fill-opacity="0.2" stroke="#92400e" stroke-opacity="0.28" stroke-width="1.5"/>
+      </pattern>
+
+      <!-- Kiosk Striped Awning Pattern -->
+      <pattern id="awningStripes" width="56" height="90" patternUnits="userSpaceOnUse">
+        <rect x="0" y="0" width="28" height="90" fill="#e11d48"/>
+        <rect x="28" y="0" width="28" height="90" fill="#fff1f2"/>
+      </pattern>
+
+      <linearGradient id="kioskWood" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fbbf24"/>
+        <stop offset="50%" stop-color="#d97706"/>
+        <stop offset="100%" stop-color="#78350f"/>
+      </linearGradient>
+
+      <!-- Spot Gradients (Start & End of Queue) -->
+      <radialGradient id="spotFloorLeft" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#fef08a"/>
+        <stop offset="55%" stop-color="#10b981"/>
+        <stop offset="85%" stop-color="#047857"/>
+        <stop offset="100%" stop-color="#064e3b"/>
+      </radialGradient>
+      <radialGradient id="spotFloorRight" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#fef08a"/>
+        <stop offset="55%" stop-color="#8b5cf6"/>
+        <stop offset="85%" stop-color="#6d28d9"/>
+        <stop offset="100%" stop-color="#4c1d95"/>
+      </radialGradient>
+
+      <linearGradient id="badgeBoardLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#34d399"/>
+        <stop offset="50%" stop-color="#059669"/>
+        <stop offset="100%" stop-color="#064e3b"/>
+      </linearGradient>
+      <linearGradient id="badgeBoardRight" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#a78bfa"/>
+        <stop offset="50%" stop-color="#7c3aed"/>
+        <stop offset="100%" stop-color="#3b0764"/>
+      </linearGradient>
+
+      <!-- Giant Balloon Shell Gradients -->
+      <radialGradient id="mainBalloonShell" cx="35%" cy="28%" r="68%">
+        <stop offset="0%" stop-color="#fffbeb"/>
+        <stop offset="28%" stop-color="#fef3c7"/>
+        <stop offset="68%" stop-color="#fde68a"/>
+        <stop offset="90%" stop-color="#f59e0b"/>
+        <stop offset="100%" stop-color="#b45309"/>
+      </radialGradient>
+
+      <radialGradient id="balloonInnerBackdrop" cx="50%" cy="45%" r="58%">
+        <stop offset="0%" stop-color="#e0f2fe"/>
+        <stop offset="60%" stop-color="#bae6fd"/>
+        <stop offset="100%" stop-color="#7dd3fc"/>
+      </radialGradient>
+
+      <pattern id="balloonFestivePattern" width="36" height="36" patternUnits="userSpaceOnUse">
+        <circle cx="18" cy="18" r="3.5" fill="rgba(251, 146, 60, 0.22)"/>
+        <circle cx="0" cy="0" r="2.5" fill="rgba(244, 63, 94, 0.18)"/>
+        <circle cx="36" cy="0" r="2.5" fill="rgba(244, 63, 94, 0.18)"/>
+        <circle cx="0" cy="36" r="2.5" fill="rgba(244, 63, 94, 0.18)"/>
+        <circle cx="36" cy="36" r="2.5" fill="rgba(244, 63, 94, 0.18)"/>
+      </pattern>
+
+      <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#1e1b4b" flood-opacity="0.32"/>
+      </filter>
+
+      <filter id="balloonDropShadow" x="-25%" y="-20%" width="150%" height="150%">
+        <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#451a03" flood-opacity="0.38"/>
+      </filter>
+    </defs>
+
+    <!-- ================= 1. SKY, SUN & CLOUDS ================= -->
+    <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+
+    <!-- Warm Summer Sun -->
+    <g transform="translate(980, 145)">
+      <circle cx="0" cy="0" r="210" fill="url(#sunGlow)"/>
+      <circle cx="0" cy="0" r="64" fill="#fef9c3"/>
+    </g>
+
+    <!-- Drifting Layered Clouds -->
+    <g class="cloud-slow" opacity="0.92">
+      <g transform="translate(260, 120)">
+        <path d="M0,40 Q15,10 55,15 Q80,-12 125,8 Q165,-5 185,28 Q215,32 210,58 Q205,78 170,78 L15,78 Q-20,75 0,40 Z" fill="#fefce8"/>
+        <path d="M12,62 Q95,72 195,58" stroke="#bae6fd" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.6"/>
+      </g>
+      <g transform="translate(1180, 95) scale(1.15)">
+        <path d="M0,40 Q15,10 55,15 Q80,-12 125,8 Q165,-5 185,28 Q215,32 210,58 Q205,78 170,78 L15,78 Q-20,75 0,40 Z" fill="#fffbeb"/>
+      </g>
+    </g>
+    <g class="cloud-med" opacity="0.82">
+      <g transform="translate(680, 175) scale(0.88)">
+        <path d="M0,40 Q15,10 55,15 Q80,-12 125,8 Q165,-5 185,28 Q215,32 210,58 Q205,78 170,78 L15,78 Q-20,75 0,40 Z" fill="#f0f9ff"/>
+      </g>
+      <g transform="translate(1620, 150) scale(0.95)">
+        <path d="M0,40 Q15,10 55,15 Q80,-12 125,8 Q165,-5 185,28 Q215,32 210,58 Q205,78 170,78 L15,78 Q-20,75 0,40 Z" fill="#fefce8"/>
+      </g>
+    </g>
+
+    <!-- Animated Flying Birds Layer -->
+    <g id="birds-layer"></g>
+
+    <!-- ================= 2. DISTANT AMUSEMENT PARK & FERRIS WHEEL ================= -->
+    <!-- Far Hills -->
+    <path d="M0,510 Q320,410 680,470 T1380,445 T1920,490 L1920,660 L0,660 Z" fill="url(#farHillGrad)"/>
+
+    <!-- Rotating Giant Ferris Wheel in Background Right -->
+    <g id="ferris-wheel-assembly">
+      <!-- Support Legs -->
+      <path d="M1320,575 L1420,330 L1520,575" fill="none" stroke="#cbd5e1" stroke-width="12" stroke-linecap="round"/>
+      <path d="M1345,575 L1420,330 L1495,575" fill="none" stroke="#94a3b8" stroke-width="6"/>
+      <!-- Rotating Wheel & Gondolas -->
+      <g class="ferris-wheel-rotator">
+        <circle cx="1420" cy="330" r="165" fill="none" stroke="#f8fafc" stroke-width="8"/>
+        <circle cx="1420" cy="330" r="142" fill="none" stroke="#fbbf24" stroke-width="4" stroke-dasharray="12 10"/>
+        <!-- Spokes -->
+        <g stroke="#e2e8f0" stroke-width="3.5">
+          <line x1="1420" y1="165" x2="1420" y2="495"/>
+          <line x1="1255" y1="330" x2="1585" y2="330"/>
+          <line x1="1303" y1="213" x2="1537" y2="447"/>
+          <line x1="1537" y1="213" x2="1303" y2="447"/>
+        </g>
+        <!-- 8 Counter-Rotating Colorful Cabins -->
+        <g transform="translate(1420, 165)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#ef4444" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+        <g transform="translate(1537, 213)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#3b82f6" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+        <g transform="translate(1585, 330)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#10b981" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+        <g transform="translate(1537, 447)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#f59e0b" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+        <g transform="translate(1420, 495)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#ec4899" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+        <g transform="translate(1303, 447)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#8b5cf6" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+        <g transform="translate(1255, 330)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#06b6d4" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+        <g transform="translate(1303, 213)"><g class="ferris-cabin"><path d="M-16,4 L16,4 L12,28 Q0,34 -12,28 Z" fill="#eab308" stroke="#fef08a" stroke-width="2.5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="3"/></g></g>
+      </g>
+      <circle cx="1420" cy="330" r="24" fill="#f59e0b" stroke="#fef9c3" stroke-width="5"/>
+      <circle cx="1420" cy="330" r="10" fill="#ef4444"/>
+    </g>
+
+    <!-- Mid Hills & Lush Park Trees -->
+    <path d="M0,545 Q420,480 940,535 T1920,515 L1920,680 L0,680 Z" fill="url(#midHillGrad)"/>
+
+    <!-- Swaying Park Trees -->
+    <g class="sway-tree-1">
+      <path d="M530,590 L535,470 L550,470 L555,590 Z" fill="#78350f"/>
+      <circle cx="510" cy="465" r="52" fill="#15803d"/>
+      <circle cx="575" cy="460" r="56" fill="#16a34a"/>
+      <circle cx="542" cy="415" r="62" fill="#22c55e"/>
+      <circle cx="525" cy="400" r="35" fill="#4ade80" opacity="0.65"/>
+    </g>
+
+    <g class="sway-tree-2">
+      <path d="M1110,575 L1116,445 L1132,445 L1138,575 Z" fill="#78350f"/>
+      <circle cx="1085" cy="445" r="58" fill="#15803d"/>
+      <circle cx="1160" cy="445" r="54" fill="#16a34a"/>
+      <circle cx="1124" cy="390" r="68" fill="#22c55e"/>
+      <circle cx="1105" cy="375" r="40" fill="#86efac" opacity="0.55"/>
+    </g>
+
+    <g class="sway-tree-3">
+      <path d="M1668,605 L1675,455 L1692,455 L1700,605 Z" fill="#78350f"/>
+      <circle cx="1645" cy="450" r="65" fill="#166534"/>
+      <circle cx="1720" cy="445" r="62" fill="#15803d"/>
+      <circle cx="1684" cy="385" r="74" fill="#22c55e"/>
+      <circle cx="1665" cy="368" r="44" fill="#4ade80" opacity="0.6"/>
+    </g>
+
+    <!-- Park Lawn Strip & Decorative Fence -->
+    <path d="M0,575 Q960,545 1920,580 L1920,665 L0,665 Z" fill="url(#lawnGrad)"/>
+
+    <!-- Flowering Bushes & Park Lamp Posts -->
+    <g id="park-decor">
+      <!-- Ornate Lamp Post 1 -->
+      <g transform="translate(510, 415)">
+        <rect x="-5" y="40" width="10" height="150" rx="4" fill="#1e293b"/>
+        <path d="M-24,45 Q0,20 24,45" fill="none" stroke="#1e293b" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="-24" cy="45" r="14" fill="#fef08a" stroke="#f59e0b" stroke-width="3"/>
+        <circle cx="24" cy="45" r="14" fill="#fef08a" stroke="#f59e0b" stroke-width="3"/>
+      </g>
+      <!-- Ornate Lamp Post 2 -->
+      <g transform="translate(1060, 420)">
+        <rect x="-5" y="40" width="10" height="150" rx="4" fill="#1e293b"/>
+        <path d="M-24,45 Q0,20 24,45" fill="none" stroke="#1e293b" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="-24" cy="45" r="14" fill="#fef08a" stroke="#f59e0b" stroke-width="3"/>
+        <circle cx="24" cy="45" r="14" fill="#fef08a" stroke="#f59e0b" stroke-width="3"/>
+      </g>
+
+      <!-- Animated Plaza Water Fountain -->
+      <g>
+        <!-- Fountain Basin -->
+        <ellipse cx="730" cy="585" rx="90" ry="22" fill="#64748b" stroke="#475569" stroke-width="4"/>
+        <ellipse cx="730" cy="580" rx="80" ry="16" fill="#38bdf8"/>
+        <path d="M708,580 L715,535 L745,535 L752,580 Z" fill="#94a3b8"/>
+        <ellipse cx="730" cy="535" rx="40" ry="10" fill="#64748b"/>
+        <!-- Animated Water Jets -->
+        <g class="fountain-jet">
+          <path d="M730,533 Q700,470 670,575" fill="none" stroke="#bae6fd" stroke-width="5" stroke-linecap="round" opacity="0.85"/>
+          <path d="M730,533 Q760,470 790,575" fill="none" stroke="#bae6fd" stroke-width="5" stroke-linecap="round" opacity="0.85"/>
+          <path d="M730,533 Q715,450 695,575" fill="none" stroke="#e0f2fe" stroke-width="4" stroke-linecap="round"/>
+          <path d="M730,533 Q745,450 765,575" fill="none" stroke="#e0f2fe" stroke-width="4" stroke-linecap="round"/>
+          <path d="M730,533 L730,462" fill="none" stroke="#f0f9ff" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="730" cy="456" r="7" fill="#e0f2fe"/>
+          <circle cx="672" cy="576" r="6" fill="#e0f2fe"/>
+          <circle cx="788" cy="576" r="6" fill="#e0f2fe"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- ================= 3. WARM COBBLESTONE PLAZA ================= -->
+    <path d="M0,610 Q960,585 1920,615 L1920,1080 L0,1080 Z" fill="url(#plazaBaseGrad)"/>
+    <path d="M0,610 Q960,585 1920,615 L1920,1080 L0,1080 Z" fill="url(#cobblePattern)"/>
+    <!-- Curved promenade border -->
+    <path d="M0,612 Q960,587 1920,617" fill="none" stroke="#fef3c7" stroke-width="8" opacity="0.65"/>
+
+    <!-- Festive Bunting Flags Across Upper Left Plaza -->
+    <g stroke="#78350f" stroke-width="2.5" fill="none">
+      <path d="M295,335 Q410,380 510,450"/>
+    </g>
+    <g>
+      <polygon points="320,345 340,353 326,375" fill="#ef4444"/>
+      <polygon points="358,360 378,368 364,390" fill="#facc15"/>
+      <polygon points="396,376 416,385 402,407" fill="#10b981"/>
+      <polygon points="434,395 454,404 440,426" fill="#3b82f6"/>
+      <polygon points="472,416 492,426 478,447" fill="#ec4899"/>
+    </g>
+
+    <!-- ================= 4. ICE CREAM PAVILION ON THE LEFT (Front of Queue) ================= -->
+    <g id="ice-cream-kiosk" transform="translate(15, 250)" filter="url(#softShadow)">
+      <!-- Kiosk Back Wall -->
+      <rect x="30" y="135" width="245" height="310" rx="18" fill="#7c2d12" stroke="#451a03" stroke-width="5"/>
+      <!-- Warm Interior Counter Window -->
+      <rect x="50" y="156" width="205" height="145" rx="14" fill="#fef3c7" stroke="#b45309" stroke-width="5"/>
+      <!-- Interior Ice Cream Display Stand & Glass Tubs -->
+      <line x1="56" y1="215" x2="248" y2="215" stroke="#d97706" stroke-width="4"/>
+      <circle cx="88" cy="198" r="15" fill="#f472b6" stroke="#be185d" stroke-width="2"/>
+      <circle cx="124" cy="198" r="15" fill="#fde047" stroke="#ca8a04" stroke-width="2"/>
+      <circle cx="160" cy="198" r="15" fill="#4ade80" stroke="#15803d" stroke-width="2"/>
+      <circle cx="196" cy="198" r="15" fill="#38bdf8" stroke="#0369a1" stroke-width="2"/>
+      <!-- Waffle Cone Holder Inside Window -->
+      <g transform="translate(110, 265)">
+        <polygon points="-12,0 12,0 0,32" fill="#d97706" stroke="#78350f" stroke-width="2"/>
+        <circle cx="0" cy="-8" r="13" fill="#fb7185"/>
+        <circle cx="0" cy="-20" r="10" fill="#fef08a"/>
+      </g>
+      <g transform="translate(175, 265)">
+        <polygon points="-12,0 12,0 0,32" fill="#d97706" stroke="#78350f" stroke-width="2"/>
+        <circle cx="0" cy="-8" r="13" fill="#a78bfa"/>
+        <circle cx="0" cy="-20" r="10" fill="#67e8f9"/>
+      </g>
+
+      <!-- Kiosk Front Counter & Decorative Panels -->
+      <rect x="18" y="295" width="270" height="22" rx="10" fill="#fef3c7" stroke="#92400e" stroke-width="4"/>
+      <rect x="30" y="317" width="245" height="138" rx="12" fill="url(#kioskWood)" stroke="#451a03" stroke-width="4"/>
+      <!-- Decorative Gelato Cones carved on front panel -->
+      <g transform="translate(95, 382)">
+        <polygon points="-16,0 16,0 0,42" fill="#fde68a" stroke="#92400e" stroke-width="2.5"/>
+        <circle cx="-8" cy="-8" r="14" fill="#fb7185"/>
+        <circle cx="9" cy="-8" r="14" fill="#38bdf8"/>
+        <circle cx="0" cy="-22" r="14" fill="#fde047"/>
+        <circle cx="0" cy="-36" r="5" fill="#e11d48"/>
+      </g>
+      <g transform="translate(210, 382)">
+        <polygon points="-16,0 16,0 0,42" fill="#fde68a" stroke="#92400e" stroke-width="2.5"/>
+        <circle cx="-8" cy="-8" r="14" fill="#a78bfa"/>
+        <circle cx="9" cy="-8" r="14" fill="#4ade80"/>
+        <circle cx="0" cy="-22" r="14" fill="#fed7aa"/>
+        <circle cx="0" cy="-36" r="5" fill="#e11d48"/>
+      </g>
+
+      <!-- Striped Roof Awning -->
+      <path d="M10,145 L40,65 L265,65 L295,145 Z" fill="url(#awningStripes)" stroke="#881337" stroke-width="4" stroke-linejoin="round"/>
+      <!-- Scalloped Awning Trim -->
+      <path d="M10,145 Q28,168 45,145 Q62,168 80,145 Q98,168 115,145 Q132,168 150,145 Q168,168 185,145 Q202,168 220,145 Q238,168 255,145 Q275,168 295,145" fill="#be123c" stroke="#881337" stroke-width="3"/>
+
+      <!-- Giant 3D Ice Cream Cone Sign on Roof -->
+      <g transform="translate(152, 28) rotate(-10)">
+        <polygon points="-24,10 24,10 0,68" fill="#f59e0b" stroke="#78350f" stroke-width="3.5"/>
+        <circle cx="-14" cy="0" r="20" fill="#f472b6" stroke="#9d174d" stroke-width="3"/>
+        <circle cx="14" cy="0" r="20" fill="#67e8f9" stroke="#155e75" stroke-width="3"/>
+        <circle cx="0" cy="-20" r="22" fill="#fef08a" stroke="#854d0e" stroke-width="3"/>
+        <circle cx="0" cy="-42" r="8" fill="#ef4444" stroke="#7f1d1d" stroke-width="2.5"/>
+      </g>
+    </g>
+
+    <!-- ================= 5. INTERACTIVE SPOTS (LEFT = BEGINNING [Р], RIGHT = END [Р]) ================= -->
+    <!-- LEFT SPOT: Front / Beginning of the Queue -->
+    <g id="spot-start" class="interactive-spot" transform="translate(385, 700)">
+      <!-- Glowing Pavement Medallion -->
+      <ellipse cx="0" cy="0" rx="88" ry="32" fill="url(#spotFloorLeft)" stroke="#fef08a" stroke-width="4.5"/>
+      <ellipse cx="0" cy="-2" rx="70" ry="22" fill="none" stroke="#a7f3d0" stroke-width="2.5" stroke-dasharray="10 7"/>
+      <!-- Footprint / Stand Markers -->
+      <ellipse cx="-18" cy="-3" rx="9" ry="16" transform="rotate(-8 -18 -3)" fill="#064e3b" opacity="0.55"/>
+      <ellipse cx="14" cy="-3" rx="9" ry="16" transform="rotate(8 14 -3)" fill="#064e3b" opacity="0.55"/>
+
+      <!-- Sound Position Diagram Signpost: [ ● ○ ○ ] (Beginning of word) -->
+      <g transform="translate(0, 56)">
+        <g class="spot-badge-anim">
+          <path d="M-68,-24 Q0,-32 68,-24 Q80,-12 80,0 Q80,12 68,24 Q0,32 -68,24 Q-80,12 -80,0 Q-80,-12 -68,-24 Z" fill="url(#badgeBoardLeft)" stroke="#fef08a" stroke-width="4"/>
+          <!-- 3 Sound Slots: 1st highlighted gold/red, 2nd & 3rd muted -->
+          <circle cx="-42" cy="0" r="15" fill="#fde047" stroke="#b45309" stroke-width="3"/>
+          <circle cx="-42" cy="0" r="7.5" fill="#ef4444"/>
+          <circle cx="0" cy="0" r="12" fill="#064e3b" stroke="#6ee7b7" stroke-width="2.5"/>
+          <circle cx="42" cy="0" r="12" fill="#064e3b" stroke="#6ee7b7" stroke-width="2.5"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- RIGHT SPOT: Back / End of the Queue -->
+    <g id="spot-end" class="interactive-spot" transform="translate(1095, 700)">
+      <!-- Glowing Pavement Medallion -->
+      <ellipse cx="0" cy="0" rx="88" ry="32" fill="url(#spotFloorRight)" stroke="#fef08a" stroke-width="4.5"/>
+      <ellipse cx="0" cy="-2" rx="70" ry="22" fill="none" stroke="#ddd6fe" stroke-width="2.5" stroke-dasharray="10 7"/>
+      <!-- Footprint / Stand Markers -->
+      <ellipse cx="-18" cy="-3" rx="9" ry="16" transform="rotate(-8 -18 -3)" fill="#2e1065" opacity="0.55"/>
+      <ellipse cx="14" cy="-3" rx="9" ry="16" transform="rotate(8 14 -3)" fill="#2e1065" opacity="0.55"/>
+
+      <!-- Sound Position Diagram Signpost: [ ○ ○ ● ] (End of word) -->
+      <g transform="translate(0, 56)">
+        <g class="spot-badge-anim">
+          <path d="M-68,-24 Q0,-32 68,-24 Q80,-12 80,0 Q80,12 68,24 Q0,32 -68,24 Q-80,12 -80,0 Q-80,-12 -68,-24 Z" fill="url(#badgeBoardRight)" stroke="#fef08a" stroke-width="4"/>
+          <!-- 3 Sound Slots: 1st & 2nd muted, 3rd highlighted gold/red -->
+          <circle cx="-42" cy="0" r="12" fill="#2e1065" stroke="#c4b5fd" stroke-width="2.5"/>
+          <circle cx="0" cy="0" r="12" fill="#2e1065" stroke="#c4b5fd" stroke-width="2.5"/>
+          <circle cx="42" cy="0" r="15" fill="#fde047" stroke="#b45309" stroke-width="3"/>
+          <circle cx="42" cy="0" r="7.5" fill="#ef4444"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- ================= 6. THE QUEUE OF PEOPLE ================= -->
+    <g id="queue-layer"></g>
+
+    <!-- Clickable Extended Zones for Left (Start of Queue) and Right (End of Queue) -->
+    <rect id="zone-start-hit" class="clickable-queue-zone" x="285" y="450" width="230" height="350" fill="transparent"/>
+    <rect id="zone-end-hit" class="clickable-queue-zone" x="990" y="450" width="230" height="350" fill="transparent"/>
+
+    <!-- ================= 7. ACTIVE CHILD WITH GIANT PICTURE BALLOON ================= -->
+    <g id="active-child-layer"></g>
+  </svg>
+
+  <!-- Particle & Celebration Canvas Overlay -->
+  <canvas id="fx-canvas"></canvas>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ============================================================================
+  // 1. AUDIO ENGINE (Web Audio API Synthesizer + Speech Synthesis УКР/РУС)
+  // ============================================================================
+  let audioCtx = null;
+  let currentLang = 'uk'; // 'uk' or 'ru'
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function playTone(freq, type, duration, startTime = 0, vol = 0.16, slideTo = null) {
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime + startTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    if (slideTo) {
+      osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+    }
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(vol, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
+  function playStepSound() {
+    playTone(150 + Math.random() * 45, 'triangle', 0.06, 0, 0.05, 90);
+  }
+
+  function playBalloonPopIn() {
+    playTone(240, 'sine', 0.22, 0, 0.18, 580);
+    playTone(580, 'triangle', 0.15, 0.12, 0.12, 760);
+  }
+
+  // 5 Distinct Celebration Sound Fanfares
+  function playSuccessSound(variant = 0) {
+    ensureAudio();
+    const v = variant % 5;
+    if (v === 0) {
+      // Brass & Marimba Triumph
+      const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+      notes.forEach((n, i) => {
+        playTone(n, 'triangle', 0.28, i * 0.075, 0.2);
+        playTone(n * 0.5, 'sine', 0.3, i * 0.075, 0.12);
+      });
+    } else if (v === 1) {
+      // Magical Harp Glissando
+      const scale = [440, 493.88, 554.37, 587.33, 659.25, 739.99, 830.61, 880, 1108.73];
+      scale.forEach((n, i) => playTone(n, 'sine', 0.35, i * 0.045, 0.15));
+    } else if (v === 2) {
+      // Playful Xylophone Dance
+      const melody = [587.33, 783.99, 987.77, 783.99, 1174.66];
+      melody.forEach((n, i) => playTone(n, 'sine', 0.18, i * 0.085, 0.22, n * 1.02));
+    } else if (v === 3) {
+      // Upbeat Major Chord Arpeggio
+      const chords = [
+        [523.25, 659.25, 783.99],
+        [587.33, 739.99, 880],
+        [659.25, 830.61, 987.77],
+        [783.99, 987.77, 1174.66, 1567.98]
+      ];
+      chords.forEach((ch, idx) => {
+        ch.forEach(freq => playTone(freq, 'triangle', 0.26, idx * 0.11, 0.11));
+      });
+    } else {
+      // Joyful Bell Fanfare
+      const bells = [659.25, 659.25, 783.99, 1046.5, 987.77, 1318.5];
+      const times = [0, 0.09, 0.18, 0.28, 0.40, 0.52];
+      bells.forEach((n, i) => playTone(n, 'sine', 0.32, times[i], 0.18));
+    }
+  }
+
+  // Varied Funny Non-Verbal Wrong Sounds (Rubber boing, comical tuba, slide whistle)
+  let wrongVariant = 0;
+  function playWrongSound() {
+    ensureAudio();
+    const v = (wrongVariant++) % 3;
+    if (v === 0) {
+      // Rubber Balloon Boing
+      playTone(320, 'sawtooth', 0.18, 0, 0.14, 155);
+      playTone(155, 'sine', 0.28, 0.14, 0.18, 260);
+      playTone(260, 'triangle', 0.22, 0.32, 0.14, 140);
+    } else if (v === 1) {
+      // Comical Slide Down
+      playTone(480, 'triangle', 0.22, 0, 0.18, 220);
+      playTone(240, 'sawtooth', 0.3, 0.18, 0.13, 130);
+    } else {
+      // Playful Bassoon Bounce
+      playTone(210, 'square', 0.14, 0, 0.09, 180);
+      playTone(170, 'square', 0.26, 0.15, 0.1, 115);
+    }
+  }
+
+  function speakCurrentWord(wordObj) {
+    if (!wordObj) return;
+    playTone(660, 'sine', 0.1, 0, 0.08, 880);
+    if (!('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const text = currentLang === 'uk' ? wordObj.uk : wordObj.ru;
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = currentLang === 'uk' ? 'uk-UA' : 'ru-RU';
+      utter.rate = 0.88;
+      utter.pitch = 1.08;
+      window.speechSynthesis.speak(utter);
+    } catch (e) {
+      // Fallback chime if speech synthesis is unavailable
+    }
+  }
+
+  // ============================================================================
+  // 2. THE 20 REALISTIC CUSTOM SVG ILLUSTRATIONS (10 Start [Р], 10 End [Р])
+  // ============================================================================
+  const WORDS_DATA = [
+    // ---------------- 10 WORDS STARTING WITH [Р] (position: 'start') ----------------
+    {
+      id: 'fish',
+      position: 'start',
+      uk: 'Риба',
+      ru: 'Рыба',
+      renderSVG: () => `
+        <g transform="translate(0, 4)">
+          <!-- Water Bubbles -->
+          <circle cx="-72" cy="-42" r="7" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+          <circle cx="-84" cy="-18" r="4.5" fill="none" stroke="#38bdf8" stroke-width="2"/>
+          <!-- Tail Fin -->
+          <path d="M52,0 L96,-42 Q84,0 96,42 Z" fill="#f97316" stroke="#9a3412" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M62,0 L90,-26 M64,0 L92,0 M62,0 L90,26" stroke="#fde047" stroke-width="2"/>
+          <!-- Dorsal & Ventral Fins -->
+          <path d="M-18,-36 Q12,-68 42,-28 Z" fill="#fb923c" stroke="#9a3412" stroke-width="3"/>
+          <path d="M12,32 Q32,58 46,24 Z" fill="#fb923c" stroke="#9a3412" stroke-width="2.5"/>
+          <!-- Main Shimmering Fish Body -->
+          <path d="M-86,0 Q-42,-48 18,-38 Q56,-30 66,0 Q56,30 18,38 Q-42,48 -86,0 Z" fill="#fbbf24" stroke="#92400e" stroke-width="3.5"/>
+          <path d="M-82,4 Q-40,42 18,34 Q50,26 62,4 Q10,16 -82,4 Z" fill="#fef08a"/>
+          <path d="M-82,-2 Q-40,-42 18,-34 Q48,-26 60,-4 Q10,-16 -82,-2 Z" fill="#0284c7" opacity="0.45"/>
+          <!-- Detailed Scales -->
+          <g fill="none" stroke="#b45309" stroke-width="2.2" opacity="0.65">
+            <path d="M-24,-18 Q-12,-8 -24,2 M-24,2 Q-12,12 -24,22"/>
+            <path d="M-4,-22 Q8,-10 -4,0 M-4,0 Q8,10 -4,22"/>
+            <path d="M16,-20 Q28,-10 16,0 M16,0 Q28,10 16,20"/>
+            <path d="M36,-14 Q46,-4 36,6"/>
+          </g>
+          <!-- Gill & Pectoral Fin -->
+          <path d="M-38,-24 Q-26,0 -38,24" fill="none" stroke="#92400e" stroke-width="3.5" stroke-linecap="round"/>
+          <path d="M-30,10 Q-6,32 -12,44 Q-32,38 -34,16 Z" fill="#f97316" stroke="#9a3412" stroke-width="2.5"/>
+          <!-- Realistic Eye & Mouth -->
+          <circle cx="-56" cy="-8" r="10" fill="#ffffff" stroke="#451a03" stroke-width="2.5"/>
+          <circle cx="-58" cy="-8" r="5.5" fill="#0f172a"/>
+          <circle cx="-60" cy="-10" r="2.2" fill="#ffffff"/>
+          <path d="M-85,2 Q-72,8 -66,3" fill="none" stroke="#78350f" stroke-width="3" stroke-linecap="round"/>
+        </g>`
+    },
+    {
+      id: 'crayfish',
+      position: 'start',
+      uk: 'Рак',
+      ru: 'Рак',
+      renderSVG: () => `
+        <g transform="translate(0, 6)">
+          <!-- Long Curved Antennae -->
+          <path d="M-12,-46 Q-55,-85 -88,-52" fill="none" stroke="#991b1b" stroke-width="3" stroke-linecap="round"/>
+          <path d="M12,-46 Q55,-85 88,-52" fill="none" stroke="#991b1b" stroke-width="3" stroke-linecap="round"/>
+          <!-- Walking Legs (4 pairs) -->
+          <g stroke="#b91c1c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M-22,-5 L-58,-12 L-72,6"/>
+            <path d="M-24,10 L-62,12 L-76,30"/>
+            <path d="M-22,25 L-56,34 L-68,52"/>
+            <path d="M-18,38 L-46,52 L-54,68"/>
+            <path d="M22,-5 L58,-12 L72,6"/>
+            <path d="M24,10 L62,12 L76,30"/>
+            <path d="M22,25 L56,34 L68,52"/>
+            <path d="M18,38 L46,52 L54,68"/>
+          </g>
+          <!-- Large Pincer Claws -->
+          <path d="M-18,-22 L-45,-42" stroke="#dc2626" stroke-width="9" stroke-linecap="round"/>
+          <path d="M-45,-42 Q-82,-55 -72,-82 Q-55,-65 -48,-52 Q-38,-68 -32,-80 Q-20,-55 -45,-42 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="3"/>
+          <path d="M18,-22 L45,-42" stroke="#dc2626" stroke-width="9" stroke-linecap="round"/>
+          <path d="M45,-42 Q82,-55 72,-82 Q55,-65 48,-52 Q38,-68 32,-80 Q20,-55 45,-42 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="3"/>
+          <!-- Tail Fan -->
+          <ellipse cx="-22" cy="76" rx="14" ry="10" transform="rotate(-25 -22 76)" fill="#b91c1c" stroke="#7f1d1d" stroke-width="2.5"/>
+          <ellipse cx="22" cy="76" rx="14" ry="10" transform="rotate(25 22 76)" fill="#b91c1c" stroke="#7f1d1d" stroke-width="2.5"/>
+          <ellipse cx="0" cy="80" rx="15" ry="12" fill="#dc2626" stroke="#7f1d1d" stroke-width="2.5"/>
+          <!-- Segmented Abdomen & Carapace -->
+          <path d="M-20,30 Q0,24 20,30 L15,70 Q0,74 -15,70 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="3"/>
+          <path d="M-18,42 Q0,37 18,42 M-17,54 Q0,49 17,54 M-15,64 Q0,60 15,64" fill="none" stroke="#7f1d1d" stroke-width="2.5"/>
+          <path d="M0,-58 L26,-20 L24,30 Q0,38 -24,30 L-26,-20 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="3.5"/>
+          <ellipse cx="-6" cy="-12" rx="7" ry="18" fill="#fca5a5" opacity="0.45"/>
+          <!-- Stalk Eyes -->
+          <circle cx="-11" cy="-52" r="6.5" fill="#0f172a" stroke="#fef08a" stroke-width="2"/>
+          <circle cx="11" cy="-52" r="6.5" fill="#0f172a" stroke="#fef08a" stroke-width="2"/>
+        </g>`
+    },
+    {
+      id: 'chamomile',
+      position: 'start',
+      uk: 'Ромашка',
+      ru: 'Ромашка',
+      renderSVG: () => {
+        let petals = '';
+        for (let i = 0; i < 18; i++) {
+          const ang = i * 20;
+          petals += `<ellipse cx="0" cy="-48" rx="10" ry="30" transform="rotate(${ang})" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>`;
+        }
+        return `
+        <g transform="translate(0, -6)">
+          <!-- Green Stem & Carved Leaves -->
+          <path d="M0,20 Q8,62 -4,98" fill="none" stroke="#15803d" stroke-width="8" stroke-linecap="round"/>
+          <path d="M2,58 Q38,42 54,56 Q34,74 2,68 Z" fill="#22c55e" stroke="#166534" stroke-width="2.5"/>
+          <path d="M-2,70 Q-38,52 -54,68 Q-34,86 -2,78 Z" fill="#22c55e" stroke="#166534" stroke-width="2.5"/>
+          <!-- Flower Head -->
+          <g transform="translate(0, -10)">
+            ${petals}
+            <circle cx="0" cy="0" r="26" fill="#facc15" stroke="#ca8a04" stroke-width="3.5"/>
+            <circle cx="-8" cy="-7" r="3" fill="#eab308"/>
+            <circle cx="7" cy="-9" r="3" fill="#eab308"/>
+            <circle cx="0" cy="8" r="3" fill="#eab308"/>
+            <circle cx="-10" cy="6" r="3" fill="#eab308"/>
+            <circle cx="11" cy="5" r="3" fill="#eab308"/>
+          </g>
+        </g>`;
+      }
+    },
+    {
+      id: 'backpack',
+      position: 'start',
+      uk: 'Рюкзак',
+      ru: 'Рюкзак',
+      renderSVG: () => `
+        <g transform="translate(0, 6)">
+          <!-- Top Loop Handle & Shoulder Straps -->
+          <path d="M-22,-64 Q0,-92 22,-64" fill="none" stroke="#1e3a8a" stroke-width="8" stroke-linecap="round"/>
+          <path d="M-54,-38 Q-82,0 -58,52" fill="none" stroke="#1d4ed8" stroke-width="11" stroke-linecap="round"/>
+          <path d="M54,-38 Q82,0 58,52" fill="none" stroke="#1d4ed8" stroke-width="11" stroke-linecap="round"/>
+          <!-- Side Mesh Pockets -->
+          <path d="M-64,8 L-48,8 L-48,58 Q-68,56 -64,8 Z" fill="#0284c7" stroke="#1e3a8a" stroke-width="3"/>
+          <path d="M64,8 L48,8 L48,58 Q68,56 64,8 Z" fill="#0284c7" stroke="#1e3a8a" stroke-width="3"/>
+          <!-- Main Backpack Body -->
+          <path d="M-52,-42 Q-52,-68 0,-68 Q52,-68 52,-42 L56,56 Q56,74 34,74 L-34,74 Q-56,74 -56,56 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="3.5"/>
+          <!-- Top Flap -->
+          <path d="M-50,-42 Q0,-66 50,-42 Q50,-8 0,-4 Q-50,-8 -50,-42 Z" fill="#facc15" stroke="#a16207" stroke-width="3"/>
+          <!-- Front Zippered Pocket -->
+          <rect x="-38" y="8" width="76" height="52" rx="14" fill="#3b82f6" stroke="#1e3a8a" stroke-width="3"/>
+          <line x1="-32" y1="24" x2="32" y2="24" stroke="#fef08a" stroke-width="3.5" stroke-dasharray="6 4"/>
+          <rect x="8" y="20" width="9" height="14" rx="3" fill="#fde047" stroke="#78350f" stroke-width="2"/>
+          <!-- Buckle Straps -->
+          <rect x="-26" y="-22" width="12" height="24" rx="3" fill="#1e293b"/>
+          <rect x="14" y="-22" width="12" height="24" rx="3" fill="#1e293b"/>
+        </g>`
+    },
+    {
+      id: 'radish',
+      position: 'start',
+      uk: 'Редиска',
+      ru: 'Редиска',
+      renderSVG: () => `
+        <g transform="translate(0, 8)">
+          <!-- Lush Green Leafy Top -->
+          <path d="M0,-34 Q-45,-75 -26,-92 Q-4,-88 0,-34 Z" fill="#16a34a" stroke="#14532d" stroke-width="3"/>
+          <path d="M0,-34 Q45,-75 26,-92 Q4,-88 0,-34 Z" fill="#22c55e" stroke="#14532d" stroke-width="3"/>
+          <path d="M0,-32 Q-22,-98 0,-102 Q22,-98 0,-32 Z" fill="#4ade80" stroke="#14532d" stroke-width="3"/>
+          <path d="M0,-36 L0,-86 M-4,-52 L-18,-74 M4,-52 L18,-74" stroke="#bbf7d0" stroke-width="2.5" stroke-linecap="round"/>
+          <!-- Crimson-Pink Radish Bulb with White Tip -->
+          <path d="M-52,4 Q-52,-38 0,-38 Q52,-38 52,4 Q52,44 0,68 Q-52,44 -52,4 Z" fill="#e11d48" stroke="#881337" stroke-width="3.5"/>
+          <!-- White Bottom Gradient Area & Root Tail -->
+          <path d="M-32,38 Q0,48 32,38 Q18,56 0,68 Q-18,56 -32,38 Z" fill="#fff1f2"/>
+          <path d="M0,66 Q4,84 -6,96" fill="none" stroke="#fce7f3" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M0,66 Q4,84 -6,96" fill="none" stroke="#881337" stroke-width="2" stroke-linecap="round"/>
+          <!-- Specular Highlight -->
+          <ellipse cx="-20" cy="-6" rx="10" ry="18" transform="rotate(-18 -20 -6)" fill="#fda4af" opacity="0.7"/>
+        </g>`
+    },
+    {
+      id: 'mitten',
+      position: 'start',
+      uk: 'Рукавичка',
+      ru: 'Рукавичка',
+      renderSVG: () => `
+        <g transform="translate(0, 4)">
+          <!-- Cozy Knitted Winter Mitten Body -->
+          <path d="M-42,42 L-42,-24 Q-42,-74 4,-74 Q50,-74 50,-24 L50,42 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="3.5" stroke-linejoin="round"/>
+          <!-- Thumb -->
+          <path d="M-40,12 L-72,-12 Q-84,-24 -70,-38 Q-56,-48 -40,-26 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="3.5" stroke-linejoin="round"/>
+          <!-- Nordic Snowflake & Zigzag Pattern -->
+          <path d="M-40,-8 L48,-8 M-40,16 L48,16" stroke="#fef08a" stroke-width="4" stroke-dasharray="8 6"/>
+          <g transform="translate(4, -34)" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round">
+            <line x1="-18" y1="0" x2="18" y2="0"/>
+            <line x1="0" y1="-18" x2="0" y2="18"/>
+            <line x1="-12" y1="-12" x2="12" y2="12"/>
+            <line x1="12" y1="-12" x2="-12" y2="12"/>
+          </g>
+          <!-- Ribbed Elastic Cuff -->
+          <rect x="-48" y="40" width="104" height="34" rx="10" fill="#fde047" stroke="#a16207" stroke-width="3.5"/>
+          <path d="M-28,42 L-28,72 M-8,42 L-8,72 M12,42 L12,72 M32,42 L32,72" stroke="#ca8a04" stroke-width="3"/>
+        </g>`
+    },
+    {
+      id: 'rollerskate',
+      position: 'start',
+      uk: 'Ролики',
+      ru: 'Ролики',
+      renderSVG: () => `
+        <g transform="translate(0, 2)">
+          <!-- Metallic Frame & Heel Brake -->
+          <rect x="-64" y="34" width="128" height="14" rx="6" fill="#94a3b8" stroke="#334155" stroke-width="3"/>
+          <path d="M-64,36 L-82,48 L-68,58 L-54,44 Z" fill="#1e293b"/>
+          <!-- 4 Glossy Inline Wheels -->
+          <g>
+            <circle cx="-52" cy="58" r="16" fill="#ec4899" stroke="#831843" stroke-width="3"/>
+            <circle cx="-52" cy="58" r="6" fill="#e2e8f0"/>
+            <circle cx="-16" cy="58" r="16" fill="#ec4899" stroke="#831843" stroke-width="3"/>
+            <circle cx="-16" cy="58" r="6" fill="#e2e8f0"/>
+            <circle cx="20" cy="58" r="16" fill="#ec4899" stroke="#831843" stroke-width="3"/>
+            <circle cx="20" cy="58" r="6" fill="#e2e8f0"/>
+            <circle cx="56" cy="58" r="16" fill="#ec4899" stroke="#831843" stroke-width="3"/>
+            <circle cx="56" cy="58" r="6" fill="#e2e8f0"/>
+          </g>
+          <!-- Boot Upper & Cuff -->
+          <path d="M-48,-66 L4,-66 L10,-8 L56,6 Q72,14 66,34 L-54,34 L-54,-46 Z" fill="#06b6d4" stroke="#155e75" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M-52,-54 L8,-54 L8,-26 L-52,-26 Z" fill="#facc15" stroke="#854d0e" stroke-width="3"/>
+          <!-- Laces & Buckle -->
+          <path d="M6,-20 L24,-14 M10,-8 L28,-2 M18,2 L36,8" stroke="#fef08a" stroke-width="4" stroke-linecap="round"/>
+          <rect x="-32" y="-46" width="24" height="12" rx="3" fill="#1e293b"/>
+        </g>`
+    },
+    {
+      id: 'pen',
+      position: 'start',
+      uk: 'Ручка',
+      ru: 'Ручка',
+      renderSVG: () => `
+        <g transform="translate(0, 4)">
+          <!-- Decorative Ink Swirl -->
+          <path d="M-62,68 Q-20,86 18,62 T72,68" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round"/>
+          <!-- Sleek Angled Fountain Pen -->
+          <g transform="rotate(-38)">
+            <!-- Golden Nib -->
+            <path d="M-10,48 L0,84 L10,48 Z" fill="#facc15" stroke="#854d0e" stroke-width="2.5"/>
+            <line x1="0" y1="58" x2="0" y2="82" stroke="#78350f" stroke-width="2"/>
+            <circle cx="0" cy="58" r="2.5" fill="#78350f"/>
+            <!-- Grip Section -->
+            <path d="M-13,18 L13,18 L10,48 L-10,48 Z" fill="#1e293b" stroke="#0f172a" stroke-width="2.5"/>
+            <!-- Barrel & Cap -->
+            <rect x="-15" y="-82" width="30" height="100" rx="12" fill="#2563eb" stroke="#1e3a8a" stroke-width="3"/>
+            <rect x="-16" y="-22" width="32" height="9" fill="#fde047" stroke="#a16207" stroke-width="2"/>
+            <!-- Metallic Pocket Clip -->
+            <path d="M15,-68 L26,-64 L26,-28 L18,-25" fill="none" stroke="#fde047" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- Highlight -->
+            <line x1="-6" y1="-70" x2="-6" y2="10" stroke="#93c5fd" stroke-width="3.5" stroke-linecap="round"/>
+          </g>
+        </g>`
+    },
+    {
+      id: 'piano',
+      position: 'start',
+      uk: 'Рояль',
+      ru: 'Рояль',
+      renderSVG: () => `
+        <g transform="translate(0, 8)">
+          <!-- Grand Piano Legs & Lyre Pedals -->
+          <rect x="-62" y="28" width="9" height="46" rx="3" fill="#0f172a"/>
+          <rect x="48" y="28" width="9" height="46" rx="3" fill="#0f172a"/>
+          <rect x="12" y="22" width="7" height="42" rx="3" fill="#1e293b"/>
+          <path d="M-14,28 L-10,68 L4,68 L8,28" fill="none" stroke="#0f172a" stroke-width="5"/>
+          <circle cx="-8" cy="70" r="4" fill="#facc15"/>
+          <circle cx="-1" cy="70" r="4" fill="#facc15"/>
+          <circle cx="6" cy="70" r="4" fill="#facc15"/>
+          <!-- Open Propped Lid & Prop Stick -->
+          <line x1="34" y1="-10" x2="54" y2="-58" stroke="#ca8a04" stroke-width="4"/>
+          <path d="M-66,-12 L42,-74 Q64,-60 58,-38 L-48,-8 Z" fill="#1e293b" stroke="#020617" stroke-width="3.5"/>
+          <!-- Golden Soundboard Interior -->
+          <path d="M-62,-12 L52,-12 L42,6 L-62,6 Z" fill="#d97706"/>
+          <!-- Main Glossy Black Case -->
+          <path d="M-74,-8 L20,-8 Q66,-8 66,14 L66,28 L-74,28 Z" fill="#0f172a" stroke="#020617" stroke-width="3"/>
+          <!-- Music Stand & Sheet Music -->
+          <rect x="-46" y="-28" width="28" height="20" rx="2" fill="#fefce8" stroke="#94a3b8" stroke-width="2"/>
+          <!-- White & Black Keys -->
+          <rect x="-72" y="8" width="58" height="15" rx="2" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+          <rect x="-64" y="8" width="6" height="9" fill="#0f172a"/>
+          <rect x="-54" y="8" width="6" height="9" fill="#0f172a"/>
+          <rect x="-38" y="8" width="6" height="9" fill="#0f172a"/>
+          <rect x="-28" y="8" width="6" height="9" fill="#0f172a"/>
+        </g>`
+    },
+    {
+      id: 'cake_roll',
+      position: 'start',
+      uk: 'Рулет',
+      ru: 'Рулет',
+      renderSVG: () => `
+        <g transform="translate(0, 10)">
+          <!-- Decorative Plate -->
+          <ellipse cx="0" cy="42" rx="88" ry="22" fill="#f8fafc" stroke="#94a3b8" stroke-width="3"/>
+          <!-- Sponge Roll Cylinder -->
+          <path d="M-54,-28 L42,-42 C72,-42 78,24 46,32 L-46,42 Z" fill="#f59e0b" stroke="#92400e" stroke-width="3.5"/>
+          <!-- Chocolate Glaze Drizzle on Top -->
+          <path d="M-48,-28 Q-25,-8 -18,-32 Q0,-6 12,-36 Q28,-12 42,-40" fill="none" stroke="#451a03" stroke-width="7" stroke-linecap="round"/>
+          <!-- Front Cut Face Showing Cream & Berry Spiral -->
+          <ellipse cx="-48" cy="7" rx="30" ry="35" fill="#fde68a" stroke="#92400e" stroke-width="3.5"/>
+          <path d="M-48,7 m-2,-2 a4,4 0 1,1 4,6 a10,12 0 1,1 -12,-14 a18,22 0 1,1 20,24" fill="none" stroke="#fff1f2" stroke-width="7" stroke-linecap="round"/>
+          <path d="M-48,7 m-2,-2 a4,4 0 1,1 4,6 a10,12 0 1,1 -12,-14 a18,22 0 1,1 20,24" fill="none" stroke="#e11d48" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Fresh Strawberry & Mint Leaf on Top -->
+          <path d="M-6,-38 Q12,-58 24,-40 Q12,-28 -6,-38 Z" fill="#22c55e" stroke="#14532d" stroke-width="2"/>
+          <path d="M-18,-42 Q-6,-68 8,-42 Q0,-22 -18,-42 Z" fill="#ef4444" stroke="#881337" stroke-width="2.5"/>
+        </g>`
+    },
+
+    // ---------------- 10 WORDS ENDING WITH [Р] (position: 'end') ----------------
+    {
+      id: 'cheese',
+      position: 'end',
+      uk: 'Сир',
+      ru: 'Сыр',
+      renderSVG: () => `
+        <g transform="translate(0, 6)">
+          <!-- 3D Wedge Top Face -->
+          <polygon points="-76,8 28,-54 78,-14 -76,8" fill="#fef08a" stroke="#b45309" stroke-width="3.5" stroke-linejoin="round"/>
+          <!-- 3D Wedge Front Side Face -->
+          <polygon points="-76,8 78,-14 78,44 -76,54" fill="#facc15" stroke="#b45309" stroke-width="3.5" stroke-linejoin="round"/>
+          <!-- Darker Rind Back Edge -->
+          <path d="M28,-54 L78,-14 L78,44" fill="none" stroke="#d97706" stroke-width="5" stroke-linejoin="round"/>
+          <!-- Realistic Swiss Cheese Holes -->
+          <ellipse cx="-26" cy="28" rx="14" ry="11" fill="#eab308" stroke="#a16207" stroke-width="2.5"/>
+          <ellipse cx="24" cy="16" rx="18" ry="13" fill="#eab308" stroke="#a16207" stroke-width="2.5"/>
+          <ellipse cx="52" cy="30" rx="9" ry="7" fill="#eab308" stroke="#a16207" stroke-width="2"/>
+          <ellipse cx="-52" cy="36" rx="8" ry="6" fill="#eab308" stroke="#a16207" stroke-width="2"/>
+          <ellipse cx="14" cy="-22" rx="13" ry="7" fill="#fde047" stroke="#ca8a04" stroke-width="2"/>
+          <ellipse cx="-16" cy="-8" rx="9" ry="5" fill="#fde047" stroke="#ca8a04" stroke-width="2"/>
+        </g>`
+    },
+    {
+      id: 'tomato',
+      position: 'end',
+      uk: 'Помідор',
+      ru: 'Помидор',
+      renderSVG: () => `
+        <g transform="translate(0, 10)">
+          <!-- Plump Glossy Red Tomato Body -->
+          <path d="M0,-44 C-52,-52 -74,-8 -68,28 C-62,64 -26,74 0,70 C26,74 62,64 68,28 C74,-8 52,-52 0,-44 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="3.5"/>
+          <!-- Subtle Rib Creases -->
+          <path d="M-24,-42 Q-46,10 -24,66 M24,-42 Q46,10 24,66" fill="none" stroke="#b91c1c" stroke-width="2.5" opacity="0.5"/>
+          <!-- Specular Shine & Water Droplet -->
+          <ellipse cx="-34" cy="-6" rx="12" ry="22" transform="rotate(-24 -34 -6)" fill="#fca5a5" opacity="0.75"/>
+          <circle cx="-22" cy="24" r="5" fill="#ffffff" opacity="0.8"/>
+          <!-- Green Leafy Calyx Stem -->
+          <path d="M0,-40 L-36,-32 L-10,-48 L-28,-66 L-2,-52 L4,-76 L10,-52 L36,-64 L14,-46 L40,-30 Z" fill="#16a34a" stroke="#14532d" stroke-width="3" stroke-linejoin="round"/>
+        </g>`
+    },
+    {
+      id: 'mosquito',
+      position: 'end',
+      uk: 'Комар',
+      ru: 'Комар',
+      renderSVG: () => `
+        <g transform="translate(0, 6)">
+          <!-- 6 Long Jointed Legs -->
+          <g fill="none" stroke="#334155" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M-14,6 L-44,-22 L-68,28"/>
+            <path d="M-4,12 L-24,-14 L-38,48"/>
+            <path d="M8,16 L24,-10 L46,54"/>
+            <path d="M18,18 L52,-8 L78,42"/>
+          </g>
+          <!-- Translucent Iridescent Wings -->
+          <ellipse cx="6" cy="-26" rx="16" ry="44" transform="rotate(28 6 -26)" fill="#bae6fd" fill-opacity="0.75" stroke="#0284c7" stroke-width="2.5"/>
+          <ellipse cx="22" cy="-20" rx="15" ry="42" transform="rotate(48 22 -20)" fill="#e0f2fe" fill-opacity="0.8" stroke="#0284c7" stroke-width="2.5"/>
+          <!-- Striped Abdomen -->
+          <ellipse cx="42" cy="18" rx="34" ry="13" transform="rotate(22 42 18)" fill="#94a3b8" stroke="#1e293b" stroke-width="3"/>
+          <path d="M24,2 L18,20 M38,6 L32,26 M52,12 L46,30" stroke="#1e293b" stroke-width="3.5"/>
+          <!-- Thorax & Head -->
+          <ellipse cx="-6" cy="4" rx="18" ry="14" fill="#475569" stroke="#0f172a" stroke-width="3"/>
+          <circle cx="-28" cy="4" r="12" fill="#334155" stroke="#0f172a" stroke-width="3"/>
+          <!-- Large Compound Eye & Long Proboscis Needle -->
+          <circle cx="-31" cy="2" r="6.5" fill="#ef4444" stroke="#ffffff" stroke-width="1.5"/>
+          <line x1="-40" y1="6" x2="-84" y2="18" stroke="#0f172a" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Feathery Antennae -->
+          <path d="M-34,-6 Q-48,-26 -64,-22" fill="none" stroke="#334155" stroke-width="2.5"/>
+        </g>`
+    },
+    {
+      id: 'traffic_light',
+      position: 'end',
+      uk: 'Світлофор',
+      ru: 'Светофор',
+      renderSVG: () => `
+        <g transform="translate(0, 2)">
+          <!-- Mounting Post -->
+          <rect x="-8" y="64" width="16" height="32" fill="#64748b" stroke="#1e293b" stroke-width="3"/>
+          <!-- Side Visor Hoods -->
+          <path d="M-38,-68 L-62,-56 L-38,-42 M-38,-18 L-62,-6 L-38,8 M-38,32 L-62,44 L-38,58" fill="#1e293b" stroke="#0f172a" stroke-width="2.5"/>
+          <path d="M38,-68 L62,-56 L38,-42 M38,-18 L62,-6 L38,8 M38,32 L62,44 L38,58" fill="#1e293b" stroke="#0f172a" stroke-width="2.5"/>
+          <!-- Traffic Light Housing -->
+          <rect x="-38" y="-82" width="76" height="150" rx="18" fill="#334155" stroke="#0f172a" stroke-width="4"/>
+          <rect x="-30" y="-74" width="60" height="134" rx="12" fill="#1e293b"/>
+          <!-- Red, Yellow, Green Glowing Lenses -->
+          <circle cx="0" cy="-50" r="19" fill="#ef4444" stroke="#7f1d1d" stroke-width="3"/>
+          <circle cx="-6" cy="-56" r="6" fill="#fca5a5"/>
+          <circle cx="0" cy="-4" r="19" fill="#facc15" stroke="#854d0e" stroke-width="3"/>
+          <circle cx="-6" cy="-10" r="6" fill="#fef08a"/>
+          <circle cx="0" cy="42" r="19" fill="#22c55e" stroke="#14532d" stroke-width="3"/>
+          <circle cx="-6" cy="36" r="6" fill="#86efac"/>
+        </g>`
+    },
+    {
+      id: 'samovar',
+      position: 'end',
+      uk: 'Самовар',
+      ru: 'Самовар',
+      renderSVG: () => `
+        <g transform="translate(0, 6)">
+          <!-- Small Teapot on Top -->
+          <ellipse cx="0" cy="-68" rx="18" ry="12" fill="#f59e0b" stroke="#78350f" stroke-width="2.5"/>
+          <path d="M16,-68 Q28,-76 26,-62 M-16,-72 Q-28,-74 -18,-62" fill="none" stroke="#78350f" stroke-width="3" stroke-linecap="round"/>
+          <!-- Ornate Side Handles -->
+          <path d="M-40,-28 Q-76,-42 -66,-6 Q-58,14 -34,12" fill="none" stroke="#b45309" stroke-width="6" stroke-linecap="round"/>
+          <path d="M40,-28 Q76,-42 66,-6 Q58,14 34,12" fill="none" stroke="#b45309" stroke-width="6" stroke-linecap="round"/>
+          <!-- Golden Samovar Body -->
+          <path d="M-24,-54 L24,-54 L20,-38 Q48,-24 44,8 Q40,38 16,48 L22,68 L36,76 L-36,76 L-22,68 L-16,48 Q-40,38 -44,8 Q-48,-24 -20,-38 Z" fill="#facc15" stroke="#78350f" stroke-width="3.5" stroke-linejoin="round"/>
+          <!-- Fluted Shine Lines -->
+          <path d="M-16,-32 Q-24,6 -10,42 M16,-32 Q24,6 10,42 M0,-34 L0,44" fill="none" stroke="#fef08a" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Front Spigot Tap -->
+          <circle cx="0" cy="24" r="7" fill="#d97706" stroke="#78350f" stroke-width="2.5"/>
+          <path d="M0,24 L0,38 M-8,16 L8,16" stroke="#78350f" stroke-width="3.5" stroke-linecap="round"/>
+        </g>`
+    },
+    {
+      id: 'mushroom',
+      position: 'end',
+      uk: 'Мухомор',
+      ru: 'Мухомор',
+      renderSVG: () => `
+        <g transform="translate(0, 8)">
+          <!-- White Stem & Ruffled Skirt -->
+          <path d="M-16,-8 L16,-8 L24,68 Q0,74 -24,68 Z" fill="#fefce8" stroke="#94a3b8" stroke-width="3"/>
+          <path d="M-20,12 Q-28,28 -12,26 Q0,32 12,26 Q28,28 20,12 Z" fill="#f8fafc" stroke="#94a3b8" stroke-width="2.5"/>
+          <!-- Red Fly-Agaric Dome Cap -->
+          <path d="M-76,-4 Q-68,-78 0,-78 Q68,-78 76,-4 Q0,8 -76,-4 Z" fill="#ef4444" stroke="#7f1d1d" stroke-width="3.5"/>
+          <!-- White Spots on Cap -->
+          <circle cx="-38" cy="-26" r="10" fill="#ffffff"/>
+          <circle cx="-14" cy="-54" r="12" fill="#ffffff"/>
+          <circle cx="24" cy="-48" r="11" fill="#ffffff"/>
+          <circle cx="44" cy="-20" r="9" fill="#ffffff"/>
+          <circle cx="4" cy="-24" r="10" fill="#ffffff"/>
+          <!-- Green Grass Blades at Base -->
+          <path d="M-38,72 L-24,48 L-16,70 L-6,46 L6,70 L18,48 L30,72 Z" fill="#22c55e" stroke="#14532d" stroke-width="2.5" stroke-linejoin="round"/>
+        </g>`
+    },
+    {
+      id: 'zephyr',
+      position: 'end',
+      uk: 'Зефір',
+      ru: 'Зефир',
+      renderSVG: () => `
+        <g transform="translate(0, 10)">
+          <!-- Lacy Pastry Coaster -->
+          <ellipse cx="0" cy="38" rx="78" ry="20" fill="#fdf2f8" stroke="#f472b6" stroke-width="3" stroke-dasharray="8 4"/>
+          <!-- Back White Vanilla Zephyr Swirl -->
+          <g transform="translate(22, -10)">
+            <path d="M-42,28 Q-48,-6 -22,-18 Q0,-42 18,-18 Q46,-6 40,28 Q0,38 -42,28 Z" fill="#fffbeb" stroke="#d97706" stroke-width="2.5"/>
+            <path d="M-24,26 Q-20,-12 0,-28 M20,26 Q18,-12 0,-28" fill="none" stroke="#fde68a" stroke-width="3"/>
+          </g>
+          <!-- Front Pink Berry Zephyr Swirl with Ribbed Ridges -->
+          <g transform="translate(-14, 8)">
+            <path d="M-54,26 Q-62,-14 -26,-26 Q0,-56 26,-26 Q62,-14 54,26 Q0,40 -54,26 Z" fill="#fbcfe8" stroke="#be185d" stroke-width="3.5"/>
+            <path d="M-34,28 Q-32,-14 0,-42 M-14,32 Q-12,-14 0,-42 M14,32 Q12,-14 0,-42 M34,28 Q32,-14 0,-42" fill="none" stroke="#f472b6" stroke-width="3.5" stroke-linecap="round"/>
+          </g>
+        </g>`
+    },
+    {
+      id: 'tv',
+      position: 'end',
+      uk: 'Телевізор',
+      ru: 'Телевизор',
+      renderSVG: () => `
+        <g transform="translate(0, 6)">
+          <!-- Stand Base -->
+          <path d="M-38,68 L38,68 L22,48 L-22,48 Z" fill="#475569" stroke="#0f172a" stroke-width="3"/>
+          <!-- Antennae -->
+          <path d="M-24,-54 L-52,-86 M24,-54 L52,-86" stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="-52" cy="-86" r="5" fill="#ef4444"/>
+          <circle cx="52" cy="-86" r="5" fill="#ef4444"/>
+          <!-- Outer TV Frame -->
+          <rect x="-78" y="-54" width="156" height="104" rx="14" fill="#1e293b" stroke="#020617" stroke-width="4"/>
+          <!-- Vivid Landscape Screen -->
+          <rect x="-66" y="-42" width="114" height="80" rx="8" fill="#38bdf8"/>
+          <circle cx="22" cy="-20" r="12" fill="#fef08a"/>
+          <polygon points="-66,38 -28,-8 8,38" fill="#64748b"/>
+          <polygon points="-18,38 18,-2 48,38" fill="#475569"/>
+          <path d="M-66,24 Q-10,14 48,26 L48,38 L-66,38 Z" fill="#22c55e"/>
+          <!-- Side Control Dials & Speaker Grille -->
+          <circle cx="60" cy="-22" r="7" fill="#facc15"/>
+          <circle cx="60" cy="-2" r="7" fill="#ef4444"/>
+          <line x1="53" y1="16" x2="67" y2="16" stroke="#94a3b8" stroke-width="3"/>
+          <line x1="53" y1="24" x2="67" y2="24" stroke="#94a3b8" stroke-width="3"/>
+        </g>`
+    },
+    {
+      id: 'beaver',
+      position: 'end',
+      uk: 'Бобер',
+      ru: 'Бобёр',
+      renderSVG: () => `
+        <g transform="translate(0, 6)">
+          <!-- Flat Cross-Hatched Paddle Tail -->
+          <ellipse cx="52" cy="36" rx="34" ry="16" transform="rotate(-18 52 36)" fill="#451a03" stroke="#270e02" stroke-width="3"/>
+          <path d="M32,32 L72,40 M38,24 L66,48 M46,22 L56,50" stroke="#78350f" stroke-width="2"/>
+          <!-- Plump Brown Fur Body -->
+          <ellipse cx="-6" cy="22" rx="44" ry="42" fill="#92400e" stroke="#451a03" stroke-width="3.5"/>
+          <ellipse cx="-8" cy="26" rx="26" ry="28" fill="#b45309"/>
+          <!-- Cute Head & Rounded Ears -->
+          <circle cx="-30" cy="-46" r="11" fill="#78350f" stroke="#451a03" stroke-width="3"/>
+          <circle cx="18" cy="-46" r="11" fill="#78350f" stroke="#451a03" stroke-width="3"/>
+          <ellipse cx="-6" cy="-24" rx="36" ry="30" fill="#92400e" stroke="#451a03" stroke-width="3.5"/>
+          <!-- Prominent Front Incisor Teeth & Muzzle -->
+          <rect x="-13" y="-12" width="12" height="16" rx="2" fill="#fef9c3" stroke="#78350f" stroke-width="2.5"/>
+          <rect x="-1" y="-12" width="12" height="16" rx="2" fill="#fef9c3" stroke="#78350f" stroke-width="2.5"/>
+          <ellipse cx="-16" cy="-16" rx="12" ry="9" fill="#d97706"/>
+          <ellipse cx="4" cy="-16" rx="12" ry="9" fill="#d97706"/>
+          <ellipse cx="-6" cy="-22" rx="9" ry="6" fill="#1e293b"/>
+          <!-- Eyes -->
+          <circle cx="-18" cy="-34" r="5" fill="#0f172a"/>
+          <circle cx="-19" cy="-36" r="2" fill="#ffffff"/>
+          <circle cx="6" cy="-34" r="5" fill="#0f172a"/>
+          <circle cx="5" cy="-36" r="2" fill="#ffffff"/>
+          <!-- Holding a Wooden Birch Log -->
+          <rect x="-46" y="24" width="68" height="20" rx="8" fill="#fde68a" stroke="#78350f" stroke-width="3"/>
+          <circle cx="-38" cy="34" r="5" fill="#d97706"/>
+        </g>`
+    },
+    {
+      id: 'speedboat',
+      position: 'end',
+      uk: 'Катер',
+      ru: 'Катер',
+      renderSVG: () => `
+        <g transform="translate(0, 8)">
+          <!-- Windshield & Cockpit -->
+          <path d="M-28,-8 L12,-32 L32,-8 Z" fill="#38bdf8" stroke="#0284c7" stroke-width="3" stroke-linejoin="round"/>
+          <!-- Outboard Motor at Back -->
+          <rect x="-78" y="-18" width="18" height="28" rx="4" fill="#334155" stroke="#0f172a" stroke-width="3"/>
+          <!-- Sleek Red-and-White Hull -->
+          <path d="M-68,-8 L82,-8 Q68,32 24,36 L-58,36 Z" fill="#ffffff" stroke="#1e293b" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M-66,4 L74,4 L54,22 L-62,22 Z" fill="#ef4444"/>
+          <!-- Sparkling Blue Waves & White Wake -->
+          <path d="M-86,34 Q-62,20 -38,34 T10,34 T58,34 T90,34 L90,54 L-86,54 Z" fill="#0284c7"/>
+          <path d="M-82,34 Q-64,18 -46,34 M42,34 Q64,18 84,30" fill="none" stroke="#e0f2fe" stroke-width="5" stroke-linecap="round"/>
+        </g>`
+    }
+  ];
+
+  // ============================================================================
+  // 3. REALISTIC ANIMATED CHARACTERS GENERATOR (Queue People & Active Child)
+  // ============================================================================
+  const SKIN_TONES = ['#fed7aa', '#fdba74', '#fde68a', '#fbcfe8'];
+  const HAIR_COLORS = ['#451a03', '#78350f', '#d97706', '#1e293b', '#991b1b'];
+  const OUTFIT_PALETTES = [
+    { top: '#ec4899', top2: '#be185d', bottom: '#1d4ed8', shoes: '#f43f5e', accent: '#fef08a' },
+    { top: '#10b981', top2: '#047857', bottom: '#334155', shoes: '#f59e0b', accent: '#ffffff' },
+    { top: '#3b82f6', top2: '#1d4ed8', bottom: '#1e3a8a', shoes: '#ef4444', accent: '#fde047' },
+    { top: '#8b5cf6', top2: '#6d28d9', bottom: '#0f766e', shoes: '#ec4899', accent: '#fef9c3' },
+    { top: '#f97316', top2: '#c2410c', bottom: '#1e40af', shoes: '#22c55e', accent: '#fffbeb' },
+    { top: '#eab308', top2: '#a16207', bottom: '#be123c', shoes: '#2563eb', accent: '#ffffff' }
+  ];
+
+  // Queue coordinates: 4 children standing in line between X=535 and X=940, well clear of the arriving child on the right
+  const QUEUE_SLOTS = [
+    { x: 535, y: 685, scale: 0.92 },
+    { x: 670, y: 685, scale: 0.92 },
+    { x: 805, y: 685, scale: 0.92 },
+    { x: 940, y: 685, scale: 0.92 }
+  ];
+
+  let queueCharacters = [];
+
+  function createCharacterProfile(index = 0) {
+    const isGirl = (index % 2 === 0);
+    const palette = OUTFIT_PALETTES[index % OUTFIT_PALETTES.length];
+    return {
+      id: 'char_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      isGirl,
+      skin: SKIN_TONES[index % SKIN_TONES.length],
+      hair: HAIR_COLORS[index % HAIR_COLORS.length],
+      palette,
+      hairStyle: index % 3,
+      hasBalloonColor: ['#fb7185', '#38bdf8', '#a78bfa', '#4ade80', '#fbbf24'][index % 5]
+    };
+  }
+
+  // Render a detailed, well-proportioned standing/walking child character SVG group
+  // When holdingLeftBalloon = true, the left arm extends naturally from the left shoulder to the left (-82, -112)
+  function buildCharacterSVG(profile, facingLeft = true, withSmallBalloon = false, holdingGiantBalloon = false) {
+    const dir = facingLeft ? -1 : 1;
+    const { isGirl, skin, hair, palette, hairStyle } = profile;
+    const holdBalloonOut = withSmallBalloon || holdingGiantBalloon;
+
+    const hairBack = isGirl
+      ? `<path d="M-26,-152 Q-38,-115 -34,-82 Q0,-90 34,-82 Q38,-115 26,-152 Z" fill="${hair}" stroke="#1e293b" stroke-width="1.8"/>
+         <circle cx="28" cy="-142" r="13" fill="${hair}" stroke="#1e293b" stroke-width="1.8"/>
+         <circle cx="22" cy="-142" r="5.5" fill="${palette.top}"/>`
+      : '';
+
+    const hairFront = isGirl
+      ? `<path d="M-28,-152 Q0,-176 28,-152 Q18,-134 0,-142 Q-18,-134 -28,-152 Z" fill="${hair}"/>`
+      : (hairStyle === 0
+          ? `<path d="M-28,-146 Q-22,-176 8,-170 Q32,-165 28,-142 Q6,-152 -28,-146 Z" fill="${hair}"/>`
+          : `<path d="M-28,-148 Q0,-174 28,-148 L35,-143 L-28,-143 Z" fill="${palette.top2}" stroke="#1e293b" stroke-width="1.8"/>`);
+
+    const torsoShape = isGirl
+      ? `<path d="M-22,-108 Q0,-114 22,-108 L34,-34 Q0,-24 -34,-34 Z" fill="${palette.top}" stroke="#1e293b" stroke-width="2.4" stroke-linejoin="round"/>
+         <!-- Collar & Belt detail -->
+         <path d="M-12,-108 Q0,-96 12,-108" fill="none" stroke="${palette.accent}" stroke-width="3.5" stroke-linecap="round"/>
+         <path d="M-26,-62 Q0,-54 26,-62" fill="none" stroke="${palette.accent}" stroke-width="4.5"/>`
+      : `<rect x="-25" y="-108" width="50" height="62" rx="14" fill="${palette.top}" stroke="#1e293b" stroke-width="2.4"/>
+         <path d="M-12,-108 Q0,-96 12,-108" fill="none" stroke="${palette.accent}" stroke-width="3.5"/>
+         <path d="M-24,-76 L24,-76" stroke="${palette.accent}" stroke-width="6"/>
+         <!-- Jeans / Shorts -->
+         <path d="M-23,-48 L23,-48 L21,-18 L2,-18 L0,-34 L-2,-18 L-21,-18 Z" fill="${palette.bottom}" stroke="#1e293b" stroke-width="2.4" stroke-linejoin="round"/>`;
+
+    // Left Arm (viewer's left): If holding a balloon, firmly connected at left shoulder (-20, -100), reaching out to the left (-78, -112)
+    const leftArmMarkup = holdBalloonOut
+      ? `<g class="arm-balloon-holder">
+           <!-- Connected Shoulder & Sleeve Cap -->
+           <path d="M-16,-102 Q-34,-104 -44,-98" fill="none" stroke="${palette.top}" stroke-width="16" stroke-linecap="round"/>
+           <!-- Connected Upper Arm & Forearm reaching out to the left -->
+           <path d="M-22,-100 Q-52,-96 -78,-112" fill="none" stroke="#1e293b" stroke-width="14.5" stroke-linecap="round"/>
+           <path d="M-22,-100 Q-52,-96 -78,-112" fill="none" stroke="${skin}" stroke-width="10.5" stroke-linecap="round"/>
+           <!-- Sleeve Cuff -->
+           <circle cx="-24" cy="-100" r="8.5" fill="${palette.top}" stroke="#1e293b" stroke-width="2"/>
+           <!-- Hand gripping the balloon string -->
+           <circle cx="-80" cy="-113" r="7.5" fill="${skin}" stroke="#78350f" stroke-width="2"/>
+           <path d="M-83,-115 Q-78,-119 -75,-113" fill="none" stroke="#78350f" stroke-width="1.8" stroke-linecap="round"/>
+         </g>`
+      : `<g class="arm-back" style="transform-origin: -18px -98px;">
+           <path d="M-18,-98 Q-30,-74 -24,-52" fill="none" stroke="#1e293b" stroke-width="13.5" stroke-linecap="round"/>
+           <path d="M-18,-98 Q-30,-74 -24,-52" fill="none" stroke="${skin}" stroke-width="9.5" stroke-linecap="round"/>
+           <circle cx="-19" cy="-98" r="8" fill="${palette.top}" stroke="#1e293b" stroke-width="2"/>
+           <circle cx="-24" cy="-50" r="6.5" fill="${skin}" stroke="#78350f" stroke-width="1.8"/>
+         </g>`;
+
+    // Right Arm (viewer's right): Attached cleanly to right shoulder (18, -98)
+    const rightArmMarkup = `
+      <g class="arm-front" style="transform-origin: 18px -98px;">
+        <path d="M18,-98 Q30,-74 24,-52" fill="none" stroke="#1e293b" stroke-width="13.5" stroke-linecap="round"/>
+        <path d="M18,-98 Q30,-74 24,-52" fill="none" stroke="${skin}" stroke-width="9.5" stroke-linecap="round"/>
+        <circle cx="19" cy="-98" r="8" fill="${palette.top}" stroke="#1e293b" stroke-width="2"/>
+        <circle cx="24" cy="-50" r="6.5" fill="${skin}" stroke="#78350f" stroke-width="1.8"/>
+      </g>`;
+
+    // Small party balloon held in the outstretched left hand (-80, -113) for children who joined the queue
+    const smallBalloonMarkup = withSmallBalloon
+      ? `<g transform="translate(-80, -113)">
+           <g class="balloon-bob">
+             <path d="M0,0 Q-14,-35 -10,-68" fill="none" stroke="#fef3c7" stroke-width="2.5" stroke-linecap="round"/>
+             <ellipse cx="-10" cy="-98" rx="25" ry="30" fill="${profile.hasBalloonColor}" stroke="#78350f" stroke-width="2.5"/>
+             <polygon points="-10,-68 -15,-61 -5,-61" fill="${profile.hasBalloonColor}" stroke="#78350f" stroke-width="1.8"/>
+             <ellipse cx="-18" cy="-108" rx="6" ry="11" transform="rotate(-18 -18 -108)" fill="rgba(255,255,255,0.45)"/>
+           </g>
+         </g>`
+      : '';
+
+    return `
+      <g class="char-root">
+        <!-- Ground Shadow -->
+        <ellipse cx="0" cy="5" rx="36" ry="11" fill="rgba(15, 23, 42, 0.28)"/>
+        <g class="char-body-wrap char-breathe">
+          <!-- Left Leg -->
+          <g class="leg-back" style="transform-origin: -10px -34px;">
+            <line x1="-10" y1="-34" x2="-11" y2="-2" stroke="#1e293b" stroke-width="15" stroke-linecap="round"/>
+            <line x1="-10" y1="-34" x2="-11" y2="-2" stroke="${isGirl ? skin : palette.bottom}" stroke-width="11" stroke-linecap="round"/>
+            <!-- White Sock & Sneaker -->
+            <line x1="-11" y1="-12" x2="-11" y2="-2" stroke="#ffffff" stroke-width="11"/>
+            <ellipse cx="${-11 + dir * 5}" cy="2" rx="14" ry="7.5" fill="${palette.shoes}" stroke="#1e293b" stroke-width="2.2"/>
+            <line x1="${-22 + dir * 5}" y1="5" x2="${0 + dir * 5}" y2="5" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+          </g>
+          <!-- Right Leg -->
+          <g class="leg-front" style="transform-origin: 10px -34px;">
+            <line x1="10" y1="-34" x2="11" y2="-2" stroke="#1e293b" stroke-width="15" stroke-linecap="round"/>
+            <line x1="10" y1="-34" x2="11" y2="-2" stroke="${isGirl ? skin : palette.bottom}" stroke-width="11" stroke-linecap="round"/>
+            <line x1="11" y1="-12" x2="11" y2="-2" stroke="#ffffff" stroke-width="11"/>
+            <ellipse cx="${11 + dir * 5}" cy="2" rx="14" ry="7.5" fill="${palette.shoes}" stroke="#1e293b" stroke-width="2.2"/>
+            <line x1="${0 + dir * 5}" y1="5" x2="${22 + dir * 5}" y2="5" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+          </g>
+
+          <!-- Left Arm (Extended left if holding balloon) -->
+          ${leftArmMarkup}
+
+          <!-- Torso / Outfit -->
+          ${torsoShape}
+
+          <!-- Neck & Head -->
+          <g class="head-group" style="transform-origin: 0px -110px;">
+            ${hairBack}
+            <rect x="-7" y="-120" width="14" height="16" rx="5" fill="${skin}" stroke="#78350f" stroke-width="1.8"/>
+            <!-- Ears -->
+            <circle cx="-26" cy="-136" r="6" fill="${skin}" stroke="#78350f" stroke-width="1.8"/>
+            <circle cx="26" cy="-136" r="6" fill="${skin}" stroke="#78350f" stroke-width="1.8"/>
+            <!-- Head Sphere -->
+            <circle cx="0" cy="-138" r="27" fill="${skin}" stroke="#78350f" stroke-width="2.2"/>
+            <!-- Rosy Cheeks -->
+            <circle cx="${dir * 14}" cy="-131" r="5.5" fill="#fb7185" opacity="0.5"/>
+            <circle cx="${-dir * 6}" cy="-131" r="5" fill="#fb7185" opacity="0.45"/>
+            <!-- Eyebrows -->
+            <path d="M${dir * 16},-146 Q${dir * 11},-149 ${dir * 7},-146" fill="none" stroke="${hair}" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M${-dir * 1},-146 Q${-dir * 5},-149 ${-dir * 9},-146" fill="none" stroke="${hair}" stroke-width="2.2" stroke-linecap="round"/>
+            <!-- Expressive Blinking Eyes -->
+            <g class="char-blink">
+              <circle cx="${dir * 11}" cy="-139" r="4.2" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+              <circle cx="${dir * 11.5}" cy="-139" r="2.8" fill="#0f172a"/>
+              <circle cx="${dir * 10.5}" cy="-140.5" r="1.2" fill="#ffffff"/>
+
+              <circle cx="${-dir * 5}" cy="-139" r="4.2" fill="#ffffff" stroke="#475569" stroke-width="1"/>
+              <circle cx="${-dir * 4.5}" cy="-139" r="2.8" fill="#0f172a"/>
+              <circle cx="${-dir * 5.5}" cy="-140.5" r="1.2" fill="#ffffff"/>
+            </g>
+            <!-- Cute Nose -->
+            <path d="M${dir * 3},-136 Q${dir * 6},-132 ${dir * 2},-131" fill="none" stroke="#9a3412" stroke-width="2" stroke-linecap="round"/>
+            <!-- Happy Smile -->
+            <path class="char-mouth" d="M${dir * 11},-124 Q${dir * 3},-117 ${-dir * 5},-124" fill="none" stroke="#7c2d12" stroke-width="2.8" stroke-linecap="round"/>
+            ${hairFront}
+          </g>
+
+          <!-- Right Arm -->
+          ${rightArmMarkup}
+
+          <!-- Small Balloon if standing in queue with one -->
+          ${smallBalloonMarkup}
+        </g>
+      </g>
+    `;
+  }
+
+  // Initialize the 4 people standing in the queue
+  const queueLayer = document.getElementById('queue-layer');
+
+  function initQueue() {
+    queueCharacters = [];
+    for (let i = 0; i < 4; i++) {
+      const prof = createCharacterProfile(i + 1);
+      prof.x = QUEUE_SLOTS[i].x;
+      prof.y = QUEUE_SLOTS[i].y;
+      prof.targetX = QUEUE_SLOTS[i].x;
+      prof.withSmallBalloon = false;
+      queueCharacters.push(prof);
+    }
+    renderQueueDOM();
+  }
+
+  function renderQueueDOM() {
+    queueLayer.innerHTML = queueCharacters.map((c, idx) => `
+      <g id="qchar-${idx}" transform="translate(${c.x}, ${c.y}) scale(${QUEUE_SLOTS[idx]?.scale || 0.96})">
+        ${buildCharacterSVG(c, true, c.withSmallBalloon)}
+      </g>
+    `).join('');
+  }
+
+  // ============================================================================
+  // 4. INFINITE DECK SHUFFLER & ACTIVE CHILD WITH GIANT PICTURE BALLOON
+  // ============================================================================
+  let deck = [];
+  let currentWord = null;
+  let activeChildProfile = null;
+  let charCounter = 5;
+  let isBusy = false;
+  let celebrationIndex = 0;
+
+  // Active child animation state — stands on the right side of the plaza (X=1690, Y=775)
+  // completely separated from the queue (X=385..1095)
+  const childState = {
+    x: 1690,
+    y: 775,
+    scale: 1.15,
+    balloonScale: 1,
+    walkPhase: 0,
+    facingLeft: true
+  };
+
+  function getNextWord() {
+    if (deck.length === 0) {
+      deck = [...WORDS_DATA];
+      // Fisher-Yates shuffle
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+      // Prevent immediate repeat across reshuffle boundary
+      if (currentWord && deck[deck.length - 1].id === currentWord.id) {
+        [deck[0], deck[deck.length - 1]] = [deck[deck.length - 1], deck[0]];
+      }
+    }
+    return deck.pop();
+  }
+
+  const activeChildLayer = document.getElementById('active-child-layer');
+
+  // The child holds their left hand out to (-80, -113).
+  // The giant balloon is anchored at their left hand (-80, -113) and floats up and to the left (-135, -245 from the hand),
+  // so the balloon is completely clear of the child's head AND completely clear of the queue!
+  function buildActiveChildWithGiantBalloonSVG(profile, wordObj) {
+    return `
+      <g id="active-child-group" transform="translate(${childState.x}, ${childState.y}) scale(${childState.scale})">
+        <!-- Character Base with Left Arm Extended to (-80, -113) -->
+        <g id="active-child-figure">
+          ${buildCharacterSVG(profile, true, false, true)}
+        </g>
+
+        <!-- Giant Glossy Picture Balloon Anchored at Left Hand (-80, -113) -->
+        <g id="giant-balloon-anchor" transform="translate(-80, -113) scale(${childState.balloonScale})">
+          <g id="giant-balloon-wrap" filter="url(#balloonDropShadow)">
+            <g class="balloon-bob">
+              <!-- Taut Balloon String from Child's Hand (0,0) up-left to Balloon Knot (-105, -92) -->
+              <path d="M0,0 Q-52,-38 -105,-92" fill="none" stroke="#fef3c7" stroke-width="4" stroke-linecap="round"/>
+              <path d="M0,0 Q-52,-38 -105,-92" fill="none" stroke="#92400e" stroke-width="1.5" stroke-dasharray="6 6" stroke-linecap="round"/>
+
+              <!-- Balloon Knot & Ribbon Bow at (-105, -92) -->
+              <g transform="translate(-105, -92)">
+                <polygon points="0,0 -14,14 14,14" fill="#f59e0b" stroke="#78350f" stroke-width="2.5" stroke-linejoin="round"/>
+                <path d="M0,6 Q-22,16 -18,30 M0,6 Q22,16 18,30" fill="none" stroke="#ec4899" stroke-width="4.5" stroke-linecap="round"/>
+
+                <!-- Giant Balloon Outer Shell Centered Above Knot -->
+                <g id="balloon-clickable" style="cursor: pointer;">
+                  <path d="M0,-296 C106,-296 154,-224 154,-142 C154,-66 96,-14 0,2 C-96,-14 -154,-66 -154,-142 C-154,-224 -106,-296 0,-296 Z"
+                        fill="url(#mainBalloonShell)" stroke="#92400e" stroke-width="5"/>
+                  <path d="M0,-296 C106,-296 154,-224 154,-142 C154,-66 96,-14 0,2 C-96,-14 -154,-66 -154,-142 C-154,-224 -106,-296 0,-296 Z"
+                        fill="url(#balloonFestivePattern)"/>
+
+                  <!-- Sky-Tinted Medallion Frame Inside Balloon for High-Contrast Realistic Picture -->
+                  <circle cx="0" cy="-148" r="118" fill="url(#balloonInnerBackdrop)" stroke="#f59e0b" stroke-width="5"/>
+                  <circle cx="0" cy="-148" r="110" fill="none" stroke="#fef08a" stroke-width="2.5" stroke-dasharray="10 7"/>
+
+                  <!-- The Realistic Word Illustration Scaled Large & Clear -->
+                  <g id="balloon-picture-art" transform="translate(0, -148) scale(1.1)">
+                    ${wordObj.renderSVG()}
+                  </g>
+
+                  <!-- Glossy Specular Balloon Highlights -->
+                  <ellipse cx="-72" cy="-228" rx="26" ry="12" transform="rotate(-34 -72 -228)" fill="rgba(255,255,255,0.58)"/>
+                  <circle cx="-96" cy="-194" r="7" fill="rgba(255,255,255,0.48)"/>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    `;
+  }
+
+  function updateWalkingLimbs(groupEl, phase) {
+    if (!groupEl) return;
+    const legF = groupEl.querySelector('.leg-front');
+    const legB = groupEl.querySelector('.leg-back');
+    const armF = groupEl.querySelector('.arm-front');
+    const armB = groupEl.querySelector('.arm-back');
+    const swing = Math.sin(phase) * 26;
+    if (legF) legF.style.transform = `rotate(${swing}deg)`;
+    if (legB) legB.style.transform = `rotate(${-swing}deg)`;
+    if (armF) armF.style.transform = `rotate(${-swing * 0.7}deg)`;
+    if (armB) armB.style.transform = `rotate(${swing * 0.7}deg)`;
+  }
+
+  function resetLimbs(groupEl) {
+    if (!groupEl) return;
+    ['.leg-front', '.leg-back', '.arm-front', '.arm-back'].forEach(sel => {
+      const el = groupEl.querySelector(sel);
+      if (el) el.style.transform = 'rotate(0deg)';
+    });
+  }
+
+  function animateChildTo(targetX, targetY, targetScale, targetBalloonScale, durationMs, onComplete) {
+    const startX = childState.x;
+    const startY = childState.y;
+    const startScale = childState.scale;
+    const startBScale = childState.balloonScale;
+    const startTime = performance.now();
+    let lastStep = 0;
+
+    function step(now) {
+      const t = Math.min(1, (now - startTime) / durationMs);
+      // Smooth easeOutCubic
+      const ease = 1 - Math.pow(1 - t, 3);
+      childState.x = startX + (targetX - startX) * ease;
+      childState.y = startY + (targetY - startY) * ease;
+      childState.scale = startScale + (targetScale - startScale) * ease;
+      childState.balloonScale = startBScale + (targetBalloonScale - startBScale) * ease;
+      childState.walkPhase += 0.36;
+
+      const grp = document.getElementById('active-child-group');
+      const bAnchor = document.getElementById('giant-balloon-anchor');
+      if (grp) {
+        const bounceY = Math.abs(Math.sin(childState.walkPhase)) * -7 * (1 - t * 0.5);
+        grp.setAttribute('transform', `translate(${childState.x}, ${childState.y + bounceY}) scale(${childState.scale})`);
+        updateWalkingLimbs(grp, childState.walkPhase);
+      }
+      if (bAnchor) {
+        bAnchor.setAttribute('transform', `translate(-80, -113) scale(${childState.balloonScale})`);
+      }
+
+      if (now - lastStep > 165 && t < 0.92) {
+        playStepSound();
+        lastStep = now;
+      }
+
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        const grpFinal = document.getElementById('active-child-group');
+        if (grpFinal) {
+          grpFinal.setAttribute('transform', `translate(${targetX}, ${targetY}) scale(${targetScale})`);
+          resetLimbs(grpFinal);
+        }
+        if (bAnchor) {
+          bAnchor.setAttribute('transform', `translate(-80, -113) scale(${targetBalloonScale})`);
+        }
+        if (onComplete) onComplete();
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  function spawnNextChild(immediate = false) {
+    isBusy = true;
+    currentWord = getNextWord();
+    activeChildProfile = createCharacterProfile(charCounter++);
+
+    // Walk in from right edge of the park promenade to the dedicated right-side waiting spot (1690, 775)
+    childState.x = 2040;
+    childState.y = 785;
+    childState.scale = 1.15;
+    childState.balloonScale = 1;
+
+    activeChildLayer.innerHTML = buildActiveChildWithGiantBalloonSVG(activeChildProfile, currentWord);
+
+    // Click on balloon plays gentle bounce & word pronunciation
+    const balloonClick = document.getElementById('balloon-clickable');
+    if (balloonClick) {
+      balloonClick.addEventListener('click', (e) => {
+        e.stopPropagation();
+        speakCurrentWord(currentWord);
+      });
+    }
+
+    playBalloonPopIn();
+
+    const destX = 1690;
+    const destY = 775;
+    const dur = immediate ? 360 : 650;
+
+    animateChildTo(destX, destY, 1.15, 1, dur, () => {
+      isBusy = false;
+    });
+  }
+
+  // ============================================================================
+  // 5. PARTICLE & ACTIVE NON-VERBAL FEEDBACK ENGINE (Canvas 2D + SVG Animations)
+  // ============================================================================
+  const fxCanvas = document.getElementById('fx-canvas');
+  const ctx = fxCanvas.getContext('2d');
+  let particles = [];
+
+  function resizeCanvas() {
+    fxCanvas.width = window.innerWidth;
+    fxCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // Convert SVG 1920x1080 coordinates to screen canvas coordinates
+  function svgToScreen(svgX, svgY) {
+    const rect = fxCanvas.getBoundingClientRect();
+    const scale = Math.max(rect.width / 1920, rect.height / 1080);
+    const offsetX = (rect.width - 1920 * scale) / 2;
+    const offsetY = (rect.height - 1080 * scale) / 2;
+    return {
+      x: svgX * scale + offsetX,
+      y: svgY * scale + offsetY
+    };
+  }
+
+  function triggerCelebrationFX(svgX, svgY, styleIndex) {
+    const origin = svgToScreen(svgX, svgY);
+    const style = styleIndex % 5;
+    const colors = ['#fde047', '#f43f5e', '#38bdf8', '#4ade80', '#c084fc', '#fb923c'];
+
+    for (let i = 0; i < 68; i++) {
+      const angle = (Math.PI * 2 * i) / 68 + (Math.random() - 0.5) * 0.3;
+      const speed = 4 + Math.random() * 13;
+      particles.push({
+        x: origin.x,
+        y: origin.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 4,
+        gravity: style === 2 ? -0.05 : 0.24, // Bubbles float up, others arc
+        size: 8 + Math.random() * 12,
+        color: colors[i % colors.length],
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.22,
+        alpha: 1,
+        decay: 0.013 + Math.random() * 0.01,
+        shape: ['confetti', 'star', 'bubble', 'note', 'petal'][style]
+      });
+    }
+  }
+
+  function triggerWrongPuffFX(svgX, svgY) {
+    const origin = svgToScreen(svgX, svgY);
+    for (let i = 0; i < 24; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 6;
+      particles.push({
+        x: origin.x,
+        y: origin.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 1,
+        gravity: -0.04,
+        size: 10 + Math.random() * 14,
+        color: i % 2 === 0 ? '#fda4af' : '#fde68a',
+        rot: Math.random() * Math.PI,
+        vRot: 0.08,
+        alpha: 0.9,
+        decay: 0.028,
+        shape: 'puff'
+      });
+    }
+  }
+
+  function drawStar(c, x, y, r) {
+    c.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const a1 = (i * 72 - 90) * Math.PI / 180;
+      const a2 = ((i * 72 + 36) - 90) * Math.PI / 180;
+      if (i === 0) c.moveTo(x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+      else c.lineTo(x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+      c.lineTo(x + Math.cos(a2) * (r * 0.45), y + Math.sin(a2) * (r * 0.45));
+    }
+    c.closePath();
+    c.fill();
+  }
+
+  function updateAndRenderFX() {
+    ctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.gravity;
+      p.rot += p.vRot;
+      p.alpha -= p.decay;
+
+      if (p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.alpha);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.strokeStyle = p.color;
+
+      if (p.shape === 'confetti') {
+        ctx.fillRect(-p.size * 0.6, -p.size * 0.35, p.size * 1.2, p.size * 0.7);
+      } else if (p.shape === 'star') {
+        drawStar(ctx, 0, 0, p.size);
+      } else if (p.shape === 'bubble') {
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size * 0.85, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.beginPath();
+        ctx.arc(-p.size * 0.28, -p.size * 0.28, p.size * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.shape === 'note') {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size * 0.55, p.size * 0.4, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(p.size * 0.42, 0);
+        ctx.lineTo(p.size * 0.42, -p.size * 1.3);
+        ctx.lineTo(p.size * 0.95, -p.size * 1.05);
+        ctx.stroke();
+      } else if (p.shape === 'petal') {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size * 0.8, p.size * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.shape === 'puff') {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    requestAnimationFrame(updateAndRenderFX);
+  }
+  requestAnimationFrame(updateAndRenderFX);
+
+  // ============================================================================
+  // 6. ANIMATED FLYING BIRDS IN SKY
+  // ============================================================================
+  const birdsLayer = document.getElementById('birds-layer');
+  const birds = [
+    { x: 220, y: 110, speed: 0.75, wingPhase: 0, scale: 0.75 },
+    { x: 270, y: 135, speed: 0.78, wingPhase: 1.5, scale: 0.62 },
+    { x: 1120, y: 85, speed: 0.65, wingPhase: 0.8, scale: 0.7 }
+  ];
+
+  function animateBackgroundLife() {
+    let html = '';
+    birds.forEach(b => {
+      b.x += b.speed;
+      if (b.x > 1980) b.x = -60;
+      b.wingPhase += 0.14;
+      const wingY = Math.sin(b.wingPhase) * 10;
+      html += `
+        <g transform="translate(${b.x.toFixed(1)}, ${b.y}) scale(${b.scale})">
+          <path d="M-18,${wingY.toFixed(1)} Q-8,-6 0,0 Q8,-6 18,${wingY.toFixed(1)}"
+                fill="none" stroke="#1e3a8a" stroke-width="3.2" stroke-linecap="round"/>
+        </g>`;
+    });
+    birdsLayer.innerHTML = html;
+    requestAnimationFrame(animateBackgroundLife);
+  }
+  requestAnimationFrame(animateBackgroundLife);
+
+  // ============================================================================
+  // 7. CHOICE HANDLING: JOIN BEGINNING OF QUEUE (LEFT) OR END OF QUEUE (RIGHT)
+  // ============================================================================
+  function animateQueueCelebration() {
+    for (let i = 0; i < 4; i++) {
+      const el = document.getElementById(`qchar-${i}`);
+      if (el) {
+        const inner = el.querySelector('.char-root');
+        if (inner) {
+          inner.classList.remove('celebrate-jump');
+          void inner.offsetWidth;
+          inner.classList.add('celebrate-jump');
+        }
+      }
+    }
+  }
+
+  function shiftQueuePositionsSmoothly(joinedStart, newProfile, onDone) {
+    newProfile.withSmallBalloon = true;
+    const startPositions = [];
+
+    if (joinedStart) {
+      // Child joined at front (385). Insert at front, shift others right, remove last.
+      queueCharacters.unshift(newProfile);
+      queueCharacters.pop();
+      startPositions.push(385, QUEUE_SLOTS[0].x, QUEUE_SLOTS[1].x, QUEUE_SLOTS[2].x);
+    } else {
+      // Child joined at back (1095). Remove first (got ice cream!), shift others left, append at end.
+      queueCharacters.shift();
+      queueCharacters.push(newProfile);
+      startPositions.push(QUEUE_SLOTS[1].x, QUEUE_SLOTS[2].x, QUEUE_SLOTS[3].x, 1095);
+    }
+
+    renderQueueDOM();
+    const t0 = performance.now();
+    const dur = 480;
+
+    function stepShift(now) {
+      const p = Math.min(1, (now - t0) / dur);
+      const ease = 1 - Math.pow(1 - p, 3);
+      for (let i = 0; i < 4; i++) {
+        const curX = startPositions[i] + (QUEUE_SLOTS[i].x - startPositions[i]) * ease;
+        queueCharacters[i].x = curX;
+        const el = document.getElementById(`qchar-${i}`);
+        if (el) {
+          el.setAttribute('transform', `translate(${curX}, ${QUEUE_SLOTS[i].y}) scale(${QUEUE_SLOTS[i].scale})`);
+        }
+      }
+      if (p < 1) {
+        requestAnimationFrame(stepShift);
+      } else {
+        if (onDone) onDone();
+      }
+    }
+    requestAnimationFrame(stepShift);
+  }
+
+  function handleSpotChoice(chosenPosition) {
+    if (isBusy || !currentWord) return;
+
+    const spotCoords = chosenPosition === 'start'
+      ? { x: 385, y: 685 }
+      : { x: 1095, y: 685 };
+
+    if (chosenPosition === currentWord.position) {
+      // CORRECT CHOICE!
+      isBusy = true;
+      const styleIdx = celebrationIndex++;
+      playSuccessSound(styleIdx);
+      triggerCelebrationFX(spotCoords.x, spotCoords.y - 90, styleIdx);
+      triggerCelebrationFX(childState.x - 210, childState.y - 310, styleIdx);
+      animateQueueCelebration();
+
+      // Walk the child to the chosen spot in the queue while the giant balloon smoothly scales down into a neat party balloon
+      animateChildTo(spotCoords.x, spotCoords.y, 0.92, 0.24, 720, () => {
+        triggerCelebrationFX(spotCoords.x, spotCoords.y - 120, (styleIdx + 1) % 5);
+        activeChildLayer.innerHTML = '';
+        shiftQueuePositionsSmoothly(chosenPosition === 'start', activeChildProfile, () => {
+          spawnNextChild(false);
+        });
+      });
+    } else {
+      // WRONG CHOICE — Expressive non-verbal rubbery wobble + puff FX
+      playWrongSound();
+      triggerWrongPuffFX(spotCoords.x, spotCoords.y - 40);
+
+      const grp = document.getElementById('active-child-figure');
+      const balloonWrap = document.getElementById('giant-balloon-wrap');
+      if (grp) {
+        grp.classList.remove('wrong-shake');
+        void grp.offsetWidth;
+        grp.classList.add('wrong-shake');
+      }
+      if (balloonWrap) {
+        balloonWrap.classList.remove('wrong-shake');
+        void balloonWrap.offsetWidth;
+        balloonWrap.classList.add('wrong-shake');
+      }
+    }
+  }
+
+  // Bind interactive spots and left/right queue zones
+  document.getElementById('spot-start').addEventListener('click', () => handleSpotChoice('start'));
+  document.getElementById('zone-start-hit').addEventListener('click', () => handleSpotChoice('start'));
+  document.getElementById('spot-end').addEventListener('click', () => handleSpotChoice('end'));
+  document.getElementById('zone-end-hit').addEventListener('click', () => handleSpotChoice('end'));
+
+  // ============================================================================
+  // 8. TOP-RIGHT HUD CONTROLS (Language УКР/РУС, Speak, Immediate Next "Далі")
+  // ============================================================================
+  const btnLang = document.getElementById('btn-lang');
+  const langLabel = document.getElementById('lang-label');
+  const btnSpeak = document.getElementById('btn-speak');
+  const btnNext = document.getElementById('btn-next');
+
+  btnLang.addEventListener('click', () => {
+    currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+    langLabel.textContent = currentLang === 'uk' ? 'УКР' : 'РУС';
+    playTone(520, 'triangle', 0.12, 0, 0.14, 740);
+    speakCurrentWord(currentWord);
+  });
+
+  btnSpeak.addEventListener('click', () => {
+    speakCurrentWord(currentWord);
+  });
+
+  // Minimalist "Next" button immediately transitions to the next child & balloon
+  btnNext.addEventListener('click', () => {
+    playTone(440, 'sine', 0.1, 0, 0.12, 660);
+    spawnNextChild(true);
+  });
+
+  // Initialize queue and first child on load
+  window.onload = () => {
+    initQueue();
+    spawnNextChild(true);
+  };
+})();
+</script>
+</body>
+</html>
