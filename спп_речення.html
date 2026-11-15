@@ -1,0 +1,2492 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Jungle Expedition</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800;900&display=swap');
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #072118;
+    font-family: 'Rubik', sans-serif;
+    touch-action: none;
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Full-screen living background canvas */
+  #bg-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Foreground celebration & particle canvas */
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 35;
+    pointer-events: none;
+  }
+
+  /* Main 16:9 Widescreen Interactive Stage */
+  #stage-container {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    height: 100%;
+    max-width: 177.78vh; /* 16:9 aspect ratio cap when height-constrained */
+    max-height: 56.25vw; /* 16:9 aspect ratio cap when width-constrained */
+    aspect-ratio: 16 / 9;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1.5% 2.5%;
+  }
+
+  @media (max-aspect-ratio: 4/3) {
+    #stage-container {
+      max-width: 100vw;
+      max-height: 100vh;
+      aspect-ratio: auto;
+      padding: 2% 2%;
+    }
+  }
+
+  /* Top bar with sentence plank and minimalist controls */
+  .top-hud {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.2vw;
+    z-index: 25;
+  }
+
+  /* Carved wooden sentence board - NO white rectangles! */
+  .sentence-board-wrap {
+    flex: 1;
+    position: relative;
+    filter: drop-shadow(0 12px 20px rgba(4, 22, 14, 0.75));
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .sentence-svg-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .sentence-content {
+    position: relative;
+    z-index: 2;
+    padding: clamp(14px, 2.1vh, 28px) clamp(24px, 3.2vw, 54px);
+    min-height: clamp(74px, 12.5vh, 130px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45em 0.38em;
+    font-size: clamp(1.05rem, 2.05vw, 2.05rem);
+    font-weight: 800;
+    color: #fff6d6;
+    text-shadow: 0 3px 0 #3a1f0b, 0 5px 10px rgba(0,0,0,0.65);
+    line-height: 1.35;
+    text-align: center;
+  }
+
+  /* Interactive carved slot inside sentence */
+  .word-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: clamp(135px, 14.5vw, 250px);
+    height: clamp(38px, 5.6vh, 62px);
+    padding: 0 18px;
+    margin: 0 4px;
+    border-radius: 18px;
+    background: radial-gradient(ellipse at center, #261407 0%, #160b03 100%);
+    border: 3px dashed #f59e0b;
+    box-shadow: inset 0 5px 12px rgba(0,0,0,0.85), 0 0 16px rgba(245, 158, 11, 0.4);
+    color: #fde68a;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    transition: all 0.25s ease;
+    position: relative;
+    vertical-align: middle;
+  }
+
+  .word-slot.highlight-drop {
+    transform: scale(1.09);
+    border-color: #4ade80;
+    background: radial-gradient(ellipse at center, #144225 0%, #0a2614 100%);
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.7), 0 0 26px rgba(74, 222, 128, 0.85);
+  }
+
+  .word-slot.filled {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 55%, #b45309 100%);
+    border: 3px solid #fef08a;
+    color: #291303;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+    box-shadow: 0 5px 0 #78350f, 0 0 28px rgba(253, 224, 71, 0.85);
+    transform: scale(1.06);
+  }
+
+  /* Minimalist Top-Right Carved Stone / Wood Buttons */
+  .hud-controls {
+    display: flex;
+    flex-direction: row;
+    gap: clamp(8px, 1vw, 16px);
+    align-items: center;
+    padding-top: 4px;
+  }
+
+  .jungle-btn {
+    position: relative;
+    width: clamp(54px, 5.2vw, 78px);
+    height: clamp(54px, 5.2vw, 78px);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+    filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.6));
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+  }
+
+  .jungle-btn:hover {
+    transform: translateY(-3px) scale(1.07);
+    filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.75)) brightness(1.08);
+  }
+
+  .jungle-btn:active {
+    transform: translateY(2px) scale(0.95);
+  }
+
+  /* Middle Interactive Story Scene SVG */
+  #scene-stage {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #scene-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Interactive animal group inside SVG */
+  .animal-actor {
+    cursor: pointer;
+    transition: filter 0.25s ease;
+  }
+
+  .animal-actor:hover {
+    filter: drop-shadow(0 0 18px rgba(253, 224, 71, 0.55));
+  }
+
+  /* Bottom Interactive Story Options (Lotus pads / Tribal Drums / Tropical Fruits) */
+  .options-dock {
+    position: relative;
+    z-index: 30;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: clamp(12px, 2.5vw, 42px);
+    padding: 0.4vh 2vw 0.8vh;
+  }
+
+  .option-card {
+    position: relative;
+    width: clamp(200px, 26vw, 390px);
+    height: clamp(78px, 12.5vh, 128px);
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(0 10px 16px rgba(3, 18, 12, 0.75));
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+    touch-action: none;
+  }
+
+  .option-card:hover {
+    transform: translateY(-8px) scale(1.05);
+    filter: drop-shadow(0 16px 24px rgba(3, 18, 12, 0.85)) brightness(1.06);
+  }
+
+  .option-card:active {
+    cursor: grabbing;
+  }
+
+  .option-card.dragging {
+    z-index: 100;
+    transition: none;
+    filter: drop-shadow(0 24px 32px rgba(0, 0, 0, 0.85)) brightness(1.12);
+  }
+
+  .option-card.wrong-shake {
+    animation: comicalWobble 0.65s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+
+  .option-svg-art {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .option-label {
+    position: relative;
+    z-index: 2;
+    font-size: clamp(1.1rem, 2vw, 2rem);
+    font-weight: 900;
+    color: #fffbeb;
+    text-shadow: 0 3px 0 #1f1206, 0 4px 10px rgba(0,0,0,0.8);
+    padding: 0 18px;
+    text-align: center;
+    pointer-events: none;
+    line-height: 1.1;
+  }
+
+  @keyframes comicalWobble {
+    0%, 100% { transform: translateX(0) rotate(0deg) scale(1); }
+    15% { transform: translateX(-16px) rotate(-7deg) scale(0.95); }
+    30% { transform: translateX(14px) rotate(6deg) scale(1.04); }
+    45% { transform: translateX(-12px) rotate(-5deg) scale(0.97); }
+    60% { transform: translateX(9px) rotate(4deg) scale(1.02); }
+    75% { transform: translateX(-5px) rotate(-2deg) scale(0.99); }
+  }
+
+  @keyframes floatPulse {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
+  }
+
+  .floating-anim {
+    animation: floatPulse 3.2s ease-in-out infinite;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <!-- Multi-layer living tropical waterfall & river background canvas -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Main Widescreen Interactive Stage -->
+  <div id="stage-container">
+    <!-- Top HUD: Carved Wooden Sentence Board + Minimalist Language & Next Buttons -->
+    <div class="top-hud">
+      <div class="sentence-board-wrap" id="sentence-board">
+        <!-- Rich SVG Wood & Vine Texture Background (Zero White Rectangles) -->
+        <svg class="sentence-svg-bg" viewBox="0 0 1200 160" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="woodPlankGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#6b3e1b"/>
+              <stop offset="25%" stop-color="#542e11"/>
+              <stop offset="75%" stop-color="#42220b"/>
+              <stop offset="100%" stop-color="#2b1405"/>
+            </linearGradient>
+            <linearGradient id="woodRimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#9c5f2d"/>
+              <stop offset="50%" stop-color="#754219"/>
+              <stop offset="100%" stop-color="#3d1e07"/>
+            </linearGradient>
+            <linearGradient id="leafVineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#4ade80"/>
+              <stop offset="60%" stop-color="#16a34a"/>
+              <stop offset="100%" stop-color="#14532d"/>
+            </linearGradient>
+          </defs>
+          <!-- Outer carved timber frame -->
+          <path d="M 28,12 Q 600,2 1172,12 Q 1194,25 1190,80 Q 1194,135 1172,148 Q 600,158 28,148 Q 6,135 10,80 Q 6,25 28,12 Z"
+                fill="url(#woodRimGrad)" stroke="#1f0d02" stroke-width="5"/>
+          <!-- Inner recessed dark mahogany face -->
+          <path d="M 38,22 Q 600,14 1162,22 Q 1180,34 1176,80 Q 1180,126 1162,138 Q 600,146 38,138 Q 20,126 24,80 Q 20,34 38,22 Z"
+                fill="url(#woodPlankGrad)" stroke="#854d23" stroke-width="2.5"/>
+          <!-- Wood grain grooves -->
+          <path d="M 55,42 Q 350,32 680,45 T 1145,40" fill="none" stroke="#2f1706" stroke-width="2.2" opacity="0.65"/>
+          <path d="M 45,115 Q 420,126 790,112 T 1150,120" fill="none" stroke="#2f1706" stroke-width="2.5" opacity="0.65"/>
+          <path d="M 90,78 Q 280,68 490,82" fill="none" stroke="#854d23" stroke-width="1.5" opacity="0.35"/>
+          <!-- Corner gold rivets & tropical vine wraps -->
+          <circle cx="48" cy="42" r="7" fill="#d97706" stroke="#451a03" stroke-width="2"/>
+          <circle cx="1152" cy="42" r="7" fill="#d97706" stroke="#451a03" stroke-width="2"/>
+          <circle cx="48" cy="118" r="7" fill="#d97706" stroke="#451a03" stroke-width="2"/>
+          <circle cx="1152" cy="118" r="7" fill="#d97706" stroke="#451a03" stroke-width="2"/>
+          <!-- Decorative tropical vine & leaves on left/right edges -->
+          <path d="M 12,35 Q 45,10 95,22 Q 60,42 12,35 Z" fill="url(#leafVineGrad)" stroke="#052e16" stroke-width="2"/>
+          <path d="M 18,45 Q 68,38 78,68 Q 38,68 18,45 Z" fill="url(#leafVineGrad)" stroke="#052e16" stroke-width="2"/>
+          <path d="M 1188,35 Q 1155,10 1105,22 Q 1140,42 1188,35 Z" fill="url(#leafVineGrad)" stroke="#052e16" stroke-width="2"/>
+          <path d="M 1182,125 Q 1135,148 1095,134 Q 1135,112 1182,125 Z" fill="url(#leafVineGrad)" stroke="#052e16" stroke-width="2"/>
+          <!-- Small hibiscus flower accent on top-left corner -->
+          <g transform="translate(30, 22)">
+            <circle cx="-6" cy="-4" r="8" fill="#f43f5e"/>
+            <circle cx="6" cy="-4" r="8" fill="#fb7185"/>
+            <circle cx="7" cy="6" r="8" fill="#e11d48"/>
+            <circle cx="-5" cy="7" r="8" fill="#f43f5e"/>
+            <circle cx="0" cy="1" r="5" fill="#fde047"/>
+          </g>
+        </svg>
+
+        <!-- Dynamic Sentence Container -->
+        <div class="sentence-content" id="sentence-text"></div>
+      </div>
+
+      <!-- Minimalist Controls: Language Button (УКР / РУС) & Next Button (Arrow Icon Only) -->
+      <div class="hud-controls">
+        <!-- Language Toggle Button -->
+        <button class="jungle-btn" id="lang-btn" aria-label="Language">
+          <svg viewBox="0 0 100 100" width="100%" height="100%">
+            <defs>
+              <radialGradient id="amberStoneGrad" cx="35%" cy="30%" r="70%">
+                <stop offset="0%" stop-color="#fbbf24"/>
+                <stop offset="55%" stop-color="#d97706"/>
+                <stop offset="100%" stop-color="#78350f"/>
+              </radialGradient>
+            </defs>
+            <!-- Carved hexagonal jungle medallion -->
+            <polygon points="50,5 90,24 94,70 50,95 6,70 10,24" fill="url(#amberStoneGrad)" stroke="#2c1203" stroke-width="5" stroke-linejoin="round"/>
+            <polygon points="50,13 82,29 85,66 50,86 15,66 18,29" fill="none" stroke="#fef08a" stroke-width="2" opacity="0.55"/>
+            <!-- Small leaf crown -->
+            <path d="M 32,12 Q 50,0 68,12 Q 50,20 32,12 Z" fill="#22c55e" stroke="#052e16" stroke-width="2.5"/>
+            <text id="lang-label" x="50" y="61" text-anchor="middle" fill="#291002" font-family="Rubik, sans-serif" font-weight="900" font-size="28" stroke="#fef3c7" stroke-width="1" paint-order="stroke">УКР</text>
+          </svg>
+        </button>
+
+        <!-- Minimalist "Next" Button (Icon only, no text) -->
+        <button class="jungle-btn" id="next-btn" aria-label="Next">
+          <svg viewBox="0 0 100 100" width="100%" height="100%">
+            <defs>
+              <radialGradient id="emeraldStoneGrad" cx="35%" cy="30%" r="70%">
+                <stop offset="0%" stop-color="#4ade80"/>
+                <stop offset="55%" stop-color="#16a34a"/>
+                <stop offset="100%" stop-color="#064e3b"/>
+              </radialGradient>
+            </defs>
+            <polygon points="50,5 90,24 94,70 50,95 6,70 10,24" fill="url(#emeraldStoneGrad)" stroke="#042f1d" stroke-width="5" stroke-linejoin="round"/>
+            <polygon points="50,13 82,29 85,66 50,86 15,66 18,29" fill="none" stroke="#bbf7d0" stroke-width="2" opacity="0.55"/>
+            <!-- Carved Golden Arrow Icon -->
+            <path d="M 26,42 L 54,42 L 54,27 L 80,50 L 54,73 L 54,58 L 26,58 Z"
+                  fill="#fde047" stroke="#422006" stroke-width="4" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Center Interactive Story Stage (Animals, Rocks, Bridges, Bamboo, Waterfalls) -->
+    <div id="scene-stage">
+      <svg id="scene-svg" viewBox="0 0 1600 620" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <!-- Bottom Interactive Options Dock (3 Degrees of Comparison on Jungle Objects) -->
+    <div class="options-dock" id="options-dock"></div>
+  </div>
+
+  <!-- Foreground Celebration & Leaf/Mango/Splash Particle Canvas -->
+  <canvas id="fx-canvas"></canvas>
+</div>
+
+<script>
+/* ============================================================================
+   1. SYNTHESIZED WEB AUDIO API SOUND ENGINE (Rich Tropical Marimba, Birds, Water)
+   ============================================================================ */
+class JungleAudioEngine {
+  constructor() {
+    this.ctx = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Wooden marimba / xylophone strike
+  playMarimba(freq, startTime = 0, duration = 0.28, vol = 0.22) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime + startTime;
+    const osc = this.ctx.createOscillator();
+    const overtone = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+
+    // 4th harmonic gives authentic rosewood marimba timbre
+    overtone.type = 'triangle';
+    overtone.frequency.setValueAtTime(freq * 4, now);
+
+    const overGain = this.ctx.createGain();
+    overGain.gain.setValueAtTime(vol * 0.25, now);
+    overGain.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.35);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(vol, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    osc.connect(gain);
+    overtone.connect(overGain);
+    overGain.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    overtone.start(now);
+    osc.stop(now + duration + 0.02);
+    overtone.stop(now + duration + 0.02);
+  }
+
+  // Hover subtle wooden click / drum tap
+  playHover() {
+    this.playMarimba(523.25, 0, 0.09, 0.09);
+  }
+
+  // Animal pet / poke chirp
+  playAnimalVoice(animalType) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    if (animalType === 'frog') {
+      // Ribbit croak
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(190, now);
+      osc.frequency.exponentialRampToValueAtTime(420, now + 0.09);
+      osc.frequency.setValueAtTime(210, now + 0.12);
+      osc.frequency.exponentialRampToValueAtTime(480, now + 0.22);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    } else if (animalType === 'toucan' || animalType === 'macaw') {
+      // Tropical bird whistle
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(950, now);
+      osc.frequency.exponentialRampToValueAtTime(1750, now + 0.11);
+      osc.frequency.exponentialRampToValueAtTime(1120, now + 0.24);
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.28);
+    } else if (animalType === 'monkey') {
+      // Playful ooh-aah
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(680, now + 0.1);
+      osc.frequency.setValueAtTime(520, now + 0.13);
+      osc.frequency.exponentialRampToValueAtTime(860, now + 0.25);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } else {
+      // Warm bongo & purr
+      this.playMarimba(293.66, 0, 0.18, 0.2);
+      this.playMarimba(440.0, 0.07, 0.22, 0.2);
+    }
+  }
+
+  // Water splash noise burst
+  playSplash(delay = 0) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime + delay;
+    const bufferSize = this.ctx.sampleRate * 0.38;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.12));
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(900, now);
+    filter.frequency.exponentialRampToValueAtTime(2400, now + 0.35);
+    filter.Q.value = 1.8;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start(now);
+  }
+
+  // Comical non-verbal wrong feedback sound (boing + slide)
+  playWrongBoing() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(310, now);
+    osc.frequency.exponentialRampToValueAtTime(145, now + 0.18);
+    osc.frequency.exponentialRampToValueAtTime(230, now + 0.28);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.45);
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(900, now);
+
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.47);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.48);
+
+    // Add hollow wood knock
+    this.playMarimba(175, 0.05, 0.15, 0.2);
+  }
+
+  // 4 Distinct Celebratory Fanfares matching the 4 visual celebration modes
+  playCelebrationFanfare(modeIndex) {
+    this.init();
+    if (!this.ctx) return;
+
+    if (modeIndex === 0) {
+      // 1. Waterfall Rainbow Calypso Marimba + Splash
+      const notes = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50, 1318.51];
+      notes.forEach((n, i) => this.playMarimba(n, i * 0.085, 0.32, 0.24));
+      this.playSplash(0.15);
+      this.playSplash(0.45);
+    } else if (modeIndex === 1) {
+      // 2. Golden Mango Shower & Jungle Flute / Drum Riff
+      const notes = [440, 554.37, 659.25, 880, 659.25, 880, 1108.73];
+      notes.forEach((n, i) => this.playMarimba(n, i * 0.08, 0.3, 0.24));
+      this.playAnimalVoice('monkey');
+    } else if (modeIndex === 2) {
+      // 3. Bioluminescent Orchid Magical Kalimba Arpeggio
+      const notes = [587.33, 739.99, 880, 1174.66, 1479.98, 1760.0];
+      notes.forEach((n, i) => this.playMarimba(n, i * 0.09, 0.42, 0.22));
+    } else {
+      // 4. Scarlet Macaw Flyover & Tribal Sun Totem Fanfare
+      const notes = [392.00, 493.88, 587.33, 783.99, 987.77, 1174.66];
+      notes.forEach((n, i) => this.playMarimba(n, i * 0.085, 0.35, 0.25));
+      setTimeout(() => this.playAnimalVoice('macaw'), 220);
+    }
+  }
+}
+
+const sound = new JungleAudioEngine();
+
+/* ============================================================================
+   2. BILINGUAL TASK BANK (21 Unique Story Tasks: 7 Positive, 7 Comparative, 7 Superlative)
+   ============================================================================ */
+const TASKS_DB = [
+  // ================= POSITIVE DEGREE (Звичайний ступінь) =================
+  {
+    id: 'pos_1',
+    degree: 'positive',
+    correctIndex: 0,
+    sceneMode: 'single',
+    heroAnimal: 'capybara',
+    propType: 'lotus',
+    traitVisual: 'size_normal',
+    uk: {
+      before: 'Ця добра капібара біля теплої лагуни дуже',
+      after: 'та спокійна.',
+      options: ['велика', 'більша', 'найбільша']
+    },
+    ru: {
+      before: 'Эта добрая капибара у тёплой лагуны очень',
+      after: 'и спокойная.',
+      options: ['большая', 'больше', 'самая большая']
+    }
+  },
+  {
+    id: 'pos_2',
+    degree: 'positive',
+    correctIndex: 0,
+    sceneMode: 'single',
+    heroAnimal: 'frog',
+    propType: 'drum',
+    traitVisual: 'green_fern',
+    uk: {
+      before: 'Деревна жабка сьогодні така ж',
+      after: ', як і свіжий листок папороті.',
+      options: ['зелена', 'зеленіша', 'найзеленіша']
+    },
+    ru: {
+      before: 'Древесная лягушка сегодня такая же',
+      after: ', как и свежий лист папоротника.',
+      options: ['зелёная', 'зеленее', 'самая зелёная']
+    }
+  },
+  {
+    id: 'pos_3',
+    degree: 'positive',
+    correctIndex: 0,
+    sceneMode: 'single',
+    heroAnimal: 'jaguar',
+    propType: 'fruit',
+    traitVisual: 'fast_wind',
+    uk: {
+      before: 'Плямистий ягуар на скелі надзвичайно',
+      after: 'та граційний.',
+      options: ['швидкий', 'швидший', 'найшвидший']
+    },
+    ru: {
+      before: 'Пятнистый ягуар на скале необычайно',
+      after: 'и грациозный.',
+      options: ['быстрый', 'быстрее', 'самый быстрый']
+    }
+  },
+  {
+    id: 'pos_4',
+    degree: 'positive',
+    correctIndex: 0,
+    sceneMode: 'single',
+    heroAnimal: 'toucan',
+    propType: 'lotus',
+    traitVisual: 'long_beak',
+    uk: {
+      before: 'У цього тропічного тукана на гілці дуже',
+      after: 'та барвистий дзьоб.',
+      options: ['довгий', 'довший', 'найдовший']
+    },
+    ru: {
+      before: 'У этого тропического тукана на ветке очень',
+      after: 'и красочный клюв.',
+      options: ['длинный', 'длиннее', 'самый длинный']
+    }
+  },
+  {
+    id: 'pos_5',
+    degree: 'positive',
+    correctIndex: 0,
+    sceneMode: 'single',
+    heroAnimal: 'macaw',
+    propType: 'drum',
+    traitVisual: 'loud_voice',
+    uk: {
+      before: 'Червоний папуга ара подає напрочуд',
+      after: 'голос над водоспадом.',
+      options: ['гучний', 'гучніший', 'найгучніший']
+    },
+    ru: {
+      before: 'Красный попугай ара подаёт удивительно',
+      after: 'голос над водопадом.',
+      options: ['громкий', 'громче', 'самый громкий']
+    }
+  },
+  {
+    id: 'pos_6',
+    degree: 'positive',
+    correctIndex: 0,
+    sceneMode: 'single',
+    heroAnimal: 'tortoise',
+    propType: 'fruit',
+    traitVisual: 'strong_shell',
+    uk: {
+      before: 'У мудрої черепахи на камені дуже',
+      after: 'і надійний панцир.',
+      options: ['міцний', 'міцніший', 'найміцніший']
+    },
+    ru: {
+      before: 'У мудрой черепахи на камне очень',
+      after: 'и надёжный панцирь.',
+      options: ['крепкий', 'крепче', 'самый крепкий']
+    }
+  },
+  {
+    id: 'pos_7',
+    degree: 'positive',
+    correctIndex: 0,
+    sceneMode: 'single',
+    heroAnimal: 'otter',
+    propType: 'lotus',
+    traitVisual: 'warm_water',
+    uk: {
+      before: 'Прозора вода у лісовому струмку сьогодні дуже',
+      after: 'та приємна для видри.',
+      options: ['тепла', 'тепліша', 'найтепліша']
+    },
+    ru: {
+      before: 'Прозрачная вода в лесном ручье сегодня очень',
+      after: 'и приятная для выдры.',
+      options: ['тёплая', 'теплее', 'самая тёплая']
+    }
+  },
+
+  // ================= COMPARATIVE DEGREE (Вищий ступінь) =================
+  {
+    id: 'comp_1',
+    degree: 'comparative',
+    correctIndex: 1,
+    sceneMode: 'pair',
+    heroAnimal: 'monkey',
+    partnerAnimal: 'tortoise',
+    propType: 'drum',
+    traitVisual: 'agility_pair',
+    uk: {
+      before: 'Весела мавпочка на ліані значно',
+      after: ', ніж повільна черепаха.',
+      options: ['спритна', 'спритніша', 'найспритніша']
+    },
+    ru: {
+      before: 'Весёлая обезьянка на лиане значительно',
+      after: ', чем медленная черепаха.',
+      options: ['ловкая', 'ловчее', 'самая ловкая']
+    }
+  },
+  {
+    id: 'comp_2',
+    degree: 'comparative',
+    correctIndex: 1,
+    sceneMode: 'pair',
+    heroAnimal: 'chameleon',
+    partnerAnimal: 'frog',
+    propType: 'fruit',
+    traitVisual: 'tail_pair',
+    uk: {
+      before: 'Закручений хвіст хамелеона набагато',
+      after: ', ніж лапка маленької жабки.',
+      options: ['довгий', 'довший', 'найдовший']
+    },
+    ru: {
+      before: 'Закрученный хвост хамелеона намного',
+      after: ', чем лапка маленькой лягушки.',
+      options: ['длинный', 'длиннее', 'самый длинный']
+    }
+  },
+  {
+    id: 'comp_3',
+    degree: 'comparative',
+    correctIndex: 1,
+    sceneMode: 'pair',
+    heroAnimal: 'capybara',
+    partnerAnimal: 'otter',
+    propType: 'lotus',
+    traitVisual: 'weight_pair',
+    uk: {
+      before: 'Спокійна капібара на дерев’яному плоту помітно',
+      after: ', ніж річкова видра.',
+      options: ['важка', 'важча', 'найважча']
+    },
+    ru: {
+      before: 'Спокойная капибара на деревянном плоту заметно',
+      after: ', чем речная выдра.',
+      options: ['тяжёлая', 'тяжелее', 'самая тяжёлая']
+    }
+  },
+  {
+    id: 'comp_4',
+    degree: 'comparative',
+    correctIndex: 1,
+    sceneMode: 'pair',
+    heroAnimal: 'toucan',
+    partnerAnimal: 'frog',
+    propType: 'drum',
+    traitVisual: 'height_pair',
+    uk: {
+      before: 'Стрункий бамбук, де сидить тукан, значно',
+      after: ', ніж низький кущ папороті.',
+      options: ['високий', 'вищий', 'найвищий']
+    },
+    ru: {
+      before: 'Стройный бамбук, где сидит тукан, значительно',
+      after: ', чем низкий куст папоротника.',
+      options: ['высокий', 'выше', 'самый высокий']
+    }
+  },
+  {
+    id: 'comp_5',
+    degree: 'comparative',
+    correctIndex: 1,
+    sceneMode: 'pair',
+    heroAnimal: 'monkey',
+    partnerAnimal: 'macaw',
+    propType: 'fruit',
+    traitVisual: 'sweet_pair',
+    uk: {
+      before: 'Стигле золотисте манго у мавпочки набагато',
+      after: ', ніж кислий зелений лайм.',
+      options: ['солодке', 'солодше', 'найсолодше']
+    },
+    ru: {
+      before: 'Спелое золотистое манго у обезьянки намного',
+      after: ', чем кислый зелёный лайм.',
+      options: ['сладкое', 'слаще', 'самое сладкое']
+    }
+  },
+  {
+    id: 'comp_6',
+    degree: 'comparative',
+    correctIndex: 1,
+    sceneMode: 'pair',
+    heroAnimal: 'otter',
+    partnerAnimal: 'tortoise',
+    propType: 'lotus',
+    traitVisual: 'swim_pair',
+    uk: {
+      before: 'Річкова видра у бурхливій течії значно',
+      after: ', ніж сухопутна черепаха.',
+      options: ['швидка', 'швидша', 'найшвидша']
+    },
+    ru: {
+      before: 'Речная выдра в бурном течении значительно',
+      after: ', чем сухопутная черепаха.',
+      options: ['быстрая', 'быстрее', 'самая быстрая']
+    }
+  },
+  {
+    id: 'comp_7',
+    degree: 'comparative',
+    correctIndex: 1,
+    sceneMode: 'pair',
+    heroAnimal: 'jaguar',
+    partnerAnimal: 'capybara',
+    propType: 'drum',
+    traitVisual: 'jump_pair',
+    uk: {
+      before: 'Плямистий ягуар у стрибку через струмок значно',
+      after: ', ніж сонна капібара.',
+      options: ['сильний', 'сильніший', 'найсильніший']
+    },
+    ru: {
+      before: 'Пятнистый ягуар в прыжке через ручей значительно',
+      after: ', чем сонная капибара.',
+      options: ['сильный', 'сильнее', 'самый сильный']
+    }
+  },
+
+  // ================= SUPERLATIVE DEGREE (Найвищий ступінь) =================
+  {
+    id: 'sup_1',
+    degree: 'superlative',
+    correctIndex: 2,
+    sceneMode: 'trio',
+    heroAnimal: 'jaguar',
+    trioAnimals: ['tortoise', 'capybara', 'jaguar'],
+    propType: 'fruit',
+    traitVisual: 'speed_trio',
+    uk: {
+      before: 'Серед усіх звірів на березі плямистий ягуар —',
+      after: 'бігун у джунглях!',
+      options: ['швидкий', 'швидший', 'найшвидший']
+    },
+    ru: {
+      before: 'Среди всех зверей на берегу пятнистый ягуар —',
+      after: 'бегун в джунглях!',
+      options: ['быстрый', 'быстрее', 'самый быстрый']
+    }
+  },
+  {
+    id: 'sup_2',
+    degree: 'superlative',
+    correctIndex: 2,
+    sceneMode: 'trio',
+    heroAnimal: 'tortoise',
+    trioAnimals: ['frog', 'monkey', 'tortoise'],
+    propType: 'lotus',
+    traitVisual: 'age_trio',
+    uk: {
+      before: 'Мудра черепаха з-поміж усіх мешканців затоки є',
+      after: 'мандрівницею!',
+      options: ['стара', 'старіша', 'найстаріша']
+    },
+    ru: {
+      before: 'Мудрая черепаха среди всех обитателей залива является',
+      after: 'путешественницей!',
+      options: ['старая', 'старше', 'самая старая']
+    }
+  },
+  {
+    id: 'sup_3',
+    degree: 'superlative',
+    correctIndex: 2,
+    sceneMode: 'trio',
+    heroAnimal: 'macaw',
+    trioAnimals: ['otter', 'capybara', 'macaw'],
+    propType: 'drum',
+    traitVisual: 'bright_trio',
+    uk: {
+      before: 'З-поміж усіх учасників експедиції папуга ара має',
+      after: 'пір’я у лісі!',
+      options: ['яскраве', 'яскравіше', 'найяскравіше']
+    },
+    ru: {
+      before: 'Среди всех участников экспедиции попугай ара имеет',
+      after: 'оперение в лесу!',
+      options: ['яркое', 'ярче', 'самое яркое']
+    }
+  },
+  {
+    id: 'sup_4',
+    degree: 'superlative',
+    correctIndex: 2,
+    sceneMode: 'trio',
+    heroAnimal: 'frog',
+    trioAnimals: ['capybara', 'jaguar', 'frog'],
+    propType: 'fruit',
+    traitVisual: 'small_trio',
+    uk: {
+      before: 'У нашій тропічній команді смарагдова жабка —',
+      after: 'дослідниця з усіх!',
+      options: ['маленька', 'менша', 'найменша']
+    },
+    ru: {
+      before: 'В нашей тропической команде изумрудная лягушка —',
+      after: 'исследовательница из всех!',
+      options: ['маленькая', 'меньше', 'самая маленькая']
+    }
+  },
+  {
+    id: 'sup_5',
+    degree: 'superlative',
+    correctIndex: 2,
+    sceneMode: 'trio',
+    heroAnimal: 'toucan',
+    trioAnimals: ['frog', 'monkey', 'toucan'],
+    propType: 'lotus',
+    traitVisual: 'cliff_trio',
+    uk: {
+      before: 'Тукан злетів на вершину, де височіє',
+      after: 'скеля у всій долині водоспадів!',
+      options: ['висока', 'вища', 'найвища']
+    },
+    ru: {
+      before: 'Тукан взлетел на вершину, где возвышается',
+      after: 'скала во всей долине водопадов!',
+      options: ['высокая', 'выше', 'самая высокая']
+    }
+  },
+  {
+    id: 'sup_6',
+    degree: 'superlative',
+    correctIndex: 2,
+    sceneMode: 'trio',
+    heroAnimal: 'chameleon',
+    trioAnimals: ['toucan', 'otter', 'chameleon'],
+    propType: 'drum',
+    traitVisual: 'camo_trio',
+    uk: {
+      before: 'Серед усіх лісових друзів хамелеон —',
+      after: 'майстер маскування на гілці!',
+      options: ['хитрий', 'хитріший', 'найхитріший']
+    },
+    ru: {
+      before: 'Среди всех лесных друзей хамелеон —',
+      after: 'мастер маскировки на ветке!',
+      options: ['хитрый', 'хитрее', 'самый хитрый']
+    }
+  },
+  {
+    id: 'sup_7',
+    degree: 'superlative',
+    correctIndex: 2,
+    sceneMode: 'trio',
+    heroAnimal: 'capybara',
+    trioAnimals: ['frog', 'otter', 'capybara'],
+    propType: 'fruit',
+    traitVisual: 'kind_trio',
+    uk: {
+      before: 'Для всіх пташок і звірят наша капібара —',
+      after: 'подруга в усіх джунглях!',
+      options: ['добра', 'добріша', 'найдобріша']
+    },
+    ru: {
+      before: 'Для всех птичек и зверят наша капибара —',
+      after: 'подруга во всех джунглях!',
+      options: ['добрая', 'добрее', 'самая добрая']
+    }
+  }
+];
+
+/* ============================================================================
+   3. REALISTIC VECTOR ANIMAL RIG BUILDER (Multi-part animated SVG characters)
+   ============================================================================ */
+function buildAnimalSVG(type, scale = 1, isHero = false) {
+  // Every animal has a group with class .animal-pupil for eye-tracking and .animal-body for breathing/jumping
+  const glowFilter = isHero ? `filter="url(#heroGlow)"` : '';
+  switch (type) {
+    case 'capybara':
+      return `
+      <g class="animal-rig" data-animal="capybara" transform="scale(${scale})" ${glowFilter}>
+        <!-- Shadow on rock -->
+        <ellipse cx="0" cy="72" rx="75" ry="16" fill="rgba(4,20,12,0.45)"/>
+        <g class="animal-body-group">
+          <!-- Back legs -->
+          <rect x="-58" y="34" width="22" height="36" rx="10" fill="#5c3317" stroke="#2b1506" stroke-width="3"/>
+          <rect x="28" y="36" width="20" height="34" rx="9" fill="#5c3317" stroke="#2b1506" stroke-width="3"/>
+          <!-- Plump cinnamon-brown torso with realistic fur gradient -->
+          <path d="M -68,18 C -74,-28 -25,-42 22,-36 C 58,-32 72,-5 66,32 C 62,56 -62,58 -68,18 Z"
+                fill="url(#capyFurGrad)" stroke="#331907" stroke-width="3.5"/>
+          <!-- Fur texture strokes -->
+          <path d="M -35,-12 Q -15,-18 5,-10 M -42,8 Q -18,4 12,12 M -20,26 Q 5,22 28,28"
+                stroke="#47240c" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.65"/>
+          <!-- Front legs -->
+          <rect x="-32" y="36" width="20" height="36" rx="9" fill="#7c4722" stroke="#2b1506" stroke-width="3"/>
+          <rect x="12" y="38" width="20" height="34" rx="9" fill="#7c4722" stroke="#2b1506" stroke-width="3"/>
+          <!-- Articulated Head -->
+          <g class="animal-head" transform="translate(42, -26)">
+            <!-- Rounded ears -->
+            <ellipse cx="-16" cy="-26" rx="9" ry="12" transform="rotate(-18 -16 -26)" fill="#4a2711" stroke="#241104" stroke-width="2.5"/>
+            <ellipse cx="-2" cy="-28" rx="8" ry="11" transform="rotate(-8 -2 -28)" fill="#5c3317" stroke="#241104" stroke-width="2.5"/>
+            <!-- Characteristic blunt rectangular snout & head -->
+            <path d="M -26,-22 C -10,-32 32,-30 46,-18 C 56,-8 56,16 42,24 C 24,30 -18,26 -26,8 Z"
+                  fill="url(#capyFurGrad)" stroke="#331907" stroke-width="3.5"/>
+            <!-- Dark muzzle patch -->
+            <path d="M 24,-18 C 44,-18 54,-6 50,14 C 46,24 26,24 20,12 Z" fill="#3b1e0d"/>
+            <!-- Nostrils -->
+            <ellipse cx="42" cy="-4" rx="3.5" ry="5" fill="#170a03"/>
+            <!-- Calm mouth & cute teeth hint -->
+            <path d="M 30,14 Q 38,18 45,13" fill="none" stroke="#170a03" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- Expressive Eye -->
+            <g transform="translate(6, -8)">
+              <circle cx="0" cy="0" r="7.5" fill="#fffbeb" stroke="#241104" stroke-width="2"/>
+              <circle class="animal-pupil" cx="2" cy="0" r="4.2" fill="#1c0d04"/>
+              <circle cx="3.5" cy="-2" r="1.6" fill="#ffffff"/>
+              <!-- Chill half-lid -->
+              <path class="animal-eyelid" d="M -8,-3 Q 0,-9 8,-3 Z" fill="#5c3317"/>
+            </g>
+            <!-- Little golden tangerine / lotus flower balanced on head -->
+            <circle cx="-6" cy="-34" r="9" fill="#fb923c" stroke="#7c2d12" stroke-width="2"/>
+            <path d="M -6,-43 Q 2,-50 8,-44 Q 2,-38 -6,-43 Z" fill="#22c55e" stroke="#052e16" stroke-width="1.5"/>
+          </g>
+        </g>
+      </g>`;
+
+    case 'toucan':
+      return `
+      <g class="animal-rig" data-animal="toucan" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="0" cy="70" rx="52" ry="13" fill="rgba(4,20,12,0.4)"/>
+        <g class="animal-body-group">
+          <!-- Tail feathers -->
+          <path d="M -38,24 L -82,52 L -68,64 L -26,34 Z" fill="#111827" stroke="#030712" stroke-width="3"/>
+          <path d="M -38,26 L -48,38 L -30,42 Z" fill="#ef4444"/>
+          <!-- Perched claws -->
+          <path d="M -14,52 Q -18,66 -8,68 M -6,52 Q -6,67 2,68 M 12,52 Q 10,66 20,68 M 20,52 Q 24,66 30,67"
+                fill="none" stroke="#3b82f6" stroke-width="4.5" stroke-linecap="round"/>
+          <!-- Sleek velvet-black body -->
+          <path d="M -42,12 C -46,-28 -10,-48 22,-32 C 42,-18 42,28 22,48 C 2,60 -36,46 -42,12 Z"
+                fill="url(#toucanBodyGrad)" stroke="#030712" stroke-width="3.5"/>
+          <!-- Bright golden-yellow throat & chest bib -->
+          <path d="M -4,-28 C 18,-28 34,-10 30,14 C 24,30 -4,26 -10,6 C -14,-10 -12,-24 -4,-28 Z"
+                fill="url(#toucanBibGrad)" stroke="#b45309" stroke-width="2.5"/>
+          <path d="M -6,12 Q 12,28 28,14" fill="none" stroke="#ef4444" stroke-width="5" stroke-linecap="round"/>
+          <!-- Articulated Wing -->
+          <path class="animal-wing" d="M -32,-6 C -8,-14 14,4 4,34 C -10,42 -36,26 -32,-6 Z"
+                fill="#1e293b" stroke="#030712" stroke-width="3"/>
+          <!-- Head & Giant Colorful Beak -->
+          <g class="animal-head" transform="translate(14, -32)">
+            <!-- Giant curved orange/crimson toucan beak -->
+            <path d="M 12,-20 C 56,-26 98,-12 108,14 C 82,22 46,20 12,14 Z"
+                  fill="url(#toucanBeakGrad)" stroke="#431407" stroke-width="3.5"/>
+            <!-- Beak lower mandible -->
+            <path d="M 12,8 C 48,12 80,14 98,14 C 78,26 42,26 12,18 Z"
+                  fill="#ea580c" stroke="#431407" stroke-width="3"/>
+            <!-- Classic black tip on beak -->
+            <path d="M 84,-8 C 98,-2 105,6 108,14 C 96,18 86,18 80,16 C 80,6 82,-2 84,-8 Z"
+                  fill="#0f172a"/>
+            <!-- Serrated beak line -->
+            <path d="M 14,8 Q 58,10 104,13" fill="none" stroke="#431407" stroke-width="2.5"/>
+            <!-- Bright blue eye ring & eye -->
+            <circle cx="2" cy="-4" r="12" fill="#38bdf8" stroke="#0284c7" stroke-width="2"/>
+            <circle cx="2" cy="-4" r="8" fill="#fef08a"/>
+            <circle class="animal-pupil" cx="4" cy="-4" r="4.5" fill="#0f172a"/>
+            <circle cx="5.5" cy="-6" r="1.8" fill="#ffffff"/>
+          </g>
+        </g>
+      </g>`;
+
+    case 'jaguar':
+      return `
+      <g class="animal-rig" data-animal="jaguar" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="0" cy="74" rx="82" ry="15" fill="rgba(4,20,12,0.45)"/>
+        <g class="animal-body-group">
+          <!-- Swishing spotted tail -->
+          <path class="animal-tail" d="M -62,18 C -98,12 -118,-18 -104,-38 C -94,-50 -80,-38 -88,-24 C -94,-12 -78,4 -56,8 Z"
+                fill="url(#jaguarGoldGrad)" stroke="#451a03" stroke-width="3.5"/>
+          <circle cx="-96" cy="-34" r="6" fill="#291002"/>
+          <circle cx="-84" cy="-8" r="4.5" fill="#291002"/>
+          <!-- Back leg -->
+          <path d="M -56,18 C -68,38 -60,56 -48,68 L -28,68 C -32,52 -28,36 -34,18 Z"
+                fill="#d97706" stroke="#451a03" stroke-width="3"/>
+          <!-- Muscular Golden Torso -->
+          <path d="M -62,12 C -66,-24 -24,-34 28,-28 C 62,-24 72,4 62,34 C 48,52 -48,50 -62,12 Z"
+                fill="url(#jaguarGoldGrad)" stroke="#451a03" stroke-width="3.5"/>
+          <!-- Cream chest & belly -->
+          <path d="M -28,32 Q 12,44 48,28 Q 56,12 48,-4 Q 24,18 -28,32 Z" fill="#fef3c7" opacity="0.85"/>
+          <!-- Authentic Jaguar Rosettes -->
+          <g fill="#291002">
+            <path d="M -38,-8 A 7,7 0 1,0 -24,-8 A 5,5 0 1,1 -38,-8 Z"/>
+            <circle cx="-31" cy="-8" r="3" fill="#b45309"/>
+            <path d="M -8,-14 A 8,8 0 1,0 8,-14 A 6,6 0 1,1 -8,-14 Z"/>
+            <circle cx="0" cy="-14" r="3.5" fill="#b45309"/>
+            <path d="M 18,-6 A 7,7 0 1,0 32,-6 A 5,5 0 1,1 18,-6 Z"/>
+            <circle cx="-16" cy="12" r="5"/>
+            <circle cx="12" cy="14" r="5.5"/>
+            <circle cx="-44" cy="14" r="4.5"/>
+          </g>
+          <!-- Sturdy front paws -->
+          <rect x="-12" y="30" width="20" height="40" rx="9" fill="#d97706" stroke="#451a03" stroke-width="3"/>
+          <rect x="30" y="28" width="22" height="42" rx="10" fill="url(#jaguarGoldGrad)" stroke="#451a03" stroke-width="3"/>
+          <!-- Jaguar Head -->
+          <g class="animal-head" transform="translate(48, -24)">
+            <!-- Rounded ears with black & white spots -->
+            <circle cx="-14" cy="-24" r="11" fill="#d97706" stroke="#451a03" stroke-width="3"/>
+            <circle cx="-14" cy="-24" r="5" fill="#291002"/>
+            <circle cx="16" cy="-24" r="11" fill="#f59e0b" stroke="#451a03" stroke-width="3"/>
+            <circle cx="16" cy="-24" r="5" fill="#fef3c7"/>
+            <!-- Head shape -->
+            <path d="M -24,-14 C -24,-34 28,-34 36,-12 C 44,8 32,26 8,26 C -16,26 -26,8 -24,-14 Z"
+                  fill="url(#jaguarGoldGrad)" stroke="#451a03" stroke-width="3.5"/>
+            <!-- White muzzle -->
+            <ellipse cx="14" cy="14" rx="18" ry="11" fill="#fffbeb" stroke="#451a03" stroke-width="2"/>
+            <!-- Pink-dark feline nose -->
+            <polygon points="10,4 24,4 17,12" fill="#e11d48" stroke="#291002" stroke-width="2"/>
+            <path d="M 17,12 L 17,18 M 17,18 Q 10,22 6,17 M 17,18 Q 24,22 28,17" fill="none" stroke="#291002" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- Whiskers -->
+            <path d="M 28,12 L 48,8 M 28,16 L 50,16 M 26,20 L 46,24" stroke="#fffbeb" stroke-width="2" stroke-linecap="round"/>
+            <!-- Bright Emerald Jaguar Eyes -->
+            <g transform="translate(4, -6)">
+              <ellipse cx="0" cy="0" rx="7.5" ry="6.5" fill="#4ade80" stroke="#291002" stroke-width="2.2"/>
+              <circle class="animal-pupil" cx="1.5" cy="0" r="3.5" fill="#052e16"/>
+              <circle cx="3" cy="-2" r="1.5" fill="#ffffff"/>
+            </g>
+            <g transform="translate(24, -6)">
+              <ellipse cx="0" cy="0" rx="6.5" ry="6" fill="#4ade80" stroke="#291002" stroke-width="2.2"/>
+              <circle class="animal-pupil" cx="1.5" cy="0" r="3.2" fill="#052e16"/>
+              <circle cx="2.5" cy="-2" r="1.3" fill="#ffffff"/>
+            </g>
+          </g>
+        </g>
+      </g>`;
+
+    case 'frog':
+      return `
+      <g class="animal-rig" data-animal="frog" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="0" cy="64" rx="54" ry="12" fill="rgba(4,20,12,0.4)"/>
+        <g class="animal-body-group">
+          <!-- Back folded emerald legs with orange webbed feet -->
+          <path d="M -42,24 C -64,8 -64,46 -34,54 L -18,56" fill="none" stroke="#15803d" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Vivid Orange Webbed Toes -->
+          <g fill="#f97316" stroke="#7c2d12" stroke-width="2">
+            <path d="M -42,54 L -58,62 A 4,4 0 1,0 -52,66 L -36,58 L -42,67 A 4,4 0 1,0 -34,68 L -26,56 Z"/>
+            <path d="M 22,54 L 38,64 A 4,4 0 1,0 44,58 L 30,50 L 46,52 A 4,4 0 1,0 46,46 L 26,46 Z"/>
+          </g>
+          <!-- Emerald Leaf Frog Body with Turquoise & Yellow flank stripes -->
+          <path d="M -38,22 C -42,-16 -8,-32 26,-18 C 48,-8 46,32 22,46 C -4,56 -34,46 -38,22 Z"
+                fill="url(#frogEmeraldGrad)" stroke="#052e16" stroke-width="3.5"/>
+          <!-- Blue & yellow tropical side stripes -->
+          <path d="M -24,18 Q 0,8 22,22" fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round"/>
+          <path d="M -22,22 Q 0,12 20,26" fill="none" stroke="#fde047" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Front legs -->
+          <path d="M -4,30 L -10,56 M 20,28 L 24,54" stroke="#22c55e" stroke-width="10" stroke-linecap="round"/>
+          <circle cx="-12" cy="58" r="5" fill="#f97316" stroke="#7c2d12" stroke-width="1.8"/>
+          <circle cx="26" cy="56" r="5" fill="#f97316" stroke="#7c2d12" stroke-width="1.8"/>
+          <!-- Frog Head & Puffing Vocal Sac -->
+          <g class="animal-head" transform="translate(18, -18)">
+            <!-- Inflatable vocal sac for comical puff / croak -->
+            <ellipse class="frog-sac" cx="12" cy="18" rx="18" ry="11" fill="#bef264" stroke="#15803d" stroke-width="2.5"/>
+            <!-- Wide Smiling Frog Head -->
+            <path d="M -22,-8 C -20,-28 28,-28 38,-4 C 44,12 26,20 -2,18 C -18,16 -24,4 -22,-8 Z"
+                  fill="url(#frogEmeraldGrad)" stroke="#052e16" stroke-width="3.5"/>
+            <path d="M -8,10 Q 16,18 34,6" fill="none" stroke="#052e16" stroke-width="3" stroke-linecap="round"/>
+            <!-- Prominent Ruby-Red Bulging Tree Frog Eyes -->
+            <g transform="translate(-4, -18)">
+              <circle cx="0" cy="0" r="13" fill="#ef4444" stroke="#052e16" stroke-width="3"/>
+              <ellipse class="animal-pupil" cx="2" cy="0" rx="3.2" ry="8.5" fill="#090d16"/>
+              <circle cx="4.5" cy="-4" r="2.8" fill="#ffffff"/>
+            </g>
+            <g transform="translate(22, -16)">
+              <circle cx="0" cy="0" r="12" fill="#ef4444" stroke="#052e16" stroke-width="3"/>
+              <ellipse class="animal-pupil" cx="2" cy="0" rx="3" ry="8" fill="#090d16"/>
+              <circle cx="4" cy="-4" r="2.5" fill="#ffffff"/>
+            </g>
+          </g>
+        </g>
+      </g>`;
+
+    case 'chameleon':
+      return `
+      <g class="animal-rig" data-animal="chameleon" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="0" cy="68" rx="64" ry="12" fill="rgba(4,20,12,0.38)"/>
+        <g class="animal-body-group">
+          <!-- Long Prehensile Spiral Tail -->
+          <path class="animal-tail" d="M -38,22 C -78,24 -96,-6 -78,-26 C -64,-42 -42,-28 -52,-12 C -58,-2 -72,-8 -66,-18"
+                fill="none" stroke="url(#chamBodyGrad)" stroke-width="13" stroke-linecap="round"/>
+          <path d="M -38,22 C -78,24 -96,-6 -78,-26 C -64,-42 -42,-28 -52,-12"
+                fill="none" stroke="#064e3b" stroke-width="2" stroke-dasharray="4 5"/>
+          <!-- High Arched Scaled Back with Dorsal Crest -->
+          <path d="M -42,-6 L -36,-18 L -28,-8 L -20,-24 L -12,-10 L -2,-26 L 8,-10 L 18,-22 L 26,-6 Z"
+                fill="#fde047" stroke="#064e3b" stroke-width="2"/>
+          <path d="M -44,20 C -48,-22 -8,-42 32,-18 C 52,-4 46,28 24,36 C -4,40 -38,36 -44,20 Z"
+                fill="url(#chamBodyGrad)" stroke="#064e3b" stroke-width="3.5"/>
+          <!-- Decorative turquoise & lime camouflage bands -->
+          <path d="M -24,-14 Q -18,12 -26,30 M 0,-20 Q 8,8 0,32 M 20,-12 Q 26,10 18,30"
+                fill="none" stroke="#2dd4bf" stroke-width="6" stroke-linecap="round" opacity="0.75"/>
+          <!-- Grasping zygodactyl legs -->
+          <path d="M -22,32 L -28,56 L -16,58 M 16,32 L 22,56 L 34,56"
+                fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Casque Helmet Head & Turret Eye -->
+          <g class="animal-head" transform="translate(32, -8)">
+            <!-- Extendable pink tongue (hidden until celebration/click) -->
+            <path class="cham-tongue" d="M 28,12 L 32,12" stroke="#f43f5e" stroke-width="6" stroke-linecap="round"/>
+            <!-- Casque crest -->
+            <path d="M -14,-14 L -4,-44 C 18,-36 38,-14 42,8 C 36,22 6,24 -12,14 Z"
+                  fill="url(#chamBodyGrad)" stroke="#064e3b" stroke-width="3.5"/>
+            <path d="M 8,12 L 40,10" stroke="#064e3b" stroke-width="2.8" stroke-linecap="round"/>
+            <!-- Turret Cone Eye -->
+            <circle cx="12" cy="-6" r="13" fill="#34d399" stroke="#064e3b" stroke-width="3"/>
+            <circle cx="12" cy="-6" r="8" fill="#fef08a" stroke="#064e3b" stroke-width="2"/>
+            <circle class="animal-pupil" cx="13" cy="-6" r="4" fill="#090d16"/>
+          </g>
+        </g>
+      </g>`;
+
+    case 'macaw':
+      return `
+      <g class="animal-rig" data-animal="macaw" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="0" cy="74" rx="50" ry="12" fill="rgba(4,20,12,0.4)"/>
+        <g class="animal-body-group">
+          <!-- Long Scarlet & Cobalt Tail Feathers -->
+          <path d="M -24,28 L -78,86 L -60,90 L -10,36 Z" fill="#2563eb" stroke="#1e1b4b" stroke-width="2.5"/>
+          <path d="M -18,28 L -64,94 L -46,94 L -4,36 Z" fill="#dc2626" stroke="#450a0a" stroke-width="2.5"/>
+          <!-- Claws -->
+          <path d="M -8,50 L -12,66 M 2,50 L 2,66 M 14,50 L 18,66" stroke="#475569" stroke-width="5" stroke-linecap="round"/>
+          <!-- Brilliant Scarlet Body -->
+          <path d="M -32,8 C -36,-32 -4,-50 24,-32 C 42,-16 38,34 16,50 C -4,60 -28,42 -32,8 Z"
+                fill="url(#macawRedGrad)" stroke="#450a0a" stroke-width="3.5"/>
+          <!-- Multi-layered Rainbow Wing (Red, Gold, Cobalt Blue) -->
+          <g class="animal-wing">
+            <path d="M -26,-8 C 2,-14 20,12 6,46 C -14,48 -34,24 -26,-8 Z" fill="#2563eb" stroke="#172554" stroke-width="3"/>
+            <path d="M -26,-8 C -2,-12 14,6 4,32 C -12,34 -30,16 -26,-8 Z" fill="#facc15" stroke="#713f12" stroke-width="2.5"/>
+            <path d="M -26,-8 C -6,-12 8,0 2,18 C -10,22 -26,10 -26,-8 Z" fill="#ef4444" stroke="#450a0a" stroke-width="2.5"/>
+          </g>
+          <!-- Macaw Head & Hooked Beak -->
+          <g class="animal-head" transform="translate(8, -36)">
+            <circle cx="0" cy="0" r="22" fill="url(#macawRedGrad)" stroke="#450a0a" stroke-width="3.5"/>
+            <!-- White feathered facial patch -->
+            <path d="M -2,-10 C 12,-12 20,-2 16,12 C 6,16 -6,10 -2,-10 Z" fill="#fffbeb" stroke="#450a0a" stroke-width="2"/>
+            <!-- Hooked Ivory Upper Beak -->
+            <path d="M 14,-10 C 36,-12 46,4 36,22 C 28,12 22,6 14,6 Z" fill="#fef3c7" stroke="#291002" stroke-width="3"/>
+            <!-- Black Lower Beak -->
+            <path d="M 12,6 C 22,6 28,12 24,20 C 16,22 10,16 12,6 Z" fill="#1e293b" stroke="#0f172a" stroke-width="2.5"/>
+            <!-- Eye -->
+            <circle cx="4" cy="-2" r="5.5" fill="#fde047" stroke="#0f172a" stroke-width="2"/>
+            <circle class="animal-pupil" cx="5" cy="-2" r="3" fill="#0f172a"/>
+          </g>
+        </g>
+      </g>`;
+
+    case 'monkey':
+      return `
+      <g class="animal-rig" data-animal="monkey" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="0" cy="70" rx="55" ry="13" fill="rgba(4,20,12,0.4)"/>
+        <g class="animal-body-group">
+          <!-- Long Curling Capuchin Tail -->
+          <path class="animal-tail" d="M -32,26 C -68,32 -88,-4 -74,-34 C -62,-54 -38,-44 -48,-24 C -54,-12 -66,-20 -58,-30"
+                fill="none" stroke="#451a03" stroke-width="11" stroke-linecap="round"/>
+          <!-- Legs -->
+          <path d="M -24,36 Q -36,54 -22,64 M 16,36 Q 28,54 16,64" fill="none" stroke="#5c2d11" stroke-width="12" stroke-linecap="round"/>
+          <!-- Warm Brown Body & Cream Chest -->
+          <ellipse cx="-4" cy="14" rx="32" ry="30" fill="#5c2d11" stroke="#291002" stroke-width="3.5"/>
+          <ellipse cx="2" cy="14" rx="20" ry="22" fill="#fde68a"/>
+          <!-- Expressive Arms -->
+          <path d="M -22,-2 Q -44,18 -24,34 M 18,-2 Q 42,16 28,32" fill="none" stroke="#5c2d11" stroke-width="11" stroke-linecap="round"/>
+          <!-- Capuchin Head -->
+          <g class="animal-head" transform="translate(2, -26)">
+            <circle cx="-24" cy="0" r="10" fill="#fde68a" stroke="#291002" stroke-width="3"/>
+            <circle cx="24" cy="0" r="10" fill="#fde68a" stroke="#291002" stroke-width="3"/>
+            <circle cx="0" cy="-2" r="24" fill="#451a03" stroke="#291002" stroke-width="3.5"/>
+            <!-- Cream heart-shaped face mask -->
+            <path d="M 0,20 C -18,20 -20,-8 -8,-12 C -2,-14 0,-6 0,-6 C 0,-6 2,-14 8,-12 C 20,-8 18,20 0,20 Z"
+                  fill="#fef3c7"/>
+            <!-- Cute nostrils & happy smile -->
+            <circle cx="-3" cy="4" r="2" fill="#291002"/>
+            <circle cx="3" cy="4" r="2" fill="#291002"/>
+            <path d="M -9,11 Q 0,18 9,11" fill="none" stroke="#291002" stroke-width="2.8" stroke-linecap="round"/>
+            <!-- Big Curious Eyes -->
+            <circle cx="-8" cy="-4" r="6" fill="#ffffff" stroke="#291002" stroke-width="2"/>
+            <circle class="animal-pupil" cx="-7" cy="-4" r="3.5" fill="#1c0d04"/>
+            <circle cx="8" cy="-4" r="6" fill="#ffffff" stroke="#291002" stroke-width="2"/>
+            <circle class="animal-pupil" cx="9" cy="-4" r="3.5" fill="#1c0d04"/>
+          </g>
+        </g>
+      </g>`;
+
+    case 'tortoise':
+      return `
+      <g class="animal-rig" data-animal="tortoise" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="-6" cy="68" rx="78" ry="15" fill="rgba(4,20,12,0.45)"/>
+        <g class="animal-body-group">
+          <!-- Sturdy Scaled Tortoise Legs -->
+          <rect x="-56" y="32" width="24" height="34" rx="10" fill="#4d7c0f" stroke="#1a2e05" stroke-width="3.5"/>
+          <rect x="16" y="32" width="24" height="34" rx="10" fill="#65a30d" stroke="#1a2e05" stroke-width="3.5"/>
+          <!-- Dome Carapace Shell with Hexagonal Scutes -->
+          <path d="M -72,34 C -74,-34 46,-36 48,34 Z" fill="url(#tortoiseShellGrad)" stroke="#1a2e05" stroke-width="4"/>
+          <!-- Scute relief plates -->
+          <polygon points="-38,6 -22,-14 2,-14 16,6 0,24 -24,24" fill="#78350f" stroke="#f59e0b" stroke-width="2.5" opacity="0.8"/>
+          <path d="M -68,34 L 44,34" stroke="#f59e0b" stroke-width="6" stroke-linecap="round"/>
+          <!-- Wise Wrinkled Neck & Head -->
+          <g class="animal-head" transform="translate(52, 8)">
+            <path d="M -18,16 C -4,14 6,-6 18,-14 C 34,-20 46,-8 42,8 C 38,22 12,24 -14,26 Z"
+                  fill="#65a30d" stroke="#1a2e05" stroke-width="3.5"/>
+            <path d="M 22,8 Q 32,12 39,6" fill="none" stroke="#1a2e05" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="24" cy="-6" r="6.5" fill="#fef9c3" stroke="#1a2e05" stroke-width="2"/>
+            <circle class="animal-pupil" cx="26" cy="-6" r="3.5" fill="#0f172a"/>
+          </g>
+        </g>
+      </g>`;
+
+    case 'otter':
+    default:
+      return `
+      <g class="animal-rig" data-animal="otter" transform="scale(${scale})" ${glowFilter}>
+        <ellipse cx="0" cy="68" rx="68" ry="13" fill="rgba(4,20,12,0.4)"/>
+        <g class="animal-body-group">
+          <!-- Sleek tapering otter tail -->
+          <path class="animal-tail" d="M -46,28 Q -88,36 -98,14 Q -80,10 -44,14 Z" fill="#5c2d11" stroke="#271104" stroke-width="3.5"/>
+          <!-- Streamlined chestnut body -->
+          <path d="M -52,24 C -54,-14 -10,-26 28,-14 C 54,-6 56,34 32,46 C 4,54 -48,48 -52,24 Z"
+                fill="url(#capyFurGrad)" stroke="#271104" stroke-width="3.5"/>
+          <ellipse cx="8" cy="20" rx="26" ry="18" fill="#fde68a" opacity="0.85"/>
+          <!-- Webbed paws -->
+          <rect x="-28" y="36" width="18" height="28" rx="8" fill="#451a03" stroke="#271104" stroke-width="2.8"/>
+          <rect x="18" y="36" width="18" height="28" rx="8" fill="#451a03" stroke="#271104" stroke-width="2.8"/>
+          <!-- Whiskered Otter Head -->
+          <g class="animal-head" transform="translate(34, -16)">
+            <circle cx="-12" cy="-14" r="7" fill="#451a03" stroke="#271104" stroke-width="2.5"/>
+            <ellipse cx="6" cy="0" rx="24" ry="19" fill="url(#capyFurGrad)" stroke="#271104" stroke-width="3.5"/>
+            <ellipse cx="16" cy="6" rx="14" ry="10" fill="#fef3c7"/>
+            <polygon points="16,-2 26,-2 21,5" fill="#1c0d04"/>
+            <path d="M 24,6 L 42,2 M 24,10 L 44,10 M 22,14 L 40,18" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="6" cy="-5" r="6" fill="#ffffff" stroke="#1c0d04" stroke-width="2"/>
+            <circle class="animal-pupil" cx="8" cy="-5" r="3.5" fill="#1c0d04"/>
+          </g>
+        </g>
+      </g>`;
+  }
+}
+
+/* ============================================================================
+   4. SCENE STAGE COMPOSER (Carved Platforms, Comparison Props, Firefly Halo)
+   ============================================================================ */
+function buildSharedSVGDefs() {
+  return `
+  <defs>
+    <filter id="heroGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#fde047" flood-opacity="0.75"/>
+    </filter>
+    <linearGradient id="capyFurGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#b46934"/>
+      <stop offset="55%" stop-color="#85461b"/>
+      <stop offset="100%" stop-color="#4a240b"/>
+    </linearGradient>
+    <linearGradient id="toucanBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="toucanBibGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="65%" stop-color="#facc15"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+    <linearGradient id="toucanBeakGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#facc15"/>
+      <stop offset="55%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="jaguarGoldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fcd34d"/>
+      <stop offset="60%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+    <linearGradient id="frogEmeraldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#86efac"/>
+      <stop offset="50%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="chamBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a3e635"/>
+      <stop offset="55%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="macawRedGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="45%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#991b1b"/>
+    </linearGradient>
+    <linearGradient id="tortoiseShellGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a16207"/>
+      <stop offset="55%" stop-color="#713f12"/>
+      <stop offset="100%" stop-color="#3f2209"/>
+    </linearGradient>
+    <linearGradient id="mossRockGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="45%" stop-color="#475569"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="bambooGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4d7c0f"/>
+      <stop offset="45%" stop-color="#a3e635"/>
+      <stop offset="100%" stop-color="#3f6212"/>
+    </linearGradient>
+  </defs>`;
+}
+
+// Helper: Carved Mayan/Jungle Mossy Pedestal Stone
+function buildMossyStone(x, y, width = 260, height = 110, badgeCount = 0) {
+  const hw = width / 2;
+  let starsMarkup = '';
+  for (let i = 0; i < badgeCount; i++) {
+    const sx = (i - (badgeCount - 1) / 2) * 34;
+    starsMarkup += `
+      <g transform="translate(${sx}, ${height * 0.48})">
+        <polygon points="0,-13 4,-4 14,-4 6,2 9,12 0,6 -9,12 -6,2 -14,-4 -4,-4"
+                 fill="#fde047" stroke="#78350f" stroke-width="2"/>
+      </g>`;
+  }
+
+  return `
+  <g transform="translate(${x}, ${y})">
+    <!-- Water ripples around base -->
+    <ellipse cx="0" cy="${height - 8}" rx="${hw + 35}" ry="18" fill="none" stroke="rgba(186,230,253,0.45)" stroke-width="3"/>
+    <ellipse cx="0" cy="${height - 8}" rx="${hw + 16}" ry="11" fill="rgba(14,116,144,0.45)"/>
+    <!-- Carved stone block -->
+    <path d="M ${-hw + 18},0 L ${hw - 18},0 L ${hw},${height - 10} Q 0,${height + 8} ${-hw},${height - 10} Z"
+          fill="url(#mossRockGrad)" stroke="#0f172a" stroke-width="4" stroke-linejoin="round"/>
+    <!-- Ancient carved spiral / relief pattern on stone -->
+    <path d="M ${-hw + 36},${height * 0.35} L ${hw - 36},${height * 0.35} M ${-hw + 46},${height * 0.65} L ${hw - 46},${height * 0.65}"
+          stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+    <!-- Lush green moss cap on top of stone -->
+    <path d="M ${-hw + 12},4 Q 0,-12 ${hw - 12},4 Q ${hw - 20},24 ${hw - 48},18 Q 20,30 0,16 Q -35,28 ${-hw + 45},16 Q ${-hw + 18},22 ${-hw + 12},4 Z"
+          fill="#22c55e" stroke="#052e16" stroke-width="3"/>
+    ${starsMarkup}
+  </g>`;
+}
+
+// Helper: Glowing Firefly Crown & Pointer Arrow above the target hero animal
+function buildHeroSpotlight(x, y) {
+  return `
+  <g class="hero-indicator" transform="translate(${x}, ${y})">
+    <!-- Glowing sun halo -->
+    <circle cx="0" cy="0" r="34" fill="rgba(253, 224, 71, 0.22)"/>
+    <!-- Bouncing carved golden arrow pointing down to the hero animal -->
+    <g class="floating-anim">
+      <path d="M -16,-36 L 16,-36 L 16,-10 L 30,-10 L 0,22 L -30,-10 L -16,-10 Z"
+            fill="#fde047" stroke="#78350f" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="-42" cy="-14" r="6" fill="#fef08a" filter="url(#heroGlow)"/>
+      <circle cx="44" cy="-8" r="5" fill="#bef264" filter="url(#heroGlow)"/>
+    </g>
+  </g>`;
+}
+
+// Renders the complete interactive story scene for the active task
+function renderTaskScene(task) {
+  const svg = document.getElementById('scene-svg');
+  let html = buildSharedSVGDefs();
+
+  if (task.sceneMode === 'single') {
+    // POSITIVE DEGREE SCENE: Hero animal center-stage on a grand waterfall island with interactive thematic props
+    const cx = 800;
+    const cy = 385;
+
+    // Suspension wooden bridge & lianas in scene
+    html += `
+      <path d="M 180,220 Q 800,310 1420,220" fill="none" stroke="#78350f" stroke-width="8" stroke-dasharray="18 8"/>
+      ${buildMossyStone(cx, cy + 48, 370, 125, 1)}
+    `;
+
+    // Trait-specific visual prop next to the animal
+    if (task.traitVisual === 'green_fern') {
+      html += `
+        <g transform="translate(970, 390)">
+          <path d="M 0,45 Q 45,-50 120,-65 Q 75,15 0,45 Z" fill="#22c55e" stroke="#052e16" stroke-width="3.5"/>
+          <path d="M 0,45 Q 55,-15 135,5 Q 70,40 0,45 Z" fill="#4ade80" stroke="#052e16" stroke-width="3"/>
+          <path d="M 10,38 L 95,-42" stroke="#bef264" stroke-width="3"/>
+        </g>`;
+    } else if (task.traitVisual === 'loud_voice') {
+      html += `
+        <g transform="translate(920, 300)" stroke="#fde047" stroke-width="5" fill="none" stroke-linecap="round">
+          <path d="M 0,-20 Q 25,0 0,20"/>
+          <path d="M 22,-42 Q 58,0 22,42"/>
+          <path d="M 46,-65 Q 92,0 46,65"/>
+        </g>`;
+    } else if (task.traitVisual === 'fast_wind') {
+      html += `
+        <g transform="translate(560, 360)" stroke="#bae6fd" stroke-width="5" stroke-linecap="round" opacity="0.85">
+          <path d="M -90,-25 L 40,-25"/>
+          <path d="M -130,5 L 20,5"/>
+          <path d="M -80,35 L 55,35"/>
+        </g>`;
+    }
+
+    html += `
+      <g class="animal-actor" id="hero-actor" transform="translate(${cx}, ${cy})" data-animal="${task.heroAnimal}">
+        ${buildAnimalSVG(task.heroAnimal, 1.55, true)}
+      </g>
+      ${buildHeroSpotlight(cx, cy - 150)}
+    `;
+
+  } else if (task.sceneMode === 'pair') {
+    // COMPARATIVE DEGREE SCENE: Two animals contrasted side-by-side (Partner vs Hero)
+    const leftX = 500;
+    const rightX = 1100;
+    const baseY = 395;
+
+    if (task.traitVisual === 'height_pair') {
+      // Low fern bush vs Tall bamboo stalk
+      html += `
+        <!-- Left: Low fern bush with frog -->
+        ${buildMossyStone(leftX, baseY + 60, 260, 100, 1)}
+        <g class="animal-actor" transform="translate(${leftX}, ${baseY + 5})" data-animal="${task.partnerAnimal}">
+          ${buildAnimalSVG(task.partnerAnimal, 1.15, false)}
+        </g>
+        <!-- Right: Tall Bamboo Stalk with Toucan -->
+        <g transform="translate(${rightX}, ${baseY - 120})">
+          <rect x="-18" y="-40" width="36" height="290" rx="12" fill="url(#bambooGrad)" stroke="#1a2e05" stroke-width="3.5"/>
+          <line x1="-20" y1="30" x2="20" y2="30" stroke="#1a2e05" stroke-width="5"/>
+          <line x1="-20" y1="110" x2="20" y2="110" stroke="#1a2e05" stroke-width="5"/>
+          <line x1="-20" y1="190" x2="20" y2="190" stroke="#1a2e05" stroke-width="5"/>
+        </g>
+        ${buildMossyStone(rightX, baseY + 60, 280, 100, 2)}
+        <g class="animal-actor" id="hero-actor" transform="translate(${rightX}, ${baseY - 155})" data-animal="${task.heroAnimal}">
+          ${buildAnimalSVG(task.heroAnimal, 1.35, true)}
+        </g>
+        ${buildHeroSpotlight(rightX, baseY - 285)}
+      `;
+    } else if (task.traitVisual === 'sweet_pair') {
+      // Sour green lime vs Big Golden Sweet Mango
+      html += `
+        ${buildMossyStone(leftX, baseY + 55, 270, 105, 1)}
+        <g class="animal-actor" transform="translate(${leftX}, ${baseY})" data-animal="${task.partnerAnimal}">
+          ${buildAnimalSVG(task.partnerAnimal, 1.2, false)}
+          <!-- Small green lime -->
+          <circle cx="75" cy="25" r="20" fill="#84cc16" stroke="#1a2e05" stroke-width="3"/>
+        </g>
+
+        ${buildMossyStone(rightX, baseY + 55, 300, 115, 2)}
+        <g class="animal-actor" id="hero-actor" transform="translate(${rightX}, ${baseY - 10})" data-animal="${task.heroAnimal}">
+          ${buildAnimalSVG(task.heroAnimal, 1.4, true)}
+          <!-- Giant Golden Mango -->
+          <path d="M 65,5 C 95,-15 125,15 110,45 C 95,70 55,60 55,30 C 55,15 60,8 65,5 Z"
+                fill="url(#toucanBeakGrad)" stroke="#7c2d12" stroke-width="3.5"/>
+        </g>
+        ${buildHeroSpotlight(rightX, baseY - 155)}
+      `;
+    } else {
+      // Standard comparative side-by-side pedestals showing clear visual contrast
+      html += `
+        ${buildMossyStone(leftX, baseY + 58, 260, 100, 1)}
+        <g class="animal-actor" transform="translate(${leftX}, ${baseY + 4})" data-animal="${task.partnerAnimal}">
+          ${buildAnimalSVG(task.partnerAnimal, 1.15, false)}
+        </g>
+
+        ${buildMossyStone(rightX, baseY + 42, 310, 120, 2)}
+        <g class="animal-actor" id="hero-actor" transform="translate(${rightX}, ${baseY - 18})" data-animal="${task.heroAnimal}">
+          ${buildAnimalSVG(task.heroAnimal, 1.48, true)}
+        </g>
+        ${buildHeroSpotlight(rightX, baseY - 165)}
+      `;
+    }
+
+  } else {
+    // SUPERLATIVE DEGREE SCENE: Three tiered jungle pedestals comparing 3 animals (1 star, 2 stars, 3 stars!)
+    const positions = [360, 800, 1240];
+    const heights = [435, 395, 340];
+    const scales = [1.02, 1.22, 1.52];
+
+    // If the task is about the smallest ("найменша"), make the 3rd hero visibly tiny and adorable!
+    if (task.traitVisual === 'small_trio') {
+      scales[0] = 1.45;
+      scales[1] = 1.18;
+      scales[2] = 0.78;
+    }
+
+    task.trioAnimals.forEach((animalType, idx) => {
+      const isHero = idx === 2;
+      const px = positions[idx];
+      const py = heights[idx];
+      const stoneH = 95 + idx * 24;
+
+      html += `
+        ${buildMossyStone(px, py + 55, 275, stoneH, idx + 1)}
+        <g class="animal-actor" ${isHero ? 'id="hero-actor"' : ''} transform="translate(${px}, ${py})" data-animal="${animalType}">
+          ${buildAnimalSVG(animalType, scales[idx], isHero)}
+        </g>
+      `;
+
+      if (isHero) {
+        html += buildHeroSpotlight(px, py - 150);
+      }
+    });
+  }
+
+  svg.innerHTML = html;
+
+  // Bind playful click/pet interaction on every animal in the scene
+  svg.querySelectorAll('.animal-actor').forEach(actor => {
+    actor.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      const type = actor.getAttribute('data-animal');
+      sound.playAnimalVoice(type);
+      triggerAnimalHop(actor);
+    });
+  });
+}
+
+function triggerAnimalHop(actorEl) {
+  const body = actorEl.querySelector('.animal-body-group');
+  if (!body) return;
+  body.animate([
+    { transform: 'translateY(0) scale(1, 1)' },
+    { transform: 'translateY(10px) scale(1.12, 0.88)' },
+    { transform: 'translateY(-36px) scale(0.94, 1.08) rotate(-4deg)' },
+    { transform: 'translateY(0) scale(1.05, 0.95)' },
+    { transform: 'translateY(0) scale(1, 1)' }
+  ], {
+    duration: 520,
+    easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)'
+  });
+}
+
+/* ============================================================================
+   5. INTERACTIVE OPTION ARTWORK (Lotus Pads, Tribal Jungle Drums, Tropical Fruits)
+   ============================================================================ */
+function buildOptionSVG(propType, index) {
+  if (propType === 'lotus') {
+    const petalColors = [
+      ['#f472b6', '#db2777'],
+      ['#facc15', '#ca8a04'],
+      ['#38bdf8', '#0284c7']
+    ][index % 3];
+    return `
+    <svg class="option-svg-art" viewBox="0 0 360 120" preserveAspectRatio="none">
+      <!-- Water ripple glow -->
+      <ellipse cx="180" cy="68" rx="172" ry="48" fill="rgba(56, 189, 248, 0.25)"/>
+      <!-- Giant Emerald River Lotus Pad -->
+      <path d="M 18,62 C 18,20 100,10 185,10 C 275,10 346,24 346,62 C 346,98 270,110 180,110 C 95,110 32,96 22,74 L 52,64 L 18,62 Z"
+            fill="url(#frogEmeraldGrad)" stroke="#052e16" stroke-width="4"/>
+      <!-- Lotus pad veins -->
+      <path d="M 180,60 L 65,32 M 180,60 L 180,16 M 180,60 L 295,32 M 180,60 L 90,92 M 180,60 L 275,92"
+            stroke="#86efac" stroke-width="2.5" opacity="0.55" stroke-linecap="round"/>
+      <!-- Blooming Lotus Flower on corner -->
+      <g transform="translate(318, 32)">
+        <ellipse cx="-12" cy="4" rx="14" ry="8" transform="rotate(-25 -12 4)" fill="${petalColors[0]}" stroke="#4a044e" stroke-width="2"/>
+        <ellipse cx="12" cy="4" rx="14" ry="8" transform="rotate(25 12 4)" fill="${petalColors[0]}" stroke="#4a044e" stroke-width="2"/>
+        <ellipse cx="0" cy="-4" rx="10" ry="16" fill="${petalColors[1]}" stroke="#4a044e" stroke-width="2"/>
+        <circle cx="0" cy="4" r="6" fill="#fde047"/>
+      </g>
+    </svg>`;
+  } else if (propType === 'drum') {
+    const rimColors = ['#ef4444', '#f59e0b', '#10b981'][index % 3];
+    return `
+    <svg class="option-svg-art" viewBox="0 0 360 120" preserveAspectRatio="none">
+      <!-- Hanging liana ropes -->
+      <path d="M 55,0 L 55,24 M 305,0 L 305,24" stroke="#15803d" stroke-width="6"/>
+      <!-- Carved Wooden Jungle Drum Body -->
+      <path d="M 24,26 Q 180,10 336,26 L 320,98 Q 180,114 40,98 Z"
+            fill="url(#capyFurGrad)" stroke="#271104" stroke-width="4" stroke-linejoin="round"/>
+      <!-- Tribal zigzag pattern & rope lacing -->
+      <path d="M 32,36 L 56,88 L 84,36 L 112,88 L 140,36 L 168,88 L 196,36 L 224,88 L 252,36 L 280,88 L 308,36 L 326,86"
+            fill="none" stroke="#fde68a" stroke-width="3" opacity="0.5" stroke-linejoin="round"/>
+      <!-- Top & Bottom painted tribal bands -->
+      <path d="M 24,26 Q 180,12 336,26 L 333,40 Q 180,26 27,40 Z" fill="${rimColors}" stroke="#271104" stroke-width="3"/>
+    </svg>`;
+  } else {
+    // Tropical Papaya / Mango Boat on Woven Palm Leaf
+    return `
+    <svg class="option-svg-art" viewBox="0 0 360 120" preserveAspectRatio="none">
+      <!-- Woven palm leaf backing -->
+      <path d="M 10,60 Q 180,-4 350,60 Q 180,124 10,60 Z" fill="#15803d" stroke="#052e16" stroke-width="4"/>
+      <!-- Juicy Golden-Orange Tropical Fruit Plank -->
+      <path d="M 28,58 C 28,20 110,14 180,14 C 250,14 332,20 332,58 C 332,96 250,104 180,104 C 110,104 28,96 28,58 Z"
+            fill="url(#toucanBeakGrad)" stroke="#431407" stroke-width="4"/>
+      <ellipse cx="180" cy="59" rx="132" ry="32" fill="#7c2d12" opacity="0.45"/>
+    </svg>`;
+  }
+}
+
+/* ============================================================================
+   6. GAME STATE, ENDLESS GENERATOR, DRAG & DROP + CLICK CONTROLLER
+   ============================================================================ */
+let currentLang = 'uk'; // 'uk' or 'ru'
+let taskQueue = [];
+let currentTask = null;
+let isLocked = false;
+let celebrationCycle = 0;
+
+// Pointer tracking for animal eyes & drag-and-drop
+const pointerPos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function getNextTaskFromGenerator() {
+  if (taskQueue.length === 0) {
+    // Endless shuffled generator ensuring balanced distribution across all 21 tasks
+    taskQueue = shuffleArray(TASKS_DB);
+    // Avoid immediate repeat of the very last task
+    if (currentTask && taskQueue[0].id === currentTask.id) {
+      taskQueue.push(taskQueue.shift());
+    }
+  }
+  const rawTask = taskQueue.shift();
+  // Create a shuffled option order so the correct degree isn't always in the same slot
+  const indices = shuffleArray([0, 1, 2]);
+  return {
+    ...rawTask,
+    shuffledIndices: indices
+  };
+}
+
+function renderSentenceBoard(task, filledWord = null) {
+  const langData = task[currentLang];
+  const container = document.getElementById('sentence-text');
+
+  const slotClasses = filledWord ? 'word-slot filled' : 'word-slot';
+  const slotContent = filledWord ? filledWord : '• • •';
+
+  container.innerHTML = `
+    <span>${langData.before}</span>
+    <span class="${slotClasses}" id="target-slot">${slotContent}</span>
+    <span>${langData.after}</span>
+  `;
+}
+
+function renderOptionsDock(task) {
+  const dock = document.getElementById('options-dock');
+  const langData = task[currentLang];
+  dock.innerHTML = '';
+
+  task.shuffledIndices.forEach((origIdx, visualPos) => {
+    const wordText = langData.options[origIdx];
+    const card = document.createElement('div');
+    card.className = 'option-card';
+    card.dataset.origIndex = origIdx;
+    card.innerHTML = `
+      ${buildOptionSVG(task.propType, visualPos)}
+      <span class="option-label">${wordText}</span>
+    `;
+
+    // Hover sound & expectant animal head/eye attention
+    card.addEventListener('pointerenter', () => {
+      if (!isLocked) sound.playHover();
+    });
+
+    // Support both click/tap AND drag-and-drop onto the sentence slot or hero animal!
+    setupOptionInteraction(card, origIdx);
+    dock.appendChild(card);
+  });
+}
+
+function setupOptionInteraction(card, origIdx) {
+  let startX = 0;
+  let startY = 0;
+  let isDragging = false;
+
+  const onPointerDown = (e) => {
+    if (isLocked) return;
+    sound.init();
+    startX = e.clientX;
+    startY = e.clientY;
+    isDragging = true;
+    card.setPointerCapture(e.pointerId);
+    card.classList.add('dragging');
+  };
+
+  const onPointerMove = (e) => {
+    if (!isDragging || isLocked) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    card.style.transform = `translate(${dx}px, ${dy}px) scale(1.08)`;
+
+    // Check proximity to sentence slot or hero animal for highlight feedback
+    const slotEl = document.getElementById('target-slot');
+    if (slotEl) {
+      const slotRect = slotEl.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      const dist = Math.hypot(
+        (cardRect.left + cardRect.width / 2) - (slotRect.left + slotRect.width / 2),
+        (cardRect.top + cardRect.height / 2) - (slotRect.top + slotRect.height / 2)
+      );
+      if (dist < 170) {
+        slotEl.classList.add('highlight-drop');
+      } else {
+        slotEl.classList.remove('highlight-drop');
+      }
+    }
+  };
+
+  const onPointerUp = (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    card.classList.remove('dragging');
+    const slotEl = document.getElementById('target-slot');
+    if (slotEl) slotEl.classList.remove('highlight-drop');
+
+    const moveDist = Math.hypot(e.clientX - startX, e.clientY - startY);
+    let shouldEvaluate = false;
+
+    if (moveDist < 18) {
+      // Quick click / tap!
+      shouldEvaluate = true;
+    } else {
+      // Released after dragging: check if dropped near the upper 72% of screen (scene or sentence board)
+      if (e.clientY < window.innerHeight * 0.76) {
+        shouldEvaluate = true;
+      }
+    }
+
+    card.style.transform = '';
+    if (shouldEvaluate && !isLocked) {
+      evaluateChoice(card, origIdx);
+    }
+  };
+
+  card.addEventListener('pointerdown', onPointerDown);
+  card.addEventListener('pointermove', onPointerMove);
+  card.addEventListener('pointerup', onPointerUp);
+  card.addEventListener('pointercancel', onPointerUp);
+}
+
+function evaluateChoice(cardEl, chosenOrigIndex) {
+  if (isLocked) return;
+  const langData = currentTask[currentLang];
+  const chosenWord = langData.options[chosenOrigIndex];
+
+  if (chosenOrigIndex === currentTask.correctIndex) {
+    // CORRECT CHOICE!
+    isLocked = true;
+    renderSentenceBoard(currentTask, chosenWord);
+
+    // Hide dock options gracefully
+    document.querySelectorAll('.option-card').forEach(el => {
+      el.style.pointerEvents = 'none';
+      if (el === cardEl) {
+        el.style.transform = 'scale(0.1)';
+        el.style.opacity = '0';
+      } else {
+        el.style.opacity = '0.35';
+      }
+    });
+
+    // Trigger one of the 4 rich visual + Web Audio celebrations!
+    const mode = celebrationCycle % 4;
+    celebrationCycle++;
+    sound.playCelebrationFanfare(mode);
+    triggerCelebrationSequence(mode);
+
+    setTimeout(() => {
+      loadNextTask();
+    }, 2500);
+
+  } else {
+    // WRONG CHOICE: Comical non-verbal physical reaction + leaf confetti burst
+    sound.playWrongBoing();
+    cardEl.classList.remove('wrong-shake');
+    void cardEl.offsetWidth;
+    cardEl.classList.add('wrong-shake');
+
+    // Spawn harmless falling jungle leaf confetti from the wobbling option card
+    const rect = cardEl.getBoundingClientRect();
+    spawnLeafBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, 16);
+
+    // Comical animal head shake / cheek puff reaction
+    const heroActor = document.getElementById('hero-actor');
+    if (heroActor) {
+      heroActor.animate([
+        { transform: heroActor.getAttribute('transform') + ' rotate(0deg) scale(1)' },
+        { transform: heroActor.getAttribute('transform') + ' rotate(-9deg) scale(1.06, 0.92)' },
+        { transform: heroActor.getAttribute('transform') + ' rotate(9deg) scale(0.95, 1.05)' },
+        { transform: heroActor.getAttribute('transform') + ' rotate(-6deg) scale(1.03, 0.97)' },
+        { transform: heroActor.getAttribute('transform') + ' rotate(0deg) scale(1)' }
+      ], { duration: 540, easing: 'ease-in-out' });
+    }
+  }
+}
+
+function loadNextTask() {
+  isLocked = false;
+  activeCelebration = null;
+  currentTask = getNextTaskFromGenerator();
+  // Shift atmospheric jungle lighting subtly per task
+  cycleJunglePalette();
+  renderSentenceBoard(currentTask, null);
+  renderTaskScene(currentTask);
+  renderOptionsDock(currentTask);
+}
+
+/* ============================================================================
+   7. LANGUAGE TOGGLE ("УКР" / "РУС") & MINIMALIST "NEXT" BUTTON
+   ============================================================================ */
+document.getElementById('lang-btn').addEventListener('click', () => {
+  sound.playMarimba(659.25, 0, 0.16, 0.2);
+  currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+  document.getElementById('lang-label').textContent = currentLang === 'uk' ? 'УКР' : 'РУС';
+
+  if (currentTask) {
+    renderSentenceBoard(currentTask, null);
+    renderOptionsDock(currentTask);
+  }
+});
+
+document.getElementById('next-btn').addEventListener('click', () => {
+  sound.playMarimba(587.33, 0, 0.14, 0.18);
+  sound.playMarimba(880.0, 0.06, 0.18, 0.18);
+  loadNextTask();
+});
+
+/* ============================================================================
+   8. LIVING BACKGROUND & CELEBRATION PARTICLE CANVASES (60FPS)
+   ============================================================================ */
+const bgCanvas = document.getElementById('bg-canvas');
+const bgCtx = bgCanvas.getContext('2d');
+const fxCanvas = document.getElementById('fx-canvas');
+const fxCtx = fxCanvas.getContext('2d');
+
+let cw = window.innerWidth;
+let ch = window.innerHeight;
+
+function resizeCanvases() {
+  cw = window.innerWidth;
+  ch = window.innerHeight;
+  bgCanvas.width = cw;
+  bgCanvas.height = ch;
+  fxCanvas.width = cw;
+  fxCanvas.height = ch;
+}
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+// Track cursor so animals' pupils & heads follow the child's hand/mouse!
+window.addEventListener('pointermove', (e) => {
+  pointerPos.x = e.clientX;
+  pointerPos.y = e.clientY;
+});
+
+// 4 Jungle Time-of-Day Atmospheric Palettes
+const JUNGLE_PALETTES = [
+  { skyTop: '#064e3b', skyBot: '#0f766e', waterTop: '#0284c7', waterBot: '#064e3b', rayColor: 'rgba(253, 224, 71, 0.09)' },
+  { skyTop: '#14532d', skyBot: '#15803d', waterTop: '#0891b2', waterBot: '#042f2e', rayColor: 'rgba(254, 240, 138, 0.11)' },
+  { skyTop: '#3b0764', skyBot: '#0f766e', waterTop: '#0e7490', waterBot: '#1e1b4b', rayColor: 'rgba(244, 114, 182, 0.09)' },
+  { skyTop: '#422006', skyBot: '#065f46', waterTop: '#0369a1', waterBot: '#052e16', rayColor: 'rgba(251, 191, 36, 0.12)' }
+];
+let paletteIdx = 0;
+function cycleJunglePalette() {
+  paletteIdx = (paletteIdx + 1) % JUNGLE_PALETTES.length;
+}
+
+// Waterfall streams, mist bubbles, ambient butterflies & fireflies
+const waterfallDrops = Array.from({ length: 55 }, () => ({
+  xOffset: (Math.random() - 0.5) * 210,
+  yRatio: Math.random(),
+  speed: 0.008 + Math.random() * 0.008,
+  length: 25 + Math.random() * 45,
+  alpha: 0.25 + Math.random() * 0.45
+}));
+
+const butterflies = Array.from({ length: 6 }, (_, i) => ({
+  x: Math.random() * cw,
+  y: ch * (0.18 + Math.random() * 0.45),
+  vx: (Math.random() > 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.9),
+  phase: Math.random() * Math.PI * 2,
+  hue: i % 2 === 0 ? '#38bdf8' : '#facc15'
+}));
+
+// Foreground celebration particles
+let fxParticles = [];
+let activeCelebration = null;
+
+function spawnLeafBurst(x, y, count = 16) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+    const speed = 3 + Math.random() * 7;
+    fxParticles.push({
+      type: 'leaf',
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 3,
+      rot: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.18,
+      size: 11 + Math.random() * 10,
+      color: ['#4ade80', '#22c55e', '#a3e635', '#facc15'][i % 4],
+      life: 1.0
+    });
+  }
+}
+
+// Triggers 1 of 4 rich non-verbal celebratory animations!
+function triggerCelebrationSequence(mode) {
+  activeCelebration = {
+    mode,
+    startTime: performance.now(),
+    duration: 2400
+  };
+
+  // Animate all animals in the scene with joyful synchronized backflips / hops
+  document.querySelectorAll('.animal-actor').forEach((actor, idx) => {
+    const body = actor.querySelector('.animal-body-group');
+    if (body) {
+      body.animate([
+        { transform: 'translateY(0) scale(1)' },
+        { transform: 'translateY(-75px) rotate(-180deg) scale(1.15)' },
+        { transform: 'translateY(-95px) rotate(-360deg) scale(1.18)' },
+        { transform: 'translateY(0) rotate(-360deg) scale(1)' }
+      ], {
+        duration: 850,
+        delay: idx * 110,
+        iterations: 2,
+        easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)'
+      });
+    }
+    // If chameleon is present, shoot its tongue playfully!
+    const tongue = actor.querySelector('.cham-tongue');
+    if (tongue) {
+      tongue.animate([
+        { d: 'path("M 28,12 L 32,12")' },
+        { d: 'path("M 28,12 L 165,-35")' },
+        { d: 'path("M 28,12 L 32,12")' }
+      ], { duration: 600 });
+    }
+  });
+
+  if (mode === 0) {
+    // Mode 0: Waterfall Rainbow + Fountain Splash Droplets
+    for (let i = 0; i < 65; i++) {
+      fxParticles.push({
+        type: 'droplet',
+        x: cw * (0.2 + Math.random() * 0.6),
+        y: ch * 0.72,
+        vx: (Math.random() - 0.5) * 9,
+        vy: -9 - Math.random() * 11,
+        size: 6 + Math.random() * 9,
+        color: ['#38bdf8', '#bae6fd', '#fde047', '#4ade80'][i % 4],
+        life: 1.0
+      });
+    }
+  } else if (mode === 1) {
+    // Mode 1: Golden Mango, Starfruit & Hibiscus Canopy Shower
+    for (let i = 0; i < 38; i++) {
+      fxParticles.push({
+        type: i % 2 === 0 ? 'mango' : 'flower',
+        x: cw * (0.08 + Math.random() * 0.84),
+        y: -30 - Math.random() * 180,
+        vx: (Math.random() - 0.5) * 3,
+        vy: 3 + Math.random() * 5,
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.1,
+        size: 16 + Math.random() * 12,
+        color: ['#f97316', '#facc15', '#fb7185', '#f43f5e'][i % 4],
+        life: 1.0
+      });
+    }
+  } else if (mode === 2) {
+    // Mode 2: Blooming Bioluminescent Orchids & Firefly Vortex
+    for (let i = 0; i < 70; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      fxParticles.push({
+        type: 'firefly',
+        x: cw * 0.5 + Math.cos(angle) * (50 + Math.random() * 350),
+        y: ch * 0.55 + Math.sin(angle) * (40 + Math.random() * 200),
+        vx: (Math.random() - 0.5) * 4,
+        vy: -1.5 - Math.random() * 3.5,
+        size: 5 + Math.random() * 8,
+        color: ['#fde047', '#bef264', '#2dd4bf', '#f472b6'][i % 4],
+        life: 1.0
+      });
+    }
+  } else {
+    // Mode 3: Scarlet Macaw Parade & Golden Sunburst Feathers
+    for (let i = 0; i < 45; i++) {
+      fxParticles.push({
+        type: 'leaf',
+        x: cw * 0.5 + (Math.random() - 0.5) * 500,
+        y: ch * 0.45 + (Math.random() - 0.5) * 200,
+        vx: (Math.random() - 0.5) * 10,
+        vy: -4 - Math.random() * 7,
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.15,
+        size: 14 + Math.random() * 12,
+        color: ['#ef4444', '#facc15', '#3b82f6', '#22c55e'][i % 4],
+        life: 1.0
+      });
+    }
+  }
+}
+
+function drawBackground(time) {
+  const pal = JUNGLE_PALETTES[paletteIdx];
+
+  // 1. Lush Jungle Canopy Sky Gradient
+  const skyGrad = bgCtx.createLinearGradient(0, 0, 0, ch * 0.68);
+  skyGrad.addColorStop(0, pal.skyTop);
+  skyGrad.addColorStop(1, pal.skyBot);
+  bgCtx.fillStyle = skyGrad;
+  bgCtx.fillRect(0, 0, cw, ch);
+
+  // 2. Shimmering Golden Sunbeams filtering through canopy
+  bgCtx.save();
+  bgCtx.fillStyle = pal.rayColor;
+  for (let i = 0; i < 4; i++) {
+    const sway = Math.sin(time * 0.0007 + i) * 35;
+    const rx = cw * (0.15 + i * 0.24) + sway;
+    bgCtx.beginPath();
+    bgCtx.moveTo(rx, 0);
+    bgCtx.lineTo(rx + 95, 0);
+    bgCtx.lineTo(rx + 260, ch);
+    bgCtx.lineTo(rx + 80, ch);
+    bgCtx.closePath();
+    bgCtx.fill();
+  }
+  bgCtx.restore();
+
+  // 3. Distant Jungle Cliffs & Lush Foliage Silhouettes
+  bgCtx.fillStyle = '#063726';
+  bgCtx.beginPath();
+  bgCtx.moveTo(0, ch * 0.62);
+  bgCtx.quadraticCurveTo(cw * 0.18, ch * 0.25, cw * 0.36, ch * 0.52);
+  bgCtx.quadraticCurveTo(cw * 0.5, ch * 0.18, cw * 0.66, ch * 0.52);
+  bgCtx.quadraticCurveTo(cw * 0.84, ch * 0.24, cw, ch * 0.58);
+  bgCtx.lineTo(cw, ch);
+  bgCtx.lineTo(0, ch);
+  bgCtx.closePath();
+  bgCtx.fill();
+
+  // 4. Center Grand Cascading Waterfall
+  const wfX = cw * 0.5;
+  const wfTop = ch * 0.26;
+  const wfBot = ch * 0.64;
+  const wfGrad = bgCtx.createLinearGradient(wfX, wfTop, wfX, wfBot);
+  wfGrad.addColorStop(0, 'rgba(186, 230, 253, 0.75)');
+  wfGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.65)');
+  wfGrad.addColorStop(1, 'rgba(14, 165, 233, 0.85)');
+  bgCtx.fillStyle = wfGrad;
+  bgCtx.beginPath();
+  bgCtx.moveTo(wfX - 95, wfTop);
+  bgCtx.lineTo(wfX + 95, wfTop);
+  bgCtx.lineTo(wfX + 130, wfBot);
+  bgCtx.lineTo(wfX - 130, wfBot);
+  bgCtx.closePath();
+  bgCtx.fill();
+
+  // Animated Waterfall Streams
+  bgCtx.strokeStyle = 'rgba(240, 249, 255, 0.7)';
+  bgCtx.lineWidth = 4;
+  bgCtx.lineCap = 'round';
+  waterfallDrops.forEach(d => {
+    d.yRatio = (d.yRatio + d.speed) % 1;
+    const x = wfX + d.xOffset * (0.85 + d.yRatio * 0.3);
+    const y = wfTop + d.yRatio * (wfBot - wfTop);
+    bgCtx.globalAlpha = d.alpha;
+    bgCtx.beginPath();
+    bgCtx.moveTo(x, y);
+    bgCtx.lineTo(x, Math.min(wfBot, y + d.length));
+    bgCtx.stroke();
+  });
+  bgCtx.globalAlpha = 1;
+
+  // Waterfall Plunge Foam Clouds
+  for (let i = -4; i <= 4; i++) {
+    const pulse = Math.sin(time * 0.004 + i) * 5;
+    bgCtx.fillStyle = 'rgba(224, 242, 254, 0.65)';
+    bgCtx.beginPath();
+    bgCtx.arc(wfX + i * 32, wfBot + pulse, 18 + Math.abs(pulse), 0, Math.PI * 2);
+    bgCtx.fill();
+  }
+
+  // 5. Tropical River Lagoon in Foreground
+  const riverGrad = bgCtx.createLinearGradient(0, ch * 0.6, 0, ch);
+  riverGrad.addColorStop(0, pal.waterTop);
+  riverGrad.addColorStop(1, pal.waterBot);
+  bgCtx.fillStyle = riverGrad;
+  bgCtx.fillRect(0, ch * 0.61, cw, ch * 0.39);
+
+  // Shimmering Water Current Ripples
+  bgCtx.strokeStyle = 'rgba(186, 230, 253, 0.25)';
+  bgCtx.lineWidth = 3;
+  for (let i = 0; i < 9; i++) {
+    const ry = ch * (0.65 + i * 0.038);
+    const rx = ((time * 0.04 * (i % 2 === 0 ? 1 : -1) + i * 210) % (cw + 200)) - 100;
+    bgCtx.beginPath();
+    bgCtx.moveTo(rx - 70, ry);
+    bgCtx.quadraticCurveTo(rx, ry - 6, rx + 70, ry);
+    bgCtx.stroke();
+  }
+
+  // 6. Swaying Tropical Palm & Monstera Fronds on Left & Right Sides
+  drawJungleFoliageBorder(time);
+
+  // 7. Ambient Flying Morpho Butterflies
+  butterflies.forEach(b => {
+    b.x += b.vx;
+    if (b.x > cw + 40) b.x = -40;
+    if (b.x < -40) b.x = cw + 40;
+    const by = b.y + Math.sin(time * 0.004 + b.phase) * 22;
+    const wing = Math.abs(Math.sin(time * 0.015 + b.phase)) * 11;
+
+    bgCtx.save();
+    bgCtx.translate(b.x, by);
+    bgCtx.fillStyle = b.hue;
+    bgCtx.beginPath();
+    bgCtx.ellipse(-5, -2, wing, 8, -0.3, 0, Math.PI * 2);
+    bgCtx.ellipse(5, -2, wing, 8, 0.3, 0, Math.PI * 2);
+    bgCtx.fill();
+    bgCtx.restore();
+  });
+}
+
+function drawJungleFoliageBorder(time) {
+  const sway = Math.sin(time * 0.0018) * 14;
+  bgCtx.fillStyle = '#052e16';
+
+  // Left giant palm fronds
+  for (let i = 0; i < 4; i++) {
+    bgCtx.save();
+    bgCtx.translate(-20, ch * (0.15 + i * 0.22));
+    bgCtx.rotate((i * 0.12 - 0.2) + sway * 0.004);
+    bgCtx.beginPath();
+    bgCtx.moveTo(0, 0);
+    bgCtx.quadraticCurveTo(95, -45, 185, 10);
+    bgCtx.quadraticCurveTo(95, 35, 0, 0);
+    bgCtx.fill();
+    bgCtx.restore();
+
+    // Right giant palm fronds
+    bgCtx.save();
+    bgCtx.translate(cw + 20, ch * (0.15 + i * 0.22));
+    bgCtx.scale(-1, 1);
+    bgCtx.rotate((i * 0.12 - 0.2) - sway * 0.004);
+    bgCtx.beginPath();
+    bgCtx.moveTo(0, 0);
+    bgCtx.quadraticCurveTo(95, -45, 185, 10);
+    bgCtx.quadraticCurveTo(95, 35, 0, 0);
+    bgCtx.fill();
+    bgCtx.restore();
+  }
+}
+
+function drawCelebrationFX(time) {
+  fxCtx.clearRect(0, 0, cw, ch);
+
+  if (activeCelebration) {
+    const elapsed = time - activeCelebration.startTime;
+    const progress = Math.min(1, elapsed / activeCelebration.duration);
+    const alpha = Math.sin(progress * Math.PI);
+
+    if (activeCelebration.mode === 0) {
+      // Double Rainbow Arch over the Waterfall!
+      const rainbowColors = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#38bdf8', '#a855f7'];
+      fxCtx.save();
+      fxCtx.globalAlpha = alpha * 0.72;
+      rainbowColors.forEach((col, i) => {
+        fxCtx.strokeStyle = col;
+        fxCtx.lineWidth = 11;
+        fxCtx.beginPath();
+        fxCtx.arc(cw * 0.5, ch * 0.72, Math.min(cw, ch) * 0.46 - i * 11, Math.PI, 0);
+        fxCtx.stroke();
+      });
+      fxCtx.restore();
+    } else if (activeCelebration.mode === 2) {
+      // Glowing Bioluminescent Orchids blooming along the borders
+      fxCtx.save();
+      fxCtx.globalAlpha = alpha;
+      const orchidSpots = [
+        [cw * 0.12, ch * 0.45], [cw * 0.88, ch * 0.45],
+        [cw * 0.22, ch * 0.28], [cw * 0.78, ch * 0.28]
+      ];
+      orchidSpots.forEach(([ox, oy], idx) => {
+        const s = (0.5 + Math.sin(progress * Math.PI) * 0.7) * 32;
+        fxCtx.translate(ox, oy);
+        for (let p = 0; p < 5; p++) {
+          fxCtx.rotate((Math.PI * 2) / 5);
+          fxCtx.fillStyle = idx % 2 === 0 ? '#f472b6' : '#2dd4bf';
+          fxCtx.beginPath();
+          fxCtx.ellipse(0, -s * 0.7, s * 0.42, s * 0.75, 0, 0, Math.PI * 2);
+          fxCtx.fill();
+        }
+        fxCtx.fillStyle = '#fde047';
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, s * 0.3, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.setTransform(1, 0, 0, 1, 0, 0);
+      });
+      fxCtx.restore();
+    } else if (activeCelebration.mode === 3) {
+      // Scarlet Macaw Flyover across the top sky!
+      fxCtx.save();
+      for (let m = 0; m < 3; m++) {
+        const mx = -120 + (cw + 280) * progress - m * 110;
+        const my = ch * (0.22 + m * 0.07) + Math.sin(time * 0.015 + m) * 18;
+        const flap = Math.sin(time * 0.025 + m) * 26;
+        fxCtx.fillStyle = ['#ef4444', '#facc15', '#38bdf8'][m];
+        fxCtx.beginPath();
+        fxCtx.moveTo(mx, my);
+        fxCtx.quadraticCurveTo(mx - 25, my - flap, mx - 48, my - flap * 0.6);
+        fxCtx.quadraticCurveTo(mx - 15, my + 8, mx, my);
+        fxCtx.fill();
+        fxCtx.beginPath();
+        fxCtx.ellipse(mx, my, 24, 9, -0.1, 0, Math.PI * 2);
+        fxCtx.fill();
+      }
+      fxCtx.restore();
+    }
+  }
+
+  // Update & Draw Foreground Particles (Mangoes, Splash Droplets, Fireflies, Leaves)
+  for (let i = fxParticles.length - 1; i >= 0; i--) {
+    const p = fxParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.014;
+
+    if (p.type === 'droplet' || p.type === 'mango' || p.type === 'flower') {
+      p.vy += 0.28; // gravity
+    } else if (p.type === 'leaf') {
+      p.vy += 0.12;
+      p.rot += p.vRot;
+    }
+
+    if (p.life <= 0) {
+      fxParticles.splice(i, 1);
+      continue;
+    }
+
+    fxCtx.save();
+    fxCtx.globalAlpha = Math.max(0, p.life);
+    fxCtx.translate(p.x, p.y);
+    if (p.rot) fxCtx.rotate(p.rot);
+
+    if (p.type === 'mango') {
+      fxCtx.fillStyle = p.color;
+      fxCtx.beginPath();
+      fxCtx.ellipse(0, 0, p.size, p.size * 0.72, 0.3, 0, Math.PI * 2);
+      fxCtx.fill();
+      fxCtx.fillStyle = '#22c55e';
+      fxCtx.fillRect(-3, -p.size, 6, 7);
+    } else if (p.type === 'flower') {
+      fxCtx.fillStyle = p.color;
+      for (let k = 0; k < 5; k++) {
+        fxCtx.rotate((Math.PI * 2) / 5);
+        fxCtx.beginPath();
+        fxCtx.arc(0, -p.size * 0.5, p.size * 0.42, 0, Math.PI * 2);
+        fxCtx.fill();
+      }
+      fxCtx.fillStyle = '#fef08a';
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, p.size * 0.28, 0, Math.PI * 2);
+      fxCtx.fill();
+    } else if (p.type === 'leaf') {
+      fxCtx.fillStyle = p.color;
+      fxCtx.beginPath();
+      fxCtx.moveTo(-p.size, 0);
+      fxCtx.quadraticCurveTo(0, -p.size * 0.75, p.size, 0);
+      fxCtx.quadraticCurveTo(0, p.size * 0.75, -p.size, 0);
+      fxCtx.fill();
+    } else {
+      // Droplet or Glowing Firefly
+      fxCtx.fillStyle = p.color;
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, p.size, 0, Math.PI * 2);
+      fxCtx.fill();
+    }
+    fxCtx.restore();
+  }
+}
+
+// Update Animal Eye Tracking & Subtle Breathing every frame
+function updateAnimalRigAnimations(time) {
+  const breath = Math.sin(time * 0.0032) * 0.025;
+  const headTilt = ((pointerPos.x / cw) - 0.5) * 6;
+
+  document.querySelectorAll('.animal-rig').forEach((rig, idx) => {
+    const head = rig.querySelector('.animal-head');
+    if (head) {
+      const baseTransform = head.getAttribute('data-base-transform') || head.getAttribute('transform') || '';
+      if (!head.hasAttribute('data-base-transform')) {
+        head.setAttribute('data-base-transform', baseTransform);
+      }
+      head.setAttribute('transform', `${baseTransform} rotate(${headTilt.toFixed(2)}) scale(${1 + breath})`);
+    }
+  });
+
+  // Shift pupils toward cursor
+  const dx = ((pointerPos.x / cw) - 0.5) * 4.2;
+  const dy = ((pointerPos.y / ch) - 0.5) * 3.2;
+  document.querySelectorAll('.animal-pupil').forEach(pupil => {
+    pupil.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+  });
+}
+
+function mainLoop(time) {
+  drawBackground(time);
+  drawCelebrationFX(time);
+  updateAnimalRigAnimations(time);
+  requestAnimationFrame(mainLoop);
+}
+
+window.onload = () => {
+  loadNextTask();
+  requestAnimationFrame(mainLoop);
+};
+</script>
+</body>
+</html>
