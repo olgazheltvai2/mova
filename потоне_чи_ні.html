@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Властивості предметів</title>
+<style>
+  /* Скидання базових стилів та заборона виділення */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #053254;
+    font-family: sans-serif;
+  }
+
+  /* Головний контейнер гри */
+  #game-wrap {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Головне SVG-полотно сцени (завжди повністю вміщується по висоті й ширині) */
+  #scene-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Анімації живої природи на фоні */
+  @keyframes driftCloud1 {
+    0% { transform: translateX(-300px); }
+    100% { transform: translateX(1500px); }
+  }
+  @keyframes driftCloud2 {
+    0% { transform: translateX(1500px); }
+    100% { transform: translateX(-350px); }
+  }
+  @keyframes swayReed {
+    0%, 100% { transform: rotate(-3deg); }
+    50% { transform: rotate(4deg); }
+  }
+  @keyframes swayWeed {
+    0%, 100% { transform: skewX(-5deg); }
+    50% { transform: skewX(5deg); }
+  }
+  @keyframes waveMove1 {
+    0%, 100% { transform: translateX(0px) translateY(0px); }
+    50% { transform: translateX(-35px) translateY(3px); }
+  }
+  @keyframes waveMove2 {
+    0%, 100% { transform: translateX(-20px) translateY(2px); }
+    50% { transform: translateX(25px) translateY(-3px); }
+  }
+  @keyframes sunRayPulse {
+    0%, 100% { opacity: 0.16; }
+    50% { opacity: 0.34; }
+  }
+  @keyframes lilyBob {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(5px) rotate(1deg); }
+  }
+
+  .cloud-1 { animation: driftCloud1 70s linear infinite; }
+  .cloud-2 { animation: driftCloud2 90s linear infinite; }
+  .reed-1 { transform-origin: 120px 310px; animation: swayReed 4.5s ease-in-out infinite; }
+  .reed-2 { transform-origin: 1080px 310px; animation: swayReed 5.2s ease-in-out infinite reverse; }
+  .weed-1 { transform-origin: 180px 650px; animation: swayWeed 4s ease-in-out infinite; }
+  .weed-2 { transform-origin: 480px 655px; animation: swayWeed 5s ease-in-out infinite reverse; }
+  .weed-3 { transform-origin: 820px 650px; animation: swayWeed 4.3s ease-in-out infinite; }
+  .weed-4 { transform-origin: 1020px 650px; animation: swayWeed 5.5s ease-in-out infinite reverse; }
+  .wave-back { animation: waveMove1 5s ease-in-out infinite; }
+  .wave-front { animation: waveMove2 3.8s ease-in-out infinite; }
+  .sun-ray { animation: sunRayPulse 6s ease-in-out infinite; }
+  #frog-lily-group { transform-origin: 210px 325px; animation: lilyBob 3.5s ease-in-out infinite; }
+
+  /* Предмет, на який можна натиснути для звукової підказки */
+  #item-holder {
+    cursor: pointer;
+  }
+
+  /* ==================== СТАЦІОНАРНІ КНОПКИ ІНТЕРФЕЙСУ ==================== */
+  /* Сам елемент button ніколи не змінює своїх координат, тому не втікає від миші */
+  .ui-btn {
+    position: absolute;
+    background: transparent;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Візуальна частина кнопки всередині (масштабується від центру без зміщення хітбоксу) */
+  .ui-btn svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    transform-origin: center center;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.18s ease;
+    filter: drop-shadow(0 5px 8px rgba(0, 20, 40, 0.4));
+  }
+
+  .ui-btn:hover svg {
+    transform: scale(1.08);
+    filter: brightness(1.08) drop-shadow(0 7px 12px rgba(0, 20, 40, 0.5));
+  }
+
+  .ui-btn:active svg {
+    transform: scale(0.92);
+  }
+
+  /* Мінімалістичні кнопки навігації (Назад / Далі) у верхніх кутах */
+  #btn-prev {
+    top: 16px;
+    left: 20px;
+    width: clamp(54px, 7.5vmin, 72px);
+    height: clamp(54px, 7.5vmin, 72px);
+  }
+
+  #btn-next {
+    top: 16px;
+    right: 20px;
+    width: clamp(54px, 7.5vmin, 72px);
+    height: clamp(54px, 7.5vmin, 72px);
+  }
+
+  /* Кнопки вибору: Попливе (вгорі праворуч) та Потоне (внизу праворуч) */
+  #btn-float {
+    right: clamp(24px, 5vw, 80px);
+    top: 18vh;
+    width: clamp(105px, 18vmin, 148px);
+    height: clamp(105px, 18vmin, 148px);
+  }
+
+  #btn-sink {
+    right: clamp(24px, 5vw, 80px);
+    bottom: 12vh;
+    width: clamp(105px, 18vmin, 148px);
+    height: clamp(105px, 18vmin, 148px);
+  }
+
+  /* Анімації фідбеку для внутрішнього SVG кнопки */
+  @keyframes btnShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-12px) rotate(-6deg); }
+    40% { transform: translateX(12px) rotate(6deg); }
+    60% { transform: translateX(-8px) rotate(-4deg); }
+    80% { transform: translateX(8px) rotate(4deg); }
+  }
+
+  @keyframes btnPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.22); }
+    100% { transform: scale(1); }
+  }
+
+  .shake-anim svg {
+    animation: btnShake 0.42s ease-in-out;
+  }
+
+  .pop-anim svg {
+    animation: btnPop 0.36s ease-out;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <!-- ================= КНОПКИ НАВІГАЦІЇ ТА ВИБОРУ ================= -->
+  <!-- Кнопка «НАЗАД» (попередній предмет) -->
+  <button id="btn-prev" class="ui-btn" aria-label="Попередній">
+    <svg viewBox="-36 -36 72 72">
+      <defs>
+        <linearGradient id="uiWood" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#e09f5a"/>
+          <stop offset="50%" stop-color="#b87333"/>
+          <stop offset="100%" stop-color="#7f4616"/>
+        </linearGradient>
+      </defs>
+      <circle cx="0" cy="0" r="31" fill="url(#uiWood)" stroke="#4a2508" stroke-width="3.5"/>
+      <circle cx="0" cy="0" r="24" fill="#fefae0" opacity="0.22"/>
+      <path d="M8,-13 L-9,0 L8,13 Z" fill="#fff3b0" stroke="#4a2508" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- Кнопка «ДАЛІ» (одразу наступний предмет без проходження) -->
+  <button id="btn-next" class="ui-btn" aria-label="Наступний">
+    <svg viewBox="-36 -36 72 72">
+      <circle cx="0" cy="0" r="31" fill="url(#uiWood)" stroke="#4a2508" stroke-width="3.5"/>
+      <circle cx="0" cy="0" r="24" fill="#fefae0" opacity="0.22"/>
+      <path d="M-8,-13 L9,0 L-8,13 Z" fill="#fff3b0" stroke="#4a2508" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- Кнопка «ПОПЛИВЕ» -->
+  <button id="btn-float" class="ui-btn" aria-label="Попливе">
+    <svg viewBox="-72 -72 144 144">
+      <defs>
+        <linearGradient id="floatInner" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#e0fbfc"/>
+          <stop offset="55%" stop-color="#98f5e1"/>
+          <stop offset="100%" stop-color="#00bbf9"/>
+        </linearGradient>
+      </defs>
+      <circle cx="0" cy="0" r="65" fill="url(#uiWood)" stroke="#4a2508" stroke-width="4.5"/>
+      <circle cx="0" cy="0" r="55" fill="url(#floatInner)" stroke="#ffffff" stroke-width="2.5"/>
+      <!-- Хвиля та кораблик на поверхні -->
+      <path d="M-48,14 Q-24,4 0,14 T48,14 A54,54 0 0,1 -48,14 Z" fill="#0077b6" opacity="0.88"/>
+      <path d="M-48,14 Q-24,4 0,14 T48,14" stroke="#ffffff" stroke-width="3" fill="none"/>
+      <polygon points="-24,8 24,8 15,20 -15,20" fill="#ff9f1c" stroke="#582f0e" stroke-width="2"/>
+      <polygon points="-2,6 -2,-16 16,4" fill="#ffffff" stroke="#582f0e" stroke-width="1.5"/>
+      <!-- Зелена стрілка ВГОРУ -->
+      <path d="M0,-44 L20,-22 L9,-22 L9,-6 L-9,-6 L-9,-22 L-20,-22 Z" fill="#38b000" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- Кнопка «ПОТОНЕ» -->
+  <button id="btn-sink" class="ui-btn" aria-label="Потоне">
+    <svg viewBox="-72 -72 144 144">
+      <defs>
+        <linearGradient id="sinkInner" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#48cae4"/>
+          <stop offset="55%" stop-color="#023e8a"/>
+          <stop offset="100%" stop-color="#d9ab57"/>
+        </linearGradient>
+      </defs>
+      <circle cx="0" cy="0" r="65" fill="url(#uiWood)" stroke="#4a2508" stroke-width="4.5"/>
+      <circle cx="0" cy="0" r="55" fill="url(#sinkInner)" stroke="#90e0ef" stroke-width="2.5"/>
+      <!-- Поверхня води зверху та камінь на дні внизу -->
+      <path d="M-46,-28 Q-23,-35 0,-28 T46,-28" stroke="#caf0f8" stroke-width="3" fill="none"/>
+      <path d="M-45,32 Q0,22 45,32 A54,54 0 0,1 -45,32 Z" fill="#d9ab57"/>
+      <ellipse cx="0" cy="34" rx="18" ry="10" fill="#495057" stroke="#212529" stroke-width="2"/>
+      <!-- Бульбашки -->
+      <circle cx="-22" cy="-6" r="4" fill="#caf0f8" opacity="0.8"/>
+      <circle cx="24" cy="4" r="5" fill="#caf0f8" opacity="0.8"/>
+      <circle cx="20" cy="-14" r="3" fill="#caf0f8" opacity="0.8"/>
+      <!-- Червона стрілка ВНИЗ -->
+      <path d="M0,20 L20,-2 L9,-2 L9,-20 L-9,-20 L-9,-2 L-20,-2 Z" fill="#ff595e" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- ================= ГОЛОВНА СЦЕНА ВОДОЙМИ ================= -->
+  <!-- preserveAspectRatio="xMidYMid meet" гарантує, що вся висота від гілки до дна 100% видна -->
+  <svg id="scene-svg" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <!-- Градієнти природи -->
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#4facfe"/>
+        <stop offset="55%" stop-color="#9be7ff"/>
+        <stop offset="100%" stop-color="#dff8ff"/>
+      </linearGradient>
+
+      <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fffde4"/>
+        <stop offset="40%" stop-color="#ffe66d"/>
+        <stop offset="100%" stop-color="#ffb703" stop-opacity="0"/>
+      </radialGradient>
+
+      <linearGradient id="hillFar" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#76c893"/>
+        <stop offset="100%" stop-color="#52b788"/>
+      </linearGradient>
+
+      <linearGradient id="hillNear" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#52b788"/>
+        <stop offset="100%" stop-color="#2d6a4f"/>
+      </linearGradient>
+
+      <linearGradient id="waterDeep" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1ca3ec" stop-opacity="0.88"/>
+        <stop offset="35%" stop-color="#0f76b8" stop-opacity="0.94"/>
+        <stop offset="80%" stop-color="#084c7d" stop-opacity="0.97"/>
+        <stop offset="100%" stop-color="#053254" stop-opacity="0.99"/>
+      </linearGradient>
+
+      <linearGradient id="waveGrad1" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#72efdd" stop-opacity="0.75"/>
+        <stop offset="100%" stop-color="#1ca3ec" stop-opacity="0.9"/>
+      </linearGradient>
+
+      <linearGradient id="waveGrad2" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#a8f9ff" stop-opacity="0.85"/>
+        <stop offset="20%" stop-color="#38b6ff" stop-opacity="0.85"/>
+        <stop offset="100%" stop-color="#0f76b8" stop-opacity="0.0"/>
+      </linearGradient>
+
+      <linearGradient id="sandGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f3d292"/>
+        <stop offset="45%" stop-color="#d9ab57"/>
+        <stop offset="100%" stop-color="#a47528"/>
+      </linearGradient>
+
+      <linearGradient id="rayGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.5"/>
+        <stop offset="100%" stop-color="#72efdd" stop-opacity="0"/>
+      </linearGradient>
+
+      <linearGradient id="woodBranch" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#8d5524"/>
+        <stop offset="50%" stop-color="#6f3e14"/>
+        <stop offset="100%" stop-color="#4a2508"/>
+      </linearGradient>
+
+      <linearGradient id="woodBtnGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#e09f5a"/>
+        <stop offset="50%" stop-color="#b87333"/>
+        <stop offset="100%" stop-color="#7f4616"/>
+      </linearGradient>
+
+      <radialGradient id="frogSkin" cx="45%" cy="35%" r="60%">
+        <stop offset="0%" stop-color="#aacc00"/>
+        <stop offset="65%" stop-color="#55a630"/>
+        <stop offset="100%" stop-color="#2b9348"/>
+      </radialGradient>
+
+      <radialGradient id="frogBelly" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffffb5"/>
+        <stop offset="100%" stop-color="#d4d700"/>
+      </radialGradient>
+
+      <linearGradient id="lilyGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#80ed99"/>
+        <stop offset="60%" stop-color="#38a3a5"/>
+        <stop offset="100%" stop-color="#22577a"/>
+      </linearGradient>
+
+      <!-- Градієнти для 22 предметів -->
+      <radialGradient id="duckGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#fff78a"/>
+        <stop offset="45%" stop-color="#ffd000"/>
+        <stop offset="100%" stop-color="#e08e00"/>
+      </radialGradient>
+
+      <linearGradient id="beakGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ff9e00"/>
+        <stop offset="100%" stop-color="#e85d04"/>
+      </linearGradient>
+
+      <linearGradient id="ironGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ced4da"/>
+        <stop offset="40%" stop-color="#6c757d"/>
+        <stop offset="80%" stop-color="#343a40"/>
+        <stop offset="100%" stop-color="#212529"/>
+      </linearGradient>
+
+      <linearGradient id="silverGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="35%" stop-color="#dee2e6"/>
+        <stop offset="70%" stop-color="#868e96"/>
+        <stop offset="100%" stop-color="#495057"/>
+      </linearGradient>
+
+      <radialGradient id="goldGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#fff3b0"/>
+        <stop offset="40%" stop-color="#ffbe0b"/>
+        <stop offset="85%" stop-color="#c97a00"/>
+        <stop offset="100%" stop-color="#8a4f00"/>
+      </radialGradient>
+
+      <radialGradient id="appleGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#ff758f"/>
+        <stop offset="40%" stop-color="#d90429"/>
+        <stop offset="85%" stop-color="#800f2f"/>
+        <stop offset="100%" stop-color="#590d22"/>
+      </radialGradient>
+
+      <radialGradient id="stoneGrad" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#adb5bd"/>
+        <stop offset="55%" stop-color="#6c757d"/>
+        <stop offset="100%" stop-color="#343a40"/>
+      </radialGradient>
+
+      <linearGradient id="corkGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#e6ccb2"/>
+        <stop offset="40%" stop-color="#ddb892"/>
+        <stop offset="80%" stop-color="#b08968"/>
+        <stop offset="100%" stop-color="#7f5539"/>
+      </linearGradient>
+
+      <radialGradient id="marbleGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#caf0f8" stop-opacity="0.95"/>
+        <stop offset="45%" stop-color="#00b4d8" stop-opacity="0.88"/>
+        <stop offset="85%" stop-color="#03045e" stop-opacity="0.92"/>
+        <stop offset="100%" stop-color="#0077b6" stop-opacity="0.95"/>
+      </radialGradient>
+
+      <linearGradient id="oakLeafGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ffbe0b"/>
+        <stop offset="50%" stop-color="#fb5607"/>
+        <stop offset="100%" stop-color="#9b2226"/>
+      </linearGradient>
+
+      <linearGradient id="cupGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#90e0ef"/>
+        <stop offset="30%" stop-color="#e0fbfc"/>
+        <stop offset="75%" stop-color="#48cae4"/>
+        <stop offset="100%" stop-color="#0077b6"/>
+      </linearGradient>
+
+      <linearGradient id="featherGrad" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0%" stop-color="#7209b7"/>
+        <stop offset="45%" stop-color="#4cc9f0"/>
+        <stop offset="100%" stop-color="#f72585"/>
+      </linearGradient>
+
+      <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#001d2e" flood-opacity="0.38"/>
+      </filter>
+    </defs>
+
+    <!-- ================= 1. ШИРОКИЙ ФОН (розтягнутий за межі viewBox для ультрашироких екранів) ================= -->
+    <rect x="-800" y="-400" width="2800" height="730" fill="url(#skyGrad)"/>
+
+    <!-- Сонце -->
+    <circle cx="920" cy="85" r="76" fill="url(#sunGrad)"/>
+    <circle cx="920" cy="85" r="36" fill="#fff9c4"/>
+
+    <!-- Хмаринки -->
+    <g class="cloud-1" opacity="0.9">
+      <ellipse cx="140" cy="80" rx="55" ry="26" fill="#ffffff"/>
+      <ellipse cx="175" cy="70" rx="45" ry="32" fill="#ffffff"/>
+      <ellipse cx="215" cy="83" rx="48" ry="24" fill="#ffffff"/>
+      <ellipse cx="175" cy="89" rx="75" ry="18" fill="#e3f6ff"/>
+    </g>
+    <g class="cloud-2" opacity="0.82">
+      <ellipse cx="420" cy="120" rx="45" ry="20" fill="#ffffff"/>
+      <ellipse cx="455" cy="110" rx="38" ry="26" fill="#ffffff"/>
+      <ellipse cx="485" cy="122" rx="40" ry="18" fill="#ffffff"/>
+    </g>
+
+    <!-- Далекі та близькі зелені береги -->
+    <path d="M-800,315 Q-200,220 180,260 T650,285 T1150,255 T2000,305 L2000,340 L-800,340 Z" fill="url(#hillFar)"/>
+    <path d="M-800,315 Q-100,230 310,315 L-800,335 Z" fill="url(#hillNear)"/>
+    <path d="M880,315 Q1250,225 2000,305 L2000,335 Z" fill="url(#hillNear)"/>
+
+    <!-- Очерет на лівому та правому березі -->
+    <g class="reed-1">
+      <path d="M95,320 Q85,220 70,150" stroke="#2d6a4f" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M115,320 Q120,210 135,135" stroke="#40916c" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <rect x="124" y="148" width="12" height="44" rx="6" transform="rotate(8 130 170)" fill="#582f0e"/>
+      <path d="M115,280 Q80,235 55,220 Q88,255 114,295 Z" fill="#52b788"/>
+      <path d="M118,265 Q155,220 175,210 Q145,245 117,280 Z" fill="#40916c"/>
+    </g>
+    <g class="reed-2">
+      <path d="M1090,320 Q1100,225 1115,155" stroke="#2d6a4f" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <rect x="1104" y="165" width="12" height="42" rx="6" transform="rotate(7 1110 185)" fill="#582f0e"/>
+      <path d="M1070,320 Q1055,240 1040,175" stroke="#52b788" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M1088,285 Q1050,240 1025,230 Q1060,260 1088,300 Z" fill="#40916c"/>
+    </g>
+
+    <!-- Верхня гілка дерева з мотузкою, яка тримає предмет -->
+    <g id="tree-crane">
+      <path d="M-600,20 Q200,12 470,40 Q565,52 615,46 Q630,44 632,56 Q628,68 605,68 Q480,73 200,58 L-600,82 Z" fill="url(#woodBranch)" filter="url(#dropShadow)"/>
+      <path d="M140,42 Q230,40 310,48 M350,46 Q450,54 540,54" stroke="#3b1d06" stroke-width="3" fill="none" opacity="0.6" stroke-linecap="round"/>
+      <!-- Листя на гілці -->
+      <path d="M320,40 Q340,10 375,18 Q355,46 320,40 Z" fill="#52b788"/>
+      <path d="M460,46 Q485,15 520,25 Q495,53 460,46 Z" fill="#74c69d"/>
+      <path d="M445,50 Q420,20 390,32 Q415,56 445,50 Z" fill="#40916c"/>
+      <!-- Мотузка та тримач предмета -->
+      <line id="crane-rope" x1="600" y1="60" x2="600" y2="124" stroke="#d4a373" stroke-width="5" stroke-dasharray="6,3"/>
+      <circle cx="600" cy="60" r="9" fill="#b08968" stroke="#582f0e" stroke-width="3"/>
+      <g id="rope-claw" transform="translate(600, 124)">
+        <path id="claw-left" d="M-4,0 Q-22,12 -14,28" stroke="#8d5524" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <path id="claw-right" d="M4,0 Q22,12 14,28" stroke="#8d5524" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <circle cx="0" cy="0" r="7" fill="#e09f5a" stroke="#582f0e" stroke-width="2.5"/>
+      </g>
+    </g>
+
+    <!-- Задня хвиля води -->
+    <g class="wave-back">
+      <path d="M-800,305 Q-680,290 -560,305 T-320,305 T-80,305 T160,305 T400,305 T640,305 T880,305 T1120,305 T1360,305 T1600,305 T1840,305 T2080,305 L2080,1000 L-800,1000 Z" fill="url(#waveGrad1)"/>
+    </g>
+
+    <!-- ================= 2. ЖАБЕНЯ НА ЛАТАТТІ ================= -->
+    <g id="frog-lily-group">
+      <!-- Латаття -->
+      <ellipse cx="210" cy="332" rx="95" ry="26" fill="#16425b" opacity="0.35"/>
+      <path d="M210,326 L125,318 A92,25 0 1,0 145,308 Z" fill="url(#lilyGrad)" stroke="#1b4332" stroke-width="2.5"/>
+      <path d="M210,326 L275,315 M210,326 L260,338 M210,326 L195,345 M210,326 L150,335" stroke="#52b788" stroke-width="2" opacity="0.6" stroke-linecap="round"/>
+
+      <!-- Квітка лотоса -->
+      <g transform="translate(132, 308)">
+        <path d="M0,10 Q-18,-8 -6,-22 Q4,-8 0,10 Z" fill="#ff8fab"/>
+        <path d="M0,10 Q18,-8 6,-22 Q-4,-8 0,10 Z" fill="#ffb3c6"/>
+        <path d="M0,10 Q-12,-18 0,-26 Q12,-18 0,10 Z" fill="#ff4d6d"/>
+        <circle cx="0" cy="2" r="5" fill="#ffd166"/>
+      </g>
+
+      <!-- Тіло жабеняти -->
+      <g id="frog-body-group">
+        <!-- Задні лапки -->
+        <ellipse cx="166" cy="306" rx="22" ry="14" transform="rotate(-20 166 306)" fill="url(#frogSkin)" stroke="#1b4332" stroke-width="2.5"/>
+        <ellipse cx="254" cy="306" rx="22" ry="14" transform="rotate(20 254 306)" fill="url(#frogSkin)" stroke="#1b4332" stroke-width="2.5"/>
+        <path d="M142,315 Q155,308 168,318 Z" fill="#38b000" stroke="#1b4332" stroke-width="2"/>
+        <path d="M278,315 Q265,308 252,318 Z" fill="#38b000" stroke="#1b4332" stroke-width="2"/>
+
+        <!-- Тулуб і животик -->
+        <ellipse cx="210" cy="285" rx="44" ry="38" fill="url(#frogSkin)" stroke="#1b4332" stroke-width="2.5"/>
+        <ellipse cx="210" cy="292" rx="29" ry="26" fill="url(#frogBelly)"/>
+
+        <!-- Передні лапки -->
+        <path d="M180,285 Q172,308 184,322" stroke="url(#frogSkin)" stroke-width="11" fill="none" stroke-linecap="round"/>
+        <path d="M240,285 Q248,308 236,322" stroke="url(#frogSkin)" stroke-width="11" fill="none" stroke-linecap="round"/>
+
+        <!-- Голова та щічки -->
+        <ellipse cx="210" cy="246" rx="48" ry="32" fill="url(#frogSkin)" stroke="#1b4332" stroke-width="2.5"/>
+        <ellipse cx="174" cy="252" rx="9" ry="6" fill="#ff758f" opacity="0.65"/>
+        <ellipse cx="246" cy="252" rx="9" ry="6" fill="#ff758f" opacity="0.65"/>
+
+        <!-- Очі -->
+        <circle cx="186" cy="218" r="18" fill="url(#frogSkin)" stroke="#1b4332" stroke-width="2.5"/>
+        <circle cx="234" cy="218" r="18" fill="url(#frogSkin)" stroke="#1b4332" stroke-width="2.5"/>
+        <circle cx="186" cy="218" r="13" fill="#ffffff"/>
+        <circle cx="234" cy="218" r="13" fill="#ffffff"/>
+
+        <!-- Зіниці -->
+        <g id="frog-pupils">
+          <circle cx="189" cy="218" r="6.5" fill="#1b263b"/>
+          <circle cx="191" cy="215" r="2.5" fill="#ffffff"/>
+          <circle cx="237" cy="218" r="6.5" fill="#1b263b"/>
+          <circle cx="239" cy="215" r="2.5" fill="#ffffff"/>
+        </g>
+
+        <!-- Повіки -->
+        <g id="frog-eyelids" opacity="0">
+          <circle cx="186" cy="218" r="14" fill="#55a630"/>
+          <line x1="173" y1="218" x2="199" y2="218" stroke="#1b4332" stroke-width="2.5"/>
+          <circle cx="234" cy="218" r="14" fill="#55a630"/>
+          <line x1="221" y1="218" x2="247" y2="218" stroke="#1b4332" stroke-width="2.5"/>
+        </g>
+
+        <!-- Рот та язичок -->
+        <path id="frog-mouth" d="M188,252 Q210,268 232,252" stroke="#1b4332" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path id="frog-tongue" d="M202,258 Q210,278 218,258 Z" fill="#ff4d6d" opacity="0"/>
+      </g>
+    </g>
+
+    <!-- ================= 3. ПІДВОДНИЙ СВІТ ================= -->
+    <rect x="-800" y="305" width="2800" height="700" fill="url(#waterDeep)"/>
+
+    <!-- Сонячні промені під водою -->
+    <polygon class="sun-ray" points="350,305 520,305 390,650 210,650" fill="url(#rayGrad)"/>
+    <polygon class="sun-ray" points="650,305 840,305 730,650 510,650" fill="url(#rayGrad)" style="animation-delay: -2.5s;"/>
+    <polygon class="sun-ray" points="920,305 1060,305 980,650 820,650" fill="url(#rayGrad)" style="animation-delay: -4s;"/>
+
+    <!-- Зграйки рибок -->
+    <g id="bg-fishes">
+      <g id="fish-1" transform="translate(300, 440)">
+        <path d="M0,0 Q18,-12 34,0 Q18,12 0,0 Z" fill="#ff9f1c"/>
+        <polygon points="-2,0 -14,-9 -11,0 -14,9" fill="#ffbf69"/>
+        <circle cx="25" cy="-2" r="2.2" fill="#001d2e"/>
+      </g>
+      <g id="fish-2" transform="translate(850, 520) scale(-0.85, 0.85)">
+        <path d="M0,0 Q18,-12 34,0 Q18,12 0,0 Z" fill="#ff70a6"/>
+        <polygon points="-2,0 -14,-9 -11,0 -14,9" fill="#ff9770"/>
+        <circle cx="25" cy="-2" r="2.2" fill="#001d2e"/>
+      </g>
+    </g>
+
+    <!-- Водорості -->
+    <g class="weed-1">
+      <path d="M170,650 Q150,585 180,530 Q205,475 175,425 Q160,480 160,530 Q135,585 155,650 Z" fill="#2a9d8f" opacity="0.85"/>
+      <path d="M190,650 Q215,595 195,545 Q180,500 205,460 Q225,505 210,550 Q230,600 205,650 Z" fill="#52b788" opacity="0.85"/>
+    </g>
+    <g class="weed-2">
+      <path d="M475,655 Q455,600 485,550 Q505,505 480,465 Q465,510 465,555 Q445,600 462,655 Z" fill="#2a9d8f" opacity="0.75"/>
+    </g>
+    <g class="weed-3">
+      <path d="M820,650 Q845,590 815,530 Q795,480 825,430 Q845,485 832,535 Q860,590 835,650 Z" fill="#40916c" opacity="0.8"/>
+    </g>
+    <g class="weed-4">
+      <path d="M1015,650 Q990,580 1020,515 Q1045,460 1015,405 Q995,465 1000,520 Q975,580 1000,650 Z" fill="#2a9d8f" opacity="0.85"/>
+      <path d="M1035,650 Q1060,595 1040,545 Q1025,495 1050,455 Q1070,500 1055,550 Q1075,600 1050,650 Z" fill="#52b788" opacity="0.85"/>
+    </g>
+
+    <!-- Піщане дно водойми -->
+    <path d="M-800,620 Q-200,595 220,615 T720,618 T1220,612 T2000,625 L2000,1000 L-800,1000 Z" fill="url(#sandGrad)"/>
+    <ellipse cx="260" cy="650" rx="26" ry="11" fill="#b08968" opacity="0.7"/>
+    <ellipse cx="285" cy="657" rx="16" ry="8" fill="#8d6e63" opacity="0.7"/>
+    <ellipse cx="740" cy="658" rx="30" ry="12" fill="#a47528" opacity="0.65"/>
+    <ellipse cx="910" cy="645" rx="20" ry="9" fill="#8d6e63" opacity="0.6"/>
+    <!-- Мушля -->
+    <g transform="translate(410, 650) rotate(-12)">
+      <path d="M0,12 L-16,-4 Q-8,-14 0,-12 Q8,-14 16,-4 Z" fill="#ffcad4" stroke="#d88c9a" stroke-width="1.5"/>
+      <line x1="0" y1="12" x2="-8" y2="-8" stroke="#d88c9a" stroke-width="1.2"/>
+      <line x1="0" y1="12" x2="0" y2="-10" stroke="#d88c9a" stroke-width="1.2"/>
+      <line x1="0" y1="12" x2="8" y2="-8" stroke="#d88c9a" stroke-width="1.2"/>
+    </g>
+
+    <!-- ================= 4. КОНТЕЙНЕР АКТИВНОГО ПРЕДМЕТА ================= -->
+    <g id="item-holder" transform="translate(600, 185)" filter="url(#dropShadow)">
+      <!-- Сюди рендериться поточний SVG-предмет -->
+    </g>
+
+    <!-- ================= 5. ПЕРЕДНІЙ ШАР ХВИЛЬ ТА ЧАСТИНОК ================= -->
+    <g class="wave-front" pointer-events="none">
+      <path d="M-800,310 Q-670,295 -540,310 T-280,310 T-20,310 T240,310 T500,310 T760,310 T1020,310 T1280,310 T1540,310 T1800,310 T2060,310 L2060,415 L-800,415 Z" fill="url(#waveGrad2)"/>
+      <path d="M-800,310 Q-670,295 -540,310 T-280,310 T-20,310 T240,310 T500,310 T760,310 T1020,310 T1280,310 T1540,310 T1800,310 T2060,310" stroke="#ffffff" stroke-width="3.5" fill="none" opacity="0.65"/>
+    </g>
+
+    <!-- Шар для бризок, бульбашок, кіл на воді та зірочок -->
+    <g id="fx-layer" pointer-events="none"></g>
+  </svg>
+</div>
+
+<script>
+/* ============================================================================
+   1. АУДІО-СИНТЕЗАТОР (Web Audio API) — звуки води, матеріалів та емоцій
+   ============================================================================ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Звук матеріалу при натисканні на предмет (слухова підказка дитині)
+  playMaterialHint(mat) {
+    this.init();
+    const now = this.ctx.currentTime;
+
+    if (mat === 'metal') {
+      [1100, 1680, 2450].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.16 / (idx + 1), now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.45);
+      });
+    } else if (mat === 'wood') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(240, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.12);
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    } else if (mat === 'rubber') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(620, now);
+      osc.frequency.linearRampToValueAtTime(980, now + 0.08);
+      osc.frequency.linearRampToValueAtTime(700, now + 0.18);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    } else if (mat === 'glass') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1950, now);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.55);
+    } else if (mat === 'stone') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(45, now + 0.15);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.exponentialRampToValueAtTime(640, now + 0.12);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    }
+  }
+
+  // Сплеск води при зануренні
+  playSplash(isHeavy) {
+    this.init();
+    const now = this.ctx.currentTime;
+    const duration = isHeavy ? 0.55 : 0.35;
+
+    const bufferSize = this.ctx.sampleRate * duration;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(isHeavy ? 480 : 850, now);
+    filter.frequency.exponentialRampToValueAtTime(isHeavy ? 1200 : 1800, now + duration);
+    filter.Q.value = 1.8;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(isHeavy ? 0.45 : 0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start(now);
+
+    const bloop = this.ctx.createOscillator();
+    const bloopGain = this.ctx.createGain();
+    bloop.type = 'sine';
+    bloop.frequency.setValueAtTime(isHeavy ? 210 : 360, now + 0.05);
+    bloop.frequency.exponentialRampToValueAtTime(isHeavy ? 520 : 780, now + 0.25);
+    bloopGain.gain.setValueAtTime(0.28, now + 0.05);
+    bloopGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    bloop.connect(bloopGain);
+    bloopGain.connect(this.ctx.destination);
+    bloop.start(now + 0.05);
+    bloop.stop(now + 0.28);
+  }
+
+  // Бульбашки повітря під водою
+  playBubble() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const startFreq = 350 + Math.random() * 250;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(startFreq * 2.1, now + 0.11);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  // Глухий удар об піщане дно
+  playSandThud() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(115, now);
+    osc.frequency.exponentialRampToValueAtTime(38, now + 0.22);
+    gain.gain.setValueAtTime(0.38, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.24);
+  }
+
+  // Переможний акорд
+  playSuccess() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    notes.forEach((freq, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.09);
+      gain.gain.setValueAtTime(0.22, now + i * 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.09 + 0.35);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + i * 0.09);
+      osc.stop(now + i * 0.09 + 0.35);
+    });
+  }
+
+  // Кумедний звук помилки
+  playWrong() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.linearRampToValueAtTime(145, now + 0.28);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.32);
+  }
+
+  // Клік кнопки
+  playPop() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(480, now);
+    osc.frequency.exponentialRampToValueAtTime(820, now + 0.07);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+}
+
+const sfx = new SoundEngine();
+
+/* ============================================================================
+   2. БАЗА З 22 ДЕТАЛІЗОВАНИХ SVG-ПРЕДМЕТІВ
+   ============================================================================ */
+const ITEMS = [
+  // 1. Гумова качечка (Попливе)
+  {
+    id: 'duck',
+    floats: true,
+    mat: 'rubber',
+    floatOffset: -12,
+    svg: `
+      <g>
+        <path d="M-42,10 C-48,-12 -25,-12 -15,-5 C-5,0 20,-8 35,-22 C42,-10 44,18 22,28 C-5,36 -38,30 -42,10 Z" fill="url(#duckGrad)" stroke="#b86b00" stroke-width="2.5"/>
+        <circle cx="-18" cy="-22" r="22" fill="url(#duckGrad)" stroke="#b86b00" stroke-width="2.5"/>
+        <path d="M-32,-8 Q-18,-2 -4,-8" fill="url(#duckGrad)"/>
+        <path d="M-36,-24 C-54,-26 -56,-14 -36,-14 Z" fill="url(#beakGrad)" stroke="#9e3a00" stroke-width="2"/>
+        <path d="M-12,4 C5,-6 24,0 18,14 C10,22 -8,18 -12,4 Z" fill="#ffbe0b" stroke="#b86b00" stroke-width="2"/>
+        <circle cx="-24" cy="-26" r="4.5" fill="#1b263b"/>
+        <circle cx="-25.5" cy="-27.5" r="1.8" fill="#ffffff"/>
+        <ellipse cx="-10" cy="-34" rx="7" ry="3.5" transform="rotate(-20 -10 -34)" fill="#ffffff" opacity="0.65"/>
+      </g>`
+  },
+
+  // 2. Старовинний залізний ключ (Потоне)
+  {
+    id: 'key',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g transform="rotate(-25)">
+        <circle cx="-38" cy="0" r="22" fill="url(#ironGrad)" stroke="#212529" stroke-width="2.5"/>
+        <circle cx="-38" cy="0" r="9" fill="#0f76b8" fill-opacity="0.15" stroke="#212529" stroke-width="2"/>
+        <circle cx="-48" cy="-10" r="3.5" fill="#dee2e6" opacity="0.6"/>
+        <rect x="-16" y="-6" width="66" height="12" rx="5" fill="url(#ironGrad)" stroke="#212529" stroke-width="2.5"/>
+        <rect x="-12" y="-9" width="7" height="18" rx="3" fill="#adb5bd" stroke="#212529" stroke-width="2"/>
+        <path d="M22,6 L22,26 L30,26 L30,16 L36,16 L36,26 L44,26 L44,6 Z" fill="url(#ironGrad)" stroke="#212529" stroke-width="2.5" stroke-linejoin="round"/>
+        <line x1="-10" y1="-2" x2="44" y2="-2" stroke="#ffffff" stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+      </g>`
+  },
+
+  // 3. Паперовий кораблик (Попливе)
+  {
+    id: 'paper_boat',
+    floats: true,
+    mat: 'paper',
+    floatOffset: -8,
+    svg: `
+      <g>
+        <polygon points="0,-42 -26,8 26,8" fill="#e9ecef" stroke="#6c757d" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="0,-42 0,8 26,8" fill="#dee2e6" stroke="#6c757d" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="-54,-4 0,6 -34,26" fill="#ced4da" stroke="#6c757d" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="54,-4 0,6 34,26" fill="#adb5bd" stroke="#6c757d" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="-54,-4 54,-4 34,26 -34,26" fill="#f8f9fa" stroke="#6c757d" stroke-width="2.2" stroke-linejoin="round"/>
+        <polygon points="-54,-4 0,10 54,-4 34,26 -34,26" fill="#ffffff" stroke="#6c757d" stroke-width="2" stroke-linejoin="round"/>
+        <line x1="-38" y1="12" x2="38" y2="12" stroke="#4cc9f0" stroke-width="1.8" opacity="0.6"/>
+        <line x1="-34" y1="20" x2="34" y2="20" stroke="#4cc9f0" stroke-width="1.8" opacity="0.6"/>
+      </g>`
+  },
+
+  // 4. Річковий камінь (Потоне)
+  {
+    id: 'stone',
+    floats: false,
+    mat: 'stone',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <path d="M-44,12 C-48,-16 -22,-34 8,-32 C36,-30 50,-8 44,16 C38,32 10,34 -18,32 C-36,30 -42,24 -44,12 Z" fill="url(#stoneGrad)" stroke="#212529" stroke-width="2.5"/>
+        <path d="M-32,-8 Q-8,-22 22,-14 Q36,-2 26,14 Q0,6 -32,-8 Z" fill="#adb5bd" opacity="0.35"/>
+        <path d="M-14,10 L6,4 L18,14" stroke="#212529" stroke-width="2" fill="none" opacity="0.5" stroke-linecap="round"/>
+        <circle cx="-18" cy="-10" r="2.5" fill="#343a40" opacity="0.5"/>
+        <circle cx="15" cy="-12" r="2" fill="#f8f9fa" opacity="0.5"/>
+        <circle cx="24" cy="8" r="3" fill="#343a40" opacity="0.5"/>
+        <path d="M-28,22 Q-12,16 4,24 Q-12,30 -28,22 Z" fill="#52b788" opacity="0.75"/>
+      </g>`
+  },
+
+  // 5. Червоне яблуко (Попливе)
+  {
+    id: 'apple',
+    floats: true,
+    mat: 'organic',
+    floatOffset: 4,
+    svg: `
+      <g>
+        <path d="M0,-24 Q4,-40 12,-44" stroke="#582f0e" stroke-width="5" fill="none" stroke-linecap="round"/>
+        <path d="M2,-34 Q22,-48 34,-30 Q18,-20 2,-34 Z" fill="#52b788" stroke="#1b4332" stroke-width="2"/>
+        <line x1="5" y1="-34" x2="26" y2="-32" stroke="#1b4332" stroke-width="1.5"/>
+        <path d="M0,-22 C-18,-32 -42,-16 -38,10 C-34,34 -14,42 0,34 C14,42 34,34 38,10 C42,-16 18,-32 0,-22 Z" fill="url(#appleGrad)" stroke="#590d22" stroke-width="2.5"/>
+        <path d="M-12,-22 Q0,-15 12,-22" stroke="#590d22" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <ellipse cx="-18" cy="-4" rx="7" ry="14" transform="rotate(-18 -18 -4)" fill="#ffffff" opacity="0.55"/>
+        <circle cx="-14" cy="15" r="3.5" fill="#ffffff" opacity="0.45"/>
+      </g>`
+  },
+
+  // 6. Металева ложка (Потоне)
+  {
+    id: 'spoon',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g transform="rotate(-30)">
+        <path d="M-6,0 L46,-4 C54,-5 56,5 46,4 L-6,0 Z" fill="url(#silverGrad)" stroke="#495057" stroke-width="2.2"/>
+        <ellipse cx="-24" cy="0" rx="24" ry="15" fill="url(#silverGrad)" stroke="#495057" stroke-width="2.5"/>
+        <ellipse cx="-24" cy="1" rx="18" ry="10" fill="#868e96" opacity="0.45"/>
+        <path d="M-36,-5 Q-24,-10 -12,-5" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
+        <circle cx="44" cy="0" r="2.5" fill="#495057"/>
+      </g>`
+  },
+
+  // 7. Соснова шишка (Попливе)
+  {
+    id: 'pinecone',
+    floats: true,
+    mat: 'wood',
+    floatOffset: 2,
+    svg: `
+      <g>
+        <path d="M0,-38 L0,-46" stroke="#4a2508" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="0" cy="2" rx="28" ry="36" fill="#582f0e" stroke="#3b1d06" stroke-width="2.5"/>
+        <g fill="#8d5524" stroke="#3b1d06" stroke-width="2">
+          <ellipse cx="0" cy="-26" rx="14" ry="9"/>
+          <ellipse cx="-12" cy="-16" rx="13" ry="10"/>
+          <ellipse cx="12" cy="-16" rx="13" ry="10"/>
+          <ellipse cx="0" cy="-12" rx="14" ry="11"/>
+          <ellipse cx="-16" cy="-2" rx="14" ry="11"/>
+          <ellipse cx="16" cy="-2" rx="14" ry="11"/>
+          <ellipse cx="0" cy="2" rx="15" ry="12"/>
+          <ellipse cx="-13" cy="14" rx="13" ry="10"/>
+          <ellipse cx="13" cy="14" rx="13" ry="10"/>
+          <ellipse cx="0" cy="18" rx="14" ry="11"/>
+          <ellipse cx="0" cy="30" rx="11" ry="8"/>
+        </g>
+        <path d="M-8,-12 Q0,-6 8,-12 M-18,0 Q-12,6 -6,0 M6,0 Q12,6 18,0 M-8,18 Q0,24 8,18" stroke="#e09f5a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      </g>`
+  },
+
+  // 8. Золота монета (Потоне)
+  {
+    id: 'coin',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <circle cx="0" cy="0" r="34" fill="url(#goldGrad)" stroke="#7f4f00" stroke-width="3"/>
+        <circle cx="0" cy="0" r="27" fill="none" stroke="#b56c00" stroke-width="2" stroke-dasharray="5,3"/>
+        <polygon points="0,-18 5,-6 18,-6 8,3 12,16 0,8 -12,16 -8,3 -18,-6 -5,-6" fill="#fff3b0" stroke="#995800" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M-22,-18 L18,22" stroke="#ffffff" stroke-width="5" opacity="0.45" stroke-linecap="round"/>
+      </g>`
+  },
+
+  // 9. Корковий корок від пляшки (Попливе)
+  {
+    id: 'cork',
+    floats: true,
+    mat: 'wood',
+    floatOffset: -8,
+    svg: `
+      <g transform="rotate(25)">
+        <path d="M-22,-28 L22,-28 L18,28 C18,35 -18,35 -18,28 Z" fill="url(#corkGrad)" stroke="#7f5539" stroke-width="2.5"/>
+        <ellipse cx="0" cy="-28" rx="22" ry="8" fill="#ede0d4" stroke="#7f5539" stroke-width="2.5"/>
+        <g fill="#7f5539" opacity="0.55">
+          <ellipse cx="-10" cy="-10" rx="4" ry="1.8"/>
+          <ellipse cx="8" cy="-4" rx="5" ry="2"/>
+          <ellipse cx="-6" cy="8" rx="4.5" ry="1.8"/>
+          <ellipse cx="10" cy="16" rx="3.5" ry="1.5"/>
+          <ellipse cx="-11" cy="20" rx="3" ry="1.5"/>
+          <circle cx="3" cy="-18" r="2"/>
+        </g>
+      </g>`
+  },
+
+  // 10. Важкий молоток (Потоне)
+  {
+    id: 'hammer',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g transform="rotate(-35)">
+        <path d="M-7,-12 L7,-12 L10,44 C10,50 -10,50 -10,44 Z" fill="url(#woodBtnGrad)" stroke="#4a2508" stroke-width="2.5"/>
+        <line x1="-2" y1="-2" x2="-3" y2="38" stroke="#ffedd8" stroke-width="2" opacity="0.45" stroke-linecap="round"/>
+        <path d="M-36,-28 L22,-28 L34,-14 L22,-10 L-36,-10 Z" fill="url(#ironGrad)" stroke="#212529" stroke-width="2.5" stroke-linejoin="round"/>
+        <rect x="-40" y="-30" width="8" height="22" rx="2" fill="#adb5bd" stroke="#212529" stroke-width="2"/>
+        <line x1="-28" y1="-23" x2="18" y2="-23" stroke="#ffffff" stroke-width="2.5" opacity="0.5" stroke-linecap="round"/>
+      </g>`
+  },
+
+  // 11. Надувний пляжний м'яч (Попливе)
+  {
+    id: 'beach_ball',
+    floats: true,
+    mat: 'rubber',
+    floatOffset: -18,
+    svg: `
+      <g>
+        <circle cx="0" cy="0" r="36" fill="#ffffff" stroke="#1d3557" stroke-width="2.5"/>
+        <path d="M0,-36 C20,-24 24,14 0,36 C36,36 36,-36 0,-36 Z" fill="#ef476f"/>
+        <path d="M0,-36 C-20,-24 -24,14 0,36 C-36,36 -36,-36 0,-36 Z" fill="#118ab2"/>
+        <path d="M0,-36 C-12,-14 -12,14 0,36 C12,14 12,-14 0,-36 Z" fill="#ffd166"/>
+        <circle cx="0" cy="0" r="36" fill="none" stroke="#1d3557" stroke-width="2.5"/>
+        <ellipse cx="0" cy="-31" rx="9" ry="4" fill="#ffffff" stroke="#1d3557" stroke-width="2"/>
+        <ellipse cx="-14" cy="-14" rx="10" ry="6" transform="rotate(-35 -14 -14)" fill="#ffffff" opacity="0.55"/>
+      </g>`
+  },
+
+  // 12. Скляна кулька марбл (Потоне)
+  {
+    id: 'marble',
+    floats: false,
+    mat: 'glass',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <circle cx="0" cy="0" r="30" fill="url(#marbleGrad)" stroke="#023e8a" stroke-width="2.5"/>
+        <path d="M-16,14 C-10,-16 14,-2 16,-16 C4,16 -8,4 -16,14 Z" fill="#72efdd" opacity="0.8"/>
+        <path d="M-10,18 C0,-8 12,8 18,-10" stroke="#ffd166" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85"/>
+        <ellipse cx="-11" cy="-12" rx="8" ry="4.5" transform="rotate(-35 -11 -12)" fill="#ffffff" opacity="0.85"/>
+        <circle cx="12" cy="14" r="4" fill="#ffffff" opacity="0.45"/>
+      </g>`
+  },
+
+  // 13. Осінній дубовий листок (Попливе)
+  {
+    id: 'oak_leaf',
+    floats: true,
+    mat: 'organic',
+    floatOffset: -4,
+    svg: `
+      <g transform="rotate(-20)">
+        <path d="M-38,0 Q-48,4 -52,10" stroke="#582f0e" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M-38,0 C-34,-12 -24,-8 -20,-18 C-16,-28 -4,-22 0,-12 C6,-24 20,-26 24,-14 C28,-4 42,-8 44,0 C42,8 28,4 24,14 C20,26 6,24 0,12 C-4,22 -16,28 -20,18 C-24,8 -34,12 -38,0 Z" fill="url(#oakLeafGrad)" stroke="#6a040f" stroke-width="2.2"/>
+        <path d="M-38,0 L36,0 M-18,0 L-12,-14 M-10,0 L-6,14 M4,0 L14,-14 M10,0 L16,12" stroke="#ffea00" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.8"/>
+      </g>`
+  },
+
+  // 14. Сталева шестигранна гайка (Потоне)
+  {
+    id: 'steel_nut',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <polygon points="-34,6 -18,30 18,30 34,6 34,-6 -34,-6" fill="#343a40" stroke="#212529" stroke-width="2.5" stroke-linejoin="round"/>
+        <polygon points="-34,-4 -18,-28 18,-28 34,-4 18,20 -18,20" fill="url(#silverGrad)" stroke="#212529" stroke-width="2.5" stroke-linejoin="round"/>
+        <ellipse cx="0" cy="-4" rx="15" ry="12" fill="#343a40" stroke="#212529" stroke-width="2"/>
+        <path d="M-13,-2 Q0,-10 13,-2 M-12,2 Q0,-6 12,2" stroke="#adb5bd" stroke-width="2" fill="none"/>
+      </g>`
+  },
+
+  // 15. Дерев'яний іграшковий кубик (Попливе)
+  {
+    id: 'wood_block',
+    floats: true,
+    mat: 'wood',
+    floatOffset: -6,
+    svg: `
+      <g>
+        <polygon points="0,-36 34,-18 0,0 -34,-18" fill="#f3d292" stroke="#582f0e" stroke-width="2.5" stroke-linejoin="round"/>
+        <polygon points="-34,-18 0,0 0,38 -34,20" fill="#e09f5a" stroke="#582f0e" stroke-width="2.5" stroke-linejoin="round"/>
+        <polygon points="34,-18 0,0 0,38 34,20" fill="#b87333" stroke="#582f0e" stroke-width="2.5" stroke-linejoin="round"/>
+        <circle cx="-17" cy="10" r="8" fill="#ef476f" stroke="#582f0e" stroke-width="1.5"/>
+        <polygon points="17,2 20,9 27,9 21,14 23,21 17,17 11,21 13,14 7,9 14,9" fill="#ffd166" stroke="#582f0e" stroke-width="1.2"/>
+      </g>`
+  },
+
+  // 16. Керамічна чашка (Потоне)
+  {
+    id: 'ceramic_cup',
+    floats: false,
+    mat: 'stone',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <path d="M22,-14 C44,-14 44,18 20,18" stroke="#0077b6" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <path d="M22,-14 C41,-14 41,18 20,18" stroke="#90e0ef" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path d="M-28,-22 L28,-22 L22,22 C20,34 -20,34 -22,22 Z" fill="url(#cupGrad)" stroke="#023e8a" stroke-width="2.5"/>
+        <ellipse cx="0" cy="-22" rx="28" ry="8" fill="#caf0f8" stroke="#023e8a" stroke-width="2.5"/>
+        <circle cx="-12" cy="2" r="4" fill="#ffd166"/>
+        <circle cx="4" cy="8" r="4" fill="#ffd166"/>
+        <circle cx="12" cy="-4" r="4" fill="#ffd166"/>
+        <circle cx="-4" cy="-8" r="3.5" fill="#ffd166"/>
+      </g>`
+  },
+
+  // 17. Рятувальний круг (Попливе)
+  {
+    id: 'lifebuoy',
+    floats: true,
+    mat: 'rubber',
+    floatOffset: -8,
+    svg: `
+      <g>
+        <circle cx="0" cy="0" r="39" fill="none" stroke="#e6ccb2" stroke-width="3" stroke-dasharray="12,8"/>
+        <path d="M0,-35 A35,35 0 1,0 0,35 A35,35 0 1,0 0,-35 Z M0,-15 A15,15 0 1,1 0,15 A15,15 0 1,1 0,-15 Z" fill="#ef233c" fill-rule="evenodd" stroke="#8d0801" stroke-width="2.5"/>
+        <rect x="-7" y="-35" width="14" height="19" fill="#ffffff" stroke="#8d0801" stroke-width="1.8"/>
+        <rect x="-7" y="16" width="14" height="19" fill="#ffffff" stroke="#8d0801" stroke-width="1.8"/>
+        <rect x="-35" y="-7" width="19" height="14" fill="#ffffff" stroke="#8d0801" stroke-width="1.8"/>
+        <rect x="16" y="-7" width="19" height="14" fill="#ffffff" stroke="#8d0801" stroke-width="1.8"/>
+      </g>`
+  },
+
+  // 18. Корабельний залізний якір (Потоне)
+  {
+    id: 'anchor',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <circle cx="0" cy="-32" r="9" fill="none" stroke="url(#ironGrad)" stroke-width="5"/>
+        <circle cx="0" cy="-32" r="9" fill="none" stroke="#212529" stroke-width="1.5"/>
+        <rect x="-22" y="-20" width="44" height="7" rx="3.5" fill="url(#ironGrad)" stroke="#212529" stroke-width="2"/>
+        <rect x="-4.5" y="-24" width="9" height="54" rx="3" fill="url(#ironGrad)" stroke="#212529" stroke-width="2"/>
+        <path d="M-34,8 Q0,44 34,8" stroke="url(#ironGrad)" stroke-width="9" fill="none" stroke-linecap="round"/>
+        <path d="M-34,8 Q0,44 34,8" stroke="#212529" stroke-width="2" fill="none"/>
+        <polygon points="-38,2 -36,18 -22,12" fill="url(#ironGrad)" stroke="#212529" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="38,2 36,18 22,12" fill="url(#ironGrad)" stroke="#212529" stroke-width="2" stroke-linejoin="round"/>
+      </g>`
+  },
+
+  // 19. Пташине перо (Попливе)
+  {
+    id: 'feather',
+    floats: true,
+    mat: 'organic',
+    floatOffset: -8,
+    svg: `
+      <g transform="rotate(-15)">
+        <path d="M-36,18 C-26,-12 4,-22 42,-16 C32,12 4,22 -36,18 Z" fill="url(#featherGrad)" stroke="#3a0ca3" stroke-width="2"/>
+        <path d="M-10,-8 L-4,2 M8,-14 L12,-2 M22,-14 L24,-4 M-4,16 L2,6 M14,12 L18,2" stroke="#ffffff" stroke-width="2" opacity="0.65" stroke-linecap="round"/>
+        <path d="M-48,24 Q-4,4 38,-14" stroke="#fff3b0" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      </g>`
+  },
+
+  // 20. Важкий навісний замок (Потоне)
+  {
+    id: 'padlock',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <path d="M-18,-6 L-18,-24 A18,18 0 0,1 18,-24 L18,-6" stroke="url(#silverGrad)" stroke-width="9" fill="none" stroke-linecap="round"/>
+        <path d="M-18,-6 L-18,-24 A18,18 0 0,1 18,-24 L18,-6" stroke="#212529" stroke-width="2" fill="none"/>
+        <rect x="-28" y="-8" width="56" height="44" rx="9" fill="url(#goldGrad)" stroke="#7f4f00" stroke-width="2.5"/>
+        <circle cx="-20" cy="0" r="2.5" fill="#7f4f00"/>
+        <circle cx="20" cy="0" r="2.5" fill="#7f4f00"/>
+        <circle cx="-20" cy="28" r="2.5" fill="#7f4f00"/>
+        <circle cx="20" cy="28" r="2.5" fill="#7f4f00"/>
+        <circle cx="0" cy="10" r="6" fill="#212529"/>
+        <polygon points="-3,10 3,10 5,24 -5,24" fill="#212529"/>
+      </g>`
+  },
+
+  // 21. Суха дерев'яна колода з гілочкою (Попливе)
+  {
+    id: 'wood_log',
+    floats: true,
+    mat: 'wood',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <path d="M-42,-14 L38,-14 L38,18 L-42,18 Z" fill="url(#woodBranch)" stroke="#3b1d06" stroke-width="2.5"/>
+        <ellipse cx="-42" cy="2" rx="8" ry="16" fill="#582f0e" stroke="#3b1d06" stroke-width="2.5"/>
+        <ellipse cx="38" cy="2" rx="9" ry="16" fill="#e6ccb2" stroke="#3b1d06" stroke-width="2.5"/>
+        <ellipse cx="38" cy="2" rx="5" ry="9" fill="none" stroke="#b08968" stroke-width="1.8"/>
+        <circle cx="38" cy="2" r="2" fill="#7f5539"/>
+        <path d="M-28,-4 L18,-4 M-32,6 L10,6 M-10,12 L24,12" stroke="#3b1d06" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M-6,-14 L-2,-26" stroke="#582f0e" stroke-width="3" stroke-linecap="round"/>
+        <path d="M-2,-24 Q12,-38 22,-24 Q8,-12 -2,-24 Z" fill="#52b788" stroke="#1b4332" stroke-width="2"/>
+      </g>`
+  },
+
+  // 22. Кована залізна підкова (Потоне)
+  {
+    id: 'horseshoe',
+    floats: false,
+    mat: 'metal',
+    floatOffset: 0,
+    svg: `
+      <g>
+        <path d="M-24,-28 C-40,10 -22,36 0,36 C22,36 40,10 24,-28 L12,-24 C22,4 12,20 0,20 C-12,20 -22,4 -12,-24 Z" fill="url(#ironGrad)" stroke="#212529" stroke-width="2.5" stroke-linejoin="round"/>
+        <rect x="-26" y="-32" width="15" height="6" rx="2" transform="rotate(14 -18 -29)" fill="#adb5bd" stroke="#212529" stroke-width="2"/>
+        <rect x="11" y="-32" width="15" height="6" rx="2" transform="rotate(-14 18 -29)" fill="#adb5bd" stroke="#212529" stroke-width="2"/>
+        <g fill="#212529">
+          <circle cx="-22" cy="-6" r="2.5"/>
+          <circle cx="-18" cy="8" r="2.5"/>
+          <circle cx="-10" cy="20" r="2.5"/>
+          <circle cx="10" cy="20" r="2.5"/>
+          <circle cx="18" cy="8" r="2.5"/>
+          <circle cx="22" cy="-6" r="2.5"/>
+        </g>
+      </g>`
+  }
+];
+
+/* ============================================================================
+   3. СТАН ГРИ, ФІЗИКА ТА ЕМОЦІЇ ЖАБЕНЯТИ
+   ============================================================================ */
+let currentIndex = 0;
+let gameState = 'waiting'; // 'waiting' | 'dropping' | 'settled'
+let itemX = 600;
+let itemY = 185;
+let itemVY = 0;
+let itemRot = 0;
+let swingPhase = 0;
+let autoNextTimer = null;
+let particles = [];
+
+// Елементи DOM
+const itemHolder = document.getElementById('item-holder');
+const craneRope = document.getElementById('crane-rope');
+const ropeClaw = document.getElementById('rope-claw');
+const clawLeft = document.getElementById('claw-left');
+const clawRight = document.getElementById('claw-right');
+const fxLayer = document.getElementById('fx-layer');
+const frogPupils = document.getElementById('frog-pupils');
+const frogEyelids = document.getElementById('frog-eyelids');
+const frogMouth = document.getElementById('frog-mouth');
+const frogTongue = document.getElementById('frog-tongue');
+const frogBodyGroup = document.getElementById('frog-body-group');
+
+// Завантаження предмета за індексом
+function loadItem(idx) {
+  if (autoNextTimer) {
+    clearTimeout(autoNextTimer);
+    autoNextTimer = null;
+  }
+
+  currentIndex = (idx + ITEMS.length) % ITEMS.length;
+  const item = ITEMS[currentIndex];
+
+  gameState = 'waiting';
+  itemX = 600;
+  itemY = 182;
+  itemVY = 0;
+  itemRot = 0;
+
+  // Зачиняємо дерев'яний тримач на мотузці
+  clawLeft.setAttribute('d', 'M-4,0 Q-22,12 -14,28');
+  clawRight.setAttribute('d', 'M4,0 Q22,12 14,28');
+  craneRope.setAttribute('y2', '124');
+  ropeClaw.setAttribute('transform', 'translate(600, 124)');
+
+  itemHolder.innerHTML = item.svg;
+  itemHolder.setAttribute('transform', `translate(${itemX}, ${itemY}) scale(1.15)`);
+
+  particles = [];
+  fxLayer.innerHTML = '';
+  setFrogEmotion('idle');
+}
+
+// Зміна емоцій жабеняти
+function setFrogEmotion(emotion) {
+  if (emotion === 'idle') {
+    frogMouth.setAttribute('d', 'M188,252 Q210,268 232,252');
+    frogTongue.setAttribute('opacity', '0');
+    frogBodyGroup.setAttribute('transform', 'translate(0, 0)');
+  } else if (emotion === 'happy') {
+    frogMouth.setAttribute('d', 'M182,248 Q210,278 238,248');
+    frogTongue.setAttribute('opacity', '1');
+    // Стрибок радості через чистий requestAnimationFrame, щоб не конфліктувати з SVG-атрибутами
+    let jumpStart = performance.now();
+    function jumpStep(now) {
+      let t = (now - jumpStart) / 650;
+      if (t < 1) {
+        let dy = -Math.abs(Math.sin(t * Math.PI * 2)) * 26 * (1 - t * 0.4);
+        frogBodyGroup.setAttribute('transform', `translate(0, ${dy.toFixed(1)})`);
+        requestAnimationFrame(jumpStep);
+      } else {
+        frogBodyGroup.setAttribute('transform', 'translate(0, 0)');
+      }
+    }
+    requestAnimationFrame(jumpStep);
+  } else if (emotion === 'wrong') {
+    frogMouth.setAttribute('d', 'M192,258 Q201,248 210,258 T228,258');
+    frogTongue.setAttribute('opacity', '0');
+    let shakeStart = performance.now();
+    function shakeStep(now) {
+      let t = (now - shakeStart) / 480;
+      if (t < 1) {
+        let dx = Math.sin(t * Math.PI * 6) * 10 * (1 - t);
+        frogBodyGroup.setAttribute('transform', `translate(${dx.toFixed(1)}, 0)`);
+        requestAnimationFrame(shakeStep);
+      } else {
+        frogBodyGroup.setAttribute('transform', 'translate(0, 0)');
+        if (gameState === 'waiting') setFrogEmotion('idle');
+      }
+    }
+    requestAnimationFrame(shakeStep);
+  }
+}
+
+// Генерація бризок води та кіл
+function spawnWaterSplash(x, y, isHeavy) {
+  const dropCount = isHeavy ? 18 : 12;
+  for (let i = 0; i < dropCount; i++) {
+    const angle = -Math.PI * (0.15 + Math.random() * 0.7);
+    const speed = (isHeavy ? 6 : 4) + Math.random() * 7;
+    particles.push({
+      type: 'drop',
+      x: x + (Math.random() - 0.5) * 30,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: 3.5 + Math.random() * 4.5,
+      alpha: 0.9
+    });
+  }
+
+  for (let j = 0; j < 2; j++) {
+    particles.push({
+      type: 'ripple',
+      x: x,
+      y: y + 4,
+      rx: 18 + j * 15,
+      ry: 5 + j * 3,
+      alpha: 0.85
+    });
+  }
+}
+
+// Генерація бульбашок
+function spawnBubble(x, y) {
+  particles.push({
+    type: 'bubble',
+    x: x + (Math.random() - 0.5) * 36,
+    y: y,
+    vx: (Math.random() - 0.5) * 0.8,
+    vy: -2.2 - Math.random() * 2.2,
+    r: 3 + Math.random() * 5.5,
+    alpha: 0.85
+  });
+}
+
+// Генерація зірочок при правильній відповіді
+function spawnCelebrationStars(x, y) {
+  const colors = ['#ffd166', '#06d6a0', '#ff70a6', '#ffffff', '#ffbe0b'];
+  for (let i = 0; i < 16; i++) {
+    const angle = (Math.PI * 2 * i) / 16 + Math.random() * 0.3;
+    const speed = 3 + Math.random() * 5.5;
+    particles.push({
+      type: 'star',
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1.5,
+      size: 7 + Math.random() * 6,
+      color: colors[i % colors.length],
+      alpha: 1,
+      rot: Math.random() * 360
+    });
+  }
+}
+
+// Анімація кнопки без зміни її позиції
+function triggerButtonAnim(btnElement, animClass) {
+  btnElement.classList.remove('shake-anim', 'pop-anim');
+  void btnElement.offsetWidth; // Перезапуск CSS-анімації
+  btnElement.classList.add(animClass);
+}
+
+// Перевірка вибору дитини
+function handleGuess(guessFloats, btnElement) {
+  if (gameState !== 'waiting') return;
+
+  const item = ITEMS[currentIndex];
+
+  if (guessFloats === item.floats) {
+    // ПРАВИЛЬНО
+    gameState = 'dropping';
+    item.splashed = false;
+
+    clawLeft.setAttribute('d', 'M-6,0 Q-34,6 -32,24');
+    clawRight.setAttribute('d', 'M6,0 Q34,6 32,24');
+
+    sfx.playPop();
+    setFrogEmotion('happy');
+    triggerButtonAnim(btnElement, 'pop-anim');
+  } else {
+    // НЕПРАВИЛЬНО
+    sfx.playWrong();
+    setFrogEmotion('wrong');
+    triggerButtonAnim(btnElement, 'shake-anim');
+
+    setTimeout(() => {
+      sfx.playMaterialHint(item.mat);
+    }, 180);
+  }
+}
+
+/* ============================================================================
+   4. ГОЛОВНИЙ ЦИКЛ АНІМАЦІЇ (60 FPS)
+   ============================================================================ */
+let fish1X = 300;
+let fish2X = 850;
+const fish1El = document.getElementById('fish-1');
+const fish2El = document.getElementById('fish-2');
+
+function animateScene() {
+  swingPhase += 0.045;
+  const item = ITEMS[currentIndex];
+
+  // Рух фонових рибок
+  fish1X += 0.7;
+  if (fish1X > 1300) fish1X = -100;
+  fish1El.setAttribute('transform', `translate(${fish1X}, ${440 + Math.sin(swingPhase) * 8})`);
+
+  fish2X -= 0.55;
+  if (fish2X < -100) fish2X = 1300;
+  fish2El.setAttribute('transform', `translate(${fish2X}, ${520 + Math.cos(swingPhase * 0.8) * 6}) scale(-0.85, 0.85)`);
+
+  // Фізика предмета
+  if (gameState === 'waiting') {
+    const swayX = Math.sin(swingPhase) * 6;
+    const swayRot = Math.sin(swingPhase) * 3.5;
+    itemX = 600 + swayX;
+    itemY = 182 + Math.cos(swingPhase * 2) * 2;
+
+    craneRope.setAttribute('x2', 600 + swayX * 0.6);
+    ropeClaw.setAttribute('transform', `translate(${600 + swayX * 0.6}, 124) rotate(${swayRot * 0.5})`);
+    itemHolder.setAttribute('transform', `translate(${itemX}, ${itemY}) rotate(${swayRot}) scale(1.15)`);
+
+  } else if (gameState === 'dropping') {
+    const waterSurfaceY = 308;
+
+    if (itemY < waterSurfaceY) {
+      itemVY += 0.68;
+      itemY += itemVY;
+      itemRot += 0.6;
+    } else {
+      if (!item.splashed) {
+        item.splashed = true;
+        sfx.playSplash(!item.floats);
+        spawnWaterSplash(itemX, waterSurfaceY, !item.floats);
+      }
+
+      if (item.floats) {
+        // Плавання на поверхні
+        const targetY = waterSurfaceY + (item.floatOffset || 0);
+        const displacement = targetY - itemY;
+        itemVY = itemVY * 0.82 + displacement * 0.12;
+        itemY += itemVY;
+        itemRot = Math.sin(swingPhase * 1.6) * 7;
+
+        if (Math.abs(itemVY) < 0.35 && Math.abs(displacement) < 4) {
+          gameState = 'settled';
+          sfx.playSuccess();
+          spawnCelebrationStars(itemX, waterSurfaceY - 20);
+          autoNextTimer = setTimeout(() => loadItem(currentIndex + 1), 2500);
+        }
+      } else {
+        // Занурення на піщане дно
+        const bottomY = 618;
+        itemVY = Math.min(itemVY * 0.92 + 0.28, 4.8);
+        itemY += itemVY;
+        itemX += Math.sin(itemY * 0.05) * 1.1;
+        itemRot += 0.9;
+
+        if (Math.random() < 0.38) {
+          spawnBubble(itemX, itemY - 10);
+          if (Math.random() < 0.25) sfx.playBubble();
+        }
+
+        if (itemY >= bottomY) {
+          itemY = bottomY;
+          gameState = 'settled';
+          sfx.playSandThud();
+          sfx.playSuccess();
+          spawnCelebrationStars(itemX, itemY - 30);
+          for (let b = 0; b < 6; b++) spawnBubble(itemX, itemY - 12);
+          autoNextTimer = setTimeout(() => loadItem(currentIndex + 1), 2500);
+        }
+      }
+    }
+
+    itemHolder.setAttribute('transform', `translate(${itemX}, ${itemY}) rotate(${itemRot}) scale(1.15)`);
+
+  } else if (gameState === 'settled') {
+    if (item.floats) {
+      const waterSurfaceY = 308 + (item.floatOffset || 0);
+      const bobY = waterSurfaceY + Math.sin(swingPhase * 1.8) * 5;
+      const bobRot = Math.cos(swingPhase * 1.5) * 6;
+      itemHolder.setAttribute('transform', `translate(${itemX}, ${bobY}) rotate(${bobRot}) scale(1.15)`);
+    }
+  }
+
+  // Оновлення частинок
+  let fxHtml = '';
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+
+    if (p.type === 'drop') {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.42;
+      p.alpha -= 0.022;
+      if (p.alpha <= 0 || p.y > 335) {
+        particles.splice(i, 1);
+        continue;
+      }
+      fxHtml += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${p.r}" fill="#caf0f8" opacity="${p.alpha.toFixed(2)}"/>`;
+
+    } else if (p.type === 'ripple') {
+      p.rx += 2.2;
+      p.ry += 0.45;
+      p.alpha -= 0.025;
+      if (p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      fxHtml += `<ellipse cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" rx="${p.rx.toFixed(1)}" ry="${p.ry.toFixed(1)}" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="${p.alpha.toFixed(2)}"/>`;
+
+    } else if (p.type === 'bubble') {
+      p.x += p.vx + Math.sin(swingPhase * 2 + i) * 0.4;
+      p.y += p.vy;
+      p.alpha -= 0.012;
+      if (p.y <= 310 || p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      fxHtml += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${p.r}" fill="#caf0f8" fill-opacity="0.35" stroke="#ffffff" stroke-width="1.5" opacity="${p.alpha.toFixed(2)}"/>`;
+
+    } else if (p.type === 'star') {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.12;
+      p.rot += 5;
+      p.alpha -= 0.02;
+      if (p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      fxHtml += `<g transform="translate(${p.x.toFixed(1)}, ${p.y.toFixed(1)}) rotate(${p.rot.toFixed(0)})" opacity="${p.alpha.toFixed(2)}">
+        <polygon points="0,-${p.size} ${p.size*0.3},-${p.size*0.3} ${p.size},0 ${p.size*0.3},${p.size*0.3} 0,${p.size} -${p.size*0.3},${p.size*0.3} -${p.size},0 -${p.size*0.3},-${p.size*0.3}" fill="${p.color}"/>
+      </g>`;
+    }
+  }
+  fxLayer.innerHTML = fxHtml;
+
+  // Очі жабеняти стежать за предметом
+  const dx = Math.max(-5, Math.min(5, (itemX - 210) * 0.012));
+  const dy = Math.max(-4, Math.min(5, (itemY - 218) * 0.015));
+  frogPupils.setAttribute('transform', `translate(${dx.toFixed(1)}, ${dy.toFixed(1)})`);
+
+  requestAnimationFrame(animateScene);
+}
+
+// Кліпання очима жабеняти
+setInterval(() => {
+  frogEyelids.setAttribute('opacity', '1');
+  setTimeout(() => frogEyelids.setAttribute('opacity', '0'), 150);
+}, 3600);
+
+/* ============================================================================
+   5. ОБРОБНИКИ ПОДІЙ
+   ============================================================================ */
+document.getElementById('btn-float').addEventListener('click', function() {
+  handleGuess(true, this);
+});
+
+document.getElementById('btn-sink').addEventListener('click', function() {
+  handleGuess(false, this);
+});
+
+// Натискання на предмет відтворює звук матеріалу
+itemHolder.addEventListener('click', () => {
+  const item = ITEMS[currentIndex];
+  sfx.playMaterialHint(item.mat);
+});
+
+// Навігація Назад та Далі
+document.getElementById('btn-prev').addEventListener('click', function() {
+  sfx.playPop();
+  triggerButtonAnim(this, 'pop-anim');
+  loadItem(currentIndex - 1);
+});
+
+document.getElementById('btn-next').addEventListener('click', function() {
+  sfx.playPop();
+  triggerButtonAnim(this, 'pop-anim');
+  loadItem(currentIndex + 1);
+});
+
+// Запуск гри
+loadItem(0);
+requestAnimationFrame(animateScene);
+</script>
+</body>
+</html>
