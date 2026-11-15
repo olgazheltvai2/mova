@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Складовий Лабіринт</title>
+  <style>
+    /* =========================================================
+       ОСНОВНІ СТИЛІ ТА НАЛАШТУВАННЯ СЦЕНИ (ЖОДНИХ БІЛИХ ФОНІВ)
+       ========================================================= */
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Trebuchet MS', 'Comic Sans MS', sans-serif;
+      background: #1d4d2b;
+    }
+
+    /* Контейнер гри на весь екран */
+    #game-stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Живий сюжетний SVG-фон */
+    #scene-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* Анімації для живого фону */
+    @keyframes floatCloud {
+      0% { transform: translateX(-80px); }
+      50% { transform: translateX(80px); }
+      100% { transform: translateX(-80px); }
+    }
+    @keyframes swayTree {
+      0%, 100% { transform: rotate(-1.6deg); }
+      50% { transform: rotate(1.6deg); }
+    }
+    @keyframes waterShimmer {
+      0%, 100% { transform: translateX(-12px) scaleY(1); opacity: 0.55; }
+      50% { transform: translateX(12px) scaleY(1.08); opacity: 0.85; }
+    }
+    @keyframes butterflyFlight {
+      0% { transform: translate(0, 0) rotate(5deg) scale(0.9); }
+      25% { transform: translate(60px, -35px) rotate(-12deg) scale(1.05); }
+      50% { transform: translate(120px, 10px) rotate(8deg) scale(0.95); }
+      75% { transform: translate(55px, 40px) rotate(-8deg) scale(1.02); }
+      100% { transform: translate(0, 0) rotate(5deg) scale(0.9); }
+    }
+
+    .cloud-anim { animation: floatCloud 26s ease-in-out infinite; }
+    .cloud-anim-slow { animation: floatCloud 38s ease-in-out infinite reverse; }
+    .tree-sway { transform-origin: bottom center; animation: swayTree 5.5s ease-in-out infinite; }
+    .tree-sway-2 { transform-origin: bottom center; animation: swayTree 6.8s ease-in-out infinite reverse; }
+    .water-wave { animation: waterShimmer 4s ease-in-out infinite; }
+    .butterfly { animation: butterflyFlight 14s ease-in-out infinite; }
+
+    /* =========================================================
+       ВЕРХНЯ ПАНЕЛЬ НАВІГАЦІЇ ТА ВВЕДЕННЯ ЛІТЕРИ
+       ========================================================= */
+    #top-controls {
+      position: absolute;
+      top: 14px;
+      left: 18px;
+      right: 18px;
+      z-index: 30;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .nav-group {
+      display: flex;
+      gap: 12px;
+      pointer-events: auto;
+    }
+
+    /* Стилізовані дерев'яно-бурштинові кнопки навігації */
+    .wood-btn {
+      width: 58px;
+      height: 58px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      padding: 0;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+      filter: drop-shadow(0 6px 8px rgba(15, 38, 12, 0.55));
+    }
+
+    .wood-btn:hover {
+      transform: scale(1.1) translateY(-2px);
+      filter: drop-shadow(0 8px 12px rgba(255, 215, 80, 0.55));
+    }
+
+    .wood-btn:active {
+      transform: scale(0.93);
+    }
+
+    /* Віконце ручного введення літери (стилізований дерев'яний медальйон) */
+    .letter-input-wrap {
+      pointer-events: auto;
+      position: relative;
+      width: 92px;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      filter: drop-shadow(0 6px 10px rgba(15, 38, 12, 0.6));
+      transition: transform 0.2s;
+    }
+
+    .letter-input-wrap:focus-within {
+      transform: scale(1.08);
+      filter: drop-shadow(0 0 14px rgba(255, 220, 90, 0.9));
+    }
+
+    .letter-input-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    #custom-letter-input {
+      position: relative;
+      z-index: 2;
+      width: 54px;
+      height: 42px;
+      background: transparent;
+      border: none;
+      outline: none;
+      text-align: center;
+      font-size: 28px;
+      font-weight: 900;
+      color: #fff3c4;
+      text-shadow: 0 2px 4px #3e1f07, 0 0 8px #ffae00;
+      text-transform: uppercase;
+      caret-color: #ffe066;
+      cursor: pointer;
+    }
+
+    #custom-letter-input::placeholder {
+      color: rgba(255, 240, 190, 0.55);
+    }
+
+    /* =========================================================
+       ОСНОВНИЙ ІГРОВИЙ ПРОСТІР (ПЕРСОНАЖ + ЛАБІРИНТ + ФІНІШ)
+       ========================================================= */
+    #play-area {
+      position: relative;
+      z-index: 10;
+      width: min(96vw, 1280px);
+      height: min(88vh, 760px);
+      display: grid;
+      grid-template-columns: 270px 1fr 185px;
+      align-items: center;
+      gap: 14px;
+      padding: 10px;
+    }
+
+    /* Ліва зона: стартова галявина персонажа та замовлення літери */
+    #character-zone {
+      position: relative;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    /* Хмаринка-замовлення з потрібною літерою */
+    #order-bubble {
+      position: relative;
+      width: 165px;
+      height: 135px;
+      margin-bottom: -10px;
+      z-index: 15;
+      transform-origin: bottom center;
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      filter: drop-shadow(0 10px 14px rgba(20, 40, 10, 0.45));
+    }
+
+    #order-letter-text {
+      font-size: 58px;
+      font-weight: 900;
+      fill: #542100;
+      paint-order: stroke fill;
+      stroke: #fff2b2;
+      stroke-width: 6px;
+      stroke-linejoin: round;
+    }
+
+    /* Контейнер живого персонажа на старті */
+    #hero-home-slot {
+      position: relative;
+      width: 235px;
+      height: 265px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Сам персонаж (може стояти на старті або крокувати по клітинках) */
+    #active-character {
+      position: fixed;
+      width: 210px;
+      height: 230px;
+      z-index: 25;
+      pointer-events: none;
+      transition:
+        left 0.48s cubic-bezier(0.34, 1.45, 0.64, 1),
+        top 0.48s cubic-bezier(0.34, 1.45, 0.64, 1),
+         width 0.45s ease,
+        height 0.45s ease,
+        transform 0.3s ease;
+      filter: drop-shadow(0 12px 14px rgba(14, 35, 11, 0.55));
+    }
+
+    /* Анімації станів персонажа */
+    @keyframes heroBreathe {
+      0%, 100% { transform: translateY(0) scale(1, 1); }
+      50% { transform: translateY(-6px) scale(1.02, 0.98); }
+    }
+    @keyframes heroHop {
+      0% { transform: translateY(0) scale(1); }
+      40% { transform: translateY(-28px) scale(1.08, 0.94) rotate(-4deg); }
+      75% { transform: translateY(-6px) scale(0.96, 1.05) rotate(4deg); }
+      100% { transform: translateY(0) scale(1); }
+    }
+    @keyframes heroShake {
+      0%, 100% { transform: translateX(0) rotate(0deg); }
+      20% { transform: translateX(-12px) rotate(-6deg); }
+      40% { transform: translateX(12px) rotate(6deg); }
+      60% { transform: translateX(-9px) rotate(-4deg); }
+      80% { transform: translateX(9px) rotate(4deg); }
+    }
+    @keyframes heroCelebrate {
+      0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+      25% { transform: translateY(-34px) scale(1.12) rotate(-8deg); }
+      50% { transform: translateY(0) scale(0.95, 1.06) rotate(0deg); }
+      75% { transform: translateY(-30px) scale(1.12) rotate(8deg); }
+    }
+    @keyframes eyeBlink {
+      0%, 92%, 100% { transform: scaleY(1); }
+      96% { transform: scaleY(0.08); }
+    }
+    @keyframes tailWag {
+      0%, 100% { transform: rotate(-8deg); }
+      50% { transform: rotate(12deg); }
+    }
+    @keyframes earTwitch {
+      0%, 86%, 100% { transform: rotate(0deg); }
+      90% { transform: rotate(-9deg); }
+      95% { transform: rotate(6deg); }
+    }
+
+    .char-idle svg { animation: heroBreathe 2.6s ease-in-out infinite; }
+    .char-hop svg { animation: heroHop 0.52s ease-out; }
+    .char-wrong svg { animation: heroShake 0.48s ease-in-out; }
+    .char-win svg { animation: heroCelebrate 0.95s ease-in-out infinite; }
+
+    .blink-group {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: eyeBlink 4.2s infinite;
+    }
+    .tail-group {
+      transform-box: fill-box;
+      transform-origin: bottom center;
+      animation: tailWag 2.1s ease-in-out infinite;
+    }
+    .ear-group {
+      transform-box: fill-box;
+      transform-origin: bottom center;
+      animation: earTwitch 3.8s ease-in-out infinite;
+    }
+
+    /* =========================================================
+       ЦЕНТРАЛЬНА ДОШКА-ЛАБІРИНТ (КАМ'ЯНО-ДЕРЕВ'ЯНА ГАЛЯВИНА)
+       ========================================================= */
+    #maze-wrapper {
+      position: relative;
+      width: 100%;
+      height: min(82vh, 660px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Декоративна різьблена основа лабіринту */
+    #maze-frame-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      filter: drop-shadow(0 16px 24px rgba(10, 28, 8, 0.65));
+    }
+
+    /* Сітка клітинок зі складами */
+    #maze-grid {
+      position: relative;
+      z-index: 5;
+      width: 88%;
+      height: 83%;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      gap: 10px;
+      padding: 8px;
+    }
+
+    /* SVG-шар для малювання золотої/смарагдової доріжки між пройденими клітинками */
+    #path-connector-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    /* Клітинка лабіринту */
+    .maze-cell {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s;
+      filter: drop-shadow(0 6px 6px rgba(22, 14, 5, 0.45));
+    }
+
+    .maze-cell:hover {
+      transform: translateY(-4px) scale(1.05);
+      filter: drop-shadow(0 10px 12px rgba(255, 215, 70, 0.45));
+      z-index: 8;
+    }
+
+    .maze-cell:active {
+      transform: scale(0.94);
+    }
+
+    .cell-svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* ЗБІЛЬШЕНИЙ СКЛАД — заповнює клітинку */
+    .syllable-label {
+      font-size: 48px;
+      font-weight: 900;
+      fill: #fff8dc;
+      paint-order: stroke fill;
+      stroke: #4a2506;
+      stroke-width: 6px;
+      stroke-linejoin: round;
+      pointer-events: none;
+      letter-spacing: 0;
+    }
+
+    /* Активна пройдена клітинка доріжки */
+    .maze-cell.stepped {
+      transform: scale(1.04);
+      filter: drop-shadow(0 0 14px rgba(255, 230, 80, 0.85));
+    }
+
+    .maze-cell.stepped .syllable-label {
+      fill: #234700;
+      stroke: #fff7b8;
+    }
+
+    /* Підказка стартової або наступної доступної клітинки */
+    @keyframes gentlePulse {
+      0%, 100% { filter: drop-shadow(0 6px 6px rgba(22, 14, 5, 0.45)); }
+      50% { filter: drop-shadow(0 0 15px rgba(255, 230, 110, 0.9)); }
+    }
+
+    .maze-cell.start-hint {
+      animation: gentlePulse 2s ease-in-out infinite;
+    }
+
+    /* Помилкове натискання */
+    @keyframes wrongWobble {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-8px) rotate(-4deg); }
+      75% { transform: translateX(8px) rotate(4deg); }
+    }
+
+    .maze-cell.wrong-hit {
+      animation: wrongWobble 0.36s ease-in-out;
+    }
+
+    /* =========================================================
+       ПРАВА ЗОНА: ФІНІШНИЙ БУДИНОЧОК / КОШИК ЗІ СКАРБАМИ
+       ========================================================= */
+    #goal-zone {
+      position: relative;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    #goal-target {
+      position: relative;
+      width: 175px;
+      height: 210px;
+      transition: transform 0.35s ease;
+      filter: drop-shadow(0 12px 14px rgba(12, 32, 8, 0.55));
+    }
+
+    /* Шар салюту з листочків, зірочок та ягідок */
+    #fx-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 40;
+    }
+
+    /* Адаптивність для менших екранів */
+    @media (max-width: 1024px) {
+      #play-area {
+        grid-template-columns: 200px 1fr 140px;
+        gap: 8px;
+      }
+      #active-character {
+        width: 165px;
+        height: 185px;
+      }
+      #order-bubble {
+        width: 135px;
+        height: 110px;
+      }
+      .syllable-label {
+        font-size: 40px;
+        stroke-width: 5px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-stage">
+  <!-- =========================================================
+       ЖИВИЙ СЮЖЕТНИЙ ФОН: СОНЯЧНА ЛІСОВА ГАЛЯВИНА БІЛЯ СТРУМКА
+       ========================================================= -->
+  <svg id="scene-bg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Градієнт теплого ранкового неба -->
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5ec8f8" />
+        <stop offset="48%" stop-color="#a8ecff" />
+        <stop offset="100%" stop-color="#fef4b8" />
+      </linearGradient>
+
+      <!-- Сонячне сяйво -->
+      <radialGradient id="sunGlow" cx="0.82" cy="0.16" r="0.35">
+        <stop offset="0%" stop-color="#fff9c4" stop-opacity="1" />
+        <stop offset="35%" stop-color="#ffe566" stop-opacity="0.65" />
+        <stop offset="100%" stop-color="#ffe566" stop-opacity="0" />
+      </radialGradient>
+
+      <!-- Далекі пагорби -->
+      <linearGradient id="farHillGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#69b86c" />
+        <stop offset="100%" stop-color="#3c8248" />
+      </linearGradient>
+
+      <!-- Середні пагорби -->
+      <linearGradient id="midHillGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#52a847" />
+        <stop offset="100%" stop-color="#2b6c2c" />
+      </linearGradient>
+
+      <!-- Ближня галявина -->
+      <linearGradient id="meadowGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#63bd45" />
+        <stop offset="45%" stop-color="#3f9431" />
+        <stop offset="100%" stop-color="#22571d" />
+      </linearGradient>
+
+      <!-- Лісовий струмок -->
+      <linearGradient id="riverGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#47d3ff" />
+        <stop offset="50%" stop-color="#1ca3de" />
+        <stop offset="100%" stop-color="#0d699e" />
+      </linearGradient>
+
+      <!-- Крона дерева -->
+      <radialGradient id="canopyGrad1" cx="0.35" cy="0.3" r="0.7">
+        <stop offset="0%" stop-color="#8be053" />
+        <stop offset="55%" stop-color="#459c2b" />
+        <stop offset="100%" stop-color="#205915" />
+      </radialGradient>
+
+      <radialGradient id="canopyGrad2" cx="0.4" cy="0.3" r="0.7">
+        <stop offset="0%" stop-color="#a5e856" />
+        <stop offset="60%" stop-color="#57ad2d" />
+        <stop offset="100%" stop-color="#286617" />
+      </radialGradient>
+
+      <!-- Стовбур дерева -->
+      <linearGradient id="trunkGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#8a5229" />
+        <stop offset="50%" stop-color="#633716" />
+        <stop offset="100%" stop-color="#3d1f09" />
+      </linearGradient>
+    </defs>
+
+    <!-- Небо та сонце -->
+    <rect width="1600" height="900" fill="url(#skyGrad)" />
+    <circle cx="1310" cy="145" r="310" fill="url(#sunGlow)" />
+    <circle cx="1310" cy="145" r="68" fill="#fff7b2" />
+
+    <!-- Хмаринки -->
+    <g class="cloud-anim" opacity="0.88">
+      <path d="M210,140 Q235,95 285,108 Q325,75 375,105 Q420,100 435,140 Q465,155 445,185 L195,185 Q175,160 210,140 Z" fill="#fffef2" />
+      <path d="M920,95 Q945,60 990,72 Q1025,45 1068,72 Q1105,70 1115,102 L905,102 Z" fill="#fffce8" />
+    </g>
+    <g class="cloud-anim-slow" opacity="0.72">
+      <path d="M560,185 Q585,148 630,158 Q665,132 705,156 Q742,154 752,185 L545,185 Z" fill="#fffef5" />
+    </g>
+
+    <!-- Далекі лісисті пагорби -->
+    <path d="M0,450 Q260,310 560,410 T1180,380 T1600,430 L1600,900 L0,900 Z" fill="url(#farHillGrad)" />
+
+    <!-- Середні пагорби -->
+    <path d="M0,510 Q380,410 760,490 T1600,470 L1600,900 L0,900 Z" fill="url(#midHillGrad)" />
+
+    <!-- Головна сонячна галявина -->
+    <path d="M0,565 Q420,510 820,555 T1600,535 L1600,900 L0,900 Z" fill="url(#meadowGrad)" />
+
+    <!-- Звивистий струмок під містком-лабіринтом -->
+    <path d="M680,485 C580,585 950,670 740,900 L1080,900 C1190,690 820,585 880,485 Z" fill="url(#riverGrad)" opacity="0.85" />
+    <g class="water-wave">
+      <path d="M735,545 Q805,535 845,555" stroke="#c8f6ff" stroke-width="5" stroke-linecap="round" fill="none" />
+      <path d="M765,645 Q855,630 915,655" stroke="#c8f6ff" stroke-width="6" stroke-linecap="round" fill="none" />
+      <path d="M790,765 Q895,745 975,775" stroke="#c8f6ff" stroke-width="7" stroke-linecap="round" fill="none" />
+    </g>
+
+    <!-- Ліве велике розлоге дерево -->
+    <g class="tree-sway">
+      <path d="M110,650 Q125,460 95,310 L165,310 Q145,460 185,650 Z" fill="url(#trunkGrad)" />
+      <path d="M130,410 Q60,350 25,310" stroke="url(#trunkGrad)" stroke-width="24" stroke-linecap="round" fill="none" />
+      <path d="M145,380 Q215,320 265,285" stroke="url(#trunkGrad)" stroke-width="20" stroke-linecap="round" fill="none" />
+      <circle cx="75" cy="260" r="115" fill="url(#canopyGrad1)" />
+      <circle cx="215" cy="255" r="120" fill="url(#canopyGrad1)" />
+      <circle cx="145" cy="180" r="130" fill="url(#canopyGrad2)" />
+    </g>
+
+    <!-- Праве розлоге дерево -->
+    <g class="tree-sway-2">
+      <path d="M1430,640 Q1445,450 1420,300 L1485,300 Q1465,450 1505,640 Z" fill="url(#trunkGrad)" />
+      <circle cx="1385" cy="255" r="110" fill="url(#canopyGrad1)" />
+      <circle cx="1515" cy="250" r="115" fill="url(#canopyGrad1)" />
+      <circle cx="1450" cy="175" r="125" fill="url(#canopyGrad2)" />
+    </g>
+
+    <!-- Квітучі кущі, папороть, грибочки та квіти на передньому плані -->
+    <g>
+      <!-- Лівий кущ -->
+      <ellipse cx="140" cy="865" rx="180" ry="75" fill="#235c1d" />
+      <ellipse cx="95" cy="875" rx="130" ry="60" fill="#378529" />
+      <!-- Правий кущ -->
+      <ellipse cx="1470" cy="865" rx="190" ry="80" fill="#235c1d" />
+      <ellipse cx="1510" cy="875" rx="135" ry="62" fill="#378529" />
+
+      <!-- Лісові квіти та грибочки -->
+      <g transform="translate(275, 815)">
+        <path d="M0,35 Q4,15 10,0" stroke="#2f7d22" stroke-width="4" fill="none" />
+        <circle cx="10" cy="0" r="11" fill="#ff6b9d" />
+        <circle cx="10" cy="0" r="5" fill="#ffe156" />
+      </g>
+      <g transform="translate(330, 835)">
+        <path d="M8,0 L14,28 L2,28 Z" fill="#f5e6c8" />
+        <path d="M-8,6 Q8,-14 24,6 Z" fill="#e63946" />
+        <circle cx="4" cy="0" r="2.5" fill="#fff" />
+        <circle cx="13" cy="2" r="2" fill="#fff" />
+      </g>
+      <g transform="translate(1260, 825)">
+        <path d="M0,30 Q-4,15 -8,0" stroke="#2f7d22" stroke-width="4" fill="none" />
+        <circle cx="-8" cy="0" r="12" fill="#ffd166" />
+        <circle cx="-8" cy="0" r="5" fill="#ef476f" />
+      </g>
+    </g>
+
+    <!-- Живий метелик -->
+    <g class="butterfly" transform="translate(420, 220)">
+      <path d="M0,0 C-18,-22 -34,-8 -16,8 C-30,18 -14,32 0,14 Z" fill="#ff9f1c" stroke="#5c2a00" stroke-width="2" />
+      <path d="M4,0 C22,-22 38,-8 20,8 C34,18 18,32 4,14 Z" fill="#ffbf69" stroke="#5c2a00" stroke-width="2" />
+      <ellipse cx="2" cy="8" rx="2.5" ry="11" fill="#3d1e05" />
+    </g>
+  </svg>
+
+  <!-- =========================================================
+       ВЕРХНЯ ПАНЕЛЬ: КНОПКА НАЗАД, ВІКНО ЛІТЕРИ, КНОПКА ДАЛІ
+       ========================================================= -->
+  <div id="top-controls">
+    <div class="nav-group">
+      <!-- Кнопка "Попередній рівень" -->
+      <button class="wood-btn" id="btn-prev" aria-label="Попередній рівень">
+        <svg viewBox="0 0 80 80">
+          <defs>
+            <radialGradient id="btnWood" cx="0.35" cy="0.3" r="0.7">
+              <stop offset="0%" stop-color="#f4a236" />
+              <stop offset="65%" stop-color="#b85d14" />
+              <stop offset="100%" stop-color="#6e3206" />
+            </radialGradient>
+          </defs>
+          <circle cx="40" cy="40" r="36" fill="url(#btnWood)" stroke="#471e02" stroke-width="4" />
+          <circle cx="40" cy="40" r="29" fill="none" stroke="#ffd27d" stroke-width="2" stroke-dasharray="6 4" opacity="0.6" />
+          <path d="M46,22 L24,40 L46,58 L46,47 L58,47 L58,33 L46,33 Z" fill="#fff4c2" stroke="#4a2000" stroke-width="3.5" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Вікно для ручного введення потрібної літери вчителем -->
+    <div class="letter-input-wrap">
+      <svg class="letter-input-bg" viewBox="0 0 120 80">
+        <defs>
+          <linearGradient id="badgeWood" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#c97224" />
+            <stop offset="50%" stop-color="#8c450c" />
+            <stop offset="100%" stop-color="#592803" />
+          </linearGradient>
+        </defs>
+        <rect x="6" y="6" width="108" height="68" rx="22" fill="url(#badgeWood)" stroke="#3b1901" stroke-width="4" />
+        <rect x="13" y="13" width="94" height="54" rx="16" fill="#421d02" stroke="#f7b955" stroke-width="2.5" />
+        <!-- Листочки на рамці -->
+        <path d="M16,12 Q6,2 24,4 Q22,14 16,12 Z" fill="#7ae54c" stroke="#23590c" stroke-width="2" />
+        <path d="M104,12 Q114,2 96,4 Q98,14 104,12 Z" fill="#7ae54c" stroke="#23590c" stroke-width="2" />
+      </svg>
+      <input id="custom-letter-input" type="text" maxlength="1" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <div class="nav-group">
+      <!-- Мінімалістична кнопка "Далі" (одразу переходить на наступне завдання) -->
+      <button class="wood-btn" id="btn-next" aria-label="Наступний рівень">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="36" fill="url(#btnWood)" stroke="#471e02" stroke-width="4" />
+          <circle cx="40" cy="40" r="29" fill="none" stroke="#ffd27d" stroke-width="2" stroke-dasharray="6 4" opacity="0.6" />
+          <path d="M34,22 L56,40 L34,58 L34,47 L22,47 L22,33 L34,33 Z" fill="#fff4c2" stroke="#4a2000" stroke-width="3.5" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       ОСНОВНИЙ ІГРОВИЙ ПРОСТІР
+       ========================================================= -->
+  <div id="play-area">
+    <!-- ЛІВА КОЛОНКА: ПЕРСОНАЖ ТА ЙОГО ЗАМОВЛЕННЯ ЛІТЕРИ -->
+    <div id="character-zone">
+      <!-- Декоративний медальйон-хмаринка замовлення літери -->
+      <svg id="order-bubble" viewBox="0 0 200 165">
+        <defs>
+          <radialGradient id="bubbleGrad" cx="0.4" cy="0.35" r="0.65">
+            <stop offset="0%" stop-color="#fff8d6" />
+            <stop offset="70%" stop-color="#ffd56b" />
+            <stop offset="100%" stop-color="#e0901b" />
+          </radialGradient>
+        </defs>
+        <!-- Хвостик хмаринки до персонажа -->
+        <circle cx="92" cy="150" r="8" fill="url(#bubbleGrad)" stroke="#6b3405" stroke-width="3.5" />
+        <circle cx="102" cy="133" r="12" fill="url(#bubbleGrad)" stroke="#6b3405" stroke-width="3.5" />
+        <!-- Основний різьблений щит-хмаринка -->
+        <path d="M38,68 C22,45 48,16 78,24 C98,8 134,12 148,32 C178,34 186,68 166,90 C176,114 146,128 122,120 C102,130 68,128 54,114 C26,114 18,86 38,68 Z"
+              fill="url(#bubbleGrad)" stroke="#6b3405" stroke-width="5" stroke-linejoin="round" />
+        <!-- Листочки зверху -->
+        <path d="M98,18 C85,2 65,10 78,24 Z" fill="#6bd43b" stroke="#24590b" stroke-width="3" />
+        <path d="M104,18 C118,2 138,10 122,24 Z" fill="#82eb52" stroke="#24590b" stroke-width="3" />
+        <!-- Літера замовлення -->
+        <text id="order-letter-text" x="102" y="88" text-anchor="middle">З</text>
+      </svg>
+
+      <!-- Пеньочок-галявина, де стоїть персонаж на старті -->
+      <div id="hero-home-slot">
+        <svg viewBox="0 0 240 120" style="position:absolute; bottom:4px; width:220px; height:95px;">
+          <ellipse cx="120" cy="82" rx="98" ry="28" fill="#1b4716" opacity="0.55" />
+          <path d="M38,58 C38,38 202,38 202,58 L212,84 C212,102 28,102 28,84 Z" fill="#784218" stroke="#3d1e05" stroke-width="4" />
+          <ellipse cx="120" cy="56" rx="82" ry="22" fill="#d99b52" stroke="#4f2909" stroke-width="4" />
+          <ellipse cx="120" cy="56" rx="64" ry="15" fill="none" stroke="#9e6324" stroke-width="2.5" />
+          <ellipse cx="120" cy="56" rx="40" ry="9" fill="none" stroke="#9e6324" stroke-width="2" />
+        </svg>
+      </div>
+    </div>
+
+    <!-- ЦЕНТРАЛЬНА КОЛОНКА: ТАБЛИЧКА-ЛАБІРИНТ ЗІ СКЛАДАМИ -->
+    <div id="maze-wrapper">
+      <!-- Декоративна дерев'яно-кам'яна основа під лабіринт -->
+      <svg id="maze-frame-svg" viewBox="0 0 800 640" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="boardWood" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#8a4b19" />
+            <stop offset="50%" stop-color="#69360e" />
+            <stop offset="100%" stop-color="#472205" />
+          </linearGradient>
+          <linearGradient id="innerMoss" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#2e6b27" />
+            <stop offset="50%" stop-color="#21521c" />
+            <stop offset="100%" stop-color="#173b14" />
+          </linearGradient>
+          <pattern id="mossPattern" width="60" height="60" patternUnits="userSpaceOnUse">
+            <circle cx="15" cy="18" r="8" fill="#3a8231" opacity="0.35" />
+            <circle cx="45" cy="42" r="11" fill="#1b4516" opacity="0.4" />
+            <path d="M28,10 Q34,4 40,12" stroke="#4ea343" stroke-width="2.5" fill="none" opacity="0.45" />
+          </pattern>
+        </defs>
+        <!-- Зовнішній дерев'яний зруб -->
+        <rect x="12" y="12" width="776" height="616" rx="42" fill="url(#boardWood)" stroke="#2e1402" stroke-width="8" />
+        <rect x="26" y="26" width="748" height="588" rx="34" fill="none" stroke="#b87333" stroke-width="3" stroke-dasharray="18 10" opacity="0.65" />
+        <!-- Внутрішнє мохове поле -->
+        <rect x="38" y="38" width="724" height="564" rx="28" fill="url(#innerMoss)" stroke="#132e0f" stroke-width="6" />
+        <rect x="38" y="38" width="724" height="564" rx="28" fill="url(#mossPattern)" />
+        <!-- Декоративні ліани та листочки по кутах -->
+        <path d="M35,85 Q28,35 90,35" stroke="#5cc23a" stroke-width="7" stroke-linecap="round" fill="none" />
+        <circle cx="52" cy="52" r="10" fill="#ff7597" />
+        <circle cx="52" cy="52" r="4" fill="#ffe66d" />
+        <path d="M765,85 Q772,35 710,35" stroke="#5cc23a" stroke-width="7" stroke-linecap="round" fill="none" />
+        <circle cx="748" cy="52" r="10" fill="#ffd166" />
+        <circle cx="748" cy="52" r="4" fill="#ef476f" />
+      </svg>
+
+      <!-- Лінія пройденої доріжки -->
+      <svg id="path-connector-layer" viewBox="0 0 600 500" preserveAspectRatio="none">
+        <path id="golden-trail-glow" d="" fill="none" stroke="#ffe866" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" opacity="0.45" />
+        <path id="golden-trail-line" d="" fill="none" stroke="#fff6b3" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="16 10" />
+      </svg>
+
+      <!-- Сітка клітинок зі складами -->
+      <div id="maze-grid"></div>
+    </div>
+
+    <!-- ПРАВА КОЛОНКА: ФІНІШНА КАЗКОВА БЕСІДКА ЗІ СМАКОЛИКАМИ -->
+    <div id="goal-zone">
+      <div id="goal-target">
+        <svg viewBox="0 0 200 240">
+          <defs>
+            <linearGradient id="roofGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ff6b6b" />
+              <stop offset="60%" stop-color="#d93838" />
+              <stop offset="100%" stop-color="#8f1919" />
+            </linearGradient>
+            <linearGradient id="archGold" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffe97d" />
+              <stop offset="50%" stop-color="#f5a623" />
+              <stop offset="100%" stop-color="#b86b09" />
+            </linearGradient>
+          </defs>
+          <!-- Тінь -->
+          <ellipse cx="100" cy="215" rx="78" ry="20" fill="#163812" opacity="0.6" />
+          <!-- Кам'яний майданчик фінішу -->
+          <ellipse cx="100" cy="204" rx="72" ry="18" fill="#c79553" stroke="#54310c" stroke-width="4" />
+          <!-- Різьблені стовпчики бесідки -->
+          <rect x="42" y="102" width="18" height="100" rx="6" fill="#9c5a25" stroke="#452205" stroke-width="3.5" />
+          <rect x="140" y="102" width="18" height="100" rx="6" fill="#9c5a25" stroke="#452205" stroke-width="3.5" />
+          <!-- Сяйво порталу-бесідки -->
+          <path d="M58,200 L58,118 Q100,82 142,118 L142,200 Z" fill="url(#archGold)" opacity="0.38" />
+          <!-- Кошик з ягодами та медом на фініші -->
+          <path d="M66,172 L134,172 L124,205 L76,205 Z" fill="#d48b3b" stroke="#593108" stroke-width="3.5" stroke-linejoin="round" />
+          <path d="M62,172 Q100,162 138,172" stroke="#78440e" stroke-width="6" stroke-linecap="round" fill="none" />
+          <!-- Ягідки та яблучка в кошику -->
+          <circle cx="84" cy="164" r="11" fill="#ff4d6d" stroke="#6b091d" stroke-width="2.5" />
+          <circle cx="102" cy="160" r="13" fill="#ffd166" stroke="#7a5100" stroke-width="2.5" />
+          <circle cx="118" cy="165" r="11" fill="#7ae582" stroke="#1b5e20" stroke-width="2.5" />
+          <!-- Казковий дашок з черепицею -->
+          <path d="M18,112 Q100,22 182,112 Q140,122 100,112 Q60,122 18,112 Z" fill="url(#roofGrad)" stroke="#4f0b0b" stroke-width="4.5" stroke-linejoin="round" />
+          <circle cx="65" cy="86" r="6" fill="#fff2cf" opacity="0.85" />
+          <circle cx="112" cy="72" r="8" fill="#fff2cf" opacity="0.85" />
+          <circle cx="136" cy="92" r="5" fill="#fff2cf" opacity="0.85" />
+          <!-- Золота зірочка на верхівці -->
+          <polygon points="100,24 106,38 121,40 110,50 113,65 100,57 87,65 90,50 79,40 94,38" fill="url(#archGold)" stroke="#5e3300" stroke-width="2.5" />
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Персонаж, що плавно рухається від старту по клітинках до фінішу -->
+  <div id="active-character" class="char-idle"></div>
+
+  <!-- Канвас для святкових ефектів (листочки, іскри, зірочки) -->
+  <canvas id="fx-canvas"></canvas>
+</div>
+
+<script>
+  /* =========================================================
+     1. НАЛАШТУВАННЯ УКРАЇНСЬКИХ ЛІТЕР ТА СКЛАДІВ
+     Тут можна легко змінити список приголосних і голосних літер
+     ========================================================= */
+  const CONSONANTS = [
+    'Б', 'В', 'Г', 'Ґ', 'Д', 'Ж', 'З', 'К', 'Л', 'М',
+    'Н', 'П', 'Р', 'С', 'Т', 'Ф', 'Х', 'Ц', 'Ч', 'Ш', 'Щ', 'Й'
+  ];
+
+  const VOWELS = ['А', 'О', 'У', 'И', 'І', 'Е', 'Я', 'Ю', 'Є'];
+
+  // Усі допустимі українські літери для перевірки введення
+  const ALL_UKR_LETTERS = [...CONSONANTS, ...VOWELS, 'Ї'];
+
+  // Розмір таблички-лабіринту (кількість рядків і стовпчиків)
+  const GRID_ROWS = 5;
+  const GRID_COLS = 6;
+
+  /* =========================================================
+     2. ЗВУКОВИЙ РУШІЙ (WEB AUDIO API — БЕЗ СЛІВ, АКТИВНІ ЗВУКИ)
+     ========================================================= */
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    // Звук появи нового персонажа та завдання
+    playAppear() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const notes = [392, 523.25, 659.25, 783.99];
+      notes.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+        gain.gain.setValueAtTime(0.14, now + idx * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + idx * 0.06);
+        osc.stop(now + idx * 0.06 + 0.26);
+      });
+    }
+
+    // Мелодійний звук правильного кроку (підвищується з кожним кроком доріжки)
+    playStep(stepIndex) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const scale = [329.63, 369.99, 415.30, 440.00, 493.88, 554.37, 622.25, 659.25, 739.99, 830.61, 880.00, 987.77];
+      const baseFreq = scale[stepIndex % scale.length];
+
+      // Основний маримбовий тон
+      const osc1 = this.ctx.createOscillator();
+      const gain1 = this.ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(baseFreq, now);
+      osc1.frequency.exponentialRampToValueAtTime(baseFreq * 1.02, now + 0.12);
+      gain1.gain.setValueAtTime(0.24, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      osc1.connect(gain1);
+      gain1.connect(this.ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.34);
+
+      // Дзвінкий обертон
+      const osc2 = this.ctx.createOscillator();
+      const gain2 = this.ctx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(baseFreq * 2, now);
+      gain2.gain.setValueAtTime(0.09, now);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc2.connect(gain2);
+      gain2.connect(this.ctx.destination);
+      osc2.start(now);
+      osc2.stop(now + 0.22);
+    }
+
+    // Кумедний пружний звук при натисканні неправильного складу
+    playWrong() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(195, now);
+      osc.frequency.linearRampToValueAtTime(125, now + 0.14);
+      osc.frequency.linearRampToValueAtTime(160, now + 0.26);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.32);
+    }
+
+    // Урочиста мелодія перемоги, коли доріжка пройдена до кінця
+    playWinFanfare() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const melody = [
+        { f: 523.25, t: 0.0, d: 0.14 },
+        { f: 659.25, t: 0.11, d: 0.14 },
+        { f: 783.99, t: 0.22, d: 0.14 },
+        { f: 1046.50, t: 0.34, d: 0.38 },
+        { f: 880.00, t: 0.54, d: 0.15 },
+        { f: 1046.50, t: 0.68, d: 0.55 }
+      ];
+      melody.forEach(n => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(n.f, now + n.t);
+        gain.gain.setValueAtTime(0.22, now + n.t);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + n.t);
+        osc.stop(now + n.t + n.d + 0.02);
+      });
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  /* =========================================================
+     3. ДЕТАЛІЗОВАНІ SVG-ПЕРСОНАЖІ (10 ЛІСОВИХ ТА САДОВИХ ТВАРИНОК)
+     Кожен персонаж має унікальні вушка, хвостик, градієнти хутра,
+     живі очі та емоції (спокій, радість, подив).
+     ========================================================= */
+  const CHARACTERS = [
+    {
+      id: 'fox',
+      name: 'Лисичка',
+      c1: '#ff7b29', c2: '#d94b07', c3: '#8f2900',
+      belly: '#fff3db', nose: '#2b1204', eye: '#2a7d2e',
+      earType: 'pointed', tailType: 'bushyTip', cheeks: 'foxCheeks', acc: 'flower'
+    },
+    {
+      id: 'bear',
+      name: 'Ведмедик',
+      c1: '#a66838', c2: '#78441d', c3: '#4a260b',
+      belly: '#f0caa1', nose: '#301708', eye: '#3d2314',
+      earType: 'round', tailType: 'pom', cheeks: 'roundMuzzle', acc: 'honeypot'
+    },
+    {
+      id: 'bunny',
+      name: 'Зайчик',
+      c1: '#d9e2ec', c2: '#9fb3c8', c3: '#627d98',
+      belly: '#ffffff', nose: '#ff85a1', eye: '#2b59c3',
+      earType: 'longBunny', tailType: 'fluff', cheeks: 'whiskers', acc: 'carrot'
+    },
+    {
+      id: 'cat',
+      name: 'Рудий Котик',
+      c1: '#ffaa33', c2: '#e07a14', c3: '#994900',
+      belly: '#fff5dc', nose: '#ff758f', eye: '#38b000',
+      earType: 'catStriped', tailType: 'stripedTail', cheeks: 'whiskers', acc: 'collar'
+    },
+    {
+      id: 'puppy',
+      name: 'Песик',
+      c1: '#e6b88a', c2: '#b87d4b', c3: '#734822',
+      belly: '#fff6eb', nose: '#291709', eye: '#4a2c11',
+      earType: 'floppy', tailType: 'wagTail', cheeks: 'puppySpot', acc: 'medal'
+    },
+    {
+      id: 'owl',
+      name: 'Мудра Сова',
+      c1: '#9c6ade', c2: '#6c3bb8', c3: '#3f1d78',
+      belly: '#f3e8ff', nose: '#ffb703', eye: '#fb8500',
+      earType: 'owlTufts', tailType: 'feathers', cheeks: 'owlWings', acc: 'acornHat'
+    },
+    {
+      id: 'hedgehog',
+      name: 'Їжачок',
+      c1: '#d4a373', c2: '#9c6644', c3: '#582f0e',
+      belly: '#faedcd', nose: '#261405', eye: '#1d3557',
+      earType: 'smallRound', tailType: 'quills', cheeks: 'rosy', acc: 'apple'
+    },
+    {
+      id: 'frog',
+      name: 'Жабка',
+      c1: '#80ed99', c2: '#38a3a5', c3: '#22577a',
+      belly: '#e9ffdb', nose: '#22577a', eye: '#ffb703',
+      earType: 'frogEyes', tailType: 'lilyLeaf', cheeks: 'rosy', acc: 'crownLeaf'
+    },
+    {
+      id: 'squirrel',
+      name: 'Білочка',
+      c1: '#f77f00', c2: '#d62828', c3: '#781111',
+      belly: '#fcbf49', nose: '#3b1704', eye: '#3d220a',
+      earType: 'tufted', tailType: 'giantCurl', cheeks: 'foxCheeks', acc: 'nut'
+    },
+    {
+      id: 'raccoon',
+      name: 'Єнот',
+      c1: '#adb5bd', c2: '#6c757d', c3: '#343a40',
+      belly: '#f8f9fa', nose: '#212529', eye: '#495057',
+      earType: 'roundRaccoon', tailType: 'ringedTail', cheeks: 'banditMask', acc: 'berry'
+    }
+  ];
+
+  // Генератор деталізованого SVG-портрета персонажа на основі його параметрів та емоції
+  function renderCharacterSVG(char, mood = 'happy') {
+    const uid = char.id;
+    let mouthPath = 'M90,118 Q100,129 110,118'; // Усмішка
+    if (mood === 'excited') {
+      mouthPath = 'M87,115 Q100,136 113,115 Z'; // Широка радісна усмішка
+    } else if (mood === 'surprised') {
+      mouthPath = 'M95,122 A5,6 0 1,0 105,122 A5,6 0 1,0 95,122'; // Здивований ротик "О"
+    }
+
+    // Деталі хвостика або голочок позаду тулуба
+    let tailSVG = '';
+    if (char.tailType === 'bushyTip') {
+      tailSVG = `
+        <g class="tail-group">
+          <path d="M132,168 C185,165 202,115 175,92 C155,75 132,115 130,152 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+          <path d="M175,92 C192,106 184,128 164,122 C158,108 164,98 175,92 Z" fill="${char.belly}"/>
+        </g>`;
+    } else if (char.tailType === 'giantCurl') {
+      tailSVG = `
+        <g class="tail-group">
+          <path d="M128,172 C198,172 206,82 162,72 C132,65 128,104 148,116 C128,128 122,152 128,172 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+        </g>`;
+    } else if (char.tailType === 'ringedTail') {
+      tailSVG = `
+        <g class="tail-group">
+          <path d="M130,168 C190,168 198,115 170,96 C145,82 126,125 128,160 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+          <path d="M148,115 Q168,120 176,134" stroke="#212529" stroke-width="10" stroke-linecap="round" fill="none"/>
+          <path d="M138,136 Q158,142 165,155" stroke="#212529" stroke-width="10" stroke-linecap="round" fill="none"/>
+        </g>`;
+    } else if (char.tailType === 'stripedTail') {
+      tailSVG = `
+        <g class="tail-group">
+          <path d="M132,168 Q186,152 178,104 Q172,88 158,102 Q162,138 128,156 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+        </g>`;
+    } else if (char.tailType === 'quills') {
+      tailSVG = `
+        <g>
+          <polygon points="100,26 116,48 136,34 142,58 164,52 158,78 176,84 160,108 172,126 148,142 52,142 28,126 40,108 24,84 42,78 36,52 58,58 64,34 84,48"
+                   fill="#582f0e" stroke="#2b1402" stroke-width="3.5" stroke-linejoin="round"/>
+          <polygon points="100,36 114,54 132,44 136,64 154,60 148,84 52,84 46,60 64,64 68,44 86,54"
+                   fill="#7f4f24" opacity="0.8"/>
+        </g>`;
+    } else {
+      tailSVG = `
+        <g class="tail-group">
+          <circle cx="148" cy="162" r="20" fill="${char.belly}" stroke="${char.c3}" stroke-width="3.5"/>
+        </g>`;
+    }
+
+    // Вушка залежно від виду тваринки
+    let earsSVG = '';
+    if (char.earType === 'pointed' || char.earType === 'catStriped' || char.earType === 'tufted') {
+      earsSVG = `
+        <g class="ear-group">
+          <path d="M52,68 L36,18 L82,44 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M54,60 L44,28 L74,46 Z" fill="#ffb3c1"/>
+          <path d="M148,68 L164,18 L118,44 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M146,60 L156,28 L126,46 Z" fill="#ffb3c1"/>
+          ${char.earType === 'tufted' ? '<path d="M36,18 L28,6 M164,18 L172,6" stroke="#781111" stroke-width="4" stroke-linecap="round"/>' : ''}
+        </g>`;
+    } else if (char.earType === 'longBunny') {
+      earsSVG = `
+        <g class="ear-group">
+          <path d="M66,58 C48,4 72,-4 84,48 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+          <path d="M69,52 C57,14 71,10 79,46 Z" fill="#ffccd5"/>
+          <path d="M134,58 C152,4 128,-4 116,48 Z" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+          <path d="M131,52 C143,14 129,10 121,46 Z" fill="#ffccd5"/>
+        </g>`;
+    } else if (char.earType === 'floppy') {
+      earsSVG = `
+        <g class="ear-group">
+          <path d="M54,56 C24,58 22,115 46,120 C58,122 62,92 58,66 Z" fill="${char.c3}" stroke="#3b1f08" stroke-width="3.5"/>
+          <path d="M146,56 C176,58 178,115 154,120 C142,122 138,92 142,66 Z" fill="${char.c3}" stroke="#3b1f08" stroke-width="3.5"/>
+        </g>`;
+    } else if (char.earType === 'owlTufts') {
+      earsSVG = `
+        <g class="ear-group">
+          <path d="M52,58 L32,30 L76,44 Z" fill="${char.c3}"/>
+          <path d="M148,58 L168,30 L124,44 Z" fill="${char.c3}"/>
+        </g>`;
+    } else {
+      earsSVG = `
+        <g class="ear-group">
+          <circle cx="58" cy="48" r="22" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+          <circle cx="58" cy="48" r="12" fill="${char.belly}"/>
+          <circle cx="142" cy="48" r="22" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+          <circle cx="142" cy="48" r="12" fill="${char.belly}"/>
+        </g>`;
+    }
+
+    // Додаткові деталі мордочки (маска єнота, щічки, вуса, цятка песика)
+    let faceExtras = '';
+    if (char.cheeks === 'banditMask') {
+      faceExtras = `
+        <ellipse cx="75" cy="86" rx="22" ry="16" fill="#212529" transform="rotate(-8 75 86)"/>
+        <ellipse cx="125" cy="86" rx="22" ry="16" fill="#212529" transform="rotate(8 125 86)"/>`;
+    } else if (char.cheeks === 'puppySpot') {
+      faceExtras = `<ellipse cx="76" cy="84" rx="19" ry="16" fill="${char.c2}" opacity="0.85"/>`;
+    } else if (char.cheeks === 'whiskers') {
+      faceExtras = `
+        <path d="M52,102 L26,98 M52,108 L24,110 M148,102 L174,98 M148,108 L176,110" stroke="${char.c3}" stroke-width="2.5" stroke-linecap="round"/>`;
+    }
+
+    // Маленький лісовий аксесуар (квіточка, ягідка, жолудь, яблучко)
+    let accSVG = '';
+    if (char.acc === 'apple') {
+      accSVG = `<circle cx="135" cy="42" r="13" fill="#e63946" stroke="#6b0918" stroke-width="2.5"/><path d="M135,29 Q142,22 146,27" stroke="#2b9348" stroke-width="3" fill="none"/>`;
+    } else if (char.acc === 'flower') {
+      accSVG = `<g transform="translate(65,38)"><circle cx="0" cy="0" r="9" fill="#ff758f"/><circle cx="0" cy="0" r="4" fill="#ffe66d"/></g>`;
+    } else if (char.acc === 'crownLeaf') {
+      accSVG = `<path d="M86,38 Q100,16 114,38 Q100,32 86,38 Z" fill="#ffd166" stroke="#8f5b00" stroke-width="2.5"/>`;
+    }
+
+    return `
+      <svg viewBox="0 0 200 220" width="100%" height="100%">
+        <defs>
+          <radialGradient id="fur_${uid}" cx="0.38" cy="0.32" r="0.68">
+            <stop offset="0%" stop-color="${char.c1}"/>
+            <stop offset="68%" stop-color="${char.c2}"/>
+            <stop offset="100%" stop-color="${char.c3}"/>
+          </radialGradient>
+          <radialGradient id="belly_${uid}" cx="0.5" cy="0.4" r="0.6">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="${char.belly}"/>
+          </radialGradient>
+        </defs>
+
+        <!-- Тінь під персонажем -->
+        <ellipse cx="100" cy="202" rx="54" ry="12" fill="rgba(10,30,8,0.42)"/>
+
+        <!-- Хвостик / голки -->
+        ${tailSVG}
+
+        <!-- Тулуб -->
+        <path d="M62,132 C52,158 56,192 74,196 L126,196 C144,192 148,158 138,132 Z"
+              fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="4" stroke-linejoin="round"/>
+
+        <!-- Пухнастий животик -->
+        <ellipse cx="100" cy="164" rx="26" ry="24" fill="url(#belly_${uid})"/>
+
+        <!-- Нижні лапки -->
+        <ellipse cx="76" cy="196" rx="16" ry="10" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+        <ellipse cx="124" cy="196" rx="16" ry="10" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+
+        <!-- Верхні лапки -->
+        <ellipse cx="56" cy="154" rx="14" ry="10" transform="rotate(-25 56 154)" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+        <ellipse cx="144" cy="154" rx="14" ry="10" transform="rotate(25 144 154)" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="3.5"/>
+
+        <!-- Вушка -->
+        ${earsSVG}
+
+        <!-- Голова -->
+        <ellipse cx="100" cy="88" rx="52" ry="46" fill="url(#fur_${uid})" stroke="${char.c3}" stroke-width="4"/>
+
+        <!-- Світла мордочка -->
+        <ellipse cx="100" cy="104" rx="34" ry="24" fill="url(#belly_${uid})"/>
+
+        <!-- Додаткові плями / маска / вуса -->
+        ${faceExtras}
+
+        <!-- Рум'янець на щічках -->
+        <ellipse cx="64" cy="102" rx="9" ry="5.5" fill="#ff758f" opacity="0.55"/>
+        <ellipse cx="136" cy="102" rx="9" ry="5.5" fill="#ff758f" opacity="0.55"/>
+
+        <!-- Живі очі з подвійними бліками (кліпають) -->
+        <g class="blink-group">
+          <circle cx="78" cy="84" r="12" fill="#ffffff" stroke="${char.c3}" stroke-width="2.5"/>
+          <circle cx="79" cy="84" r="7.5" fill="${char.eye}"/>
+          <circle cx="79" cy="84" r="4" fill="#111"/>
+          <circle cx="76" cy="80" r="3" fill="#fff"/>
+          <circle cx="82" cy="87" r="1.4" fill="#fff"/>
+
+          <circle cx="122" cy="84" r="12" fill="#ffffff" stroke="${char.c3}" stroke-width="2.5"/>
+          <circle cx="121" cy="84" r="7.5" fill="${char.eye}"/>
+          <circle cx="121" cy="84" r="4" fill="#111"/>
+          <circle cx="118" cy="80" r="3" fill="#fff"/>
+          <circle cx="124" cy="87" r="1.4" fill="#fff"/>
+        </g>
+
+        <!-- Носик / дзьобик -->
+        ${char.id === 'owl'
+          ? `<polygon points="93,94 107,94 100,110" fill="#ffb703" stroke="#783900" stroke-width="2.5"/>`
+          : `<ellipse cx="100" cy="99" rx="9" ry="6.5" fill="${char.nose}"/><ellipse cx="97" cy="97" rx="3" ry="1.8" fill="#ffffff" opacity="0.65"/>`
+        }
+
+        <!-- Емоційний ротик -->
+        <path d="${mouthPath}" fill="${mood === 'excited' ? '#d90429' : 'none'}" stroke="${char.c3}" stroke-width="3.5" stroke-linecap="round"/>
+
+        <!-- Аксесуар -->
+        ${accSVG}
+      </svg>
+    `;
+  }
+
+  /* =========================================================
+     4. ГЕНЕРАТОР СКЛАДІВ ТА ЗВИВИСТОЇ ДОРІЖКИ ЛАБІРИНТУ
+     ========================================================= */
+  // Створення списку складів із заданою літерою
+  function generateSyllablesWithLetter(targetLetter) {
+    const letter = targetLetter.toUpperCase();
+    const isVowel = VOWELS.includes(letter) || letter === 'Ї';
+    const valid = [];
+
+    if (!isVowel) {
+      // Якщо замовлена приголосна (наприклад, "З"): ЗА, ЗО, ЗУ, ЗИ, ЗІ, ЗЕ, АЗ, ОЗ...
+      VOWELS.forEach(v => {
+        valid.push(letter + v);
+        valid.push(v + letter);
+      });
+    } else {
+      // Якщо вчитель ввів голосну (наприклад, "А"): МА, СА, ЛА, РА, ТА, ПА...
+      CONSONANTS.slice(0, 14).forEach(c => {
+        valid.push(c + letter);
+        valid.push(letter + c);
+      });
+    }
+    return valid;
+  }
+
+  // Створення списку "хибних" складів (які НЕ містять замовленої літери)
+  function generateDecoySyllables(targetLetter) {
+    const letter = targetLetter.toUpperCase();
+    const decoys = [];
+    const otherConsonants = CONSONANTS.filter(c => c !== letter);
+    const otherVowels = VOWELS.filter(v => v !== letter);
+
+    otherConsonants.forEach(c => {
+      otherVowels.forEach(v => {
+        decoys.push(c + v);
+      });
+    });
+    return decoys;
+  }
+
+  // Алгоритм побудови неперервної випадкової доріжки з лівого стовпчика (0) до правого (GRID_COLS - 1)
+  // Важливо: сусідні клітинки доріжки не торкаються одна одної побічними сторонами, щоб доріжка була однозначною
+  function generateMazePath(rows, cols) {
+    const startRow = Math.floor(Math.random() * rows);
+    const path = [{ r: startRow, c: 0 }];
+    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+    visited[startRow][0] = true;
+
+    let r = startRow;
+    let c = 0;
+
+    while (c < cols - 1) {
+      const candidates = [];
+
+      // Крок праворуч завжди можливий
+      candidates.push({ r, c: c + 1, weight: 3 });
+
+      // Крок вгору або вниз (якщо не виходимо за межі та не злипаємось із вже пройденими клітинками)
+      [-1, 1].forEach(dr => {
+        const nr = r + dr;
+        if (nr >= 0 && nr < rows && !visited[nr][c]) {
+          // Перевіряємо, щоб нова клітинка мала лише 1 сусіда з поточного шляху (щоб не було петель)
+          let neighborCount = 0;
+          [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([ar, ac]) => {
+            const rr = nr + ar;
+            const cc = c + ac;
+            if (rr >= 0 && rr < rows && cc >= 0 && cc < cols && visited[rr][cc]) {
+              neighborCount++;
+            }
+          });
+          if (neighborCount === 1) {
+            candidates.push({ r: nr, c, weight: 4 });
+          }
+        }
+      });
+
+      // Випадковий вибір наступного кроку з урахуванням ваги
+      const pool = [];
+      candidates.forEach(cand => {
+        for (let i = 0; i < cand.weight; i++) pool.push(cand);
+      });
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+      r = chosen.r;
+      c = chosen.c;
+      visited[r][c] = true;
+      path.push({ r, c });
+    }
+
+    return path;
+  }
+
+  /* =========================================================
+     5. СТАН ГРИ ТА ІСТОРІЯ РІВНІВ (ДЛЯ КНОПОК "НАЗАД" ТА "ДАЛІ")
+     ========================================================= */
+  const levelHistory = [];
+  let currentLevelIdx = -1;
+  let isLevelCompleted = false;
+
+  const gridEl = document.getElementById('maze-grid');
+  const orderLetterEl = document.getElementById('order-letter-text');
+  const customInputEl = document.getElementById('custom-letter-input');
+  const activeCharEl = document.getElementById('active-character');
+  const heroSlotEl = document.getElementById('hero-home-slot');
+  const goalTargetEl = document.getElementById('goal-target');
+  const trailLineEl = document.getElementById('golden-trail-line');
+  const trailGlowEl = document.getElementById('golden-trail-glow');
+
+  // Випадковий вибір елемента масиву
+  function pickRandom(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  // Створення даних нового рівня
+  function createLevelData(forcedLetter = null) {
+    // Обираємо випадкову приголосну або введену вчителем літеру
+    const prevLetter = currentLevelIdx >= 0 ? levelHistory[currentLevelIdx].letter : null;
+    let letter = forcedLetter;
+    if (!letter) {
+      const available = CONSONANTS.filter(l => l !== prevLetter);
+      letter = pickRandom(available);
+    }
+
+    // Чергуємо 10 персонажів по колу у випадковому або послідовному порядку
+    const charIndex = (currentLevelIdx + 1) % CHARACTERS.length;
+    const character = CHARACTERS[charIndex];
+
+    // Генеруємо шлях лабіринту
+    const path = generateMazePath(GRID_ROWS, GRID_COLS);
+    const pathSet = new Set(path.map(p => `${p.r},${p.c}`));
+
+    const validSyllables = generateSyllablesWithLetter(letter);
+    const decoySyllables = generateDecoySyllables(letter);
+
+    // Заповнюємо матрицю клітинок
+    const cells = [];
+    for (let r = 0; r < GRID_ROWS; r++) {
+      const row = [];
+      for (let c = 0; c < GRID_COLS; c++) {
+        const key = `${r},${c}`;
+        const pathIndex = path.findIndex(p => p.r === r && p.c === c);
+        const isPath = pathSet.has(key);
+        const syllable = isPath
+          ? pickRandom(validSyllables)
+          : pickRandom(decoySyllables);
+
+        row.push({
+          r,
+          c,
+          syllable,
+          isPath,
+          pathIndex,
+          stepped: false
+        });
+      }
+      cells.push(row);
+    }
+
+    return {
+      letter,
+      character,
+      path,
+      cells
+    };
+  }
+
+  /* =========================================================
+     6. ВІДМАЛЬОВКА ТАБЛИЧКИ ЛАБІРИНТУ ТА ПЕРСОНАЖА
+     ========================================================= */
+  function renderCellSVG(syllable, stepped, r, c) {
+    const id = `stone_${r}_${c}`;
+    const topColor1 = stepped ? '#ffe975' : '#d99b52';
+    const topColor2 = stepped ? '#f5b120' : '#a86825';
+    const borderColor = stepped ? '#804d00' : '#4a2404';
+    const leafColor = stepped ? '#80ff4d' : '#58b835';
+
+    return `
+      <svg class="cell-svg" viewBox="0 2 120 96">
+        <defs>
+          <linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${topColor1}" />
+            <stop offset="100%" stop-color="${topColor2}" />
+          </linearGradient>
+        </defs>
+        <!-- Об'ємна нижня грань каменя/плитки -->
+        <rect x="6" y="16" width="108" height="74" rx="20" fill="${borderColor}" />
+        <!-- Верхня різьблена поверхня -->
+        <rect x="6" y="8" width="108" height="72" rx="20" fill="url(#${id})" stroke="${borderColor}" stroke-width="3.5" />
+        <!-- Внутрішній візерунок -->
+        <rect x="14" y="14" width="92" height="58" rx="15" fill="none" stroke="rgba(255,248,210,0.45)" stroke-width="2" stroke-dasharray="10 6" />
+        <!-- Маленький листочок у куточку клітинки -->
+        <path d="M16,22 Q8,10 24,12 Q22,22 16,22 Z" fill="${leafColor}" stroke="#1f4d0d" stroke-width="1.8" />
+        ${stepped ? `<circle cx="98" cy="22" r="6" fill="#fff9bf" />` : ''}
+        <!-- Текст складу -->
+        <text class="syllable-label" x="60" y="62" text-anchor="middle">${syllable}</text>
+      </svg>
+    `;
+  }
+
+  // Позиціонування персонажа на старті, на клітинці або біля фінішу
+  function moveCharacterToElement(targetEl, scale = 1) {
+    const rect = targetEl.getBoundingClientRect();
+    const charW = scale < 0.8 ? 115 : 210;
+    const charH = scale < 0.8 ? 126 : 230;
+    activeCharEl.style.width = `${charW}px`;
+    activeCharEl.style.height = `${charH}px`;
+    activeCharEl.style.left = `${rect.left + rect.width / 2 - charW / 2}px`;
+    activeCharEl.style.top = `${rect.top + rect.height / 2 - charH * 0.65}px`;
+  }
+
+  // Оновлення золотої пунктирної лінії між відкритими клітинками шляху
+  function updateTrailLine(level) {
+    const steppedInOrder = [];
+    for (let i = 0; i < level.path.length; i++) {
+      const p = level.path[i];
+      if (level.cells[p.r][p.c].stepped) {
+        steppedInOrder.push(p);
+      }
+    }
+
+    if (steppedInOrder.length < 2) {
+      trailLineEl.setAttribute('d', '');
+      trailGlowEl.setAttribute('d', '');
+      return;
+    }
+
+    const colW = 600 / GRID_COLS;
+    const rowH = 500 / GRID_ROWS;
+    const points = steppedInOrder.map(p => {
+      const x = (p.c + 0.5) * colW;
+      const y = (p.r + 0.5) * rowH;
+      return `${x},${y}`;
+    });
+
+    const d = 'M ' + points.join(' L ');
+    trailLineEl.setAttribute('d', d);
+    trailGlowEl.setAttribute('d', d);
+  }
+
+  // Завантаження та відображення поточного рівня
+  function loadLevel(level) {
+    isLevelCompleted = false;
+
+    // 1. Оновлюємо замовлену літеру в хмаринці та у вікні введення
+    orderLetterEl.textContent = level.letter;
+    customInputEl.value = level.letter;
+
+    const bubble = document.getElementById('order-bubble');
+    bubble.style.transform = 'scale(0.6)';
+    setTimeout(() => { bubble.style.transform = 'scale(1)'; }, 50);
+
+    // 2. Оновлюємо персонажа та ставимо його на стартовий пеньочок
+    activeCharEl.innerHTML = renderCharacterSVG(level.character, 'happy');
+    activeCharEl.className = 'char-idle';
+    requestAnimationFrame(() => {
+      moveCharacterToElement(heroSlotEl, 1);
+    });
+
+    // 3. Очищуємо доріжку та будуємо сітку клітинок
+    trailLineEl.setAttribute('d', '');
+    trailGlowEl.setAttribute('d', '');
+    gridEl.innerHTML = '';
+
+    for (let r = 0; r < GRID_ROWS; r++) {
+      for (let c = 0; c < GRID_COLS; c++) {
+        const cellData = level.cells[r][c];
+        cellData.stepped = false;
+
+        const cellDiv = document.createElement('div');
+        cellDiv.className = 'maze-cell';
+        if (cellData.pathIndex === 0) {
+          cellDiv.classList.add('start-hint');
+        }
+        cellDiv.dataset.r = r;
+        cellDiv.dataset.c = c;
+        cellDiv.innerHTML = renderCellSVG(cellData.syllable, false, r, c);
+
+        cellDiv.addEventListener('click', () => handleCellClick(cellData, cellDiv, level));
+        gridEl.appendChild(cellDiv);
+      }
+    }
+
+    sound.playAppear();
+  }
+
+  /* =========================================================
+     7. ОБРОБКА НАТИСКАННЯ НА КЛІТИНКИ ЛАБІРИНТУ
+     ========================================================= */
+  function handleCellClick(cellData, cellDiv, level) {
+    if (isLevelCompleted) return;
+
+    // Якщо клітинка містить склад із замовленою літерою (належить до доріжки)
+    if (cellData.isPath) {
+      if (cellData.stepped) return;
+
+      cellData.stepped = true;
+      cellDiv.classList.remove('start-hint');
+      cellDiv.classList.add('stepped');
+      cellDiv.innerHTML = renderCellSVG(cellData.syllable, true, cellData.r, cellData.c);
+
+      // Скільки клітинок доріжки вже відкрито
+      const totalStepped = level.path.filter(p => level.cells[p.r][p.c].stepped).length;
+      sound.playStep(totalStepped - 1);
+
+      // Іскри навколо клітинки
+      const rect = cellDiv.getBoundingClientRect();
+      spawnBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, 16);
+
+      // Персонаж радісно стрибає на цю клітинку
+      activeCharEl.innerHTML = renderCharacterSVG(level.character, 'excited');
+      activeCharEl.className = 'char-hop';
+      moveCharacterToElement(cellDiv, 0.62);
+      setTimeout(() => {
+        if (!isLevelCompleted) activeCharEl.className = 'char-idle';
+      }, 520);
+
+      // Підсвічуємо наступну ще не відкриту клітинку шляху для зручності дитини
+      document.querySelectorAll('.maze-cell.start-hint').forEach(el => el.classList.remove('start-hint'));
+      const nextUnstepped = level.path.find(p => !level.cells[p.r][p.c].stepped);
+      if (nextUnstepped) {
+        const nextEl = gridEl.querySelector(`[data-r="${nextUnstepped.r}"][data-c="${nextUnstepped.c}"]`);
+        if (nextEl) nextEl.classList.add('start-hint');
+      }
+
+      updateTrailLine(level);
+
+      // Перевіряємо, чи всі склади доріжки відкриті
+      if (totalStepped === level.path.length) {
+        completeLevel(level);
+      }
+    } else {
+      // Хибна клітинка (інша літера)
+      sound.playWrong();
+      cellDiv.classList.remove('wrong-hit');
+      void cellDiv.offsetWidth;
+      cellDiv.classList.add('wrong-hit');
+
+      // Персонаж здивовано хитає головою
+      activeCharEl.innerHTML = renderCharacterSVG(level.character, 'surprised');
+      activeCharEl.className = 'char-wrong';
+      setTimeout(() => {
+        if (!isLevelCompleted) {
+          activeCharEl.innerHTML = renderCharacterSVG(level.character, 'happy');
+          activeCharEl.className = 'char-idle';
+        }
+      }, 520);
+    }
+  }
+
+  // Завершення рівня: персонаж добігає до фінішної бесідки, лунає салют і приходить наступний гість
+  function completeLevel(level) {
+    isLevelCompleted = true;
+    sound.playWinFanfare();
+
+    setTimeout(() => {
+      activeCharEl.innerHTML = renderCharacterSVG(level.character, 'excited');
+      activeCharEl.className = 'char-win';
+      moveCharacterToElement(goalTargetEl, 0.92);
+
+      const goalRect = goalTargetEl.getBoundingClientRect();
+      spawnBurst(goalRect.left + goalRect.width / 2, goalRect.top + goalRect.height / 2, 65);
+    }, 320);
+
+    // Автоматичний перехід до наступного персонажа через 2.5 секунди
+    setTimeout(() => {
+      if (isLevelCompleted) {
+        goNextLevel();
+      }
+    }, 2600);
+  }
+
+  /* =========================================================
+     8. НАВІГАЦІЯ ("ДАЛІ", "НАЗАД") ТА ВВЕДЕННЯ ВЛАСНОЇ ЛІТЕРИ
+     ========================================================= */
+  function goNextLevel(forcedLetter = null) {
+    if (!forcedLetter && currentLevelIdx < levelHistory.length - 1) {
+      currentLevelIdx++;
+      loadLevel(levelHistory[currentLevelIdx]);
+    } else {
+      const newLevel = createLevelData(forcedLetter);
+      levelHistory.push(newLevel);
+      currentLevelIdx = levelHistory.length - 1;
+      loadLevel(newLevel);
+    }
+  }
+
+  function goPrevLevel() {
+    if (currentLevelIdx > 0) {
+      currentLevelIdx--;
+      loadLevel(levelHistory[currentLevelIdx]);
+    } else {
+      // Якщо ми на першому рівні, просто оновлюємо поточний лабіринт
+      loadLevel(levelHistory[0]);
+    }
+  }
+
+  document.getElementById('btn-next').addEventListener('click', () => goNextLevel());
+  document.getElementById('btn-prev').addEventListener('click', () => goPrevLevel());
+
+  // При кліку на поле введення виділяємо поточну літеру для миттєвої заміни
+  customInputEl.addEventListener('focus', () => {
+    customInputEl.select();
+  });
+
+  // Коли вчитель вводить літеру у віконце
+  customInputEl.addEventListener('input', (e) => {
+    const raw = e.target.value.trim().toUpperCase();
+    if (!raw) return;
+
+    // Якщо введена коректна українська літера — одразу генеруємо лабіринт із нею
+    if (ALL_UKR_LETTERS.includes(raw)) {
+      const updatedLevel = createLevelData(raw);
+      levelHistory[currentLevelIdx] = updatedLevel;
+      loadLevel(updatedLevel);
+      customInputEl.blur();
+    }
+  });
+
+  // Перерахунок позиції персонажа при зміні розміру вікна
+  window.addEventListener('resize', () => {
+    if (currentLevelIdx >= 0 && !isLevelCompleted) {
+      moveCharacterToElement(heroSlotEl, 1);
+    }
+  });
+
+  /* =========================================================
+     9. СИСТЕМА СВЯТКОВИХ ЧАСТИНОК (ЗІРОЧКИ, ЛИСТОЧКИ, СЯЙВО)
+     ========================================================= */
+  const fxCanvas = document.getElementById('fx-canvas');
+  const fxCtx = fxCanvas.getContext('2d');
+  let particles = [];
+
+  function resizeFxCanvas() {
+    fxCanvas.width = window.innerWidth;
+    fxCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeFxCanvas);
+  resizeFxCanvas();
+
+  function spawnBurst(x, y, count = 25) {
+    const colors = ['#ffe066', '#ff6b6b', '#7ae582', '#4cc9f0', '#ff9f1c', '#f72585'];
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2.5 + Math.random() * 7.5;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2.5,
+        size: 6 + Math.random() * 8,
+        color: pickRandom(colors),
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 0.22,
+        life: 1,
+        decay: 0.016 + Math.random() * 0.015,
+        shape: Math.random() > 0.4 ? 'star' : 'leaf'
+      });
+    }
+  }
+
+  function drawStar(ctx, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const a1 = (i * 72 - 90) * (Math.PI / 180);
+      const a2 = ((i * 72 + 36) - 90) * (Math.PI / 180);
+      if (i === 0) ctx.moveTo(Math.cos(a1) * r, Math.sin(a1) * r);
+      else ctx.lineTo(Math.cos(a1) * r, Math.sin(a1) * r);
+      ctx.lineTo(Math.cos(a2) * (r * 0.45), Math.sin(a2) * (r * 0.45));
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function animateFx() {
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.18; // Гравітація
+      p.rot += p.vRot;
+      p.life -= p.decay;
+
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      fxCtx.save();
+      fxCtx.translate(p.x, p.y);
+      fxCtx.rotate(p.rot);
+      fxCtx.globalAlpha = Math.max(0, p.life);
+      fxCtx.fillStyle = p.color;
+
+      if (p.shape === 'star') {
+        drawStar(fxCtx, p.size);
+      } else {
+        fxCtx.beginPath();
+        fxCtx.ellipse(0, 0, p.size, p.size * 0.55, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+      }
+      fxCtx.restore();
+    }
+    requestAnimationFrame(animateFx);
+  }
+  animateFx();
+
+  /* =========================================================
+     10. СТАРТ ПЕРШОГО РІВНЯ (ЗА ЗАМОВЧУВАННЯМ ПОЧИНАЄМО З "З")
+     ========================================================= */
+  window.addEventListener('DOMContentLoaded', () => {
+    goNextLevel('З');
+  });
+</script>
+</body>
+</html>
