@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Що з чого зроблено</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@700;800;900&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #231208;
+      font-family: 'Rubik', sans-serif;
+    }
+
+    #game-stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #scene-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+    }
+
+    #fx-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 400;
+    }
+
+    #top-hud {
+      position: fixed;
+      top: 14px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hud-btn {
+      position: relative;
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      outline: none;
+      filter: drop-shadow(0 6px 10px rgba(15, 6, 2, 0.65));
+    }
+
+    .hud-btn-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 54px;
+      padding: 0 20px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #9a5b30 0%, #6b3817 55%, #47220b 100%);
+      border: 4px solid #f59e0b;
+      box-shadow: inset 0 2px 4px rgba(254, 240, 138, 0.45), inset 0 -4px 6px rgba(20, 8, 2, 0.7);
+      color: #fef3c7;
+      font-family: 'Rubik', sans-serif;
+      font-weight: 900;
+      font-size: 22px;
+      letter-spacing: 1.5px;
+      text-shadow: 0 2px 0 #291205, 0 -1px 0 #291205, 2px 0 0 #291205, -2px 0 0 #291205;
+      pointer-events: none;
+      transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.16s ease;
+    }
+
+    .hud-btn-icon .hud-btn-inner {
+      width: 58px;
+      padding: 0;
+    }
+
+    .hud-btn:hover .hud-btn-inner {
+      transform: translateY(-3px) scale(1.05);
+      filter: brightness(1.1);
+    }
+
+    .hud-btn:active .hud-btn-inner {
+      transform: translateY(1px) scale(0.95);
+    }
+
+    #sticker-dock {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(10px, 1.8vw, 24px);
+      padding: 12px 24px 14px;
+      border-radius: 26px;
+      background: linear-gradient(180deg, #6e3a19 0%, #4a240d 65%, #2e1506 100%);
+      border: 4px solid #b46934;
+      box-shadow:
+        0 14px 28px rgba(10, 4, 1, 0.75),
+        inset 0 2px 6px rgba(253, 224, 71, 0.25),
+        inset 0 -6px 12px rgba(15, 6, 2, 0.8);
+      max-width: 96vw;
+    }
+
+    #sticker-dock::before,
+    #sticker-dock::after {
+      content: '';
+      position: absolute;
+      top: 10px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #fef08a, #d97706 65%, #78350f 100%);
+      border: 1.5px solid #3b1906;
+      pointer-events: none;
+    }
+    #sticker-dock::before { left: 10px; }
+    #sticker-dock::after { right: 10px; }
+
+    .sticker-slot {
+      position: relative;
+      width: clamp(175px, 20vw, 265px);
+      height: clamp(74px, 8.8vh, 98px);
+      border: none;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+      outline: none;
+      display: block;
+      flex-shrink: 0;
+    }
+
+    .sticker-visual {
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+      filter: drop-shadow(0 6px 8px rgba(15, 6, 2, 0.55));
+    }
+
+    .sticker-slot:hover .sticker-visual {
+      transform: translateY(-5px) scale(1.03);
+      filter: drop-shadow(0 12px 14px rgba(15, 6, 2, 0.68)) brightness(1.06);
+    }
+
+    .sticker-slot:active .sticker-visual {
+      transform: translateY(1px) scale(0.96);
+    }
+
+    @keyframes idleHandsBreath {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-6px); }
+    }
+
+    @keyframes wrongWobble {
+      0%, 100% { transform: translateX(0px) rotate(0deg); }
+      18% { transform: translateX(-16px) rotate(-5deg); }
+      36% { transform: translateX(15px) rotate(4.5deg); }
+      54% { transform: translateX(-11px) rotate(-3deg); }
+      72% { transform: translateX(8px) rotate(2deg); }
+    }
+
+    @keyframes correctBounce {
+      0% { transform: scale(1); }
+      35% { transform: scale(1.08) rotate(-1.5deg); }
+      70% { transform: scale(0.97) rotate(1deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+
+    @keyframes boxShakeRummage {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(-4px, 2px); }
+      50% { transform: translate(5px, -2px); }
+      75% { transform: translate(-4px, -1px); }
+    }
+
+    .hands-idle {
+      animation: idleHandsBreath 3.2s ease-in-out infinite;
+    }
+
+    .item-wrong {
+      animation: wrongWobble 0.52s ease-in-out;
+    }
+
+    .item-correct {
+      animation: correctBounce 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .box-rummage {
+      animation: boxShakeRummage 0.35s ease-in-out infinite;
+    }
+
+    #left-hand-mover,
+    #right-hand-mover,
+    #active-item-mover {
+      transition: transform 0.38s cubic-bezier(0.25, 1, 0.5, 1);
+      will-change: transform;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-stage">
+    <div id="top-hud">
+      <button id="lang-btn" class="hud-btn" type="button" aria-label="Language">
+        <span class="hud-btn-inner" id="lang-btn-label">УКР</span>
+      </button>
+      <button id="prev-btn" class="hud-btn hud-btn-icon" type="button" aria-label="Previous">
+        <span class="hud-btn-inner">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+            <path d="M15.5 4.5L7.5 12L15.5 19.5" stroke="#fef3c7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </button>
+      <button id="next-btn" class="hud-btn hud-btn-icon" type="button" aria-label="Next">
+        <span class="hud-btn-inner">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+            <path d="M8.5 4.5L16.5 12L8.5 19.5" stroke="#fef3c7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+
+    <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="wallGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6e462b" /><stop offset="50%" stop-color="#53321d" /><stop offset="100%" stop-color="#2e190d" />
+        </linearGradient>
+        <pattern id="wallpaperPattern" width="84" height="84" patternUnits="userSpaceOnUse">
+          <path d="M42 8 L76 42 L42 76 L8 42 Z" fill="none" stroke="#85583a" stroke-width="1.6" opacity="0.26" />
+          <circle cx="42" cy="42" r="5.5" fill="#966442" opacity="0.2" />
+        </pattern>
+        <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#4ea8de" /><stop offset="58%" stop-color="#98ddfc" /><stop offset="100%" stop-color="#fef3c7" />
+        </linearGradient>
+        <linearGradient id="sunBeamGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#fff9db" stop-opacity="0.42" /><stop offset="60%" stop-color="#fde68a" stop-opacity="0.16" /><stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+        </linearGradient>
+        <linearGradient id="woodTableGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#874f29" /><stop offset="25%" stop-color="#9c5d32" /><stop offset="65%" stop-color="#78421d" /><stop offset="100%" stop-color="#46230c" />
+        </linearGradient>
+        <radialGradient id="lampConeGrad" cx="50%" cy="8%" r="85%">
+          <stop offset="0%" stop-color="#fef08a" stop-opacity="0.62" /><stop offset="50%" stop-color="#f59e0b" stop-opacity="0.2" /><stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+        </radialGradient>
+        <linearGradient id="lampShadeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#34d399" /><stop offset="50%" stop-color="#059669" /><stop offset="100%" stop-color="#064e3b" />
+        </linearGradient>
+        <linearGradient id="brassGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#92400e" /><stop offset="30%" stop-color="#fbbf24" /><stop offset="52%" stop-color="#fef08a" /><stop offset="78%" stop-color="#d97706" /><stop offset="100%" stop-color="#78350f" />
+        </linearGradient>
+        <linearGradient id="boxFrontGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#d69e66" /><stop offset="55%" stop-color="#c2864c" /><stop offset="100%" stop-color="#99612d" />
+        </linearGradient>
+        <linearGradient id="boxInteriorGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#5c3818" /><stop offset="50%" stop-color="#331d0a" /><stop offset="100%" stop-color="#1a0d03" />
+        </linearGradient>
+        <linearGradient id="boxFlapBackGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+          <stop offset="0%" stop-color="#8c5828" /><stop offset="100%" stop-color="#d1a270" />
+        </linearGradient>
+        <linearGradient id="boxFlapSideGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#e0ae7a" /><stop offset="100%" stop-color="#ad733b" />
+        </linearGradient>
+        <linearGradient id="boxFlapFrontGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#e5b887" /><stop offset="100%" stop-color="#b0763e" />
+        </linearGradient>
+        <pattern id="corrugatedPattern" width="12" height="20" patternUnits="userSpaceOnUse">
+          <line x1="0" y1="0" x2="0" y2="20" stroke="#78471c" stroke-width="2" opacity="0.16" />
+          <line x1="6" y1="0" x2="6" y2="20" stroke="#f7d4aa" stroke-width="1.5" opacity="0.14" />
+        </pattern>
+        <linearGradient id="skinArmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffdfc4" /><stop offset="55%" stop-color="#f0b892" /><stop offset="100%" stop-color="#c98860" />
+        </linearGradient>
+        <linearGradient id="skinPalmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffe4cc" /><stop offset="60%" stop-color="#f2be99" /><stop offset="100%" stop-color="#d18e66" />
+        </linearGradient>
+        <linearGradient id="skinBackGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#e8ac84" /><stop offset="100%" stop-color="#b8744c" />
+        </linearGradient>
+        <linearGradient id="nailGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#fff7f4" /><stop offset="75%" stop-color="#f7cab8" /><stop offset="100%" stop-color="#dfa38c" />
+        </linearGradient>
+        <linearGradient id="sleeveSweaterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#0f766e" /><stop offset="55%" stop-color="#115e59" /><stop offset="100%" stop-color="#042f2e" />
+        </linearGradient>
+        <linearGradient id="cuffRibGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#0d9488" /><stop offset="50%" stop-color="#14b8a6" /><stop offset="100%" stop-color="#0f766e" />
+        </linearGradient>
+        <pattern id="knitPattern" width="16" height="16" patternUnits="userSpaceOnUse">
+          <path d="M0 8 Q4 0 8 8 Q12 16 16 8" fill="none" stroke="#5eead4" stroke-width="1.3" opacity="0.18" />
+          <path d="M0 16 Q4 8 8 16 Q12 24 16 16" fill="none" stroke="#042f2e" stroke-width="1.5" opacity="0.28" />
+        </pattern>
+        <linearGradient id="stickerGlassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#67e8f9" /><stop offset="50%" stop-color="#06b6d4" /><stop offset="100%" stop-color="#0369a1" />
+        </linearGradient>
+        <linearGradient id="stickerPaperGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fde68a" /><stop offset="50%" stop-color="#f59e0b" /><stop offset="100%" stop-color="#b45309" />
+        </linearGradient>
+        <linearGradient id="stickerMetalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#e2e8f0" /><stop offset="35%" stop-color="#64748b" /><stop offset="65%" stop-color="#cbd5e1" /><stop offset="100%" stop-color="#1e293b" />
+        </linearGradient>
+        <linearGradient id="stickerPlasticGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f472b6" /><stop offset="50%" stop-color="#db2777" /><stop offset="100%" stop-color="#7e22ce" />
+        </linearGradient>
+        <linearGradient id="glassBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#e0f2fe" stop-opacity="0.82" /><stop offset="35%" stop-color="#7dd3fc" stop-opacity="0.4" /><stop offset="70%" stop-color="#38bdf8" stop-opacity="0.3" /><stop offset="100%" stop-color="#bae6fd" stop-opacity="0.85" />
+        </linearGradient>
+        <linearGradient id="steelShineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#64748b" /><stop offset="22%" stop-color="#f1f5f9" /><stop offset="45%" stop-color="#94a3b8" /><stop offset="68%" stop-color="#f8fafc" /><stop offset="88%" stop-color="#475569" /><stop offset="100%" stop-color="#334155" />
+        </linearGradient>
+        <linearGradient id="goldKeyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fef08a" /><stop offset="32%" stop-color="#f59e0b" /><stop offset="60%" stop-color="#b45309" /><stop offset="82%" stop-color="#fbbf24" /><stop offset="100%" stop-color="#78350f" />
+        </linearGradient>
+        <linearGradient id="paperSheetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fffbeb" /><stop offset="65%" stop-color="#fde68a" /><stop offset="100%" stop-color="#d97706" />
+        </linearGradient>
+        <linearGradient id="kraftBagGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#dfb17b" /><stop offset="55%" stop-color="#c28c53" /><stop offset="100%" stop-color="#8f5d2b" />
+        </linearGradient>
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+          <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#140902" flood-opacity="0.5" />
+        </filter>
+        <filter id="itemShadow" x="-25%" y="-25%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#0f0702" flood-opacity="0.58" />
+        </filter>
+        <filter id="handShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#120802" flood-opacity="0.48" />
+        </filter>
+      </defs>
+
+      <g id="room-background">
+        <rect x="0" y="0" width="1920" height="700" fill="url(#wallGrad)" />
+        <rect x="0" y="0" width="1920" height="700" fill="url(#wallpaperPattern)" />
+        <rect x="0" y="525" width="1920" height="175" fill="#3b2110" />
+        <line x1="0" y1="525" x2="1920" y2="525" stroke="#7c4a27" stroke-width="8" />
+        <g opacity="0.35">
+          <rect x="40" y="545" width="200" height="125" rx="6" fill="#291508" stroke="#693c1e" stroke-width="3" />
+          <rect x="280" y="545" width="200" height="125" rx="6" fill="#291508" stroke="#693c1e" stroke-width="3" />
+          <rect x="1440" y="545" width="200" height="125" rx="6" fill="#291508" stroke="#693c1e" stroke-width="3" />
+          <rect x="1680" y="545" width="200" height="125" rx="6" fill="#291508" stroke="#693c1e" stroke-width="3" />
+        </g>
+        <g id="window-group" transform="translate(110, 36)">
+          <rect x="-12" y="-12" width="544" height="464" rx="18" fill="#1f1007" opacity="0.6" />
+          <rect x="0" y="0" width="520" height="440" rx="12" fill="#472814" stroke="#854d27" stroke-width="8" />
+          <clipPath id="windowClip"><rect x="18" y="18" width="484" height="404" rx="8" /></clipPath>
+          <g clip-path="url(#windowClip)">
+            <rect x="18" y="18" width="484" height="404" fill="url(#skyGrad)" />
+            <circle cx="110" cy="92" r="65" fill="#fef08a" opacity="0.78" />
+            <circle cx="110" cy="92" r="105" fill="#fde047" opacity="0.26" />
+            <g opacity="0.88">
+              <animateTransform attributeName="transform" type="translate" values="-30 0; 35 0; -30 0" dur="26s" repeatCount="indefinite" />
+              <path d="M180 118 Q200 88 235 100 Q265 78 295 103 Q325 106 320 130 Q250 138 180 130 Z" fill="#fffbeb" />
+              <path d="M355 170 Q375 145 405 157 Q430 143 450 163 Q470 170 463 187 Q405 193 355 185 Z" fill="#fef3c7" />
+            </g>
+            <path d="M18 345 Q160 285 320 335 T502 320 L502 422 L18 422 Z" fill="#65a30d" opacity="0.72" />
+            <path d="M18 372 Q210 322 390 368 T502 355 L502 422 L18 422 Z" fill="#4d7c0f" opacity="0.88" />
+            <g>
+              <animateTransform attributeName="transform" type="rotate" values="-1.8 18 195; 2.2 18 195; -1.8 18 195" dur="6s" repeatCount="indefinite" />
+              <path d="M10 185 Q110 170 215 205 Q150 190 10 210 Z" fill="#5c3a21" />
+              <path d="M95 183 Q145 140 185 145" fill="none" stroke="#5c3a21" stroke-width="8" stroke-linecap="round" />
+              <circle cx="175" cy="143" r="35" fill="#4d7c0f" /><circle cx="215" cy="157" r="40" fill="#65a30d" /><circle cx="140" cy="170" r="36" fill="#84cc16" /><circle cx="235" cy="197" r="33" fill="#4d7c0f" /><circle cx="195" cy="190" r="30" fill="#a3e635" opacity="0.85" /><circle cx="105" cy="155" r="32" fill="#65a30d" />
+            </g>
+            <g>
+              <animateTransform attributeName="transform" type="rotate" values="1.5 502 75; -2.2 502 75; 1.5 502 75" dur="7.5s" repeatCount="indefinite" />
+              <path d="M510 68 Q415 92 345 62" fill="none" stroke="#5c3a21" stroke-width="10" stroke-linecap="round" />
+              <circle cx="445" cy="82" r="44" fill="#3f6212" /><circle cx="395" cy="68" r="38" fill="#65a30d" /><circle cx="350" cy="80" r="32" fill="#84cc16" /><circle cx="475" cy="115" r="36" fill="#4d7c0f" /><circle cx="420" cy="105" r="28" fill="#bef264" opacity="0.78" />
+            </g>
+          </g>
+          <rect x="252" y="18" width="16" height="404" fill="#5c341a" />
+          <rect x="18" y="210" width="484" height="16" fill="#5c341a" />
+          <path d="M40 370 L190 220 M70 380 L210 240" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.28" />
+          <path d="M295 175 L435 35 M330 175 L455 50" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.28" />
+          <rect x="-24" y="430" width="568" height="28" rx="8" fill="#7c4724" stroke="#472611" stroke-width="4" />
+          <rect x="-14" y="458" width="548" height="14" rx="4" fill="#3d200d" opacity="0.7" />
+          <g transform="translate(55, 335)">
+            <polygon points="12,50 68,50 58,98 22,98" fill="#c2410c" stroke="#7c2d12" stroke-width="3" />
+            <rect x="6" y="40" width="68" height="14" rx="5" fill="#ea580c" stroke="#7c2d12" stroke-width="3" />
+            <path d="M40 42 Q10 15 5 35 Q15 50 40 42 Z" fill="#15803d" />
+            <path d="M40 42 Q70 10 78 32 Q62 50 40 42 Z" fill="#16a34a" />
+            <path d="M40 42 Q25 -10 42 -12 Q58 -10 40 42 Z" fill="#22c55e" />
+          </g>
+          <g id="window-cat" transform="translate(152, 206)" style="cursor: pointer;">
+            <g transform="translate(174, 212)">
+              <g id="cat-tail-rotor">
+                <animateTransform attributeName="transform" type="rotate" values="-8 0 0; 14 0 0; -8 0 0" dur="3.8s" repeatCount="indefinite" />
+                <path d="M-6 -6 Q38 14 34 68 Q30 88 14 82 Q16 42 -14 6 Z" fill="#ea580c" stroke="#9a3412" stroke-width="3" stroke-linejoin="round" />
+                <path d="M18 34 Q28 36 27 44" stroke="#fed7aa" stroke-width="4" stroke-linecap="round" fill="none" />
+                <path d="M16 56 Q27 60 23 70" stroke="#fed7aa" stroke-width="4.5" stroke-linecap="round" fill="none" />
+              </g>
+            </g>
+            <ellipse cx="125" cy="212" rx="64" ry="34" fill="#f97316" stroke="#9a3412" stroke-width="3" />
+            <path d="M115 180 Q122 202 114 218" stroke="#9a3412" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.65" />
+            <path d="M138 182 Q146 204 138 220" stroke="#9a3412" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.65" />
+            <path d="M158 188 Q165 206 156 222" stroke="#9a3412" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.65" />
+            <circle cx="72" cy="216" r="28" fill="#fb923c" stroke="#9a3412" stroke-width="3" />
+            <polygon points="50,198 44,172 68,188" fill="#ea580c" stroke="#9a3412" stroke-width="3" stroke-linejoin="round" />
+            <polygon points="52,195 48,178 63,189" fill="#fda4af" />
+            <g>
+              <animateTransform attributeName="transform" type="rotate" values="0 86 190; 0 86 190; -10 86 190; 4 86 190; 0 86 190" keyTimes="0; 0.85; 0.91; 0.96; 1" dur="6s" repeatCount="indefinite" />
+              <polygon points="76,188 94,170 98,198" fill="#ea580c" stroke="#9a3412" stroke-width="3" stroke-linejoin="round" />
+              <polygon points="79,188 91,176 94,195" fill="#fda4af" />
+            </g>
+            <path d="M55 218 Q62 224 68 218" stroke="#7c2d12" stroke-width="3" stroke-linecap="round" fill="none" />
+            <path d="M76 218 Q83 224 89 218" stroke="#7c2d12" stroke-width="3" stroke-linecap="round" fill="none" />
+            <polygon points="68,226 76,226 72,231" fill="#fb7185" />
+            <ellipse cx="58" cy="240" rx="14" ry="8" fill="#ffedd5" stroke="#9a3412" stroke-width="2.5" />
+            <ellipse cx="88" cy="242" rx="14" ry="8" fill="#ffedd5" stroke="#9a3412" stroke-width="2.5" />
+          </g>
+        </g>
+        <g transform="translate(820, 95)" filter="url(#softShadow)">
+          <path d="M60 110 L60 155 L95 110 Z" fill="#291508" />
+          <path d="M460 110 L460 155 L425 110 Z" fill="#291508" />
+          <rect x="55" y="25" width="32" height="85" rx="4" fill="#b91c1c" stroke="#7f1d1d" stroke-width="2.5" />
+          <rect x="60" y="38" width="22" height="8" fill="#fde047" opacity="0.7" />
+          <rect x="90" y="15" width="38" height="95" rx="4" fill="#0369a1" stroke="#0c4a6e" stroke-width="2.5" />
+          <rect x="96" y="30" width="26" height="10" fill="#bae6fd" opacity="0.7" />
+          <rect x="135" y="28" width="28" height="82" rx="4" fill="#15803d" stroke="#14532d" stroke-width="2.5" transform="rotate(-10 135 110)" />
+          <rect x="250" y="45" width="70" height="65" rx="10" fill="#d97706" stroke="#78350f" stroke-width="3" />
+          <rect x="244" y="36" width="82" height="14" rx="5" fill="#fbbf24" stroke="#78350f" stroke-width="2.5" />
+          <circle cx="285" cy="77" r="14" fill="#fef3c7" opacity="0.6" />
+          <path d="M380 55 L425 55 L420 110 L385 110 Z" fill="#0d9488" stroke="#115e59" stroke-width="3" />
+          <path d="M423 65 Q442 65 442 82 Q442 98 421 98" fill="none" stroke="#0d9488" stroke-width="6" />
+          <line x1="395" y1="55" x2="385" y2="12" stroke="#d97706" stroke-width="5" stroke-linecap="round" />
+          <ellipse cx="383" cy="10" rx="6" ry="9" fill="#ef4444" transform="rotate(-14 383 10)" />
+          <line x1="410" y1="55" x2="422" y2="16" stroke="#92400e" stroke-width="5" stroke-linecap="round" />
+          <ellipse cx="424" cy="14" rx="6" ry="8" fill="#3b82f6" transform="rotate(15 424 14)" />
+          <rect x="20" y="106" width="500" height="22" rx="6" fill="#854d27" stroke="#472611" stroke-width="3.5" />
+        </g>
+        <g pointer-events="none">
+          <polygon points="140,56 610,56 1180,1080 420,1080" fill="url(#sunBeamGrad)" />
+          <polygon points="360,56 630,56 1390,1080 940,1080" fill="url(#sunBeamGrad)" opacity="0.6" />
+        </g>
+        <g id="wooden-table">
+          <path d="M0 625 L1920 625 L1920 1080 L0 1080 Z" fill="url(#woodTableGrad)" />
+          <rect x="0" y="619" width="1920" height="12" fill="#572e14" />
+          <line x1="0" y1="725" x2="1920" y2="725" stroke="#3d1e0a" stroke-width="3.5" opacity="0.55" />
+          <line x1="0" y1="855" x2="1920" y2="855" stroke="#3d1e0a" stroke-width="4" opacity="0.6" />
+          <g fill="none" stroke="#47230c" stroke-width="2.2" opacity="0.32">
+            <path d="M80 675 Q240 660 420 680 T780 672" /><path d="M1150 690 Q1420 665 1690 695 T1900 680" /><path d="M40 785 Q310 760 590 798 T1050 785" />
+            <ellipse cx="290" cy="792" rx="48" ry="11" /><ellipse cx="1580" cy="785" rx="55" ry="12" />
+          </g>
+        </g>
+        <g id="desk-lamp" style="cursor: pointer;">
+          <polygon id="lamp-cone" points="1580,310 1220,760 1890,760" fill="url(#lampConeGrad)" />
+          <ellipse cx="1690" cy="656" rx="88" ry="26" fill="#1c0d04" opacity="0.55" />
+          <ellipse cx="1690" cy="648" rx="80" ry="22" fill="url(#brassGrad)" stroke="#78350f" stroke-width="3" />
+          <path d="M1635 644 Q1690 614 1745 644 Z" fill="url(#brassGrad)" stroke="#78350f" stroke-width="3" />
+          <path d="M1690 626 L1690 415 Q1690 300 1595 300" fill="none" stroke="url(#brassGrad)" stroke-width="18" stroke-linecap="round" />
+          <circle cx="1690" cy="480" r="15" fill="url(#brassGrad)" stroke="#78350f" stroke-width="3" />
+          <line x1="1615" y1="325" x2="1615" y2="403" stroke="#fbbf24" stroke-width="3.5" stroke-dasharray="5,4" />
+          <circle cx="1615" cy="409" r="7" fill="url(#brassGrad)" stroke="#78350f" stroke-width="2" />
+          <ellipse id="lamp-bulb-glow" cx="1565" cy="327" rx="46" ry="22" fill="#fef08a" />
+          <path d="M1480 325 Q1515 253 1645 265 L1665 330 Z" fill="url(#lampShadeGrad)" stroke="#064e3b" stroke-width="4" stroke-linejoin="round" />
+          <path d="M1505 315 Q1530 270 1625 277" fill="none" stroke="#a7f3d0" stroke-width="5" stroke-linecap="round" opacity="0.55" />
+          <rect x="1476" y="321" width="192" height="10" rx="5" fill="url(#brassGrad)" stroke="#78350f" stroke-width="2" />
+        </g>
+      </g>
+
+      <g id="cardboard-box-back">
+        <ellipse cx="960" cy="832" rx="420" ry="56" fill="#170a03" opacity="0.65" />
+        <polygon points="590,575 1330,575 1275,478 645,478" fill="url(#boxFlapBackGrad)" stroke="#6e4219" stroke-width="4" stroke-linejoin="round" />
+        <line x1="645" y1="498" x2="1275" y2="498" stroke="#593412" stroke-width="2" stroke-dasharray="10,8" opacity="0.45" />
+        <polygon points="590,575 1330,575 1290,715 630,715" fill="url(#boxInteriorGrad)" stroke="#47280e" stroke-width="4" />
+        <line x1="645" y1="575" x2="670" y2="705" stroke="#120902" stroke-width="5" opacity="0.7" />
+        <line x1="1275" y1="575" x2="1250" y2="705" stroke="#120902" stroke-width="5" opacity="0.7" />
+        <g id="packing-shreds-back">
+          <path d="M625 592 Q670 545 720 588 T805 580" fill="none" stroke="#fbbf24" stroke-width="14" stroke-linecap="round" />
+          <path d="M750 598 Q805 542 865 592 T960 575" fill="none" stroke="#38bdf8" stroke-width="13" stroke-linecap="round" />
+          <path d="M895 595 Q965 538 1030 588 T1125 578" fill="none" stroke="#f472b6" stroke-width="14" stroke-linecap="round" />
+          <path d="M1070 594 Q1145 540 1210 588 T1295 580" fill="none" stroke="#4ade80" stroke-width="13" stroke-linecap="round" />
+          <path d="M675 605 Q740 560 810 602 T930 590" fill="none" stroke="#fde047" stroke-width="11" stroke-linecap="round" />
+          <path d="M980 605 Q1060 558 1135 600 T1255 588" fill="none" stroke="#fb923c" stroke-width="12" stroke-linecap="round" />
+        </g>
+        <g id="box-flap-left">
+          <polygon points="590,575 468,628 508,732 615,682" fill="url(#boxFlapSideGrad)" stroke="#6e4219" stroke-width="4" stroke-linejoin="round" />
+          <polygon points="590,575 468,628 508,732 615,682" fill="url(#corrugatedPattern)" />
+        </g>
+        <g id="box-flap-right">
+          <polygon points="1330,575 1452,628 1412,732 1305,682" fill="url(#boxFlapSideGrad)" stroke="#6e4219" stroke-width="4" stroke-linejoin="round" />
+          <polygon points="1330,575 1452,628 1412,732 1305,682" fill="url(#corrugatedPattern)" />
+        </g>
+      </g>
+
+      <g id="cardboard-box-front">
+        <g id="packing-shreds-front">
+          <path d="M635 585 Q685 618 735 578" fill="none" stroke="#f43f5e" stroke-width="10" stroke-linecap="round" />
+          <path d="M855 582 Q905 622 955 580" fill="none" stroke="#a855f7" stroke-width="11" stroke-linecap="round" />
+          <path d="M1115 580 Q1165 618 1215 582" fill="none" stroke="#fde047" stroke-width="10" stroke-linecap="round" />
+        </g>
+        <polygon points="590,575 1330,575 1300,835 620,835" fill="url(#boxFrontGrad)" stroke="#6e4219" stroke-width="4.5" stroke-linejoin="round" />
+        <polygon points="590,575 1330,575 1300,835 620,835" fill="url(#corrugatedPattern)" />
+        <line x1="610" y1="785" x2="1310" y2="785" stroke="#78471c" stroke-width="2.5" stroke-dasharray="16,10" opacity="0.45" />
+        <g transform="translate(655, 715)" opacity="0.42" stroke="#3d200a" stroke-width="3" fill="none">
+          <rect x="0" y="0" width="145" height="58" rx="6" />
+          <path d="M22 44 L22 14 M14 24 L22 14 L30 24" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M40 44 L40 14 M32 24 L40 14 L48 24" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M68 14 L92 14 L88 30 Q80 38 72 30 Z" /><line x1="80" y1="34" x2="80" y2="46" /><line x1="70" y1="46" x2="90" y2="46" />
+          <path d="M106 30 Q120 12 134 30 Z" /><path d="M120 30 L120 44 Q120 49 114 47" stroke-linecap="round" />
+        </g>
+        <rect x="928" y="575" width="64" height="260" fill="#eab308" opacity="0.32" />
+        <g id="box-flap-front">
+          <polygon points="595,592 1325,592 1355,682 565,682" fill="#2e1908" opacity="0.38" />
+          <polygon points="590,575 1330,575 1362,668 558,668" fill="url(#boxFlapFrontGrad)" stroke="#6e4219" stroke-width="4" stroke-linejoin="round" />
+          <polygon points="590,575 1330,575 1362,668 558,668" fill="url(#corrugatedPattern)" />
+          <rect x="915" y="575" width="90" height="65" rx="3" fill="#fde68a" opacity="0.38" stroke="#ca8a04" stroke-width="1.5" />
+        </g>
+        <g id="twenty-items-trim" transform="translate(960, 812)">
+          <rect x="-310" y="-14" width="620" height="28" rx="14" fill="#4a240d" stroke="#854d27" stroke-width="3" />
+          <g id="rivets-20-group"></g>
+        </g>
+      </g>
+
+      <g id="hands-and-item-stage">
+        <g id="hands-idle-wrapper" class="hands-idle">
+          <g id="left-hand-back-sync">
+            <path d="M 795 318 C 825 292, 875 298, 888 326 C 898 350, 895 408, 875 442 C 855 468, 810 465, 785 438 Z" fill="url(#skinBackGrad)" stroke="#8c4f2b" stroke-width="3" />
+          </g>
+          <g id="right-hand-back-sync">
+            <path d="M 1125 318 C 1095 292, 1045 298, 1032 326 C 1022 350, 1025 408, 1045 442 C 1065 468, 1110 465, 1135 438 Z" fill="url(#skinBackGrad)" stroke="#8c4f2b" stroke-width="3" />
+          </g>
+          <g id="active-item-mover" transform="translate(0, 0)">
+            <g id="active-item-wrapper" transform="translate(960, 355)" style="cursor: pointer;">
+              <g id="active-item-inner" filter="url(#itemShadow)"></g>
+              <g id="applied-sticker-slot"></g>
+            </g>
+          </g>
+          <g id="left-hand-mover" transform="translate(0, 0)" filter="url(#handShadow)">
+            <path d="M 430 1120 C 510 890, 625 630, 725 445 L 815 492 C 735 665, 650 910, 585 1120 Z" fill="url(#skinArmGrad)" stroke="#9c5832" stroke-width="3.5" stroke-linejoin="round" />
+            <path d="M 718 455 C 722 395, 742 332, 782 308 C 808 292, 838 298, 844 316 C 848 330, 832 342, 808 348 C 835 352, 868 358, 875 378 C 882 398, 852 414, 812 406 C 832 415, 852 428, 848 445 C 842 462, 814 464, 790 452 C 778 475, 792 492, 765 505 L 718 455 Z" fill="url(#skinPalmGrad)" stroke="#9c5832" stroke-width="3.5" stroke-linejoin="round" />
+            <path d="M 762 392 C 785 382, 805 388, 816 404" fill="none" stroke="#b56e45" stroke-width="2.6" stroke-linecap="round" opacity="0.75" />
+            <path d="M 752 425 C 770 422, 786 432, 794 450" fill="none" stroke="#b56e45" stroke-width="2.4" stroke-linecap="round" opacity="0.65" />
+            <path d="M 744 358 Q 758 375 752 402" fill="none" stroke="#d99b72" stroke-width="3" stroke-linecap="round" opacity="0.55" />
+            <path d="M 852 368 Q 869 371 868 384 Q 866 395 848 393 Z" fill="url(#nailGrad)" stroke="#b57252" stroke-width="1.5" />
+            <path d="M 824 304 Q 838 306 838 317 Q 836 327 821 325 Z" fill="url(#nailGrad)" stroke="#b57252" stroke-width="1.4" />
+            <path d="M 828 430 Q 842 434 840 445 Q 837 453 824 450 Z" fill="url(#nailGrad)" stroke="#b57252" stroke-width="1.4" />
+            <path d="M 652 548 C 695 552, 745 578, 772 612 C 705 780, 635 960, 595 1140 L 385 1140 C 455 930, 555 710, 652 548 Z" fill="url(#sleeveSweaterGrad)" stroke="#042f2e" stroke-width="4" stroke-linejoin="round" />
+            <path d="M 652 548 C 695 552, 745 578, 772 612 C 705 780, 635 960, 595 1140 L 385 1140 C 455 930, 555 710, 652 548 Z" fill="url(#knitPattern)" />
+            <path d="M 664 522 C 712 526, 762 554, 786 592 C 778 614, 766 626, 752 630 C 722 592, 676 566, 636 562 C 642 542, 650 528, 664 522 Z" fill="url(#cuffRibGrad)" stroke="#042f2e" stroke-width="3.5" stroke-linejoin="round" />
+            <path d="M 684 532 L 664 568 M 716 544 L 696 580 M 746 562 L 726 598" stroke="#042f2e" stroke-width="2.5" stroke-linecap="round" opacity="0.45" />
+          </g>
+          <g id="right-hand-mover" transform="translate(0, 0)" filter="url(#handShadow)">
+            <g id="right-hand-held-sticker" transform="translate(1055, 365)" style="opacity: 0; pointer-events: none;"></g>
+            <path d="M 1490 1120 C 1410 890, 1295 630, 1195 445 L 1105 492 C 1185 665, 1270 910, 1335 1120 Z" fill="url(#skinArmGrad)" stroke="#9c5832" stroke-width="3.5" stroke-linejoin="round" />
+            <path d="M 1202 455 C 1198 395, 1178 332, 1138 308 C 1112 292, 1082 298, 1076 316 C 1072 330, 1088 342, 1112 348 C 1085 352, 1052 358, 1045 378 C 1038 398, 1068 414, 1108 406 C 1088 415, 1068 428, 1072 445 C 1078 462, 1106 464, 1130 452 C 1142 475, 1128 492, 1155 505 L 1202 455 Z" fill="url(#skinPalmGrad)" stroke="#9c5832" stroke-width="3.5" stroke-linejoin="round" />
+            <path d="M 1158 392 C 1135 382, 1115 388, 1104 404" fill="none" stroke="#b56e45" stroke-width="2.6" stroke-linecap="round" opacity="0.75" />
+            <path d="M 1168 425 C 1150 422, 1134 432, 1126 450" fill="none" stroke="#b56e45" stroke-width="2.4" stroke-linecap="round" opacity="0.65" />
+            <path d="M 1176 358 Q 1162 375 1168 402" fill="none" stroke="#d99b72" stroke-width="3" stroke-linecap="round" opacity="0.55" />
+            <path d="M 1068 368 Q 1051 371 1052 384 Q 1054 395 1072 393 Z" fill="url(#nailGrad)" stroke="#b57252" stroke-width="1.5" />
+            <path d="M 1096 304 Q 1082 306 1082 317 Q 1084 327 1099 325 Z" fill="url(#nailGrad)" stroke="#b57252" stroke-width="1.4" />
+            <path d="M 1092 430 Q 1078 434 1080 445 Q 1083 453 1096 450 Z" fill="url(#nailGrad)" stroke="#b57252" stroke-width="1.4" />
+            <path d="M 1268 548 C 1225 552, 1175 578, 1148 612 C 1215 780, 1285 960, 1325 1140 L 1535 1140 C 1465 930, 1365 710, 1268 548 Z" fill="url(#sleeveSweaterGrad)" stroke="#042f2e" stroke-width="4" stroke-linejoin="round" />
+            <path d="M 1268 548 C 1225 552, 1175 578, 1148 612 C 1215 780, 1285 960, 1325 1140 L 1535 1140 C 1465 930, 1365 710, 1268 548 Z" fill="url(#knitPattern)" />
+            <path d="M 1256 522 C 1208 526, 1158 554, 1134 592 C 1142 614, 1154 626, 1168 630 C 1198 592, 1244 566, 1284 562 C 1278 542, 1270 528, 1256 522 Z" fill="url(#cuffRibGrad)" stroke="#042f2e" stroke-width="3.5" stroke-linejoin="round" />
+            <path d="M 1236 532 L 1256 568 M 1204 544 L 1224 580 M 1174 562 L 1194 598" stroke="#042f2e" stroke-width="2.5" stroke-linecap="round" opacity="0.45" />
+          </g>
+        </g>
+      </g>
+    </svg>
+
+    <div id="sticker-dock">
+      <button class="sticker-slot" data-material="glass" type="button">
+        <svg class="sticker-visual" viewBox="0 0 280 106" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 4 L258 4 Q276 4 276 22 L276 72 L244 102 L22 102 Q4 102 4 84 L4 22 Q4 4 22 4 Z" fill="url(#stickerGlassGrad)" stroke="#ecfeff" stroke-width="4" />
+          <path d="M24 12 L254 12 Q266 12 266 24 L266 68 L238 94 L24 94 Q12 94 12 82 L12 24 Q12 12 24 12 Z" fill="none" stroke="#cffafe" stroke-width="2" stroke-dasharray="7,5" opacity="0.8" />
+          <g transform="translate(44, 53)"><circle cx="0" cy="0" r="27" fill="#083344" opacity="0.4" stroke="#a5f3fc" stroke-width="2" /><polygon points="0,-18 15,-5 9,15 -9,15 -15,-5" fill="#67e8f9" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" /><polyline points="-15,-5 0,2 15,-5" fill="none" stroke="#ffffff" stroke-width="1.8" /></g>
+          <text id="dock-label-glass" x="166" y="65" text-anchor="middle" fill="#ffffff" font-family="Rubik, sans-serif" font-size="33" font-weight="900" letter-spacing="1" stroke="#083344" stroke-width="6" paint-order="stroke">СКЛО</text>
+          <path d="M276 72 L244 102 L240 68 Q258 72 276 72 Z" fill="#f59e0b" stroke="#ecfeff" stroke-width="2" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <button class="sticker-slot" data-material="paper" type="button">
+        <svg class="sticker-visual" viewBox="0 0 280 106" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 4 L258 4 Q276 4 276 22 L276 72 L244 102 L22 102 Q4 102 4 84 L4 22 Q4 4 22 4 Z" fill="url(#stickerPaperGrad)" stroke="#fef3c7" stroke-width="4" />
+          <path d="M24 12 L254 12 Q266 12 266 24 L266 68 L238 94 L24 94 Q12 94 12 82 L12 24 Q12 12 24 12 Z" fill="none" stroke="#fef3c7" stroke-width="2" stroke-dasharray="7,5" opacity="0.8" />
+          <g transform="translate(44, 53)"><circle cx="0" cy="0" r="27" fill="#451a03" opacity="0.4" stroke="#fde68a" stroke-width="2" /><polygon points="-17,7 17,7 10,16 -10,16" fill="#fde68a" stroke="#78350f" stroke-width="2" stroke-linejoin="round" /><polygon points="-12,7 0,-15 12,7" fill="#fef3c7" stroke="#78350f" stroke-width="2" stroke-linejoin="round" /></g>
+          <text id="dock-label-paper" x="166" y="65" text-anchor="middle" fill="#fffbeb" font-family="Rubik, sans-serif" font-size="33" font-weight="900" letter-spacing="1" stroke="#451a03" stroke-width="6" paint-order="stroke">ПАПІР</text>
+          <path d="M276 72 L244 102 L240 68 Q258 72 276 72 Z" fill="#d97706" stroke="#fef3c7" stroke-width="2" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <button class="sticker-slot" data-material="metal" type="button">
+        <svg class="sticker-visual" viewBox="0 0 280 106" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 4 L258 4 Q276 4 276 22 L276 72 L244 102 L22 102 Q4 102 4 84 L4 22 Q4 4 22 4 Z" fill="url(#stickerMetalGrad)" stroke="#f1f5f9" stroke-width="4" />
+          <path d="M24 12 L254 12 Q266 12 266 24 L266 68 L238 94 L24 94 Q12 94 12 82 L12 24 Q12 12 24 12 Z" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="7,5" opacity="0.8" />
+          <g transform="translate(44, 53)"><circle cx="0" cy="0" r="27" fill="#0f172a" opacity="0.45" stroke="#cbd5e1" stroke-width="2" /><polygon points="0,-16 14,-8 14,8 0,16 -14,8 -14,-8" fill="#e2e8f0" stroke="#1e293b" stroke-width="2" stroke-linejoin="round" /><circle cx="0" cy="0" r="6.5" fill="#334155" stroke="#f8fafc" stroke-width="1.8" /></g>
+          <text id="dock-label-metal" x="166" y="65" text-anchor="middle" fill="#f8fafc" font-family="Rubik, sans-serif" font-size="33" font-weight="900" letter-spacing="1" stroke="#0f172a" stroke-width="6" paint-order="stroke">МЕТАЛ</text>
+          <path d="M276 72 L244 102 L240 68 Q258 72 276 72 Z" fill="#f59e0b" stroke="#f1f5f9" stroke-width="2" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <button class="sticker-slot" data-material="plastic" type="button">
+        <svg class="sticker-visual" viewBox="0 0 280 106" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 4 L258 4 Q276 4 276 22 L276 72 L244 102 L22 102 Q4 102 4 84 L4 22 Q4 4 22 4 Z" fill="url(#stickerPlasticGrad)" stroke="#fce7f3" stroke-width="4" />
+          <path d="M24 12 L254 12 Q266 12 266 24 L266 68 L238 94 L24 94 Q12 94 12 82 L12 24 Q12 12 24 12 Z" fill="none" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="7,5" opacity="0.8" />
+          <g transform="translate(44, 53)"><circle cx="0" cy="0" r="27" fill="#4a044e" opacity="0.42" stroke="#f9a8d4" stroke-width="2" /><rect x="-15" y="-6" width="30" height="18" rx="3" fill="#f472b6" stroke="#ffffff" stroke-width="2" /><rect x="-10" y="-12" width="7" height="6" rx="1.5" fill="#fbcfe8" stroke="#ffffff" stroke-width="1.5" /><rect x="3" y="-12" width="7" height="6" rx="1.5" fill="#fbcfe8" stroke="#ffffff" stroke-width="1.5" /></g>
+          <text id="dock-label-plastic" x="166" y="64" text-anchor="middle" fill="#ffffff" font-family="Rubik, sans-serif" font-size="30" font-weight="900" letter-spacing="0.5" stroke="#500724" stroke-width="6" paint-order="stroke">ПЛАСТИК</text>
+          <path d="M276 72 L244 102 L240 68 Q258 72 276 72 Z" fill="#f59e0b" stroke="#fce7f3" stroke-width="2" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
+
+    <canvas id="fx-canvas"></canvas>
+  </div>
+
+  <script>
+    /* 1. BILINGUAL CONFIG */
+    const LANGUAGES = {
+      uk: { btn: 'УКР', stickers: { glass: 'СКЛО', paper: 'ПАПІР', metal: 'МЕТАЛ', plastic: 'ПЛАСТИК' } },
+      ru: { btn: 'РУС', stickers: { glass: 'СТЕКЛО', paper: 'БУМАГА', metal: 'МЕТАЛЛ', plastic: 'ПЛАСТИК' } }
+    };
+    let currentLang = 'uk';
+
+    /* 2. WEB AUDIO ENGINE */
+    class SoundEngine {
+      constructor() { this.ctx = null; }
+      init() {
+        if (!this.ctx) { const AC = window.AudioContext || window.webkitAudioContext; this.ctx = new AC(); }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+      }
+      createNoiseBuffer(duration = 0.4) {
+        const bs = this.ctx.sampleRate * duration;
+        const buf = this.ctx.createBuffer(1, bs, this.ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0;
+        for (let i = 0; i < bs; i++) {
+          const w = Math.random() * 2 - 1;
+          b0 = 0.997 * b0 + w * 0.029; b1 = 0.985 * b1 + w * 0.1; b2 = 0.950 * b2 + w * 0.3;
+          d[i] = (b0 + b1 + b2 + w * 0.25) * 0.08;
+        }
+        return buf;
+      }
+      playBoxRummage() {
+        this.init(); const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(110, now); osc.frequency.exponentialRampToValueAtTime(48, now + 0.16);
+        g.gain.setValueAtTime(0.25, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+        osc.connect(g).connect(this.ctx.destination); osc.start(now); osc.stop(now + 0.18);
+        [0.03, 0.14].forEach((o, i) => {
+          const n = this.ctx.createBufferSource(); n.buffer = this.createNoiseBuffer(0.16);
+          const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(1000 + i * 500, now + o);
+          const ng = this.ctx.createGain(); ng.gain.setValueAtTime(0.28, now + o); ng.gain.exponentialRampToValueAtTime(0.005, now + o + 0.15);
+          n.connect(f).connect(ng).connect(this.ctx.destination); n.start(now + o);
+        });
+      }
+      playStickerPeelAndSlap() {
+        this.init(); const now = this.ctx.currentTime;
+        const n = this.ctx.createBufferSource(); n.buffer = this.createNoiseBuffer(0.15);
+        const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(1500, now); f.frequency.exponentialRampToValueAtTime(3600, now + 0.13);
+        const g = this.ctx.createGain(); g.gain.setValueAtTime(0.24, now); g.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
+        n.connect(f).connect(g).connect(this.ctx.destination); n.start(now);
+        const so = this.ctx.createOscillator(); const sg = this.ctx.createGain();
+        so.type = 'sine'; so.frequency.setValueAtTime(230, now + 0.18); so.frequency.exponentialRampToValueAtTime(65, now + 0.29);
+        sg.gain.setValueAtTime(0.35, now + 0.18); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        so.connect(sg).connect(this.ctx.destination); so.start(now + 0.18); so.stop(now + 0.31);
+      }
+      playMaterialSound(material) {
+        this.init(); const now = this.ctx.currentTime;
+        if (material === 'glass') {
+          [1520, 2280, 3180].forEach((fr, i) => {
+            const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+            o.type = 'sine'; o.frequency.setValueAtTime(fr, now); g.gain.setValueAtTime(0.2 / (i + 1), now); g.gain.exponentialRampToValueAtTime(0.0008, now + 0.75);
+            o.connect(g).connect(this.ctx.destination); o.start(now); o.stop(now + 0.78);
+          });
+        } else if (material === 'paper') {
+          [0, 0.09].forEach((o, i) => {
+            const n = this.ctx.createBufferSource(); n.buffer = this.createNoiseBuffer(0.18);
+            const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.setValueAtTime(1700 + i * 500, now + o);
+            const g = this.ctx.createGain(); g.gain.setValueAtTime(0.32, now + o); g.gain.exponentialRampToValueAtTime(0.005, now + o + 0.17);
+            n.connect(f).connect(g).connect(this.ctx.destination); n.start(now + o);
+          });
+        } else if (material === 'metal') {
+          [710, 1420, 2190, 3450].forEach((fr, i) => {
+            const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+            o.type = i % 2 === 0 ? 'triangle' : 'sine'; o.frequency.setValueAtTime(fr, now);
+            g.gain.setValueAtTime(0.22 / (i + 1), now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.6 / (i * 0.4 + 1));
+            o.connect(g).connect(this.ctx.destination); o.start(now); o.stop(now + 0.65);
+          });
+        } else if (material === 'plastic') {
+          [0, 0.08].forEach((o, i) => {
+            const osc = this.ctx.createOscillator(); const g = this.ctx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(i === 0 ? 330 : 490, now + o); osc.frequency.exponentialRampToValueAtTime(i === 0 ? 600 : 840, now + o + 0.08);
+            g.gain.setValueAtTime(0.28, now + o); g.gain.exponentialRampToValueAtTime(0.001, now + o + 0.1);
+            osc.connect(g).connect(this.ctx.destination); osc.start(now + o); osc.stop(now + o + 0.11);
+          });
+        }
+      }
+      playCelebrationFanfare(variant = 0) {
+        this.init(); const now = this.ctx.currentTime + 0.14;
+        const melodies = [
+          [523.25, 659.25, 783.99, 1046.50],
+          [587.33, 739.99, 880.00, 1174.66],
+          [440.00, 554.37, 659.25, 880.00, 1108.73],
+          [659.25, 783.99, 987.77, 1318.51]
+        ];
+        const notes = melodies[variant % melodies.length];
+        notes.forEach((fr, i) => {
+          const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+          o.type = 'triangle'; const s = now + i * 0.07; o.frequency.setValueAtTime(fr, s);
+          g.gain.setValueAtTime(0.001, s); g.gain.linearRampToValueAtTime(0.22, s + 0.02); g.gain.exponentialRampToValueAtTime(0.0008, s + 0.5);
+          o.connect(g).connect(this.ctx.destination); o.start(s); o.stop(s + 0.52);
+        });
+      }
+      playWrongBoing() {
+        this.init(); const now = this.ctx.currentTime;
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(210, now); o.frequency.exponentialRampToValueAtTime(410, now + 0.12); o.frequency.exponentialRampToValueAtTime(110, now + 0.44);
+        g.gain.setValueAtTime(0.22, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+        o.connect(g).connect(this.ctx.destination); o.start(now); o.stop(now + 0.48);
+      }
+      playCatPurr() {
+        this.init(); const now = this.ctx.currentTime;
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = 'triangle'; o.frequency.setValueAtTime(520, now); o.frequency.exponentialRampToValueAtTime(780, now + 0.16); o.frequency.exponentialRampToValueAtTime(450, now + 0.42);
+        g.gain.setValueAtTime(0.001, now); g.gain.linearRampToValueAtTime(0.16, now + 0.08); g.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        o.connect(g).connect(this.ctx.destination); o.start(now); o.stop(now + 0.46);
+      }
+      playClick() {
+        this.init(); const now = this.ctx.currentTime;
+        const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(760, now); o.frequency.exponentialRampToValueAtTime(280, now + 0.05);
+        g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+        o.connect(g).connect(this.ctx.destination); o.start(now); o.stop(now + 0.06);
+      }
+    }
+    const sound = new SoundEngine();
+
+    /* 3. ITEMS CATALOG */
+    const ITEMS_CATALOG = [
+      { id: 'glass_1_jar', material: 'glass', renderSVG: () => `
+          <g>
+            <rect x="-106" y="-98" width="212" height="222" rx="40" fill="url(#glassBodyGrad)" stroke="#bae6fd" stroke-width="5" />
+            <path d="M-92 -32 Q-45 -20 0 -32 T92 -32 L92 90 Q92 112 68 112 L-68 112 Q-92 112 -92 90 Z" fill="#be123c" />
+            <ellipse cx="0" cy="-32" rx="92" ry="14" fill="#e11d48" stroke="#fda4af" stroke-width="2" />
+            <g fill="#fda4af" opacity="0.85"><ellipse cx="-45" cy="14" rx="5" ry="2.5" transform="rotate(20 -45 14)" /><ellipse cx="32" cy="-2" rx="5" ry="2.5" transform="rotate(-15 32 -2)" /><ellipse cx="-14" cy="48" rx="5" ry="2.5" /><ellipse cx="44" cy="56" rx="5" ry="2.5" transform="rotate(-25 44 56)" /><ellipse cx="-35" cy="78" rx="5" ry="2.5" /></g>
+            <rect x="-82" y="-128" width="164" height="30" rx="10" fill="url(#glassBodyGrad)" stroke="#e0f2fe" stroke-width="4" />
+            <rect x="-88" y="-146" width="176" height="22" rx="8" fill="#f43f5e" stroke="#9f1239" stroke-width="3.5" />
+            <path d="M-78 -74 L-78 82" stroke="#ffffff" stroke-width="14" stroke-linecap="round" opacity="0.72" />
+            <path d="M76 -68 L76 78" stroke="#bae6fd" stroke-width="7" stroke-linecap="round" opacity="0.55" />
+          </g>` },
+      { id: 'glass_2_lightbulb', material: 'glass', renderSVG: () => `
+          <g>
+            <circle cx="0" cy="-35" r="118" fill="#fef08a" opacity="0.24" />
+            <path d="M-46 62 L46 62 L36 122 L-36 122 Z" fill="url(#steelShineGrad)" stroke="#475569" stroke-width="3.5" />
+            <path d="M-45 76 Q0 86 45 76 M-42 92 Q0 102 42 92 M-38 108 Q0 118 38 108" fill="none" stroke="#f8fafc" stroke-width="4" />
+            <path d="M-24 122 L24 122 L12 138 L-12 138 Z" fill="#1e293b" />
+            <path d="M-48 64 C-52 25 -112 -5 -112 -64 C-112 -128 -62 -154 0 -154 C62 -154 112 -128 112 -64 C112 -5 52 25 48 64 Z" fill="url(#glassBodyGrad)" stroke="#e0f2fe" stroke-width="5" />
+            <rect x="-12" y="8" width="24" height="54" rx="6" fill="#bae6fd" fill-opacity="0.55" stroke="#ffffff" stroke-width="2.5" />
+            <polyline points="-8,12 -40,-58 -26,-86" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" />
+            <polyline points="8,12 40,-58 26,-86" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" />
+            <path d="M-26 -86 Q-13 -114 0 -86 Q13 -114 26 -86" fill="none" stroke="#fef08a" stroke-width="6.5" stroke-linecap="round" />
+            <path d="M-82 -90 C-90 -50 -70 -12 -36 26" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" opacity="0.75" />
+          </g>` },
+      { id: 'glass_3_carafe', material: 'glass', renderSVG: () => `
+          <g>
+            <path d="M-46 -125 L46 -125 C40 -72 112 -28 112 52 C112 110 70 132 0 132 C-70 132 -112 110 -112 52 C-112 -28 -40 -72 -46 -125 Z" fill="url(#glassBodyGrad)" stroke="#e0f2fe" stroke-width="5" />
+            <path d="M-94 12 Q0 26 94 12 C106 64 74 120 0 120 C-74 120 -106 64 -94 12 Z" fill="#38bdf8" fill-opacity="0.45" />
+            <ellipse cx="0" cy="14" rx="94" ry="14" fill="#bae6fd" fill-opacity="0.55" stroke="#ffffff" stroke-width="2.5" />
+            <ellipse cx="0" cy="-125" rx="50" ry="12" fill="#e0f2fe" fill-opacity="0.4" stroke="#ffffff" stroke-width="4" />
+            <polygon points="0,-168 32,-144 18,-122 -18,-122 -32,-144" fill="url(#glassBodyGrad)" stroke="#ffffff" stroke-width="3.5" stroke-linejoin="round" />
+            <path d="M-32 -105 C-30 -60 -86 -16 -82 68" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" opacity="0.78" />
+          </g>` },
+      { id: 'glass_4_faceted_tumbler', material: 'glass', renderSVG: () => `
+          <g>
+            <polygon points="-96,-118 96,-118 76,124 -76,124" fill="url(#glassBodyGrad)" stroke="#e0f2fe" stroke-width="5" stroke-linejoin="round" />
+            <polygon points="-80,92 80,92 76,124 -76,124" fill="#bae6fd" fill-opacity="0.65" stroke="#ffffff" stroke-width="3" />
+            <g stroke="#ffffff" stroke-width="2.8" opacity="0.58"><line x1="-60" y1="-90" x2="-48" y2="92" /><line x1="-20" y1="-90" x2="-16" y2="92" /><line x1="20" y1="-90" x2="16" y2="92" /><line x1="60" y1="-90" x2="48" y2="92" /></g>
+            <line x1="-93" y1="-90" x2="93" y2="-90" stroke="#e0f2fe" stroke-width="3.5" opacity="0.8" />
+            <ellipse cx="0" cy="-118" rx="96" ry="16" fill="#e0f2fe" fill-opacity="0.35" stroke="#ffffff" stroke-width="4.5" />
+            <line x1="-74" y1="-82" x2="-60" y2="82" stroke="#ffffff" stroke-width="11" stroke-linecap="round" opacity="0.8" />
+          </g>` },
+      { id: 'glass_5_fishbowl', material: 'glass', renderSVG: () => `
+          <g>
+            <circle cx="0" cy="8" r="114" fill="url(#glassBodyGrad)" stroke="#e0f2fe" stroke-width="5" />
+            <path d="M-106 -16 Q0 -2 106 -16 A110 110 0 0 1 -106 -16 Z" fill="#38bdf8" fill-opacity="0.38" />
+            <ellipse cx="0" cy="-16" rx="106" ry="14" fill="#bae6fd" fill-opacity="0.52" stroke="#ffffff" stroke-width="2.5" />
+            <path d="M-18 94 Q-38 45 -12 8 Q4 45 -6 94 Z" fill="#16a34a" /><path d="M6 94 Q32 52 16 18 Q-4 52 6 94 Z" fill="#22c55e" />
+            <g stroke="#0f172a" stroke-width="1.5" stroke-opacity="0.3"><ellipse cx="-42" cy="94" rx="17" ry="8" fill="#f59e0b" /><ellipse cx="-10" cy="100" rx="19" ry="9" fill="#ec4899" /><ellipse cx="25" cy="96" rx="18" ry="8" fill="#8b5cf6" /><ellipse cx="50" cy="90" rx="14" ry="7" fill="#10b981" /></g>
+            <ellipse cx="0" cy="-102" rx="72" ry="15" fill="url(#glassBodyGrad)" stroke="#ffffff" stroke-width="4.5" />
+            <path d="M-84 -42 A90 90 0 0 0 -68 70" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" opacity="0.75" />
+          </g>` },
+      { id: 'paper_6_book', material: 'paper', renderSVG: () => `
+          <g>
+            <path d="M-116 -76 Q-58 -90 0 -70 Q58 -90 116 -76 L122 92 Q62 78 0 100 Q-62 78 -122 92 Z" fill="#991b1b" stroke="#450a0a" stroke-width="4" />
+            <path d="M-110 -70 Q-54 -86 0 -64 Q54 -86 110 -70 L116 82 Q58 66 0 88 Q-58 66 -116 82 Z" fill="#d97706" stroke="#78350f" stroke-width="2.5" />
+            <path d="M-106 -76 Q-52 -94 0 -68 L0 80 Q-52 58 -110 74 Z" fill="url(#paperSheetGrad)" stroke="#b45309" stroke-width="2.5" />
+            <path d="M106 -76 Q52 -94 0 -68 L0 80 Q52 58 110 74 Z" fill="url(#paperSheetGrad)" stroke="#b45309" stroke-width="2.5" />
+            <line x1="0" y1="-68" x2="0" y2="80" stroke="#92400e" stroke-width="5" opacity="0.55" />
+            <g stroke="#78350f" stroke-width="4" stroke-linecap="round" opacity="0.65"><line x1="-86" y1="-46" x2="-20" y2="-40" /><line x1="-86" y1="-24" x2="-20" y2="-18" /><line x1="-86" y1="-2" x2="-20" y2="4" /><line x1="-86" y1="20" x2="-20" y2="26" /><line x1="20" y1="6" x2="86" y2="0" /><line x1="20" y1="28" x2="86" y2="22" /><line x1="20" y1="50" x2="68" y2="45" /></g>
+            <rect x="22" y="-54" width="62" height="42" rx="4" fill="#fde68a" stroke="#b45309" stroke-width="2" /><circle cx="40" cy="-36" r="7" fill="#f59e0b" />
+            <path d="M0 78 Q12 114 26 136 L10 130 L2 142 Q-6 112 0 78 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="2" />
+          </g>` },
+      { id: 'paper_7_origami_boat', material: 'paper', renderSVG: () => `
+          <g>
+            <polygon points="-32,12 6,-98 48,12" fill="#f59e0b" stroke="#92400e" stroke-width="3" stroke-linejoin="round" />
+            <polygon points="-58,18 0,-118 58,18" fill="url(#paperSheetGrad)" stroke="#b45309" stroke-width="3.5" stroke-linejoin="round" />
+            <line x1="0" y1="-118" x2="0" y2="18" stroke="#d97706" stroke-width="3" />
+            <polygon points="-122,-12 0,18 -82,82" fill="#fcd34d" stroke="#92400e" stroke-width="3.5" stroke-linejoin="round" />
+            <polygon points="122,-12 0,18 82,82" fill="#fbbf24" stroke="#92400e" stroke-width="3.5" stroke-linejoin="round" />
+            <polygon points="-122,-12 122,-12 86,82 -86,82" fill="url(#paperSheetGrad)" stroke="#92400e" stroke-width="3.5" stroke-linejoin="round" />
+            <polygon points="-86,82 0,24 86,82" fill="#fde68a" stroke="#b45309" stroke-width="3" stroke-linejoin="round" />
+            <g stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" opacity="0.45"><line x1="-80" y1="12" x2="80" y2="12" /><line x1="-70" y1="30" x2="70" y2="30" /><line x1="-60" y1="48" x2="60" y2="48" /></g>
+          </g>` },
+      { id: 'paper_8_kraft_bag', material: 'paper', renderSVG: () => `
+          <g>
+            <path d="M-38 -68 C-38 -145 38 -145 38 -68" fill="none" stroke="#92400e" stroke-width="9" stroke-linecap="round" />
+            <polygon points="74,-68 108,-86 108,102 74,125" fill="#9a6532" stroke="#5c3818" stroke-width="3.5" stroke-linejoin="round" />
+            <polygon points="-100,-68 74,-68 74,125 -100,125" fill="url(#kraftBagGrad)" stroke="#6e4219" stroke-width="3.5" stroke-linejoin="round" />
+            <rect x="-58" y="-58" width="92" height="32" rx="3" fill="#b37840" stroke="#6e4219" stroke-width="2" />
+            <path d="M-46 -52 C-46 -135 22 -135 22 -52" fill="none" stroke="#d69e66" stroke-width="10" stroke-linecap="round" />
+            <path d="M-46 -52 C-46 -135 22 -135 22 -52" fill="none" stroke="#78471c" stroke-width="3" stroke-dasharray="6,6" stroke-linecap="round" />
+            <path d="M-12 55 Q-37 20 3 5 Q23 35 -12 55 Z" fill="#15803d" opacity="0.58" />
+          </g>` },
+      { id: 'paper_9_notebook', material: 'paper', renderSVG: () => `
+          <g>
+            <rect x="-98" y="-114" width="202" height="232" rx="10" fill="#0284c7" stroke="#0369a1" stroke-width="4" />
+            <path d="M-104 -120 L92 -120 L92 72 L52 114 L-104 114 Z" fill="url(#paperSheetGrad)" stroke="#b45309" stroke-width="3" stroke-linejoin="round" />
+            <g stroke="#38bdf8" stroke-width="1.6" opacity="0.45"><line x1="-100" y1="-75" x2="88" y2="-75" /><line x1="-100" y1="-45" x2="88" y2="-45" /><line x1="-100" y1="-15" x2="88" y2="-15" /><line x1="-100" y1="15" x2="88" y2="15" /><line x1="-100" y1="45" x2="88" y2="45" /><line x1="-100" y1="75" x2="54" y2="75" /><line x1="-60" y1="-116" x2="-60" y2="110" /><line x1="-20" y1="-116" x2="-20" y2="110" /><line x1="20" y1="-116" x2="20" y2="110" /><line x1="60" y1="-116" x2="60" y2="110" /></g>
+            <line x1="-76" y1="-118" x2="-76" y2="112" stroke="#ef4444" stroke-width="2.5" opacity="0.65" />
+            <polygon points="92,72 52,114 48,68" fill="#f59e0b" stroke="#92400e" stroke-width="2.5" stroke-linejoin="round" />
+          </g>` },
+      { id: 'paper_10_towel_roll', material: 'paper', renderSVG: () => `
+          <g>
+            <path d="M62 -78 L112 -52 L112 112 L64 92 Z" fill="url(#paperSheetGrad)" stroke="#b45309" stroke-width="3" stroke-linejoin="round" />
+            <line x1="90" y1="-62" x2="90" y2="100" stroke="#92400e" stroke-width="2.5" stroke-dasharray="5,6" opacity="0.6" />
+            <path d="M-94 -92 L78 -92 L78 108 C78 126 -94 126 -94 108 Z" fill="url(#paperSheetGrad)" stroke="#b45309" stroke-width="3.5" />
+            <g fill="none" stroke="#d97706" stroke-width="2" opacity="0.35"><path d="M-74 -35 Q-10 -20 58 -35" /><path d="M-74 5 Q-10 20 58 5" /><path d="M-74 45 Q-10 60 58 45" /><path d="M-74 85 Q-10 100 58 85" /></g>
+            <ellipse cx="-8" cy="-92" rx="86" ry="25" fill="#fef3c7" stroke="#b45309" stroke-width="3.5" />
+            <ellipse cx="-8" cy="-92" rx="60" ry="16" fill="none" stroke="#d97706" stroke-width="2" />
+            <ellipse cx="-8" cy="-92" rx="32" ry="9" fill="#9a6532" stroke="#5c3818" stroke-width="3" />
+          </g>` },
+      { id: 'metal_11_wrench', material: 'metal', renderSVG: () => `
+          <g transform="rotate(-42)">
+            <path d="M-24 -42 L24 -42 L30 134 Q30 158 0 158 Q-30 158 -30 134 Z" fill="url(#steelShineGrad)" stroke="#334155" stroke-width="4" />
+            <rect x="-12" y="-12" width="24" height="118" rx="12" fill="#64748b" stroke="#334155" stroke-width="2.5" />
+            <circle cx="0" cy="132" r="11" fill="#3b2110" stroke="#334155" stroke-width="3" />
+            <path d="M-48 -40 C-72 -68 -70 -124 -28 -152 L-28 -96 L26 -96 L26 -146 C66 -122 68 -72 44 -40 Z" fill="url(#steelShineGrad)" stroke="#334155" stroke-width="4" stroke-linejoin="round" />
+            <rect x="-24" y="-64" width="48" height="18" rx="4" fill="#94a3b8" stroke="#1e293b" stroke-width="3" />
+            <path d="M-46 -78 Q-52 -112 -34 -136" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.85" />
+          </g>` },
+      { id: 'metal_12_steel_pot', material: 'metal', renderSVG: () => `
+          <g>
+            <path d="M-100 -32 L-126 -42 L-126 -10 L-100 2" fill="none" stroke="#334155" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M100 -32 L126 -42 L126 -10 L100 2" fill="none" stroke="#334155" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M-104 -62 L104 -62 L96 96 Q94 122 66 122 L-66 122 Q-94 122 -96 96 Z" fill="url(#steelShineGrad)" stroke="#334155" stroke-width="4" />
+            <rect x="-58" y="-58" width="24" height="176" fill="#ffffff" opacity="0.45" />
+            <rect x="26" y="-58" width="15" height="176" fill="#ffffff" opacity="0.35" />
+            <path d="M-110 -62 Q0 -122 110 -62 Z" fill="url(#steelShineGrad)" stroke="#334155" stroke-width="4" />
+            <rect x="-112" y="-68" width="224" height="12" rx="6" fill="#e2e8f0" stroke="#334155" stroke-width="3" />
+            <path d="M-34 -92 L-22 -116 L22 -116 L34 -92" fill="none" stroke="#1e293b" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" />
+          </g>` },
+      { id: 'metal_13_padlock', material: 'metal', renderSVG: () => `
+          <g>
+            <path d="M-54 -28 L-54 -96 C-54 -152 54 -152 54 -96 L54 -28" fill="none" stroke="#334155" stroke-width="28" stroke-linecap="round" />
+            <path d="M-54 -28 L-54 -96 C-54 -152 54 -152 54 -96 L54 -28" fill="none" stroke="url(#steelShineGrad)" stroke-width="20" stroke-linecap="round" />
+            <rect x="-92" y="-36" width="184" height="156" rx="22" fill="url(#goldKeyGrad)" stroke="#78350f" stroke-width="4.5" />
+            <rect x="-78" y="-22" width="32" height="128" rx="8" fill="#fef08a" opacity="0.38" />
+            <circle cx="0" cy="28" r="22" fill="url(#steelShineGrad)" stroke="#334155" stroke-width="3" />
+            <circle cx="0" cy="22" r="8" fill="#0f172a" />
+            <polygon points="-5,24 5,24 8,44 -8,44" fill="#0f172a" />
+            <circle cx="-72" cy="-16" r="5" fill="#78350f" /><circle cx="72" cy="-16" r="5" fill="#78350f" /><circle cx="-72" cy="100" r="5" fill="#78350f" /><circle cx="72" cy="100" r="5" fill="#78350f" />
+          </g>` },
+      { id: 'metal_14_horseshoe', material: 'metal', renderSVG: () => `
+          <g>
+            <path d="M-76 -110 C-120 -45 -118 115 0 115 C118 115 120 -45 76 -110 L46 -94 C78 -38 74 72 0 72 C-74 72 -78 -38 -46 -94 Z" fill="url(#steelShineGrad)" stroke="#1e293b" stroke-width="5" stroke-linejoin="round" />
+            <path d="M-72 -66 C-98 -10 -82 78 -34 92" fill="none" stroke="#334155" stroke-width="10" stroke-linecap="round" />
+            <path d="M72 -66 C98 -10 82 78 34 92" fill="none" stroke="#334155" stroke-width="10" stroke-linecap="round" />
+            <g fill="#0f172a"><rect x="-82" y="-48" width="9" height="13" rx="2" transform="rotate(-15 -78 -42)" /><rect x="-88" y="-12" width="9" height="13" rx="2" /><rect x="-80" y="24" width="9" height="13" rx="2" transform="rotate(18 -76 30)" /><rect x="73" y="-48" width="9" height="13" rx="2" transform="rotate(15 78 -42)" /><rect x="79" y="-12" width="9" height="13" rx="2" /><rect x="71" y="24" width="9" height="13" rx="2" transform="rotate(-18 76 30)" /></g>
+            <path d="M-52 88 Q0 108 52 88" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.75" />
+          </g>` },
+      { id: 'metal_15_tin_can', material: 'metal', renderSVG: () => `
+          <g>
+            <path d="M-98 -96 L98 -96 L98 102 C98 128 -98 128 -98 102 Z" fill="url(#steelShineGrad)" stroke="#334155" stroke-width="4" />
+            <rect x="-54" y="-92" width="30" height="202" fill="#ffffff" opacity="0.5" />
+            <g fill="none" stroke="#334155" stroke-width="4" opacity="0.75"><path d="M-98 -52 C-48 -32 48 -32 98 -52" /><path d="M-98 -22 C-48 -2 48 -2 98 -22" /><path d="M-98 8 C-48 28 48 28 98 8" /><path d="M-98 38 C-48 58 48 58 98 38" /><path d="M-98 68 C-48 88 48 88 98 68" /></g>
+            <ellipse cx="0" cy="-96" rx="100" ry="25" fill="#e2e8f0" stroke="#334155" stroke-width="4" />
+            <ellipse cx="0" cy="-96" rx="86" ry="19" fill="url(#steelShineGrad)" stroke="#475569" stroke-width="2.5" />
+            <ellipse cx="0" cy="-96" rx="60" ry="12" fill="none" stroke="#334155" stroke-width="2" />
+            <ellipse cx="-18" cy="-96" rx="22" ry="8" fill="none" stroke="#f8fafc" stroke-width="5" />
+            <circle cx="4" cy="-96" r="5" fill="#334155" />
+          </g>` },
+      { id: 'plastic_16_bucket', material: 'plastic', renderSVG: () => `
+          <g>
+            <polygon points="-102,-64 102,-64 76,118 -76,118" fill="#06b6d4" stroke="#0e7490" stroke-width="4" stroke-linejoin="round" />
+            <path d="M-92 4 Q-58 -14 -28 4 T28 4 T92 4 L86 38 Q52 20 24 38 T-32 38 T-86 38 Z" fill="#22d3ee" opacity="0.7" />
+            <ellipse cx="0" cy="118" rx="76" ry="14" fill="#0891b2" stroke="#0e7490" stroke-width="3.5" />
+            <rect x="-110" y="-82" width="220" height="24" rx="12" fill="#facc15" stroke="#ca8a04" stroke-width="3.5" />
+            <ellipse cx="0" cy="-82" rx="100" ry="15" fill="#eab308" stroke="#a16207" stroke-width="3" />
+            <path d="M-104 -68 C-118 65 118 65 104 -68" fill="none" stroke="#f8fafc" stroke-width="11" stroke-linecap="round" />
+            <circle cx="-100" cy="-68" r="9" fill="#ef4444" stroke="#991b1b" stroke-width="2.5" /><circle cx="100" cy="-68" r="9" fill="#ef4444" stroke="#991b1b" stroke-width="2.5" />
+            <path d="M-74 -42 L-56 98" stroke="#ffffff" stroke-width="12" stroke-linecap="round" opacity="0.55" />
+          </g>` },
+      { id: 'plastic_17_bottle', material: 'plastic', renderSVG: () => `
+          <g>
+            <path d="M-34 -112 L34 -112 L92 -62 L92 -4 C78 10 78 24 92 38 L92 118 Q92 138 64 138 L-64 138 Q-92 138 -92 118 L-92 38 C-78 24 -78 10 -92 -4 L-92 -62 Z" fill="#38bdf8" fill-opacity="0.65" stroke="#0284c7" stroke-width="4" stroke-linejoin="round" />
+            <path d="M-86 -42 Q0 -32 86 -42 M-86 -18 Q0 -8 86 -18 M-86 58 Q0 68 86 58 M-86 86 Q0 96 86 86" fill="none" stroke="#bae6fd" stroke-width="4" stroke-linecap="round" opacity="0.75" />
+            <path d="M-84 -4 Q0 6 84 -4 L84 38 Q0 48 -84 38 Z" fill="#ec4899" stroke="#be185d" stroke-width="3" />
+            <path d="M-46 16 Q-16 2 16 16 T54 14" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" />
+            <rect x="-36" y="-146" width="72" height="32" rx="7" fill="#ef4444" stroke="#991b1b" stroke-width="3.5" />
+            <path d="M-66 -56 L-66 116" stroke="#ffffff" stroke-width="12" stroke-linecap="round" opacity="0.68" />
+          </g>` },
+      { id: 'plastic_18_lego_brick', material: 'plastic', renderSVG: () => `
+          <g>
+            <polygon points="0,-92 122,-26 0,40 -122,-26" fill="#ef4444" stroke="#991b1b" stroke-width="3.5" stroke-linejoin="round" />
+            <polygon points="-122,-26 0,40 0,118 -122,52" fill="#dc2626" stroke="#7f1d1d" stroke-width="3.5" stroke-linejoin="round" />
+            <polygon points="0,40 122,-26 122,52 0,118" fill="#b91c1c" stroke="#7f1d1d" stroke-width="3.5" stroke-linejoin="round" />
+            <polyline points="-118,-24 0,38 118,-24" fill="none" stroke="#fca5a5" stroke-width="4" stroke-linecap="round" />
+            ${[{x:0,y:-64},{x:-30,y:-48},{x:30,y:-48},{x:-60,y:-32},{x:60,y:-32},{x:-30,y:-16},{x:30,y:-16},{x:0,y:0}].map(pt => `
+              <g transform="translate(${pt.x}, ${pt.y})">
+                <path d="M-17 -13 L-17 2 A17 8.5 0 0 0 17 2 L17 -13 Z" fill="#dc2626" stroke="#7f1d1d" stroke-width="2.5" />
+                <ellipse cx="0" cy="-13" rx="17" ry="8.5" fill="#f87171" stroke="#991b1b" stroke-width="2.5" />
+              </g>`).join('')}
+          </g>` },
+      { id: 'plastic_19_watering_can', material: 'plastic', renderSVG: () => `
+          <g>
+            <path d="M-26 -58 C-26 -124 -110 -112 -110 -24 C-110 42 -64 62 -52 62" fill="none" stroke="#16a34a" stroke-width="20" stroke-linecap="round" />
+            <path d="M-26 -58 C-26 -124 -110 -112 -110 -24 C-110 42 -64 62 -52 62" fill="none" stroke="#4ade80" stroke-width="6" stroke-linecap="round" opacity="0.7" />
+            <path d="M46 32 L112 -56 L96 -72 L32 -4 Z" fill="#22c55e" stroke="#15803d" stroke-width="4" stroke-linejoin="round" />
+            <ellipse cx="112" cy="-72" rx="14" ry="25" transform="rotate(42 112 -72)" fill="#facc15" stroke="#ca8a04" stroke-width="3.5" />
+            <path d="M-70 -58 L54 -58 L66 98 Q66 118 42 118 L-58 118 Q-82 118 -80 98 Z" fill="#22c55e" stroke="#15803d" stroke-width="4" />
+            <ellipse cx="-8" cy="-58" rx="44" ry="14" fill="#15803d" stroke="#14532d" stroke-width="3.5" />
+            <circle cx="-8" cy="32" r="24" fill="#86efac" opacity="0.55" />
+            <path d="M-52 -32 L-58 92" stroke="#ffffff" stroke-width="11" stroke-linecap="round" opacity="0.6" />
+          </g>` },
+      { id: 'plastic_20_duck', material: 'plastic', renderSVG: () => `
+          <g>
+            <path d="M-98 28 C-112 -12 -72 -32 -42 -18 C-22 -8 18 -4 48 -28 C72 -48 104 -32 108 6 C114 68 74 114 -4 114 C-74 114 -92 68 -98 28 Z" fill="#facc15" stroke="#ca8a04" stroke-width="4.5" stroke-linejoin="round" />
+            <circle cx="-38" cy="-58" r="54" fill="#facc15" stroke="#ca8a04" stroke-width="4.5" />
+            <path d="M-82 -64 C-122 -68 -126 -38 -84 -36 C-66 -35 -64 -56 -82 -64 Z" fill="#f97316" stroke="#c2410c" stroke-width="3.5" stroke-linejoin="round" />
+            <circle cx="-54" cy="-68" r="9" fill="#0f172a" /><circle cx="-57" cy="-71" r="3.5" fill="#ffffff" />
+            <path d="M-32 24 C-12 2 44 6 58 38 C42 74 -16 74 -32 24 Z" fill="#eab308" stroke="#ca8a04" stroke-width="3.5" />
+            <path d="M-56 -96 Q-26 -104 -8 -82" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" opacity="0.78" />
+            <path d="M-64 78 Q0 98 64 74" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.65" />
+          </g>` }
+    ];
+
+    /* 4. STICKER SVG BUILDER */
+    function buildAppliedStickerSVG(material) {
+      const label = LANGUAGES[currentLang].stickers[material];
+      const gradMap = { glass: 'url(#stickerGlassGrad)', paper: 'url(#stickerPaperGrad)', metal: 'url(#stickerMetalGrad)', plastic: 'url(#stickerPlasticGrad)' };
+      const strokeMap = { glass: '#083344', paper: '#451a03', metal: '#0f172a', plastic: '#500724' };
+      return `
+        <g transform="rotate(-6) scale(0.78)" filter="url(#softShadow)">
+          <path d="M-110 -44 L92 -44 Q112 -44 112 -24 L112 18 L86 44 L-110 44 Q-130 44 -130 24 L-130 -24 Q-130 -44 -110 -44 Z" fill="${gradMap[material]}" stroke="#fef3c7" stroke-width="4" />
+          <path d="M-104 -34 L88 -34 Q100 -34 100 -22 L100 14 L80 34 L-104 34 Q-118 34 -118 20 L-118 -22 Q-118 -34 -104 -34 Z" fill="none" stroke="#fef3c7" stroke-width="2" stroke-dasharray="6,5" opacity="0.8" />
+          <text x="-10" y="12" text-anchor="middle" fill="#ffffff" font-family="Rubik, sans-serif" font-size="32" font-weight="900" letter-spacing="1.5" stroke="${strokeMap[material]}" stroke-width="6" paint-order="stroke">${label}</text>
+          <path d="M112 18 L86 44 L82 14 Q98 18 112 18 Z" fill="#f59e0b" stroke="#fef3c7" stroke-width="2" stroke-linejoin="round" />
+        </g>`;
+    }
+
+    /* 5. CANVAS FX */
+    const fxCanvas = document.getElementById('fx-canvas');
+    const fxCtx = fxCanvas.getContext('2d');
+    function resizeCanvas() { fxCanvas.width = window.innerWidth; fxCanvas.height = window.innerHeight; }
+    window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+    const dustMotes = Array.from({ length: 38 }, () => ({
+      x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight * 0.82,
+      r: 1.4 + Math.random() * 2.5, vx: -0.15 + Math.random() * 0.3, vy: -0.2 + Math.random() * 0.4,
+      alpha: 0.22 + Math.random() * 0.5, phase: Math.random() * Math.PI * 2
+    }));
+    const activeParticles = [];
+    const flyingStickers = [];
+    let celebrationCounter = 0;
+
+    function svgToScreen(svgX, svgY) {
+      const rect = fxCanvas.getBoundingClientRect();
+      const scale = Math.max(rect.width / 1920, rect.height / 1080);
+      const offsetX = (rect.width - 1920 * scale) / 2;
+      const offsetY = (rect.height - 1080 * scale) / 2;
+      return { x: svgX * scale + offsetX, y: svgY * scale + offsetY, scale };
+    }
+
+    function spawnBoxPaperShreds() {
+      const origin = svgToScreen(960, 575);
+      const colors = ['#fbbf24', '#38bdf8', '#f472b6', '#4ade80', '#fb923c'];
+      const baseIndex = currentItemIndex;
+      for (let i = 0; i < 20; i++) {
+        const step = i / 19;
+        const angle = -Math.PI * 0.85 + step * Math.PI * 0.7;
+        const speed = (6 + (i % 5) * 2) * origin.scale;
+        activeParticles.push({
+          type: 'shred',
+          x: origin.x + (i - 9.5) * 16 * origin.scale,
+          y: origin.y,
+          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2 * origin.scale,
+          gravity: 0.42 * origin.scale,
+          rot: step * Math.PI * 2, vRot: 0.05 + (i % 3) * 0.02,
+          len: (16 + (i % 4) * 4) * origin.scale,
+          color: colors[(baseIndex + i) % colors.length],
+          life: 1, decay: 0.024
+        });
+      }
+    }
+
+    function triggerWordlessCelebration(material) {
+      const center = svgToScreen(960, 350);
+      celebrationCounter++;
+      const palettes = {
+        glass: ['#67e8f9', '#22d3ee', '#bae6fd', '#fde047'],
+        paper: ['#fde047', '#fbbf24', '#f59e0b', '#fef3c7'],
+        metal: ['#e2e8f0', '#94a3b8', '#38bdf8', '#fbbf24'],
+        plastic: ['#f472b6', '#ec4899', '#a855f7', '#22d3ee']
+      };
+      const palette = palettes[material] || palettes.glass;
+      for (let r = 0; r < 2; r++) {
+        activeParticles.push({
+          type: 'ring', x: center.x, y: center.y,
+          radius: (30 + r * 35) * center.scale, maxRadius: (340 + r * 80) * center.scale,
+          color: palette[r % palette.length], life: 1, decay: 0.028
+        });
+      }
+      for (let i = 0; i < 52; i++) {
+        const angle = (Math.PI * 2 * i) / 52;
+        const speed = (5 + (i % 7) * 2) * center.scale;
+        activeParticles.push({
+          type: i % 2 === 0 ? 'star' : 'orb', x: center.x, y: center.y,
+          vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          gravity: 0.16 * center.scale,
+          size: (9 + (i % 5) * 2.2) * center.scale,
+          rot: angle, vRot: 0.02 + (i % 4) * 0.01,
+          color: palette[i % palette.length], life: 1, decay: 0.017 + (i % 3) * 0.004
+        });
+      }
+    }
+
+    function spawnBouncingWrongSticker(material) {
+      const center = svgToScreen(960, 350);
+      const colors = { glass: '#06b6d4', paper: '#f59e0b', metal: '#64748b', plastic: '#db2777' };
+      const dir = (currentItemIndex % 2 === 0) ? 1 : -1;
+      flyingStickers.push({
+        x: center.x, y: center.y,
+        vx: dir * (7 + (currentItemIndex % 5)) * center.scale, vy: -10 * center.scale,
+        gravity: 0.65 * center.scale,
+        rot: -0.2, vRot: dir * (0.2 + (currentItemIndex % 3) * 0.03),
+        scale: center.scale,
+        color: colors[material], label: LANGUAGES[currentLang].stickers[material],
+        curl: 0.1, life: 1
+      });
+    }
+
+    function drawFourPointStar(ctx, x, y, size, rot, color, alpha) {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+      ctx.globalAlpha = Math.max(0, alpha); ctx.fillStyle = color;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const r = i % 2 === 0 ? size : size * 0.38;
+        const a = (i * Math.PI) / 4;
+        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+
+    function animateFX() {
+      fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+      dustMotes.forEach(m => {
+        m.phase += 0.025; m.x += m.vx + Math.sin(m.phase) * 0.2; m.y += m.vy;
+        if (m.x < 0) m.x = fxCanvas.width;
+        if (m.x > fxCanvas.width) m.x = 0;
+        if (m.y < 0) m.y = fxCanvas.height * 0.82;
+        if (m.y > fxCanvas.height * 0.82) m.y = 0;
+        fxCtx.save(); fxCtx.globalAlpha = m.alpha * (0.65 + 0.35 * Math.sin(m.phase));
+        fxCtx.fillStyle = '#fef08a'; fxCtx.beginPath(); fxCtx.arc(m.x, m.y, m.r, 0, Math.PI * 2); fxCtx.fill(); fxCtx.restore();
+      });
+      for (let i = activeParticles.length - 1; i >= 0; i--) {
+        const p = activeParticles[i]; p.life -= p.decay;
+        if (p.life <= 0) { activeParticles.splice(i, 1); continue; }
+        if (p.type === 'ring') {
+          p.radius += (p.maxRadius - p.radius) * 0.11;
+          fxCtx.save(); fxCtx.globalAlpha = p.life * 0.75; fxCtx.strokeStyle = p.color; fxCtx.lineWidth = 6 * p.life;
+          fxCtx.beginPath(); fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); fxCtx.stroke(); fxCtx.restore();
+        } else if (p.type === 'star') {
+          p.x += p.vx; p.y += p.vy; p.vy += p.gravity; p.rot += p.vRot;
+          drawFourPointStar(fxCtx, p.x, p.y, p.size * p.life, p.rot, p.color, p.life);
+        } else if (p.type === 'orb') {
+          p.x += p.vx; p.y += p.vy; p.vy += p.gravity;
+          fxCtx.save(); fxCtx.globalAlpha = p.life; fxCtx.fillStyle = p.color;
+          fxCtx.beginPath(); fxCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2); fxCtx.fill(); fxCtx.restore();
+        } else if (p.type === 'shred') {
+          p.x += p.vx; p.y += p.vy; p.vy += p.gravity; p.rot += p.vRot;
+          fxCtx.save(); fxCtx.translate(p.x, p.y); fxCtx.rotate(p.rot);
+          fxCtx.globalAlpha = p.life; fxCtx.strokeStyle = p.color; fxCtx.lineWidth = 5; fxCtx.lineCap = 'round';
+          fxCtx.beginPath(); fxCtx.moveTo(-p.len / 2, 0);
+          fxCtx.quadraticCurveTo(0, -p.len * 0.35, p.len / 2, 0); fxCtx.stroke(); fxCtx.restore();
+        }
+      }
+      for (let i = flyingStickers.length - 1; i >= 0; i--) {
+        const s = flyingStickers[i];
+        s.x += s.vx; s.y += s.vy; s.vy += s.gravity; s.rot += s.vRot;
+        s.curl = Math.min(0.65, s.curl + 0.04); s.life -= 0.022;
+        if (s.life <= 0 || s.y > fxCanvas.height + 120) { flyingStickers.splice(i, 1); continue; }
+        fxCtx.save(); fxCtx.translate(s.x, s.y); fxCtx.rotate(s.rot);
+        fxCtx.scale(s.scale * (1 - s.curl * 0.3), s.scale);
+        fxCtx.globalAlpha = Math.min(1, s.life * 1.4);
+        fxCtx.fillStyle = s.color; fxCtx.strokeStyle = '#fef3c7'; fxCtx.lineWidth = 4;
+        fxCtx.beginPath(); fxCtx.roundRect(-85, -34, 170, 68, 16); fxCtx.fill(); fxCtx.stroke();
+        fxCtx.font = '900 24px Rubik, sans-serif'; fxCtx.textAlign = 'center'; fxCtx.textBaseline = 'middle';
+        fxCtx.lineWidth = 6; fxCtx.strokeStyle = '#1c0d04'; fxCtx.strokeText(s.label, 0, 0);
+        fxCtx.fillStyle = '#ffffff'; fxCtx.fillText(s.label, 0, 0);
+        fxCtx.restore();
+      }
+      requestAnimationFrame(animateFX);
+    }
+    animateFX();
+
+    /* ============================================================
+       6. GAME STATE — ВИПАДКОВИЙ ПОРЯДОК ПРЕДМЕТІВ
+       ============================================================
+       При завантаженні створюється випадкова перестановка індексів
+       0..19 (Fisher–Yates). Кнопки «вперед»/«назад» рухаються по цій
+       перестановці, тому предмети показуються у випадковому порядку.
+       Стан «вирішено» зберігається за ОРИГІНАЛЬНИМ індексом, тому
+       наліпки не злітають при навігації.
+       ============================================================ */
+    function shuffle(array) {
+      const a = array.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+    const itemOrder = shuffle([...Array(20).keys()]);
+    let currentOrderPos = 0;
+    let currentItemIndex = itemOrder[currentOrderPos]; // випадковий перший предмет
+    const solvedSet = new Set();
+    let isAnimating = false;
+
+    const DOM = {
+      activeItemInner: document.getElementById('active-item-inner'),
+      appliedStickerSlot: document.getElementById('applied-sticker-slot'),
+      activeItemMover: document.getElementById('active-item-mover'),
+      activeItemWrapper: document.getElementById('active-item-wrapper'),
+      rightHandHeldSticker: document.getElementById('right-hand-held-sticker'),
+      rightHandMover: document.getElementById('right-hand-mover'),
+      rivetsGroup: document.getElementById('rivets-20-group'),
+      langBtnLabel: document.getElementById('lang-btn-label'),
+      langBtn: document.getElementById('lang-btn'),
+      prevBtn: document.getElementById('prev-btn'),
+      nextBtn: document.getElementById('next-btn')
+    };
+
+    function renderRivets() {
+      let html = '';
+      for (let i = 0; i < 20; i++) {
+        const x = -285 + i * 30;
+        const done = solvedSet.has(i);
+        html += `<circle cx="${x}" cy="0" r="9" fill="${done ? '#fbbf24' : '#3d200d'}" stroke="${done ? '#fef08a' : '#78350f'}" stroke-width="2.5" />`;
+        if (done) html += `<circle cx="${x - 2}" cy="-2" r="3.5" fill="#fef08a" opacity="0.9" />`;
+      }
+      DOM.rivetsGroup.innerHTML = html;
+    }
+
+    function loadItem() {
+      const item = ITEMS_CATALOG[currentItemIndex];
+      DOM.activeItemInner.innerHTML = item.renderSVG();
+      DOM.appliedStickerSlot.innerHTML = solvedSet.has(currentItemIndex) ? buildAppliedStickerSVG(item.material) : '';
+      renderRivets();
+    }
+
+    function updateLanguageUI() {
+      const lang = LANGUAGES[currentLang];
+      DOM.langBtnLabel.textContent = lang.btn;
+      ['glass', 'paper', 'metal', 'plastic'].forEach(mat => {
+        const el = document.getElementById(`dock-label-${mat}`);
+        if (el) el.textContent = lang.stickers[mat];
+      });
+    }
+
+    function animateStickerApplication(material) {
+      if (isAnimating) return;
+      if (solvedSet.has(currentItemIndex)) return;
+      const item = ITEMS_CATALOG[currentItemIndex];
+      isAnimating = true;
+
+      sound.playStickerPeelAndSlap();
+      sound.playBoxRummage();
+
+      DOM.rightHandHeldSticker.innerHTML = buildAppliedStickerSVG(material);
+      DOM.rightHandHeldSticker.style.opacity = '1';
+      DOM.rightHandMover.style.transform = 'translate(-90px, -25px)';
+
+      setTimeout(() => {
+        const isCorrect = item.material === material;
+        if (isCorrect) {
+          sound.playMaterialSound(material);
+          sound.playCelebrationFanfare(celebrationCounter);
+          triggerWordlessCelebration(material);
+          DOM.appliedStickerSlot.innerHTML = buildAppliedStickerSVG(material);
+          DOM.activeItemMover.classList.add('item-correct');
+          solvedSet.add(currentItemIndex);
+          renderRivets();
+          setTimeout(() => DOM.activeItemMover.classList.remove('item-correct'), 500);
+        } else {
+          sound.playWrongBoing();
+          spawnBoxPaperShreds();
+          spawnBouncingWrongSticker(material);
+          DOM.activeItemMover.classList.add('item-wrong');
+          setTimeout(() => DOM.activeItemMover.classList.remove('item-wrong'), 560);
+        }
+        DOM.rightHandHeldSticker.style.opacity = '0';
+        setTimeout(() => {
+          DOM.rightHandMover.style.transform = 'translate(0, 0)';
+          DOM.rightHandHeldSticker.innerHTML = '';
+          isAnimating = false;
+        }, 450);
+      }, 420);
+    }
+
+    /* 7. EVENT LISTENERS */
+    document.querySelectorAll('.sticker-slot').forEach(slot => {
+      slot.addEventListener('click', () => {
+        sound.init();
+        const mat = slot.getAttribute('data-material');
+        if (mat) animateStickerApplication(mat);
+      });
+    });
+
+    DOM.langBtn.addEventListener('click', () => {
+      sound.playClick();
+      currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+      updateLanguageUI();
+      if (solvedSet.has(currentItemIndex)) {
+        DOM.appliedStickerSlot.innerHTML = buildAppliedStickerSVG(ITEMS_CATALOG[currentItemIndex].material);
+      }
+    });
+
+    /* «Назад» / «Вперед» тепер крокують по ВИПАДКОВІЙ перестановці itemOrder */
+    DOM.prevBtn.addEventListener('click', () => {
+      sound.playClick();
+      currentOrderPos = (currentOrderPos - 1 + 20) % 20;
+      currentItemIndex = itemOrder[currentOrderPos];
+      loadItem();
+    });
+
+    DOM.nextBtn.addEventListener('click', () => {
+      sound.playClick();
+      currentOrderPos = (currentOrderPos + 1) % 20;
+      currentItemIndex = itemOrder[currentOrderPos];
+      loadItem();
+    });
+
+    document.getElementById('desk-lamp').addEventListener('click', () => {
+      sound.playClick();
+      const cone = document.getElementById('lamp-cone');
+      const glow = document.getElementById('lamp-bulb-glow');
+      const visible = cone.style.opacity !== '0';
+      cone.style.transition = 'opacity 0.3s';
+      glow.style.transition = 'opacity 0.3s';
+      cone.style.opacity = visible ? '0' : '1';
+      glow.style.opacity = visible ? '0.2' : '1';
+    });
+
+    document.getElementById('window-cat').addEventListener('click', () => { sound.playCatPurr(); });
+    DOM.activeItemWrapper.addEventListener('click', () => { sound.init(); sound.playClick(); });
+
+    /* 8. INIT */
+    loadItem();
+    updateLanguageUI();
+  </script>
+</body>
+</html>
