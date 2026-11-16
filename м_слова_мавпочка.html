@@ -1,0 +1,2602 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Лісова Переправа на М</title>
+<style>
+  :root {
+    --wood-dark: #3e2415;
+    --wood-mid: #6b3e23;
+    --wood-light: #9c6339;
+    --gold-warm: #f7c948;
+    --moss-bright: #68b836;
+    --moss-deep: #2f6b18;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #0d3842;
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  }
+
+  #game-viewport {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #1b5c69 0%, #144957 35%, #0e3845 75%, #092933 100%);
+  }
+
+  /* Animated river canvas layer */
+  #river-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Left & Right Riverbanks SVG layer */
+  #scenery-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* Wooden Bridges SVG Layer connecting stepped stones */
+  #trail-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  /* Grid of Stepping Stones (5 rows x 7 columns for crisp orthogonal alignment) */
+  #stones-container {
+    position: absolute;
+    left: 11vw;
+    right: 11vw;
+    top: 8.5vh;
+    bottom: 5.5vh;
+    z-index: 4;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 0.7vw 0.9vw;
+    align-items: center;
+    justify-items: center;
+  }
+
+  /* Individual River Stone */
+  .river-stone {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: 10.8vw;
+    max-height: 16.5vh;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.24s ease;
+    transform-origin: center center;
+  }
+
+  .river-stone:hover {
+    transform: translateY(-3px) scale(1.04);
+    filter: brightness(1.06) drop-shadow(0 8px 12px rgba(0, 20, 28, 0.55));
+  }
+
+  .river-stone.ortho-neighbor:hover {
+    transform: translateY(-5px) scale(1.07);
+    filter: brightness(1.12) drop-shadow(0 0 12px rgba(255, 230, 120, 0.65));
+  }
+
+  .river-stone:active {
+    transform: translateY(2px) scale(0.96);
+  }
+
+  .stone-base-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  /* Subtle orthogonal reachability ring */
+  .river-stone.ortho-pulse .hint-ring {
+    opacity: 0.95;
+    stroke: #ffe46b;
+    animation: pulseRipple 0.65s ease-in-out 2;
+  }
+
+  .river-stone.next-hint .hint-ring {
+    opacity: 0.85;
+    stroke: #a6ff78;
+    animation: pulseRipple 1.8s infinite ease-in-out;
+  }
+
+  .hint-ring {
+    opacity: 0;
+    transform-origin: center;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+
+  @keyframes pulseRipple {
+    0% { transform: scale(0.92); opacity: 0.85; }
+    50% { transform: scale(1.07); opacity: 0.35; }
+    100% { transform: scale(0.92); opacity: 0.85; }
+  }
+
+  /* Illustration inside stone */
+  .stone-art {
+    position: relative;
+    width: 68%;
+    height: 70%;
+    z-index: 2;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 5px rgba(15, 23, 30, 0.42));
+    transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .river-stone:hover .stone-art {
+    transform: scale(1.08);
+  }
+
+  /* Stepped / Activated M Stone */
+  .river-stone.stepped {
+    cursor: default;
+    filter: drop-shadow(0 0 12px rgba(154, 242, 92, 0.5));
+  }
+
+  .river-stone.stepped .moss-rim {
+    opacity: 1 !important;
+  }
+
+  .river-stone.stepped .stone-lotus {
+    opacity: 1 !important;
+    transform: translate(94px, 22px) scale(1) !important;
+  }
+
+  /* Wrong Shake & Sink Animation */
+  .river-stone.wrong-sink {
+    animation: sinkWobble 0.68s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+
+  /* Out-of-range / Diagonal nudge animation */
+  .river-stone.diagonal-deny {
+    animation: diagonalDeny 0.42s ease-in-out;
+  }
+
+  @keyframes sinkWobble {
+    0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+    18% { transform: translate(-7px, 8px) rotate(-6deg) scale(0.9); filter: brightness(0.75) sepia(0.3); }
+    36% { transform: translate(7px, 11px) rotate(5deg) scale(0.87); }
+    55% { transform: translate(-5px, 7px) rotate(-4deg) scale(0.92); }
+    75% { transform: translate(3px, 4px) rotate(2deg) scale(0.96); }
+    100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  }
+
+  @keyframes diagonalDeny {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(0.93); filter: brightness(0.85); }
+    65% { transform: scale(1.03); }
+  }
+
+  /* Bridge Plank Pop-in Animation */
+  .bridge-plank-anim {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: plankPopIn 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  @keyframes plankPopIn {
+    0% { transform: scale(0.2); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Optional Carved Wooden Nameplate (when reading caption is toggled on) */
+  .word-plaque {
+    position: absolute;
+    bottom: 1%;
+    left: 50%;
+    transform: translateX(-50%) scale(0.85);
+    background: linear-gradient(180deg, #5c3419 0%, #3d200d 100%);
+    border: 2px solid #b57c43;
+    border-radius: 12px;
+    padding: 1px 8px 2px;
+    color: #fff3d6;
+    font-size: clamp(10px, 0.95vw, 15px);
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,220,160,0.35);
+    z-index: 6;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  body.show-words .word-plaque {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+
+  .word-plaque .hl-m {
+    color: #ffd84d;
+    text-shadow: 0 0 6px rgba(255, 200, 30, 0.7);
+    text-decoration: underline;
+  }
+
+  /* Articulated Realistic Monkey Character Container */
+  #character-wrapper {
+    position: absolute;
+    width: 7.4vw;
+    height: 7.4vw;
+    min-width: 74px;
+    min-height: 74px;
+    max-width: 124px;
+    max-height: 124px;
+    z-index: 12;
+    pointer-events: none;
+    transform: translate(-50%, -68%);
+    will-change: left, top, transform;
+    filter: drop-shadow(0 10px 10px rgba(0, 15, 22, 0.55));
+  }
+
+  #monkey-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Idle breathing & tail sway for Monkey */
+  #monkey-body-group {
+    transform-origin: 50px 68px;
+    animation: monkeyBreathe 2.3s infinite ease-in-out;
+  }
+
+  #monkey-tail {
+    transform-origin: 36px 70px;
+    animation: monkeyTailSway 2.1s infinite ease-in-out;
+  }
+
+  #monkey-ear-l {
+    transform-origin: 27px 39px;
+    animation: earTwitchL 4.2s infinite ease-in-out;
+  }
+
+  #monkey-ear-r {
+    transform-origin: 73px 39px;
+    animation: earTwitchR 4.9s infinite ease-in-out;
+  }
+
+  #monkey-arm-l {
+    transform-origin: 35px 55px;
+    animation: armSwingL 2.3s infinite ease-in-out;
+  }
+
+  #monkey-arm-r {
+    transform-origin: 65px 55px;
+    animation: armSwingR 2.3s infinite ease-in-out;
+  }
+
+  .monkey-eyelid {
+    transform-origin: center;
+    animation: eyeBlink 4.4s infinite;
+  }
+
+  @keyframes monkeyBreathe {
+    0%, 100% { transform: scaleY(1) translateY(0); }
+    50% { transform: scaleY(1.04) translateY(-2px); }
+  }
+
+  @keyframes monkeyTailSway {
+    0%, 100% { transform: rotate(-9deg); }
+    50% { transform: rotate(14deg); }
+  }
+
+  @keyframes armSwingL {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(6deg); }
+  }
+
+  @keyframes armSwingR {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-6deg); }
+  }
+
+  @keyframes earTwitchL {
+    0%, 88%, 100% { transform: rotate(0deg); }
+    92% { transform: rotate(-10deg); }
+    96% { transform: rotate(4deg); }
+  }
+
+  @keyframes earTwitchR {
+    0%, 84%, 100% { transform: rotate(0deg); }
+    89% { transform: rotate(11deg); }
+    94% { transform: rotate(-4deg); }
+  }
+
+  @keyframes eyeBlink {
+    0%, 94%, 100% { transform: scaleY(0.01); opacity: 0; }
+    96%, 98% { transform: scaleY(1); opacity: 1; }
+  }
+
+  /* Monkey Headshake on Wrong Click */
+  #character-wrapper.monkey-no #monkey-head {
+    transform-origin: 50px 38px;
+    animation: monkeyHeadNo 0.58s ease-in-out;
+  }
+
+  @keyframes monkeyHeadNo {
+    0%, 100% { transform: rotate(0deg) translateX(0); }
+    20% { transform: rotate(-15deg) translateX(-4px); }
+    40% { transform: rotate(15deg) translateX(4px); }
+    60% { transform: rotate(-11deg) translateX(-3px); }
+    80% { transform: rotate(9deg) translateX(2px); }
+  }
+
+  /* Top-Right Natural Wooden Control Medallions */
+  #controls-hud {
+    position: absolute;
+    top: 1.2vh;
+    right: 1.4vw;
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    gap: 0.65vw;
+  }
+
+  .wood-btn {
+    position: relative;
+    height: clamp(38px, 5.4vh, 52px);
+    min-width: clamp(42px, 5.8vh, 58px);
+    padding: 0 13px;
+    border: none;
+    border-radius: 28px;
+    background: radial-gradient(circle at 30% 25%, #8f562e 0%, #5e3416 65%, #3d200b 100%);
+    box-shadow:
+      0 5px 12px rgba(0, 18, 24, 0.65),
+      inset 0 2px 3px rgba(255, 222, 173, 0.45),
+      inset 0 -3px 5px rgba(28, 12, 4, 0.75);
+    border: 2.5px solid #b87b44;
+    color: #ffefd0;
+    font-weight: 900;
+    font-size: clamp(12px, 1.15vw, 17px);
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease, border-color 0.2s ease;
+  }
+
+  .wood-btn:hover {
+    transform: translateY(-2px) scale(1.05);
+    filter: brightness(1.12);
+    border-color: #f3be69;
+  }
+
+  .wood-btn:active {
+    transform: translateY(2px) scale(0.95);
+  }
+
+  .wood-btn.active-toggle {
+    background: radial-gradient(circle at 30% 25%, #5c9e31 0%, #376e18 70%, #22470d 100%);
+    border-color: #a9f069;
+    color: #ffffff;
+  }
+
+  .wood-btn svg {
+    width: clamp(19px, 2.4vh, 25px);
+    height: clamp(19px, 2.4vh, 25px);
+    overflow: visible;
+  }
+
+  /* Celebration Overlay Canvas */
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-viewport">
+  <!-- Animated Water & Koi Fish Canvas -->
+  <canvas id="river-canvas"></canvas>
+
+  <!-- Riverbanks, Starting Dock (Left) & Banana Island Dock (Right) -->
+  <svg id="scenery-layer" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="bankLeftGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#1e4d1b"/>
+        <stop offset="55%" stop-color="#357228"/>
+        <stop offset="85%" stop-color="#598f36"/>
+        <stop offset="100%" stop-color="#7ca352"/>
+      </linearGradient>
+      <linearGradient id="bankRightGrad" x1="100%" y1="0%" x2="0%" y2="0%">
+        <stop offset="0%" stop-color="#1e4d1b"/>
+        <stop offset="55%" stop-color="#357228"/>
+        <stop offset="85%" stop-color="#598f36"/>
+        <stop offset="100%" stop-color="#7ca352"/>
+      </linearGradient>
+      <linearGradient id="dockWood" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#9e6034"/>
+        <stop offset="50%" stop-color="#73411e"/>
+        <stop offset="100%" stop-color="#4a260e"/>
+      </linearGradient>
+      <radialGradient id="lanternGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff6a9" stop-opacity="1"/>
+        <stop offset="45%" stop-color="#ffae2b" stop-opacity="0.65"/>
+        <stop offset="100%" stop-color="#ff7b00" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="bankShadow" x="-20%" y="-10%" width="140%" height="120%">
+        <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#051c24" flood-opacity="0.65"/>
+      </filter>
+    </defs>
+
+    <!-- Left Riverbank Contour -->
+    <g filter="url(#bankShadow)">
+      <path d="M-20,-20 L205,-20 C225,160 175,320 198,520 C215,700 165,890 198,1100 L-20,1100 Z" fill="#c2a167" opacity="0.45"/>
+      <path d="M-20,-20 L185,-20 C205,160 155,320 178,520 C195,700 145,890 178,1100 L-20,1100 Z" fill="url(#bankLeftGrad)"/>
+      <!-- Jungle palms & foliage along left bank -->
+      <ellipse cx="125" cy="110" rx="52" ry="38" fill="#46852d"/>
+      <ellipse cx="95" cy="290" rx="58" ry="42" fill="#2e631d"/>
+      <ellipse cx="130" cy="820" rx="56" ry="40" fill="#3d7826"/>
+      <ellipse cx="95" cy="960" rx="66" ry="48" fill="#295919"/>
+
+      <!-- Left Starting Wooden Pier / Dock (Dynamically positioned vertically to match start row) -->
+      <g id="start-dock" transform="translate(22, 465)">
+        <rect x="132" y="12" width="18" height="125" rx="6" fill="#2b1608"/>
+        <rect x="0" y="22" width="152" height="86" rx="10" fill="#3a1d0a"/>
+        <rect x="8" y="16" width="25" height="98" rx="5" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <rect x="37" y="14" width="25" height="102" rx="5" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <rect x="66" y="16" width="25" height="98" rx="5" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <rect x="95" y="14" width="25" height="102" rx="5" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <rect x="124" y="16" width="27" height="98" rx="6" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <!-- Corner Rope Posts -->
+        <circle cx="138" cy="18" r="9" fill="#5e3416" stroke="#261205" stroke-width="2.5"/>
+        <circle cx="138" cy="18" r="4" fill="#d9a86c"/>
+        <circle cx="138" cy="110" r="9" fill="#5e3416" stroke="#261205" stroke-width="2.5"/>
+        <circle cx="138" cy="110" r="4" fill="#d9a86c"/>
+        <!-- Warm Lantern Glow -->
+        <circle cx="138" cy="18" r="32" fill="url(#lanternGlow)"/>
+      </g>
+    </g>
+
+    <!-- Right Riverbank & Monkey's Tropical Banana Haven -->
+    <g filter="url(#bankShadow)">
+      <path d="M1940,-20 L1715,-20 C1695,180 1745,350 1722,540 C1705,720 1755,900 1722,1100 L1940,1100 Z" fill="#c2a167" opacity="0.45"/>
+      <path d="M1940,-20 L1735,-20 C1715,180 1765,350 1742,540 C1725,720 1775,900 1742,1100 L1940,1100 Z" fill="url(#bankRightGrad)"/>
+
+      <!-- Right Finish Wooden Pier & Banana Basket Gazebo (Dynamically aligned to finish stone row) -->
+      <g id="finish-dock" transform="translate(1715, 445)">
+        <rect x="-12" y="38" width="160" height="88" rx="12" fill="#3a1d0a"/>
+        <rect x="-8" y="32" width="25" height="100" rx="6" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <rect x="21" y="34" width="25" height="96" rx="5" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <rect x="50" y="32" width="25" height="100" rx="5" fill="url(#dockWood)" stroke="#2b1406" stroke-width="2"/>
+        <!-- Gazebo Floor Circle -->
+        <ellipse cx="118" cy="82" rx="64" ry="56" fill="#784421" stroke="#3d200b" stroke-width="5"/>
+        <ellipse cx="118" cy="82" rx="50" ry="44" fill="#965a32" stroke="#593216" stroke-width="2"/>
+        <!-- Woven Tropical Fruit & Banana Basket -->
+        <g transform="translate(95, 50)">
+          <path d="M6,26 L44,26 L38,48 C35,53 15,53 12,48 Z" fill="#c78336" stroke="#5c3409" stroke-width="2.2"/>
+          <line x1="9" y1="33" x2="41" y2="33" stroke="#784712" stroke-width="2"/>
+          <line x1="11" y1="41" x2="39" y2="41" stroke="#784712" stroke-width="2"/>
+          <!-- Golden Bananas in Basket -->
+          <path d="M10,25 C12,8 28,6 36,20 C26,22 18,22 10,25 Z" fill="#ffe135" stroke="#997700" stroke-width="1.8"/>
+          <path d="M18,26 C22,10 38,8 44,24 C34,26 24,26 18,26 Z" fill="#ffcf19" stroke="#997700" stroke-width="1.8"/>
+          <circle cx="14" cy="24" r="6" fill="#ff7326" stroke="#8c2d00" stroke-width="1.5"/>
+        </g>
+        <!-- Corner Rope Posts -->
+        <circle cx="4" cy="34" r="9" fill="#5e3416" stroke="#261205" stroke-width="2.5"/>
+        <circle cx="4" cy="34" r="4" fill="#d9a86c"/>
+        <circle cx="4" cy="128" r="9" fill="#5e3416" stroke="#261205" stroke-width="2.5"/>
+        <circle cx="4" cy="128" r="4" fill="#d9a86c"/>
+        <circle cx="4" cy="34" r="30" fill="url(#lanternGlow)"/>
+      </g>
+
+      <!-- Lush Foliage on Right Bank -->
+      <ellipse cx="1795" cy="145" rx="60" ry="42" fill="#3a7524"/>
+      <ellipse cx="1820" cy="295" rx="54" ry="38" fill="#2c5e1a"/>
+      <ellipse cx="1795" cy="825" rx="62" ry="46" fill="#3f7c27"/>
+      <ellipse cx="1825" cy="965" rx="68" ry="50" fill="#295718"/>
+    </g>
+  </svg>
+
+  <!-- Real 3D Wooden Plank Bridges Layer -->
+  <svg id="trail-layer" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="plankWoodGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#b8763e"/>
+        <stop offset="50%" stop-color="#8f5322"/>
+        <stop offset="100%" stop-color="#613411"/>
+      </linearGradient>
+      <linearGradient id="beamWoodGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#693b18"/>
+        <stop offset="100%" stop-color="#3b1d08"/>
+      </linearGradient>
+      <filter id="bridgeShadow" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#041821" flood-opacity="0.72"/>
+      </filter>
+    </defs>
+    <g id="trail-segments" filter="url(#bridgeShadow)"></g>
+  </svg>
+
+  <!-- Stepping Stones Grid (5x7) -->
+  <div id="stones-container"></div>
+
+  <!-- Articulated Realistic Jungle Monkey Character (Мавпочка) -->
+  <div id="character-wrapper">
+    <svg id="monkey-svg" viewBox="0 0 100 100">
+      <defs>
+        <radialGradient id="monkeyFur" cx="42%" cy="35%" r="62%">
+          <stop offset="0%" stop-color="#a86432"/>
+          <stop offset="60%" stop-color="#753d17"/>
+          <stop offset="100%" stop-color="#472108"/>
+        </radialGradient>
+        <radialGradient id="monkeyFace" cx="48%" cy="40%" r="58%">
+          <stop offset="0%" stop-color="#ffe6c7"/>
+          <stop offset="70%" stop-color="#f0be8d"/>
+          <stop offset="100%" stop-color="#c98e59"/>
+        </radialGradient>
+        <linearGradient id="monkeyLimb" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7d431b"/>
+          <stop offset="100%" stop-color="#421f07"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Long Prehensile Curled Tail -->
+      <g id="monkey-tail">
+        <path d="M38,71 C16,76 5,56 12,38 C17,25 31,26 29,37 C27,45 19,43 21,36"
+              fill="none" stroke="#472108" stroke-width="8.5" stroke-linecap="round"/>
+        <path d="M38,71 C16,76 5,56 12,38 C17,25 31,26 29,37 C27,45 19,43 21,36"
+              fill="none" stroke="url(#monkeyFur)" stroke-width="6" stroke-linecap="round"/>
+      </g>
+
+      <!-- Main Articulated Monkey Body Group -->
+      <g id="monkey-body-group">
+        <!-- Hind Legs & Feet -->
+        <g id="monkey-leg-l">
+          <path d="M39,72 Q31,79 33,86" fill="none" stroke="url(#monkeyLimb)" stroke-width="7.5" stroke-linecap="round"/>
+          <ellipse cx="32" cy="87" rx="8" ry="4.5" transform="rotate(-10 32 87)" fill="url(#monkeyFace)" stroke="#5c2e0e" stroke-width="1.4"/>
+        </g>
+        <g id="monkey-leg-r">
+          <path d="M61,72 Q69,79 67,86" fill="none" stroke="url(#monkeyLimb)" stroke-width="7.5" stroke-linecap="round"/>
+          <ellipse cx="68" cy="87" rx="8" ry="4.5" transform="rotate(10 68 87)" fill="url(#monkeyFace)" stroke="#5c2e0e" stroke-width="1.4"/>
+        </g>
+
+        <!-- Torso & Soft Cream Belly -->
+        <path d="M34,51 C30,65 34,80 50,81 C66,80 70,65 66,51 C62,42 38,42 34,51 Z"
+              fill="url(#monkeyFur)" stroke="#3d1c06" stroke-width="1.5"/>
+        <ellipse cx="50" cy="65" rx="12.5" ry="12" fill="url(#monkeyFace)" opacity="0.92"/>
+
+        <!-- Articulated Arms & Hands -->
+        <g id="monkey-arm-l">
+          <path d="M36,54 C25,60 25,70 32,74" fill="none" stroke="url(#monkeyLimb)" stroke-width="6.8" stroke-linecap="round"/>
+          <circle cx="33" cy="74" r="4.5" fill="url(#monkeyFace)" stroke="#5c2e0e" stroke-width="1.3"/>
+        </g>
+        <g id="monkey-arm-r">
+          <path d="M64,54 C75,60 75,70 68,74" fill="none" stroke="url(#monkeyLimb)" stroke-width="6.8" stroke-linecap="round"/>
+          <circle cx="67" cy="74" r="4.5" fill="url(#monkeyFace)" stroke="#5c2e0e" stroke-width="1.3"/>
+        </g>
+
+        <!-- Expressive Monkey Head Group -->
+        <g id="monkey-head">
+          <!-- Left Ear -->
+          <g id="monkey-ear-l">
+            <circle cx="24" cy="39" r="9.5" fill="url(#monkeyFur)" stroke="#3d1c06" stroke-width="1.6"/>
+            <circle cx="24" cy="39" r="6" fill="url(#monkeyFace)"/>
+            <path d="M22,37 Q25,39 23,42" fill="none" stroke="#b57945" stroke-width="1.3" stroke-linecap="round"/>
+          </g>
+          <!-- Right Ear -->
+          <g id="monkey-ear-r">
+            <circle cx="76" cy="39" r="9.5" fill="url(#monkeyFur)" stroke="#3d1c06" stroke-width="1.6"/>
+            <circle cx="76" cy="39" r="6" fill="url(#monkeyFace)"/>
+            <path d="M78,37 Q75,39 77,42" fill="none" stroke="#b57945" stroke-width="1.3" stroke-linecap="round"/>
+          </g>
+
+          <!-- Cranium & Fluffy Hair Tuft -->
+          <ellipse cx="50" cy="36" rx="22.5" ry="19.5" fill="url(#monkeyFur)" stroke="#3d1c06" stroke-width="1.5"/>
+          <path d="M44,17 Q48,10 51,16 Q55,10 56,17 Q60,13 58,19" fill="url(#monkeyFur)" stroke="#3d1c06" stroke-width="1.4" stroke-linecap="round"/>
+
+          <!-- Heart-shaped Cream Face Mask & Muzzle -->
+          <path d="M32,33 C32,23 46,24 50,30 C54,24 68,23 68,33 C71,41 66,53 50,53 C34,53 29,41 32,33 Z"
+                fill="url(#monkeyFace)"/>
+          <ellipse cx="50" cy="45" rx="14.5" ry="9.5" fill="url(#monkeyFace)" stroke="#c48a57" stroke-width="1"/>
+
+          <!-- Cute Rosy Cheeks -->
+          <ellipse cx="36" cy="44" rx="3.8" ry="2.2" fill="#ff8da1" opacity="0.48"/>
+          <ellipse cx="64" cy="44" rx="3.8" ry="2.2" fill="#ff8da1" opacity="0.48"/>
+
+          <!-- Expressive Glossy Eyes -->
+          <g transform="translate(41, 35)">
+            <ellipse cx="0" cy="0" rx="4.3" ry="4.6" fill="#fffdf9"/>
+            <circle class="monkey-pupil" cx="0.4" cy="0" r="3.3" fill="#211005"/>
+            <circle cx="-1" cy="-1.3" r="1.3" fill="#ffffff"/>
+            <circle cx="1.2" cy="1.1" r="0.6" fill="#ffffff" opacity="0.85"/>
+            <ellipse class="monkey-eyelid" cx="0" cy="0" rx="4.5" ry="4.7" fill="#d9a16c"/>
+          </g>
+          <g transform="translate(59, 35)">
+            <ellipse cx="0" cy="0" rx="4.3" ry="4.6" fill="#fffdf9"/>
+            <circle class="monkey-pupil" cx="0.4" cy="0" r="3.3" fill="#211005"/>
+            <circle cx="-1" cy="-1.3" r="1.3" fill="#ffffff"/>
+            <circle cx="1.2" cy="1.1" r="0.6" fill="#ffffff" opacity="0.85"/>
+            <ellipse class="monkey-eyelid" cx="0" cy="0" rx="4.5" ry="4.7" fill="#d9a16c"/>
+          </g>
+
+          <!-- Raised Eyebrows -->
+          <path d="M36,28 Q41,25 45,28 M55,28 Q59,25 64,28" fill="none" stroke="#472108" stroke-width="1.6" stroke-linecap="round"/>
+
+          <!-- Button Nose & Cheerful Smile -->
+          <ellipse cx="47.2" cy="42.5" rx="2" ry="1.4" transform="rotate(-12 47.2 42.5)" fill="#4a2208"/>
+          <ellipse cx="52.8" cy="42.5" rx="2" ry="1.4" transform="rotate(12 52.8 42.5)" fill="#4a2208"/>
+          <path d="M43,47.5 Q50,52.5 57,47.5" fill="none" stroke="#4a2208" stroke-width="1.9" stroke-linecap="round"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Minimalist Organic Control Bar (Top Right) -->
+  <div id="controls-hud">
+    <!-- Single Language Switcher Button (УКР / РУС) -->
+    <button id="btn-lang" class="wood-btn" type="button" aria-label="Language">УКР</button>
+
+    <!-- Word Caption Toggle (Show/Hide Word Plaque for Reading) -->
+    <button id="btn-words" class="wood-btn" type="button" aria-label="Toggle Words">
+      <svg viewBox="0 0 28 28">
+        <path d="M3,7 C7,5 12,6 14,8 C16,6 21,5 25,7 L25,21 C21,19 16,20 14,22 C12,20 7,19 3,21 Z" fill="none" stroke="#ffefd0" stroke-width="2.4" stroke-linejoin="round"/>
+        <line x1="14" y1="8" x2="14" y2="22" stroke="#ffefd0" stroke-width="2.2"/>
+      </svg>
+    </button>
+
+    <!-- Mode Switcher Button (Mode 1: No 'М' in distractors | Mode 2: 'М' inside/end of distractors) -->
+    <button id="btn-mode" class="wood-btn" type="button" aria-label="Switch Mode">
+      <svg id="mode-icon-svg" viewBox="0 0 36 28"></svg>
+    </button>
+
+    <!-- Firefly Hint Button (Highlights next orthogonal M stone) -->
+    <button id="btn-hint" class="wood-btn" type="button" aria-label="Hint">
+      <svg viewBox="0 0 28 28">
+        <circle cx="14" cy="14" r="6" fill="#ffe659"/>
+        <circle cx="14" cy="14" r="11" fill="none" stroke="#ffe659" stroke-width="2" stroke-dasharray="3 4"/>
+      </svg>
+    </button>
+
+    <!-- Minimalist "Далі" (Next Level) Button -->
+    <button id="btn-next" class="wood-btn" type="button" aria-label="Next">
+      <span id="next-label">Далі</span>
+      <svg viewBox="0 0 24 24">
+        <path d="M5,12 L18,12 M13,6 L19,12 L13,18" fill="none" stroke="#ffd84d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Particle & Celebration FX Canvas -->
+  <canvas id="fx-canvas"></canvas>
+</div>
+
+<script>
+(() => {
+  /* =========================================================================
+     1. WEB AUDIO SYNTHESIZER (Wooden Bridge Clacks, Monkey Chirp, Splash & Fanfares)
+     ========================================================================= */
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    // Wooden plank bridge building clack + ascending marimba + happy monkey chirp
+    playCorrectStep(stepIndex) {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 987.77, 1046.50, 1174.66];
+      const freq = scale[Math.min(stepIndex, scale.length - 1)];
+
+      // 3 quick wooden plank clacks as bridge builds
+      for (let p = 0; p < 3; p++) {
+        const t = now + p * 0.055;
+        const woodOsc = this.ctx.createOscillator();
+        const woodGain = this.ctx.createGain();
+        woodOsc.type = 'triangle';
+        woodOsc.frequency.setValueAtTime(180 + p * 45, t);
+        woodOsc.frequency.exponentialRampToValueAtTime(95, t + 0.045);
+        woodGain.gain.setValueAtTime(0.18, t);
+        woodGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        woodOsc.connect(woodGain);
+        woodGain.connect(this.ctx.destination);
+        woodOsc.start(t);
+        woodOsc.stop(t + 0.055);
+      }
+
+      // Marimba note on landing
+      const landTime = now + 0.14;
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+      osc1.frequency.setValueAtTime(freq, landTime);
+      osc2.frequency.setValueAtTime(freq * 2, landTime);
+
+      gain.gain.setValueAtTime(0.001, landTime);
+      gain.gain.exponentialRampToValueAtTime(0.32, landTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, landTime + 0.42);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc1.start(landTime);
+      osc2.start(landTime);
+      osc1.stop(landTime + 0.45);
+      osc2.stop(landTime + 0.45);
+
+      // Playful monkey "oo-oo!" chirp
+      const chirp = this.ctx.createOscillator();
+      const chirpGain = this.ctx.createGain();
+      chirp.type = 'sine';
+      chirp.frequency.setValueAtTime(580, now + 0.06);
+      chirp.frequency.exponentialRampToValueAtTime(920, now + 0.16);
+      chirpGain.gain.setValueAtTime(0.001, now + 0.06);
+      chirpGain.gain.linearRampToValueAtTime(0.11, now + 0.09);
+      chirpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+      chirp.connect(chirpGain);
+      chirpGain.connect(this.ctx.destination);
+      chirp.start(now + 0.06);
+      chirp.stop(now + 0.2);
+    }
+
+    // Muddy water splash & comical monkey "uh-uh" when clicking a wrong word
+    playWrongSplash() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(195, now);
+      osc.frequency.exponentialRampToValueAtTime(68, now + 0.24);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(520, now);
+      filter.frequency.exponentialRampToValueAtTime(140, now + 0.25);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.26, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.3);
+
+      // Second quick low note
+      const osc2 = this.ctx.createOscillator();
+      const gain2 = this.ctx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(140, now + 0.12);
+      osc2.frequency.exponentialRampToValueAtTime(92, now + 0.32);
+      gain2.gain.setValueAtTime(0.001, now + 0.12);
+      gain2.gain.linearRampToValueAtTime(0.2, now + 0.15);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+      osc2.connect(gain2);
+      gain2.connect(this.ctx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.36);
+    }
+
+    // Soft hollow knock when clicking a diagonal or non-adjacent stone
+    playDiagonalDeny() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(240, now);
+      osc.frequency.exponentialRampToValueAtTime(150, now + 0.09);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.11);
+    }
+
+    // Grand melodic harp/marimba celebration fanfare
+    playWinFanfare(variant = 0) {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const melodies = [
+        [523.25, 659.25, 783.99, 1046.50, 987.77, 1046.50, 1318.51],
+        [440.00, 554.37, 659.25, 880.00, 1108.73, 1318.51],
+        [392.00, 493.88, 587.33, 783.99, 987.77, 1174.66, 1567.98]
+      ];
+      const notes = melodies[variant % melodies.length];
+      notes.forEach((freq, idx) => {
+        const t = now + idx * 0.11;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(0.26, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.7);
+      });
+    }
+
+    playClick() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(480, now);
+      osc.frequency.exponentialRampToValueAtTime(680, now + 0.06);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  /* =========================================================================
+     2. HIGH-DETAIL REALISTIC VECTOR ART LIBRARY (48 Custom Multi-Layered SVGs)
+     ========================================================================= */
+  const wrapSVG = (content) => `<svg viewBox="0 0 100 100" width="100%" height="100%" overflow="visible">${content}</svg>`;
+
+  const TARGET_M_POOL = [
+    {
+      id: 'm_raspberry', uk: 'Малина', ru: 'Малина',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="raspG" cx="35%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#ff6b8b"/><stop offset="55%" stop-color="#d91643"/><stop offset="100%" stop-color="#7a0521"/>
+          </radialGradient>
+        </defs>
+        <path d="M50,10 L50,24" stroke="#4a7c24" stroke-width="5" stroke-linecap="round"/>
+        <path d="M50,22 C35,12 22,18 28,30 C36,28 45,26 50,22 Z" fill="#5da62b" stroke="#2d5912" stroke-width="1.5"/>
+        <path d="M50,22 C65,12 78,18 72,30 C64,28 55,26 50,22 Z" fill="#6bc234" stroke="#2d5912" stroke-width="1.5"/>
+        <path d="M50,20 L42,33 L50,28 L58,33 Z" fill="#43821b"/>
+        <!-- Drupelets -->
+        <circle cx="36" cy="40" r="10" fill="url(#raspG)"/><circle cx="64" cy="40" r="10" fill="url(#raspG)"/>
+        <circle cx="50" cy="38" r="11" fill="url(#raspG)"/>
+        <circle cx="31" cy="54" r="10.5" fill="url(#raspG)"/><circle cx="69" cy="54" r="10.5" fill="url(#raspG)"/>
+        <circle cx="44" cy="53" r="11" fill="url(#raspG)"/><circle cx="57" cy="53" r="11" fill="url(#raspG)"/>
+        <circle cx="36" cy="68" r="10" fill="url(#raspG)"/><circle cx="64" cy="68" r="10" fill="url(#raspG)"/>
+        <circle cx="50" cy="67" r="11" fill="url(#raspG)"/>
+        <circle cx="43" cy="80" r="9.5" fill="url(#raspG)"/><circle cx="57" cy="80" r="9.5" fill="url(#raspG)"/>
+        <circle cx="50" cy="86" r="9" fill="url(#raspG)"/>
+        <!-- Gloss highlights -->
+        <circle cx="47" cy="35" r="2.2" fill="#ffb8c9" opacity="0.8"/>
+        <circle cx="41" cy="50" r="2.2" fill="#ffb8c9" opacity="0.8"/>
+        <circle cx="55" cy="50" r="2.2" fill="#ffb8c9" opacity="0.8"/>
+        <circle cx="47" cy="64" r="2.2" fill="#ffb8c9" opacity="0.8"/>
+      `)
+    },
+    {
+      id: 'm_carrot', uk: 'Морква', ru: 'Морковь',
+      svg: wrapSVG(`
+        <defs>
+          <linearGradient id="carG" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff9f2e"/><stop offset="55%" stop-color="#f25c05"/><stop offset="100%" stop-color="#9e2f00"/>
+          </linearGradient>
+        </defs>
+        <!-- Feathery Greens -->
+        <path d="M68,32 C76,14 90,12 88,24 C84,32 74,34 68,32 Z" fill="#4ca626"/>
+        <path d="M65,30 C64,10 78,6 78,18 C78,26 70,30 65,30 Z" fill="#65c43b"/>
+        <path d="M70,35 C84,26 95,30 88,40 C82,42 74,38 70,35 Z" fill="#3b871b"/>
+        <!-- Carrot Root -->
+        <path d="M72,26 C79,33 77,44 65,56 L22,90 C17,93 13,89 16,84 L50,41 C60,29 66,21 72,26 Z" fill="url(#carG)" stroke="#8c2b00" stroke-width="1.8"/>
+        <!-- Texture ridges -->
+        <path d="M56,38 Q62,42 64,46 M44,52 Q50,55 53,60 M33,66 Q38,70 40,74 M25,77 Q28,80 30,82" fill="none" stroke="#b83b02" stroke-width="2" stroke-linecap="round"/>
+        <path d="M56,34 L24,78" stroke="#ffc278" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
+      `)
+    },
+    {
+      id: 'm_butterfly', uk: 'Метелик', ru: 'Мотылёк',
+      svg: wrapSVG(`
+        <defs>
+          <linearGradient id="wingG" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ffbf2b"/><stop offset="60%" stop-color="#f55611"/><stop offset="100%" stop-color="#8c1105"/>
+          </linearGradient>
+        </defs>
+        <!-- Hindwings -->
+        <path d="M48,54 C24,56 14,78 28,88 C40,94 48,76 48,58 Z" fill="url(#wingG)" stroke="#1f0d09" stroke-width="4"/>
+        <path d="M52,54 C76,56 86,78 72,88 C60,94 52,76 52,58 Z" fill="url(#wingG)" stroke="#1f0d09" stroke-width="4"/>
+        <!-- Forewings -->
+        <path d="M48,48 C18,16 6,34 14,54 C20,66 38,60 48,52 Z" fill="url(#wingG)" stroke="#1f0d09" stroke-width="4.2"/>
+        <path d="M52,48 C82,16 94,34 86,54 C80,66 62,60 52,52 Z" fill="url(#wingG)" stroke="#1f0d09" stroke-width="4.2"/>
+        <!-- Wing veins & white spots -->
+        <circle cx="18" cy="36" r="2.5" fill="#fff"/><circle cx="15" cy="45" r="2" fill="#fff"/>
+        <circle cx="82" cy="36" r="2.5" fill="#fff"/><circle cx="85" cy="45" r="2" fill="#fff"/>
+        <circle cx="28" cy="82" r="2.2" fill="#fff"/><circle cx="72" cy="82" r="2.2" fill="#fff"/>
+        <!-- Body & Antennae -->
+        <path d="M48,28 C42,16 34,14 32,18 M52,28 C58,16 66,14 68,18" fill="none" stroke="#1f0d09" stroke-width="2" stroke-linecap="round"/>
+        <ellipse cx="50" cy="52" rx="4" ry="22" fill="#291510"/>
+        <circle cx="50" cy="29" r="4.5" fill="#1f0d09"/>
+      `)
+    },
+    {
+      id: 'm_car', uk: 'Машина', ru: 'Машина',
+      svg: wrapSVG(`
+        <defs>
+          <linearGradient id="carBodyG" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ff4d4d"/><stop offset="55%" stop-color="#d61515"/><stop offset="100%" stop-color="#800606"/>
+          </linearGradient>
+        </defs>
+        <ellipse cx="50" cy="78" rx="40" ry="6" fill="#000" opacity="0.35"/>
+        <!-- Car Chassis -->
+        <path d="M10,62 C10,50 18,48 25,46 L36,30 C40,25 62,25 68,31 L78,46 C86,48 92,53 92,62 L92,70 C92,74 88,75 84,75 L16,75 C12,75 10,72 10,62 Z" fill="url(#carBodyG)" stroke="#610404" stroke-width="2"/>
+        <!-- Windows -->
+        <path d="M38,32 L51,32 L51,46 L29,46 Z" fill="#9be7ff" stroke="#471010" stroke-width="1.5"/>
+        <path d="M55,32 L66,32 L74,46 L55,46 Z" fill="#9be7ff" stroke="#471010" stroke-width="1.5"/>
+        <!-- Headlight & Bumper -->
+        <ellipse cx="88" cy="56" rx="3.5" ry="5" fill="#fff6a1" stroke="#d49b00" stroke-width="1.2"/>
+        <rect x="7" y="65" width="7" height="5" rx="2" fill="#ff9d00"/>
+        <!-- Wheels -->
+        <circle cx="28" cy="72" r="12" fill="#22252a" stroke="#111" stroke-width="2"/>
+        <circle cx="28" cy="72" r="6.5" fill="#d8e2eb"/>
+        <circle cx="28" cy="72" r="2.5" fill="#555"/>
+        <circle cx="72" cy="72" r="12" fill="#22252a" stroke="#111" stroke-width="2"/>
+        <circle cx="72" cy="72" r="6.5" fill="#d8e2eb"/>
+        <circle cx="72" cy="72" r="2.5" fill="#555"/>
+      `)
+    },
+    {
+      id: 'm_icecream', uk: 'Морозиво', ru: 'Мороженое',
+      svg: wrapSVG(`
+        <!-- Waffle Cone -->
+        <path d="M32,52 L50,94 L68,52 Z" fill="#dfa053" stroke="#8f5819" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M36,56 L58,74 M42,54 L63,64 M39,66 L54,82 M64,56 L42,74 M56,54 L37,65" stroke="#9e621c" stroke-width="1.6"/>
+        <!-- Scoops -->
+        <circle cx="38" cy="44" r="14" fill="#ff9ebb" stroke="#c94f76" stroke-width="1.5"/>
+        <circle cx="62" cy="44" r="14" fill="#a8f0c6" stroke="#3da36a" stroke-width="1.5"/>
+        <circle cx="50" cy="31" r="15.5" fill="#fff5d6" stroke="#d4bc7d" stroke-width="1.5"/>
+        <!-- Chocolate Drizzle & Cherry -->
+        <path d="M36,30 Q43,38 50,30 Q57,38 64,29" fill="none" stroke="#592810" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="50" cy="14" r="6.5" fill="#e01436"/>
+        <path d="M50,9 Q56,2 64,5" fill="none" stroke="#3b7817" stroke-width="2" stroke-linecap="round"/>
+      `)
+    },
+    {
+      id: 'm_amanita', uk: 'Мухомор', ru: 'Мухомор',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="capG" cx="40%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#ff5252"/><stop offset="65%" stop-color="#cc0e0e"/><stop offset="100%" stop-color="#750303"/>
+          </radialGradient>
+        </defs>
+        <!-- Stem -->
+        <path d="M42,46 C42,64 36,80 39,89 C43,93 57,93 61,89 C64,80 58,64 58,46 Z" fill="#f7eedc" stroke="#bca988" stroke-width="1.8"/>
+        <!-- Skirt Ring -->
+        <path d="M39,58 Q50,65 61,58 L63,64 Q50,70 37,64 Z" fill="#e8dac0" stroke="#bca988" stroke-width="1.2"/>
+        <!-- Red Cap -->
+        <path d="M14,48 C12,22 32,12 50,12 C68,12 88,22 86,48 C74,53 26,53 14,48 Z" fill="url(#capG)" stroke="#690404" stroke-width="2"/>
+        <!-- White Warts -->
+        <ellipse cx="32" cy="28" rx="5" ry="3.5" fill="#fffdf7"/>
+        <ellipse cx="50" cy="21" rx="6" ry="4" fill="#fffdf7"/>
+        <ellipse cx="68" cy="29" rx="5" ry="3.8" fill="#fffdf7"/>
+        <ellipse cx="24" cy="40" rx="4.5" ry="3" fill="#fffdf7"/>
+        <ellipse cx="44" cy="37" rx="5.5" ry="4" fill="#fffdf7"/>
+        <ellipse cx="62" cy="41" rx="4.5" ry="3.2" fill="#fffdf7"/>
+        <ellipse cx="77" cy="41" rx="3.8" ry="2.5" fill="#fffdf7"/>
+        <!-- Moss at base -->
+        <path d="M32,90 Q40,80 46,90 Q52,82 58,90 Q64,83 68,90 Z" fill="#54a329"/>
+      `)
+    },
+    {
+      id: 'm_mouse', uk: 'Миша', ru: 'Мышь',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="mouseG" cx="45%" cy="35%" r="60%">
+            <stop offset="0%" stop-color="#b8bfc7"/><stop offset="65%" stop-color="#7b838c"/><stop offset="100%" stop-color="#494f56"/>
+          </radialGradient>
+        </defs>
+        <!-- Pink Tail -->
+        <path d="M26,72 C8,74 6,54 18,48" fill="none" stroke="#e895a5" stroke-width="4" stroke-linecap="round"/>
+        <!-- Body -->
+        <path d="M24,66 C22,46 42,36 62,44 C76,50 86,60 88,68 C78,76 32,76 24,66 Z" fill="url(#mouseG)" stroke="#3b4046" stroke-width="1.8"/>
+        <!-- Ears -->
+        <circle cx="54" cy="36" r="11" fill="#6b737b" stroke="#3b4046" stroke-width="1.5"/>
+        <circle cx="55" cy="36" r="7.5" fill="#f2a7b5"/>
+        <circle cx="68" cy="39" r="10" fill="#7b838c" stroke="#3b4046" stroke-width="1.5"/>
+        <circle cx="68" cy="39" r="6.5" fill="#f2a7b5"/>
+        <!-- Eye, Nose & Whiskers -->
+        <circle cx="74" cy="54" r="3.5" fill="#111"/><circle cx="73" cy="53" r="1.2" fill="#fff"/>
+        <circle cx="88" cy="66" r="3.8" fill="#ff7894"/>
+        <path d="M82,65 L94,61 M82,67 L95,67 M81,69 L92,73" stroke="#222" stroke-width="1.2" stroke-linecap="round"/>
+        <!-- Paws -->
+        <ellipse cx="40" cy="74" rx="6" ry="3" fill="#f2a7b5"/>
+        <ellipse cx="68" cy="74" rx="5.5" ry="3" fill="#f2a7b5"/>
+      `)
+    },
+    {
+      id: 'm_honey', uk: 'Мед', ru: 'Мёд',
+      svg: wrapSVG(`
+        <defs>
+          <linearGradient id="honeyG" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffe047"/><stop offset="50%" stop-color="#f59b00"/><stop offset="100%" stop-color="#b55600"/>
+          </linearGradient>
+        </defs>
+        <!-- Dipper Stick -->
+        <line x1="68" y1="10" x2="54" y2="34" stroke="#9e6324" stroke-width="4" stroke-linecap="round"/>
+        <!-- Jar Body -->
+        <path d="M26,38 C16,48 18,76 28,86 C36,92 64,92 72,86 C82,76 84,48 74,38 Z" fill="url(#honeyG)" stroke="#8c4200" stroke-width="2.2"/>
+        <!-- Jar Rim & Dripping Honey -->
+        <rect x="24" y="26" width="52" height="12" rx="6" fill="#d98932" stroke="#753f08" stroke-width="2"/>
+        <path d="M26,36 Q32,48 36,38 Q44,54 50,38 Q58,50 64,38 Q70,46 74,36 Z" fill="#ffd426" stroke="#b86b00" stroke-width="1.2"/>
+        <!-- Honeycomb Hexagon Badge on Jar -->
+        <polygon points="50,52 59,57 59,67 50,72 41,67 41,57" fill="#fff099" stroke="#9e4700" stroke-width="2"/>
+        <!-- Glass Highlight -->
+        <path d="M27,48 C24,58 25,70 30,78" fill="none" stroke="#fff9c4" stroke-width="3.5" stroke-linecap="round" opacity="0.65"/>
+      `)
+    },
+    {
+      id: 'm_ball', uk: "М'яч", ru: 'Мяч',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="ballG" cx="35%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#ffffff"/><stop offset="70%" stop-color="#dce3eb"/><stop offset="100%" stop-color="#8c99a8"/>
+          </radialGradient>
+        </defs>
+        <circle cx="50" cy="50" r="38" fill="url(#ballG)" stroke="#232930" stroke-width="2.5"/>
+        <!-- Center Pentagon -->
+        <polygon points="50,36 63,45 58,60 42,60 37,45" fill="#232930"/>
+        <!-- Seam Lines & Outer Patches -->
+        <line x1="50" y1="36" x2="50" y2="21" stroke="#232930" stroke-width="2.5"/>
+        <line x1="63" y1="45" x2="77" y2="39" stroke="#232930" stroke-width="2.5"/>
+        <line x1="58" y1="60" x2="68" y2="73" stroke="#232930" stroke-width="2.5"/>
+        <line x1="42" y1="60" x2="32" y2="73" stroke="#232930" stroke-width="2.5"/>
+        <line x1="37" y1="45" x2="23" y2="39" stroke="#232930" stroke-width="2.5"/>
+        <polygon points="41,14 50,21 59,14 55,12 45,12" fill="#232930"/>
+        <polygon points="77,39 85,31 87,44 82,52" fill="#232930"/>
+        <polygon points="23,39 15,31 13,44 18,52" fill="#232930"/>
+        <polygon points="68,73 78,72 71,82 60,83" fill="#232930"/>
+        <polygon points="32,73 22,72 29,82 40,83" fill="#232930"/>
+      `)
+    },
+    {
+      id: 'm_tangerine', uk: 'Мандарин', ru: 'Мандарин',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="tangG" cx="36%" cy="32%" r="65%">
+            <stop offset="0%" stop-color="#ffb84d"/><stop offset="55%" stop-color="#f56a00"/><stop offset="100%" stop-color="#9e3800"/>
+          </radialGradient>
+        </defs>
+        <!-- Leaf & Stem -->
+        <path d="M50,24 L50,14" stroke="#4a7c10" stroke-width="4" stroke-linecap="round"/>
+        <path d="M50,18 C64,8 82,12 76,26 C68,30 56,26 50,18 Z" fill="#5ec227" stroke="#285908" stroke-width="1.8"/>
+        <!-- Plump Mandarin Body -->
+        <ellipse cx="50" cy="56" rx="34" ry="29" fill="url(#tangG)" stroke="#802b00" stroke-width="2"/>
+        <!-- Dimple Texture & Specular Shine -->
+        <path d="M44,28 Q50,32 56,28" fill="none" stroke="#593300" stroke-width="2" stroke-linecap="round"/>
+        <ellipse cx="34" cy="46" rx="7" ry="4" transform="rotate(-25 34 46)" fill="#ffe4b5" opacity="0.65"/>
+        <circle cx="64" cy="52" r="1.5" fill="#b34100"/><circle cx="68" cy="60" r="1.5" fill="#b34100"/>
+        <circle cx="58" cy="68" r="1.5" fill="#b34100"/><circle cx="32" cy="66" r="1.5" fill="#b34100"/>
+      `)
+    },
+    {
+      id: 'm_ant', uk: 'Мураха', ru: 'Муравей',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="antG" cx="35%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#a84420"/><stop offset="60%" stop-color="#5c1d09"/><stop offset="100%" stop-color="#290a02"/>
+          </radialGradient>
+        </defs>
+        <!-- 6 Segmented Legs -->
+        <path d="M44,52 L32,38 L22,46 M50,54 L50,36 L60,30 M56,56 L68,42 L78,50" fill="none" stroke="#361004" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M42,58 L28,72 L18,82 M50,60 L48,78 L38,88 M56,60 L68,76 L80,84" fill="none" stroke="#361004" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Abdomen (Gaster) -->
+        <ellipse cx="26" cy="56" rx="16" ry="13" transform="rotate(-12 26 56)" fill="url(#antG)" stroke="#240801" stroke-width="1.5"/>
+        <!-- Thorax -->
+        <ellipse cx="51" cy="56" rx="11" ry="7.5" fill="url(#antG)" stroke="#240801" stroke-width="1.5"/>
+        <!-- Head -->
+        <circle cx="72" cy="50" r="11" fill="url(#antG)" stroke="#240801" stroke-width="1.5"/>
+        <!-- Antennae & Eye -->
+        <path d="M76,41 L82,26 L92,28 M80,44 L88,32 L95,38" fill="none" stroke="#361004" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="75" cy="48" r="3" fill="#111"/><circle cx="74" cy="47" r="1" fill="#fff"/>
+        <ellipse cx="22" cy="51" rx="6" ry="2.5" fill="#fff" opacity="0.25"/>
+      `)
+    },
+    {
+      id: 'm_lighthouse', uk: 'Маяк', ru: 'Маяк',
+      svg: wrapSVG(`
+        <!-- Light Beams -->
+        <polygon points="50,24 8,10 8,34" fill="#fff59d" opacity="0.55"/>
+        <polygon points="50,24 92,10 92,34" fill="#fff59d" opacity="0.55"/>
+        <!-- Coastal Rocks -->
+        <path d="M18,88 Q30,74 50,78 Q72,73 82,88 Z" fill="#5b6570" stroke="#343b42" stroke-width="2"/>
+        <!-- Tower -->
+        <polygon points="36,80 42,28 58,28 64,80" fill="#ffffff" stroke="#2c3540" stroke-width="2"/>
+        <!-- Red Stripes -->
+        <polygon points="40.5,42 59.5,42 61,54 39,54" fill="#d92323"/>
+        <polygon points="37.5,66 62.5,66 63.8,78 36.2,78" fill="#d92323"/>
+        <!-- Lantern Room & Roof -->
+        <rect x="41" y="19" width="18" height="9" fill="#ffe96b" stroke="#2c3540" stroke-width="1.8"/>
+        <rect x="38" y="27" width="24" height="3.5" rx="1.5" fill="#2c3540"/>
+        <polygon points="38,19 50,9 62,19" fill="#d92323" stroke="#2c3540" stroke-width="1.8"/>
+        <!-- Door & Windows -->
+        <path d="M46,80 L46,70 A4,4 0 0,1 54,70 L54,80 Z" fill="#2c3540"/>
+        <circle cx="50" cy="48" r="2.8" fill="#2c3540"/>
+      `)
+    },
+    {
+      id: 'm_microscope', uk: 'Мікроскоп', ru: 'Микроскоп',
+      svg: wrapSVG(`
+        <!-- Heavy Base -->
+        <path d="M24,86 L76,86 C78,78 70,76 64,76 L36,76 C30,76 22,78 24,86 Z" fill="#2d3748" stroke="#1a202c" stroke-width="2"/>
+        <!-- Curved Arm -->
+        <path d="M60,76 C74,64 74,36 56,28 L50,34 C62,40 62,60 50,76 Z" fill="#e2e8f0" stroke="#4a5568" stroke-width="2"/>
+        <!-- Stage -->
+        <rect x="28" y="56" width="32" height="5" rx="2" fill="#1a202c"/>
+        <!-- Eyepiece & Optical Tube -->
+        <g transform="rotate(-22 46 32)">
+          <rect x="38" y="10" width="10" height="8" rx="1" fill="#1a202c"/>
+          <rect x="36" y="18" width="14" height="24" rx="2" fill="#f6ad55" stroke="#9c4221" stroke-width="1.8"/>
+          <rect x="39" y="42" width="8" height="9" rx="1" fill="#cbd5e0" stroke="#4a5568" stroke-width="1.5"/>
+        </g>
+        <!-- Focus Knob -->
+        <circle cx="62" cy="54" r="6" fill="#f6ad55" stroke="#7b341e" stroke-width="2"/>
+      `)
+    },
+    {
+      id: 'm_magnet', uk: 'Магніт', ru: 'Магнит',
+      svg: wrapSVG(`
+        <!-- horseshoe U-shape -->
+        <path d="M24,24 L24,54 A26,26 0 0,0 76,54 L76,24 L60,24 L60,54 A10,10 0 0,1 40,54 L40,24 Z" fill="#e53e3e" stroke="#742a2a" stroke-width="2.2"/>
+        <!-- Blue Right Half -->
+        <path d="M50,80 A26,26 0 0,0 76,54 L76,24 L60,24 L60,54 A10,10 0 0,1 50,64 Z" fill="#3182ce" stroke="#1a365d" stroke-width="2.2"/>
+        <!-- Silver Poles -->
+        <rect x="24" y="20" width="16" height="11" fill="#e2e8f0" stroke="#4a5568" stroke-width="2"/>
+        <rect x="60" y="20" width="16" height="11" fill="#e2e8f0" stroke="#4a5568" stroke-width="2"/>
+        <!-- Electric Sparks -->
+        <polygon points="44,12 38,20 44,20 40,28 50,18 44,18" fill="#ecc94b"/>
+        <polygon points="56,12 52,20 57,20 53,28 62,18 57,18" fill="#ecc94b"/>
+      `)
+    },
+    {
+      id: 'm_jellyfish', uk: 'Медуза', ru: 'Медуза',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="jellyG" cx="50%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#ffb8f6"/><stop offset="60%" stop-color="#b646ff"/><stop offset="100%" stop-color="#5512b8"/>
+          </radialGradient>
+        </defs>
+        <!-- Flowing Tentacles -->
+        <path d="M30,52 Q24,68 32,86 M40,54 Q46,72 38,90 M50,55 Q54,74 49,92 M60,54 Q54,72 62,90 M70,52 Q76,68 68,86" fill="none" stroke="#e38aff" stroke-width="3.2" stroke-linecap="round"/>
+        <!-- Translucent Bell Dome -->
+        <path d="M18,48 C16,20 34,12 50,12 C66,12 84,20 82,48 C74,54 66,46 58,52 C52,56 48,56 42,52 C34,46 26,54 18,48 Z" fill="url(#jellyG)" stroke="#4c0d99" stroke-width="2"/>
+        <!-- Bioluminescent Spots & Highlight -->
+        <ellipse cx="38" cy="26" rx="8" ry="4" transform="rotate(-25 38 26)" fill="#ffffff" opacity="0.55"/>
+        <circle cx="62" cy="30" r="3.5" fill="#ffccf9" opacity="0.65"/>
+        <circle cx="50" cy="38" r="4" fill="#ffccf9" opacity="0.65"/>
+      `)
+    },
+    {
+      id: 'm_hammer', uk: 'Молоток', ru: 'Молоток',
+      svg: wrapSVG(`
+        <!-- Wooden Handle -->
+        <path d="M24,84 L62,34 L70,40 L32,90 C28,92 22,88 24,84 Z" fill="#c77d38" stroke="#693b10" stroke-width="2"/>
+        <!-- Steel Hammer Head -->
+        <path d="M44,18 L74,42 L82,32 L62,16 C54,10 42,8 34,14 C40,14 44,16 44,18 Z" fill="#a0aec0" stroke="#2d3748" stroke-width="2.2" stroke-linejoin="round"/>
+        <rect x="68" y="32" width="14" height="12" rx="2" transform="rotate(38 75 38)" fill="#718096" stroke="#2d3748" stroke-width="2"/>
+      `)
+    }
+  ];
+
+  // MODE 1 DISTRACTORS: NO letter 'М' anywhere in Ukrainian OR Russian
+  const DISTRACTOR_MODE1_POOL = [
+    {
+      id: 'd1_apple', uk: 'Яблуко', ru: 'Яблоко',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="appG" cx="35%" cy="32%" r="62%">
+            <stop offset="0%" stop-color="#ff786b"/><stop offset="60%" stop-color="#d91e18"/><stop offset="100%" stop-color="#780704"/>
+          </radialGradient>
+        </defs>
+        <path d="M50,24 Q53,12 58,10" fill="none" stroke="#5c3310" stroke-width="4" stroke-linecap="round"/>
+        <path d="M52,20 C64,10 78,14 72,26 C64,30 56,26 52,20 Z" fill="#5eb827" stroke="#295c0a" stroke-width="1.6"/>
+        <path d="M50,25 C34,20 16,32 18,54 C20,76 36,88 47,86 C50,85 50,85 53,86 C64,88 80,76 82,54 C84,32 66,20 50,25 Z" fill="url(#appG)" stroke="#630502" stroke-width="2"/>
+        <ellipse cx="34" cy="42" rx="5" ry="10" transform="rotate(-20 34 42)" fill="#ffc2bd" opacity="0.55"/>
+      `)
+    },
+    {
+      id: 'd1_pear', uk: 'Груша', ru: 'Груша',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="pearG" cx="38%" cy="38%" r="60%">
+            <stop offset="0%" stop-color="#fff066"/><stop offset="65%" stop-color="#b8c924"/><stop offset="100%" stop-color="#697a0a"/>
+          </radialGradient>
+        </defs>
+        <path d="M50,18 Q54,9 60,9" fill="none" stroke="#5c3310" stroke-width="3.8" stroke-linecap="round"/>
+        <path d="M50,18 C40,18 36,30 34,42 C30,54 20,62 24,76 C28,88 42,90 50,90 C58,90 72,88 76,76 C80,62 70,54 66,42 C64,30 60,18 50,18 Z" fill="url(#pearG)" stroke="#4f5c06" stroke-width="2"/>
+        <ellipse cx="38" cy="64" rx="5" ry="11" transform="rotate(-12 38 64)" fill="#ffffb8" opacity="0.55"/>
+      `)
+    },
+    {
+      id: 'd1_banana', uk: 'Банан', ru: 'Банан',
+      svg: wrapSVG(`
+        <path d="M26,22 C18,48 34,78 72,84 C80,85 86,80 82,74 C52,66 38,44 36,20 Z" fill="#e6b800" stroke="#8c6b00" stroke-width="2"/>
+        <path d="M32,18 C28,46 46,72 82,74 C88,74 92,68 86,62 C58,56 44,38 40,16 Z" fill="#ffe135" stroke="#997700" stroke-width="2"/>
+        <rect x="27" y="13" width="14" height="8" rx="2" transform="rotate(-12 34 17)" fill="#6e4b14"/>
+      `)
+    },
+    {
+      id: 'd1_sun', uk: 'Сонце', ru: 'Солнце',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="sunG" cx="42%" cy="38%" r="58%">
+            <stop offset="0%" stop-color="#fff9a6"/><stop offset="65%" stop-color="#ffb700"/><stop offset="100%" stop-color="#e06900"/>
+          </radialGradient>
+        </defs>
+        <!-- Sunbeams -->
+        <g fill="#ff9d00" stroke="#c75800" stroke-width="1.2">
+          <polygon points="50,6 44,20 56,20"/><polygon points="50,94 44,80 56,80"/>
+          <polygon points="6,50 20,44 20,56"/><polygon points="94,50 80,44 80,56"/>
+          <polygon points="19,19 32,25 25,32"/><polygon points="81,81 68,75 75,68"/>
+          <polygon points="81,19 68,25 75,32"/><polygon points="19,81 32,75 25,68"/>
+        </g>
+        <circle cx="50" cy="50" r="27" fill="url(#sunG)" stroke="#c75800" stroke-width="2"/>
+      `)
+    },
+    {
+      id: 'd1_cat', uk: 'Кіт', ru: 'Кот',
+      svg: wrapSVG(`
+        <!-- Ears -->
+        <polygon points="24,42 18,14 42,26" fill="#eb892d" stroke="#854006" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="25,38 22,20 38,28" fill="#f7a8b8"/>
+        <polygon points="76,42 82,14 58,26" fill="#eb892d" stroke="#854006" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="75,38 78,20 62,28" fill="#f7a8b8"/>
+        <!-- Head -->
+        <ellipse cx="50" cy="54" rx="31" ry="27" fill="#f59b3d" stroke="#854006" stroke-width="2"/>
+        <!-- Tabby Stripes -->
+        <path d="M46,29 L46,38 M50,28 L50,40 M54,29 L54,38" stroke="#9e4804" stroke-width="2.5" stroke-linecap="round"/>
+        <!-- Green Cat Eyes -->
+        <ellipse cx="37" cy="50" rx="6" ry="5" fill="#98e645" stroke="#2b1704" stroke-width="1.6"/>
+        <ellipse cx="37" cy="50" rx="2" ry="4.2" fill="#111"/>
+        <ellipse cx="63" cy="50" rx="6" ry="5" fill="#98e645" stroke="#2b1704" stroke-width="1.6"/>
+        <ellipse cx="63" cy="50" rx="2" ry="4.2" fill="#111"/>
+        <!-- Nose & Whiskers -->
+        <polygon points="46,59 54,59 50,64" fill="#ff7a95"/>
+        <path d="M43,66 Q50,62 50,64 Q50,62 57,66" fill="none" stroke="#522602" stroke-width="2" stroke-linecap="round"/>
+        <path d="M26,58 L10,55 M26,62 L10,63 M74,58 L90,55 M74,62 L90,63" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+      `)
+    },
+    {
+      id: 'd1_dog', uk: 'Собака', ru: 'Собака',
+      svg: wrapSVG(`
+        <!-- Floppy Ears -->
+        <path d="M26,32 C12,34 10,62 20,70 C28,74 30,54 28,42 Z" fill="#633714" stroke="#361c07" stroke-width="2"/>
+        <path d="M74,32 C88,34 90,62 80,70 C72,74 70,54 72,42 Z" fill="#633714" stroke="#361c07" stroke-width="2"/>
+        <!-- Head -->
+        <ellipse cx="50" cy="50" rx="26" ry="25" fill="#c98849" stroke="#593210" stroke-width="2"/>
+        <ellipse cx="39" cy="45" rx="8" ry="10" fill="#633714"/>
+        <!-- Muzzle & Tongue -->
+        <ellipse cx="50" cy="60" rx="14" ry="11" fill="#f5dfc6"/>
+        <path d="M46,68 Q50,79 54,68 Z" fill="#ff6b89" stroke="#b32d4a" stroke-width="1.2"/>
+        <ellipse cx="50" cy="56" rx="5.5" ry="4" fill="#241306"/>
+        <path d="M42,66 Q50,71 58,66" fill="none" stroke="#361c07" stroke-width="2" stroke-linecap="round"/>
+        <!-- Eyes -->
+        <circle cx="39" cy="45" r="3.8" fill="#111"/><circle cx="38" cy="44" r="1.3" fill="#fff"/>
+        <circle cx="61" cy="45" r="3.8" fill="#111"/><circle cx="60" cy="44" r="1.3" fill="#fff"/>
+      `)
+    },
+    {
+      id: 'd1_fish', uk: 'Риба', ru: 'Рыба',
+      svg: wrapSVG(`
+        <defs>
+          <linearGradient id="fishG" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#2998e0"/><stop offset="50%" stop-color="#6ee2f5"/><stop offset="100%" stop-color="#e3f9ff"/>
+          </linearGradient>
+        </defs>
+        <!-- Fins & Tail -->
+        <polygon points="38,34 54,18 60,34" fill="#ff7f36" stroke="#a63c00" stroke-width="1.6"/>
+        <polygon points="44,64 56,78 60,64" fill="#ff7f36" stroke="#a63c00" stroke-width="1.6"/>
+        <path d="M74,50 L92,32 L86,50 L92,68 Z" fill="#ff7f36" stroke="#a63c00" stroke-width="1.8" stroke-linejoin="round"/>
+        <!-- Body -->
+        <path d="M10,50 C22,28 56,28 76,50 C56,72 22,72 10,50 Z" fill="url(#fishG)" stroke="#124e78" stroke-width="2.2"/>
+        <!-- Gill & Scales -->
+        <path d="M30,39 Q35,50 30,61" fill="none" stroke="#124e78" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M44,44 Q48,50 44,56 M54,44 Q58,50 54,56" fill="none" stroke="#1b6da6" stroke-width="1.8" stroke-linecap="round"/>
+        <circle cx="22" cy="46" r="3.5" fill="#111"/><circle cx="21" cy="45" r="1.2" fill="#fff"/>
+      `)
+    },
+    {
+      id: 'd1_turtle', uk: 'Черепаха', ru: 'Черепаха',
+      svg: wrapSVG(`
+        <!-- Legs & Head -->
+        <ellipse cx="28" cy="72" rx="7" ry="5" fill="#6ab038" stroke="#2d5710" stroke-width="1.8"/>
+        <ellipse cx="64" cy="72" rx="7" ry="5" fill="#6ab038" stroke="#2d5710" stroke-width="1.8"/>
+        <path d="M70,58 C82,58 92,48 90,38 C88,30 76,32 72,44 Z" fill="#7ac744" stroke="#2d5710" stroke-width="2"/>
+        <circle cx="84" cy="38" r="2.5" fill="#111"/>
+        <!-- Domed Shell -->
+        <path d="M16,64 C14,32 34,24 46,24 C60,24 76,34 74,64 Z" fill="#8c5a27" stroke="#3d2208" stroke-width="2.2"/>
+        <polygon points="38,34 54,34 59,48 33,48" fill="#b5793a" stroke="#4d2c0c" stroke-width="1.8"/>
+        <rect x="14" y="60" width="62" height="7" rx="3.5" fill="#d9a15b" stroke="#4d2c0c" stroke-width="1.8"/>
+      `)
+    },
+    {
+      id: 'd1_fox', uk: 'Лисиця', ru: 'Лиса',
+      svg: wrapSVG(`
+        <!-- Bushy White-Tipped Tail -->
+        <path d="M28,74 C8,72 6,46 22,42 C32,40 36,56 32,68 Z" fill="#e86117" stroke="#782802" stroke-width="2"/>
+        <path d="M14,50 C10,44 16,40 22,42 C24,48 18,52 14,50 Z" fill="#fff8eb"/>
+        <!-- Body -->
+        <path d="M32,82 L38,52 L60,52 L66,82 Z" fill="#e86117" stroke="#782802" stroke-width="2"/>
+        <polygon points="44,54 56,54 50,74" fill="#fff8eb"/>
+        <!-- Fox Head & Ears -->
+        <polygon points="34,36 28,12 46,24" fill="#e86117" stroke="#782802" stroke-width="2"/>
+        <polygon points="66,36 72,12 54,24" fill="#e86117" stroke="#782802" stroke-width="2"/>
+        <polygon points="26,38 50,20 74,38 50,58" fill="#f27024" stroke="#782802" stroke-width="2"/>
+        <polygon points="28,39 50,58 42,42" fill="#fff8eb"/>
+        <polygon points="72,39 50,58 58,42" fill="#fff8eb"/>
+        <circle cx="42" cy="36" r="2.8" fill="#111"/><circle cx="58" cy="36" r="2.8" fill="#111"/>
+        <circle cx="50" cy="56" r="3.5" fill="#111"/>
+      `)
+    },
+    {
+      id: 'd1_owl', uk: 'Сова', ru: 'Сова',
+      svg: wrapSVG(`
+        <!-- Body -->
+        <ellipse cx="50" cy="54" rx="28" ry="34" fill="#825634" stroke="#3d230e" stroke-width="2.2"/>
+        <ellipse cx="50" cy="64" rx="19" ry="20" fill="#e6ccb2"/>
+        <path d="M42,56 Q45,60 48,56 M52,56 Q55,60 58,56 M40,66 Q43,70 46,66 M54,66 Q57,70 60,66 M47,74 Q50,78 53,74" fill="none" stroke="#5c381b" stroke-width="2" stroke-linecap="round"/>
+        <!-- Ear Tufts -->
+        <polygon points="24,30 16,14 36,22" fill="#5c381b"/>
+        <polygon points="76,30 84,14 64,22" fill="#5c381b"/>
+        <!-- Big Amber Eyes & Beak -->
+        <circle cx="38" cy="36" r="11" fill="#f7e3c8" stroke="#5c381b" stroke-width="2"/>
+        <circle cx="62" cy="36" r="11" fill="#f7e3c8" stroke="#5c381b" stroke-width="2"/>
+        <circle cx="38" cy="36" r="7" fill="#ffae00"/><circle cx="38" cy="36" r="3.8" fill="#111"/>
+        <circle cx="62" cy="36" r="7" fill="#ffae00"/><circle cx="62" cy="36" r="3.8" fill="#111"/>
+        <polygon points="46,42 54,42 50,51" fill="#f29100" stroke="#784200" stroke-width="1.5"/>
+      `)
+    },
+    {
+      id: 'd1_rose', uk: 'Троянда', ru: 'Роза',
+      svg: wrapSVG(`
+        <!-- Stem & Leaves -->
+        <path d="M50,52 L50,90" stroke="#2e6b15" stroke-width="5" stroke-linecap="round"/>
+        <path d="M50,68 C34,62 24,70 32,78 C40,80 46,74 50,68 Z" fill="#4aa125" stroke="#1f4d0b" stroke-width="1.6"/>
+        <path d="M50,62 C66,56 76,64 68,72 C60,74 54,68 50,62 Z" fill="#4aa125" stroke="#1f4d0b" stroke-width="1.6"/>
+        <!-- Velvet Rose Petals -->
+        <path d="M26,36 C20,18 40,12 50,18 C60,12 80,18 74,36 C78,52 62,60 50,58 C38,60 22,52 26,36 Z" fill="#d91438" stroke="#6e0418" stroke-width="2"/>
+        <path d="M34,32 C38,20 62,20 66,32 C64,46 36,46 34,32 Z" fill="#ff2e55" stroke="#85061e" stroke-width="1.8"/>
+        <path d="M40,29 C46,24 56,25 58,32 C54,38 42,36 40,29 Z" fill="#a80826"/>
+      `)
+    },
+    {
+      id: 'd1_cheese', uk: 'Сир', ru: 'Сыр',
+      svg: wrapSVG(`
+        <!-- 3D Cheese Wedge -->
+        <polygon points="16,46 68,20 86,44 16,46" fill="#ffe659" stroke="#b58300" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="16,46 86,44 86,76 16,78" fill="#fcbf1e" stroke="#9e6d00" stroke-width="2" stroke-linejoin="round"/>
+        <!-- Cheese Holes -->
+        <circle cx="34" cy="62" r="7" fill="#d48800"/>
+        <circle cx="66" cy="58" r="8.5" fill="#d48800"/>
+        <circle cx="50" cy="70" r="4.5" fill="#d48800"/>
+        <ellipse cx="56" cy="35" rx="6" ry="3.5" fill="#e0a800"/>
+      `)
+    },
+    {
+      id: 'd1_key', uk: 'Ключ', ru: 'Ключ',
+      svg: wrapSVG(`
+        <g transform="rotate(-35 50 50)">
+          <rect x="44" y="34" width="10" height="52" rx="4" fill="#f5bd1f" stroke="#8c5e00" stroke-width="2.2"/>
+          <rect x="52" y="66" width="12" height="6" rx="1.5" fill="#f5bd1f" stroke="#8c5e00" stroke-width="2"/>
+          <rect x="52" y="76" width="16" height="7" rx="1.5" fill="#f5bd1f" stroke="#8c5e00" stroke-width="2"/>
+          <circle cx="49" cy="24" r="16" fill="#ffd23f" stroke="#8c5e00" stroke-width="2.5"/>
+          <circle cx="49" cy="24" r="7" fill="#3a5059" stroke="#8c5e00" stroke-width="2"/>
+        </g>
+      `)
+    },
+    {
+      id: 'd1_clock', uk: 'Годинник', ru: 'Часы',
+      svg: wrapSVG(`
+        <!-- Alarm Bells -->
+        <path d="M20,24 A12,12 0 0,1 38,14 Z" fill="#f5b82e" stroke="#7d5300" stroke-width="2"/>
+        <path d="M80,24 A12,12 0 0,0 62,14 Z" fill="#f5b82e" stroke="#7d5300" stroke-width="2"/>
+        <!-- Legs -->
+        <line x1="30" y1="78" x2="22" y2="90" stroke="#7d5300" stroke-width="4" stroke-linecap="round"/>
+        <line x1="70" y1="78" x2="78" y2="90" stroke="#7d5300" stroke-width="4" stroke-linecap="round"/>
+        <!-- Clock Case & Face -->
+        <circle cx="50" cy="54" r="32" fill="#e03131" stroke="#780c0c" stroke-width="2.5"/>
+        <circle cx="50" cy="54" r="25" fill="#fff9eb" stroke="#b59d6b" stroke-width="2"/>
+        <!-- Hands -->
+        <line x1="50" y1="54" x2="50" y2="36" stroke="#1f242d" stroke-width="3.5" stroke-linecap="round"/>
+        <line x1="50" y1="54" x2="64" y2="54" stroke="#d92525" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="50" cy="54" r="3.5" fill="#1f242d"/>
+      `)
+    },
+    {
+      id: 'd1_bicycle', uk: 'Велосипед', ru: 'Велосипед',
+      svg: wrapSVG(`
+        <!-- Wheels -->
+        <circle cx="24" cy="66" r="15" fill="none" stroke="#22272e" stroke-width="4.5"/>
+        <circle cx="24" cy="66" r="11" fill="none" stroke="#cbd5e0" stroke-width="1.5" stroke-dasharray="3 3"/>
+        <circle cx="76" cy="66" r="15" fill="none" stroke="#22272e" stroke-width="4.5"/>
+        <circle cx="76" cy="66" r="11" fill="none" stroke="#cbd5e0" stroke-width="1.5" stroke-dasharray="3 3"/>
+        <!-- Frame -->
+        <polyline points="24,66 40,42 66,42 46,66 24,66" fill="none" stroke="#2b9348" stroke-width="4" stroke-linejoin="round"/>
+        <line x1="40" y1="42" x2="46" y2="66" stroke="#2b9348" stroke-width="4"/>
+        <polyline points="76,66 64,32 56,32" fill="none" stroke="#2b9348" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Saddle -->
+        <path d="M33,38 L45,38" stroke="#3d2410" stroke-width="5" stroke-linecap="round"/>
+      `)
+    },
+    {
+      id: 'd1_boat', uk: 'Човен', ru: 'Лодка',
+      svg: wrapSVG(`
+        <!-- Wooden Hull -->
+        <path d="M10,48 Q50,56 90,48 L76,74 Q50,80 24,74 Z" fill="#9c5925" stroke="#472307" stroke-width="2.2" stroke-linejoin="round"/>
+        <path d="M14,54 Q50,62 86,54" fill="none" stroke="#69360e" stroke-width="2.2"/>
+        <!-- Oar -->
+        <line x1="44" y1="44" x2="62" y2="86" stroke="#d4944c" stroke-width="3.5" stroke-linecap="round"/>
+        <ellipse cx="64" cy="86" rx="5" ry="9" transform="rotate(-22 64 86)" fill="#b8732a" stroke="#472307" stroke-width="1.6"/>
+      `)
+    }
+  ];
+
+  // MODE 2 DISTRACTORS: Contains 'М' in the MIDDLE or END (NEVER at start) in BOTH UKR and RUS
+  const DISTRACTOR_MODE2_POOL = [
+    {
+      id: 'd2_lemon', uk: 'Лимон', ru: 'Лимон',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="lemG" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#fff86b"/><stop offset="65%" stop-color="#f2c600"/><stop offset="100%" stop-color="#a87f00"/>
+          </radialGradient>
+        </defs>
+        <path d="M16,52 C18,32 34,24 50,24 C66,24 80,32 84,48 C88,50 88,56 83,58 C78,72 64,78 48,78 C32,78 20,70 16,58 C11,56 11,52 16,52 Z" fill="url(#lemG)" stroke="#8c6700" stroke-width="2"/>
+        <ellipse cx="38" cy="40" rx="8" ry="3.5" transform="rotate(-18 38 40)" fill="#ffffba" opacity="0.65"/>
+      `)
+    },
+    {
+      id: 'd2_tomato', uk: 'Помідор', ru: 'Помидор',
+      svg: wrapSVG(`
+        <defs>
+          <radialGradient id="tomG" cx="36%" cy="32%" r="62%">
+            <stop offset="0%" stop-color="#ff6e5e"/><stop offset="60%" stop-color="#e01b1b"/><stop offset="100%" stop-color="#7d0606"/>
+          </radialGradient>
+        </defs>
+        <ellipse cx="50" cy="56" rx="34" ry="29" fill="url(#tomG)" stroke="#690404" stroke-width="2"/>
+        <!-- Green Calyx Star -->
+        <path d="M50,16 L50,30 M50,28 L34,22 L44,32 L30,38 L47,35 L50,45 L53,35 L70,38 L56,32 L66,22 Z" fill="#3a8c19" stroke="#1b4d07" stroke-width="1.6" stroke-linejoin="round"/>
+        <ellipse cx="32" cy="48" rx="4.5" ry="9" transform="rotate(-24 32 48)" fill="#ffb5ad" opacity="0.6"/>
+      `)
+    },
+    {
+      id: 'd2_castle', uk: 'Замок', ru: 'Замок',
+      svg: wrapSVG(`
+        <!-- Side Towers -->
+        <rect x="18" y="34" width="18" height="50" fill="#a0aec0" stroke="#2d3748" stroke-width="2"/>
+        <polygon points="15,34 27,16 39,34" fill="#c53030" stroke="#63171b" stroke-width="1.8"/>
+        <rect x="64" y="34" width="18" height="50" fill="#a0aec0" stroke="#2d3748" stroke-width="2"/>
+        <polygon points="61,34 73,16 85,34" fill="#c53030" stroke="#63171b" stroke-width="1.8"/>
+        <!-- Main Keep -->
+        <polygon points="32,44 32,36 38,36 38,42 44,42 44,36 56,36 56,42 62,42 62,36 68,36 68,44 68,84 32,84" fill="#cbd5e0" stroke="#2d3748" stroke-width="2"/>
+        <!-- Wooden Gate -->
+        <path d="M42,84 L42,66 A8,8 0 0,1 58,66 L58,84 Z" fill="#6b3e23" stroke="#2d3748" stroke-width="2"/>
+      `)
+    },
+    {
+      id: 'd2_bumblebee', uk: 'Джміль', ru: 'Шмель',
+      svg: wrapSVG(`
+        <!-- Translucent Wings -->
+        <ellipse cx="44" cy="30" rx="14" ry="9" transform="rotate(-25 44 30)" fill="#d6f5ff" opacity="0.85" stroke="#5b8ca6" stroke-width="1.6"/>
+        <ellipse cx="58" cy="30" rx="12" ry="8" transform="rotate(20 58 30)" fill="#d6f5ff" opacity="0.85" stroke="#5b8ca6" stroke-width="1.6"/>
+        <!-- Plump Striped Body -->
+        <ellipse cx="50" cy="56" rx="28" ry="20" fill="#ffb700" stroke="#291d00" stroke-width="2.2"/>
+        <path d="M38,38 Q35,56 38,74 M50,36 Q47,56 50,76 M62,38 Q59,56 62,74" fill="none" stroke="#241c0c" stroke-width="7"/>
+        <!-- Stinger & Cute Eye -->
+        <polygon points="22,53 12,56 22,59" fill="#241c0c"/>
+        <circle cx="70" cy="50" r="3.5" fill="#111"/><circle cx="71" cy="49" r="1.2" fill="#fff"/>
+      `)
+    },
+    {
+      id: 'd2_snake', uk: 'Змія', ru: 'Змея',
+      svg: wrapSVG(`
+        <!-- Coiled Emerald Snake -->
+        <path d="M24,78 C16,66 84,68 76,54 C68,42 26,50 32,36 C36,24 62,24 66,30" fill="none" stroke="#256e1b" stroke-width="13" stroke-linecap="round"/>
+        <path d="M24,78 C16,66 84,68 76,54 C68,42 26,50 32,36 C36,24 62,24 66,30" fill="none" stroke="#52bd3a" stroke-width="9" stroke-linecap="round" stroke-dasharray="6 4"/>
+        <!-- Head & Forked Tongue -->
+        <ellipse cx="68" cy="30" rx="11" ry="8" fill="#46ad31" stroke="#1e5915" stroke-width="2"/>
+        <path d="M79,30 L88,30 L92,27 M88,30 L92,33" fill="none" stroke="#e61e32" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="70" cy="27" r="2.5" fill="#ffcf00"/><circle cx="70" cy="27" r="1" fill="#111"/>
+      `)
+    },
+    {
+      id: 'd2_hamster', uk: "Хом'як", ru: 'Хомяк',
+      svg: wrapSVG(`
+        <!-- Ears -->
+        <circle cx="30" cy="24" r="8" fill="#d98c45" stroke="#703e0d" stroke-width="1.8"/>
+        <circle cx="70" cy="24" r="8" fill="#d98c45" stroke="#703e0d" stroke-width="1.8"/>
+        <!-- Plump Body & Cheeks -->
+        <path d="M24,52 C18,32 34,20 50,20 C66,20 82,32 76,52 C84,66 74,86 50,86 C26,86 16,66 24,52 Z" fill="#eba054" stroke="#703e0d" stroke-width="2"/>
+        <ellipse cx="50" cy="64" rx="18" ry="18" fill="#fff5e6"/>
+        <circle cx="32" cy="48" r="10" fill="#ffdfb8"/>
+        <circle cx="68" cy="48" r="10" fill="#ffdfb8"/>
+        <!-- Eyes, Nose & Sunflower Seed -->
+        <circle cx="40" cy="38" r="3.4" fill="#111"/><circle cx="39" cy="37" r="1.1" fill="#fff"/>
+        <circle cx="60" cy="38" r="3.4" fill="#111"/><circle cx="59" cy="37" r="1.1" fill="#fff"/>
+        <circle cx="50" cy="44" r="3" fill="#ff7a95"/>
+        <ellipse cx="50" cy="60" rx="4" ry="7" fill="#333" stroke="#fff" stroke-width="1"/>
+      `)
+    },
+    {
+      id: 'd2_flamingo', uk: 'Фламінго', ru: 'Фламинго',
+      svg: wrapSVG(`
+        <!-- Long Legs -->
+        <line x1="48" y1="62" x2="48" y2="90" stroke="#e0638b" stroke-width="3" stroke-linecap="round"/>
+        <polyline points="54,62 62,74 44,76" fill="none" stroke="#e0638b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- S-Neck & Body -->
+        <path d="M36,56 C36,42 54,42 68,54 C58,66 36,66 36,56 Z" fill="#ff6b9d" stroke="#a61c4e" stroke-width="2"/>
+        <path d="M40,52 C26,44 42,24 34,16 C28,12 22,16 24,22" fill="none" stroke="#ff6b9d" stroke-width="6.5" stroke-linecap="round"/>
+        <!-- Hooked Beak -->
+        <path d="M22,20 Q14,22 16,29 L24,24 Z" fill="#222"/>
+        <circle cx="29" cy="18" r="1.8" fill="#111"/>
+      `)
+    },
+    {
+      id: 'd2_chameleon', uk: 'Хамелеон', ru: 'Хамелеон',
+      svg: wrapSVG(`
+        <!-- Branch -->
+        <line x1="12" y1="74" x2="88" y2="70" stroke="#6e4119" stroke-width="6" stroke-linecap="round"/>
+        <!-- Spiral Tail -->
+        <path d="M32,64 C16,64 14,44 26,44 C32,44 32,54 26,54" fill="none" stroke="#42b837" stroke-width="6" stroke-linecap="round"/>
+        <!-- Arched Back & Head Crest -->
+        <path d="M30,66 C28,36 56,30 70,48 L84,56 L70,66 Z" fill="#5cd64b" stroke="#1e6615" stroke-width="2" stroke-linejoin="round"/>
+        <!-- Turret Eye -->
+        <circle cx="70" cy="52" r="6" fill="#ffd000" stroke="#1e6615" stroke-width="1.8"/>
+        <circle cx="71" cy="52" r="2.5" fill="#111"/>
+      `)
+    },
+    {
+      id: 'd2_pyramid', uk: 'Піраміда', ru: 'Пирамида',
+      svg: wrapSVG(`
+        <!-- Golden Pyramid in 3D -->
+        <polygon points="50,18 12,78 58,84" fill="#f5be36" stroke="#8c5c00" stroke-width="2" stroke-linejoin="round"/>
+        <polygon points="50,18 58,84 88,70" fill="#c98a14" stroke="#754b00" stroke-width="2" stroke-linejoin="round"/>
+        <!-- Stone Block Lines -->
+        <line x1="39" y1="36" x2="66" y2="38" stroke="#8c5c00" stroke-width="1.6"/>
+        <line x1="28" y1="53" x2="75" y2="52" stroke="#8c5c00" stroke-width="1.6"/>
+        <line x1="19" y1="68" x2="82" y2="63" stroke="#8c5c00" stroke-width="1.6"/>
+      `)
+    },
+    {
+      id: 'd2_bag', uk: 'Сумка', ru: 'Сумка',
+      svg: wrapSVG(`
+        <!-- Handle -->
+        <path d="M36,36 C36,16 64,16 64,36" fill="none" stroke="#613311" stroke-width="5" stroke-linecap="round"/>
+        <!-- Satchel Body -->
+        <rect x="18" y="34" width="64" height="48" rx="8" fill="#b56224" stroke="#522808" stroke-width="2.2"/>
+        <!-- Top Flap & Brass Buckles -->
+        <path d="M18,40 C18,34 82,34 82,40 L78,58 C50,64 50,64 22,58 Z" fill="#cf7632" stroke="#522808" stroke-width="2"/>
+        <rect x="31" y="50" width="8" height="16" rx="2" fill="#ffd23f" stroke="#7a5400" stroke-width="1.5"/>
+        <rect x="61" y="50" width="8" height="16" rx="2" fill="#ffd23f" stroke="#7a5400" stroke-width="1.5"/>
+      `)
+    },
+    {
+      id: 'd2_lamp', uk: 'Лампа', ru: 'Лампа',
+      svg: wrapSVG(`
+        <!-- Warm Light Glow -->
+        <polygon points="28,50 72,50 84,82 16,82" fill="#fff394" opacity="0.45"/>
+        <!-- Stand & Base -->
+        <rect x="46" y="48" width="8" height="32" fill="#d49b2a" stroke="#6e4b06" stroke-width="1.8"/>
+        <path d="M30,84 C32,76 68,76 70,84 Z" fill="#d49b2a" stroke="#6e4b06" stroke-width="2"/>
+        <!-- Lampshade -->
+        <polygon points="32,18 68,18 78,50 22,50" fill="#ff9f2e" stroke="#8f4600" stroke-width="2.2" stroke-linejoin="round"/>
+        <line x1="25" y1="44" x2="75" y2="44" stroke="#ffe082" stroke-width="3"/>
+      `)
+    },
+    {
+      id: 'd2_compass', uk: 'Компас', ru: 'Компас',
+      svg: wrapSVG(`
+        <circle cx="50" cy="14" r="6" fill="none" stroke="#d49b2a" stroke-width="3"/>
+        <circle cx="50" cy="54" r="34" fill="#e6af2e" stroke="#6e4b06" stroke-width="2.5"/>
+        <circle cx="50" cy="54" r="27" fill="#fff8e6" stroke="#8f6512" stroke-width="1.8"/>
+        <!-- Compass Star & Needle -->
+        <polygon points="50,30 56,54 44,54" fill="#e02424"/>
+        <polygon points="50,78 56,54 44,54" fill="#2b6cb0"/>
+        <circle cx="50" cy="54" r="4" fill="#d49b2a"/>
+      `)
+    },
+    {
+      id: 'd2_scooter', uk: 'Самокат', ru: 'Самокат',
+      svg: wrapSVG(`
+        <!-- Wheels -->
+        <circle cx="24" cy="76" r="10" fill="#2d3748" stroke="#111" stroke-width="3"/>
+        <circle cx="24" cy="76" r="4" fill="#e2e8f0"/>
+        <circle cx="76" cy="76" r="10" fill="#2d3748" stroke="#111" stroke-width="3"/>
+        <circle cx="76" cy="76" r="4" fill="#e2e8f0"/>
+        <!-- Deck & Handlebar -->
+        <path d="M24,76 L70,76 L64,20" fill="none" stroke="#e53e3e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="54" y1="20" x2="74" y2="20" stroke="#2d3748" stroke-width="5" stroke-linecap="round"/>
+      `)
+    },
+    {
+      id: 'd2_chamomile', uk: 'Ромашка', ru: 'Ромашка',
+      svg: wrapSVG(`
+        <path d="M50,52 L50,90" stroke="#3b8519" stroke-width="5" stroke-linecap="round"/>
+        <!-- White Petals -->
+        <g fill="#ffffff" stroke="#b8c7d4" stroke-width="1.4">
+          <ellipse cx="50" cy="22" rx="7" ry="15"/><ellipse cx="50" cy="72" rx="7" ry="15"/>
+          <ellipse cx="25" cy="47" rx="15" ry="7"/><ellipse cx="75" cy="47" rx="15" ry="7"/>
+          <ellipse cx="32" cy="29" rx="7" ry="15" transform="rotate(-45 32 29)"/>
+          <ellipse cx="68" cy="65" rx="7" ry="15" transform="rotate(-45 68 65)"/>
+          <ellipse cx="68" cy="29" rx="7" ry="15" transform="rotate(45 68 29)"/>
+          <ellipse cx="32" cy="65" rx="7" ry="15" transform="rotate(45 32 65)"/>
+        </g>
+        <!-- Sunny Center -->
+        <circle cx="50" cy="47" r="13" fill="#ffbf00" stroke="#b57c00" stroke-width="2"/>
+      `)
+    },
+    {
+      id: 'd2_palm', uk: 'Пальма', ru: 'Пальма',
+      svg: wrapSVG(`
+        <ellipse cx="50" cy="86" rx="28" ry="7" fill="#e6c373"/>
+        <!-- Curved Trunk -->
+        <path d="M46,84 Q38,56 52,30 L60,32 Q48,56 56,84 Z" fill="#8f5322" stroke="#4a2608" stroke-width="1.8"/>
+        <!-- Palm Fronds & Coconuts -->
+        <path d="M54,30 C32,16 14,26 16,38 C28,32 42,30 54,30 Z" fill="#4aa624" stroke="#1e5409" stroke-width="1.5"/>
+        <path d="M56,30 C78,16 92,28 88,40 C76,32 64,30 56,30 Z" fill="#4aa624" stroke="#1e5409" stroke-width="1.5"/>
+        <path d="M54,28 C40,8 68,8 56,28 Z" fill="#5ec234" stroke="#1e5409" stroke-width="1.5"/>
+        <circle cx="50" cy="34" r="5" fill="#593110"/><circle cx="58" cy="35" r="5" fill="#593110"/>
+      `)
+    },
+    {
+      id: 'd2_catfish', uk: 'Сом', ru: 'Сом',
+      svg: wrapSVG(`
+        <!-- Whiskered River Catfish -->
+        <path d="M18,52 C22,34 52,34 84,48 L92,38 L90,62 L84,54 C52,68 22,68 18,52 Z" fill="#4a5d6e" stroke="#222d38" stroke-width="2"/>
+        <ellipse cx="38" cy="56" rx="18" ry="6" fill="#9fb1c2"/>
+        <!-- Long Barbels / Whiskers -->
+        <path d="M20,52 C10,62 8,76 18,82 M24,55 C18,68 22,80 30,84 M20,46 C10,36 12,26 20,24" fill="none" stroke="#222d38" stroke-width="2.4" stroke-linecap="round"/>
+        <circle cx="28" cy="46" r="3" fill="#ffd54f"/><circle cx="28" cy="46" r="1.4" fill="#111"/>
+      `)
+    }
+  ];
+
+  /* =========================================================================
+     3. GAME STATE & STRICT ORTHOGONAL CHORDLESS PATH GENERATOR (10 - 13 Stones)
+        - Grid is 5 rows x 7 columns (35 stones)
+        - Movements are ONLY UP, DOWN, LEFT, RIGHT (Math.abs(dr) + Math.abs(dc) === 1)
+        - Path is chordless (induced): no two non-consecutive path stones touch orthogonally,
+          guaranteeing a single unambiguous orthogonal bridge route from left bank to right bank!
+     ========================================================================= */
+  const COLS = 7;
+  const ROWS = 5;
+
+  let currentLang = 'uk';      // 'uk' or 'ru'
+  let currentMode = 1;         // 1 = Distractors WITHOUT 'М', 2 = Distractors WITH 'М' inside/end
+  let showWords = false;       // Toggle reading nameplates
+  let celebrationIndex = 0;
+
+  let gridCells = [];          // 35 cell objects
+  let pathCoords = [];         // Array of {r, c} of length 10..13
+  let steppedSet = new Set();  // Indices of stepped M stones
+  let lastSteppedCell = null;  // Last stepped stone for orthogonal neighbor validation
+  let isJumping = false;
+  let isCelebrating = false;
+
+  const stonesContainer = document.getElementById('stones-container');
+  const trailSegmentsGroup = document.getElementById('trail-segments');
+  const startDockGroup = document.getElementById('start-dock');
+  const finishDockGroup = document.getElementById('finish-dock');
+  const charWrapper = document.getElementById('character-wrapper');
+  const btnLang = document.getElementById('btn-lang');
+  const btnWords = document.getElementById('btn-words');
+  const btnMode = document.getElementById('btn-mode');
+  const btnHint = document.getElementById('btn-hint');
+  const modeIconSvg = document.getElementById('mode-icon-svg');
+  const btnNext = document.getElementById('btn-next');
+  const nextLabel = document.getElementById('next-label');
+
+  function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Strictly orthogonal adjacency check (UP, DOWN, LEFT, RIGHT only)
+  function isOrthogonalNeighbor(r1, c1, r2, c2) {
+    return Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1;
+  }
+
+  // Generate a chordless (induced) orthogonal path from col 0 to col 6 with 10 to 13 stones
+  function generateOrthogonalPath() {
+    const targetMin = 10;
+    const targetMax = 13;
+
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const startRow = Math.floor(Math.random() * ROWS);
+      const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+      const path = [{ r: startRow, c: 0 }];
+      visited[startRow][0] = true;
+
+      let steps = 0;
+      const dfs = (r, c) => {
+        if (++steps > 3500) return false;
+        if (c === COLS - 1) {
+          return path.length >= targetMin && path.length <= targetMax;
+        }
+        if (path.length >= targetMax) return false;
+
+        // Strictly 4 orthogonal directions: UP, DOWN, RIGHT, LEFT
+        const dirs = shuffleArray([
+          { dr: -1, dc: 0 },
+          { dr: 1, dc: 0 },
+          { dr: 0, dc: 1 },
+          { dr: 0, dc: -1 }
+        ]);
+
+        for (const { dr, dc } of dirs) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+          if (visited[nr][nc]) continue;
+
+          // Keep start column clean (only 1 stone in col 0) and finish column clean
+          if (nc === 0) continue;
+          if (nc === COLS - 1 && path.length + 1 < targetMin) continue;
+
+          // Induced / chordless check: (nr, nc) must NOT be orthogonally adjacent
+          // to any already-visited cell except the current cell (r, c)
+          let touchesOtherVisited = false;
+          const orthoChecks = [
+            { r: nr - 1, c: nc },
+            { r: nr + 1, c: nc },
+            { r: nr, c: nc - 1 },
+            { r: nr, c: nc + 1 }
+          ];
+          for (const chk of orthoChecks) {
+            if (chk.r < 0 || chk.r >= ROWS || chk.c < 0 || chk.c >= COLS) continue;
+            if (chk.r === r && chk.c === c) continue;
+            if (visited[chk.r][chk.c]) {
+              touchesOtherVisited = true;
+              break;
+            }
+          }
+          if (touchesOtherVisited) continue;
+
+          visited[nr][nc] = true;
+          path.push({ r: nr, c: nc });
+          if (dfs(nr, nc)) return true;
+          path.pop();
+          visited[nr][nc] = false;
+        }
+        return false;
+      };
+
+      if (dfs(startRow, 0)) {
+        return path;
+      }
+    }
+
+    // Guaranteed chordless orthogonal fallback path of 11 stones (strictly up/down/left/right)
+    return [
+      { r: 1, c: 0 },
+      { r: 1, c: 1 },
+      { r: 2, c: 1 },
+      { r: 3, c: 1 },
+      { r: 3, c: 2 },
+      { r: 3, c: 3 },
+      { r: 2, c: 3 },
+      { r: 1, c: 3 },
+      { r: 1, c: 4 },
+      { r: 1, c: 5 },
+      { r: 1, c: 6 }
+    ];
+  }
+
+  // Highlight letter М/м inside word for optional reading plaque
+  function formatWordWithHighlight(word) {
+    return word.split('').map(ch => {
+      if (ch === 'М' || ch === 'м') {
+        return `<span class="hl-m">${ch}</span>`;
+      }
+      return ch;
+    }).join('');
+  }
+
+  // Update Mode Button SVG Icon (Mode 1: Crossed M | Mode 2: •М• in middle/end)
+  function renderModeButtonIcon() {
+    if (currentMode === 1) {
+      modeIconSvg.innerHTML = `
+        <text x="18" y="21" text-anchor="middle" fill="#ffefd0" font-size="19" font-weight="900">М</text>
+        <line x1="6" y1="24" x2="30" y2="4" stroke="#ff5c5c" stroke-width="3.6" stroke-linecap="round"/>
+      `;
+    } else {
+      modeIconSvg.innerHTML = `
+        <circle cx="5" cy="15" r="3" fill="#ffd84d"/>
+        <text x="18" y="21" text-anchor="middle" fill="#ffd84d" font-size="18" font-weight="900">М</text>
+        <circle cx="31" cy="15" r="3" fill="#ffd84d"/>
+      `;
+    }
+  }
+
+  // Convert screen coordinates to the 1920x1080 SVG coordinate space
+  function toSvgCoords(xPx, yPx) {
+    return {
+      x: (xPx / window.innerWidth) * 1920,
+      y: (yPx / window.innerHeight) * 1080
+    };
+  }
+
+  // Align Left Start Dock and Right Finish Dock with the first and last stone rows
+  function alignDocksWithPath() {
+    if (!pathCoords.length || !gridCells.length) return;
+    const firstCell = gridCells[pathCoords[0].r * COLS + pathCoords[0].c];
+    const lastCoord = pathCoords[pathCoords.length - 1];
+    const lastCell = gridCells[lastCoord.r * COLS + lastCoord.c];
+
+    if (firstCell && firstCell.el) {
+      const pt = getStoneCenterScreen(firstCell.el);
+      const svgPt = toSvgCoords(pt.x, pt.y);
+      startDockGroup.setAttribute('transform', `translate(22, ${Math.round(svgPt.y - 65)})`);
+    }
+    if (lastCell && lastCell.el) {
+      const pt = getStoneCenterScreen(lastCell.el);
+      const svgPt = toSvgCoords(pt.x, pt.y);
+      finishDockGroup.setAttribute('transform', `translate(1715, ${Math.round(svgPt.y - 82)})`);
+    }
+  }
+
+  // Place Monkey at start dock aligned with the first stone row
+  function placeMonkeyAtStartDock() {
+    const startDockX = window.innerWidth * 0.068;
+    let startDockY = window.innerHeight * 0.505;
+    if (pathCoords.length && gridCells.length) {
+      const firstCell = gridCells[pathCoords[0].r * COLS + pathCoords[0].c];
+      if (firstCell && firstCell.el) {
+        startDockY = getStoneCenterScreen(firstCell.el).y;
+      }
+    }
+    charWrapper.style.left = `${startDockX}px`;
+    charWrapper.style.top = `${startDockY}px`;
+    charWrapper.style.transform = `translate(-50%, -68%) scale(1)`;
+  }
+
+  /* =========================================================================
+     4. REAL 3D WOODEN PLANK BRIDGE BUILDER (Справжні дерев'яні місточки)
+     ========================================================================= */
+  function buildWoodenBridge(fromPt, toPt) {
+    const p1 = toSvgCoords(fromPt.x, fromPt.y);
+    const p2 = toSvgCoords(toPt.x, toPt.y);
+
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const fullDist = Math.hypot(dx, dy);
+    const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    // Trim ends slightly so bridge rests naturally on the edges of the two stones
+    const trim = Math.min(34, fullDist * 0.16);
+    const spanLen = Math.max(40, fullDist - trim * 2);
+    const bridgeHalfW = 24;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${p1.x.toFixed(1)}, ${p1.y.toFixed(1)}) rotate(${angleDeg.toFixed(2)})`);
+
+    // 1. Two parallel sturdy timber support stringers
+    let innerHTML = `
+      <rect x="${trim - 4}" y="${-bridgeHalfW + 5}" width="${spanLen + 8}" height="8" rx="4" fill="url(#beamWoodGrad)" stroke="#241004" stroke-width="1.5"/>
+      <rect x="${trim - 4}" y="${bridgeHalfW - 13}" width="${spanLen + 8}" height="8" rx="4" fill="url(#beamWoodGrad)" stroke="#241004" stroke-width="1.5"/>
+    `;
+
+    // 2. Transverse Wooden Planks with wood grain & iron nails
+    const plankStep = 22;
+    const numPlanks = Math.max(4, Math.floor(spanLen / plankStep));
+    const actualStep = spanLen / numPlanks;
+    const plankW = Math.min(18, actualStep * 0.82);
+
+    for (let i = 0; i < numPlanks; i++) {
+      const px = trim + i * actualStep + (actualStep - plankW) * 0.5;
+      const delay = (i * 0.035).toFixed(3);
+      const jitterY = (i % 2 === 0 ? -0.8 : 0.8);
+      innerHTML += `
+        <g class="bridge-plank-anim" style="animation-delay: ${delay}s">
+          <rect x="${px.toFixed(1)}" y="${(-bridgeHalfW + jitterY).toFixed(1)}" width="${plankW.toFixed(1)}" height="${bridgeHalfW * 2}" rx="4"
+                fill="url(#plankWoodGrad)" stroke="#3b1d08" stroke-width="2"/>
+          <!-- Wood grain highlight -->
+          <line x1="${(px + 3.5).toFixed(1)}" y1="${-bridgeHalfW + 4}" x2="${(px + 3.5).toFixed(1)}" y2="${bridgeHalfW - 4}"
+                stroke="#d99b62" stroke-width="1.6" stroke-linecap="round" opacity="0.55"/>
+          <!-- Iron nails at top and bottom of plank -->
+          <circle cx="${(px + plankW / 2).toFixed(1)}" cy="${-bridgeHalfW + 8}" r="2.1" fill="#2b2d30"/>
+          <circle cx="${(px + plankW / 2).toFixed(1)}" cy="${bridgeHalfW - 8}" r="2.1" fill="#2b2d30"/>
+        </g>
+      `;
+    }
+
+    // 3. Side Rope Handrails & Corner Wooden Bollard Posts
+    const xStart = trim;
+    const xEnd = trim + spanLen;
+    const xMid = trim + spanLen * 0.5;
+
+    innerHTML += `
+      <!-- Top & Bottom Rope Handrails -->
+      <path d="M${xStart},${-bridgeHalfW - 2} Q${xMid},${-bridgeHalfW + 2} ${xEnd},${-bridgeHalfW - 2}"
+            fill="none" stroke="#e6ba7e" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M${xStart},${bridgeHalfW + 2} Q${xMid},${bridgeHalfW - 2} ${xEnd},${bridgeHalfW + 2}"
+            fill="none" stroke="#e6ba7e" stroke-width="3.5" stroke-linecap="round"/>
+      <!-- 4 Corner Wooden Posts with Rope Knots -->
+      <circle cx="${xStart}" cy="${-bridgeHalfW - 1}" r="6.5" fill="#693b18" stroke="#261205" stroke-width="2"/>
+      <circle cx="${xStart}" cy="${-bridgeHalfW - 1}" r="3" fill="#e6ba7e"/>
+      <circle cx="${xEnd}" cy="${-bridgeHalfW - 1}" r="6.5" fill="#693b18" stroke="#261205" stroke-width="2"/>
+      <circle cx="${xEnd}" cy="${-bridgeHalfW - 1}" r="3" fill="#e6ba7e"/>
+      <circle cx="${xStart}" cy="${bridgeHalfW + 1}" r="6.5" fill="#693b18" stroke="#261205" stroke-width="2"/>
+      <circle cx="${xStart}" cy="${bridgeHalfW + 1}" r="3" fill="#e6ba7e"/>
+      <circle cx="${xEnd}" cy="${bridgeHalfW + 1}" r="6.5" fill="#693b18" stroke="#261205" stroke-width="2"/>
+      <circle cx="${xEnd}" cy="${bridgeHalfW + 1}" r="3" fill="#e6ba7e"/>
+    `;
+
+    g.innerHTML = innerHTML;
+    trailSegmentsGroup.appendChild(g);
+  }
+
+  // Mark currently reachable orthogonal neighbors (up/down/left/right) for hover clarity
+  function updateOrthogonalReachability() {
+    gridCells.forEach(cell => {
+      cell.el.classList.remove('ortho-neighbor', 'next-hint');
+    });
+
+    if (!lastSteppedCell) {
+      // At the start pier: any stone in column 0 is orthogonally across from the pier
+      gridCells.forEach(cell => {
+        if (cell.c === 0) {
+          cell.el.classList.add('ortho-neighbor');
+        }
+      });
+    } else {
+      const { r, c } = lastSteppedCell;
+      gridCells.forEach(cell => {
+        if (!steppedSet.has(cell.idx) && isOrthogonalNeighbor(r, c, cell.r, cell.c)) {
+          cell.el.classList.add('ortho-neighbor');
+        }
+      });
+    }
+  }
+
+  // Pulse valid orthogonal neighbors when user clicks diagonally or too far
+  function pulseOrthogonalNeighbors() {
+    gridCells.forEach(cell => {
+      cell.el.classList.remove('ortho-pulse');
+      const isReachable = !lastSteppedCell
+        ? (cell.c === 0)
+        : (!steppedSet.has(cell.idx) && isOrthogonalNeighbor(lastSteppedCell.r, lastSteppedCell.c, cell.r, cell.c));
+      if (isReachable) {
+        void cell.el.offsetWidth;
+        cell.el.classList.add('ortho-pulse');
+      }
+    });
+  }
+
+  // Build / Regenerate Level
+  function initLevel() {
+    isJumping = false;
+    isCelebrating = false;
+    steppedSet.clear();
+    lastSteppedCell = null;
+    trailSegmentsGroup.innerHTML = '';
+    stonesContainer.innerHTML = '';
+    gridCells = [];
+
+    pathCoords = generateOrthogonalPath();
+    const pathIndexSet = new Set(pathCoords.map(p => p.r * COLS + p.c));
+
+    // Distractor words must NOT appear even on non-path cells as accidental M words
+    const shuffledTargets = shuffleArray(TARGET_M_POOL);
+    const distractorSource = currentMode === 1 ? DISTRACTOR_MODE1_POOL : DISTRACTOR_MODE2_POOL;
+    const shuffledDistractors = shuffleArray(distractorSource);
+
+    let targetPtr = 0;
+    let distPtr = 0;
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const idx = r * COLS + c;
+        const isTarget = pathIndexSet.has(idx);
+        const item = isTarget
+          ? shuffledTargets[targetPtr++ % shuffledTargets.length]
+          : shuffledDistractors[distPtr++ % shuffledDistractors.length];
+
+        const stoneEl = document.createElement('div');
+        stoneEl.className = 'river-stone';
+        stoneEl.dataset.index = idx;
+
+        const rx1 = 46;
+        const ry1 = 39;
+        const wordText = currentLang === 'uk' ? item.uk : item.ru;
+
+        stoneEl.innerHTML = `
+          <svg class="stone-base-svg" viewBox="0 0 120 100">
+            <defs>
+              <radialGradient id="stoneGrad_${idx}" cx="38%" cy="30%" r="68%">
+                <stop offset="0%" stop-color="#98a8b3"/>
+                <stop offset="58%" stop-color="#62727d"/>
+                <stop offset="100%" stop-color="#37434d"/>
+              </radialGradient>
+            </defs>
+            <!-- Orthogonal reachability / hint water ripple ring -->
+            <ellipse class="hint-ring" cx="60" cy="52" rx="54" ry="43" fill="none" stroke="#9ef7ff" stroke-width="3.5" stroke-dasharray="10 7"/>
+            <ellipse cx="60" cy="55" rx="${rx1 + 4}" ry="${ry1 + 3}" fill="none" stroke="#6ce5f5" stroke-width="1.5" opacity="0.32"/>
+            <!-- Underwater stone shadow -->
+            <ellipse cx="60" cy="57" rx="${rx1 + 2}" ry="${ry1 + 2}" fill="#07222b" opacity="0.65"/>
+            <!-- Main Carved River Stone (Crisp Orthogonal Alignment) -->
+            <ellipse cx="60" cy="50" rx="${rx1}" ry="${ry1}" fill="url(#stoneGrad_${idx})" stroke="#27323a" stroke-width="2.5"/>
+            <!-- Top stone bevel highlight -->
+            <ellipse cx="57" cy="45" rx="${rx1 - 7}" ry="${ry1 - 7}" fill="#b3c2cc" opacity="0.22"/>
+            <!-- Glowing Emerald Moss Rim (Revealed when stepped) -->
+            <ellipse class="moss-rim" cx="60" cy="50" rx="${rx1}" ry="${ry1}" fill="none" stroke="#85f24b" stroke-width="5.5" stroke-dasharray="18 7" opacity="0" style="transition: opacity 0.35s ease;"/>
+            <!-- Small natural moss patch on corner -->
+            <path d="M22,37 Q30,27 40,33 Q32,41 22,37 Z" fill="#4f9428" opacity="0.75"/>
+            <!-- Blooming Water Lotus on corner when stepped -->
+            <g class="stone-lotus" transform="translate(94, 22) scale(0)" opacity="0" style="transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);">
+              <circle cx="0" cy="0" r="11" fill="#479e24"/>
+              <circle cx="0" cy="0" r="7.5" fill="#ff85b3"/>
+              <circle cx="0" cy="0" r="3.5" fill="#ffe45e"/>
+            </g>
+          </svg>
+          <div class="stone-art">${item.svg}</div>
+          <div class="word-plaque">${formatWordWithHighlight(wordText)}</div>
+        `;
+
+        stoneEl.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          handleStoneClick(idx);
+        });
+
+        stonesContainer.appendChild(stoneEl);
+        gridCells.push({ idx, r, c, isTarget, item, el: stoneEl });
+      }
+    }
+
+    requestAnimationFrame(() => {
+      alignDocksWithPath();
+      placeMonkeyAtStartDock();
+      updateOrthogonalReachability();
+    });
+  }
+
+  /* =========================================================================
+     5. MONKEY JUMP & STRICT ORTHOGONAL INTERACTION LOGIC
+     ========================================================================= */
+  function getStoneCenterScreen(stoneEl) {
+    const rect = stoneEl.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  }
+
+  function animateMonkeyJump(targetX, targetY, onLanded) {
+    isJumping = true;
+    const startX = parseFloat(charWrapper.style.left) || window.innerWidth * 0.068;
+    const startY = parseFloat(charWrapper.style.top) || window.innerHeight * 0.505;
+    const dist = Math.hypot(targetX - startX, targetY - startY);
+    const arcHeight = Math.min(115, Math.max(52, dist * 0.36));
+    const duration = Math.min(480, Math.max(310, dist * 1.05));
+    const startTime = performance.now();
+
+    function frame(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const curX = startX + (targetX - startX) * ease;
+      const curY = startY + (targetY - startY) * ease - Math.sin(t * Math.PI) * arcHeight;
+
+      // Agile monkey crouch, leap stretch, and landing bounce
+      let scaleX = 1;
+      let scaleY = 1;
+      if (t < 0.18) {
+        scaleX = 1.15;
+        scaleY = 0.85;
+      } else if (t < 0.78) {
+        scaleX = 0.9;
+        scaleY = 1.14;
+      } else {
+        scaleX = 1.14 - (t - 0.78) * 0.63;
+        scaleY = 0.86 + (t - 0.78) * 0.63;
+      }
+
+      charWrapper.style.left = `${curX}px`;
+      charWrapper.style.top = `${curY}px`;
+      charWrapper.style.transform = `translate(-50%, -68%) scale(${scaleX.toFixed(3)}, ${scaleY.toFixed(3)})`;
+
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        charWrapper.style.transform = `translate(-50%, -68%) scale(1, 1)`;
+        isJumping = false;
+        if (onLanded) onLanded();
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  function handleStoneClick(idx) {
+    if (isJumping || isCelebrating) return;
+    const cell = gridCells[idx];
+    if (!cell) return;
+    if (steppedSet.has(idx)) return;
+
+    // 1. Check strict ORTHOGONAL reachability (Up, Down, Left, Right ONLY — NO Diagonals!)
+    const isReachableOrthogonally = !lastSteppedCell
+      ? (cell.c === 0)
+      : isOrthogonalNeighbor(lastSteppedCell.r, lastSteppedCell.c, cell.r, cell.c);
+
+    if (!isReachableOrthogonally) {
+      // Diagonal or distant stone clicked -> Deny jump and pulse valid orthogonal neighbors
+      sound.playDiagonalDeny();
+      cell.el.classList.remove('diagonal-deny');
+      void cell.el.offsetWidth;
+      cell.el.classList.add('diagonal-deny');
+      pulseOrthogonalNeighbors();
+      return;
+    }
+
+    // 2. Reachable orthogonally: check if it is a valid 'М' stone
+    if (cell.isTarget) {
+      const stoneCenter = getStoneCenterScreen(cell.el);
+      const prevPt = lastSteppedCell
+        ? getStoneCenterScreen(lastSteppedCell.el)
+        : { x: window.innerWidth * 0.068, y: stoneCenter.y };
+
+      steppedSet.add(idx);
+      const stepNum = steppedSet.size;
+
+      // Build the real wooden plank bridge first, then monkey leaps across it!
+      buildWoodenBridge(prevPt, stoneCenter);
+      sound.playCorrectStep(stepNum - 1);
+
+      animateMonkeyJump(stoneCenter.x, stoneCenter.y, () => {
+        cell.el.classList.add('stepped');
+        spawnWaterSplash(stoneCenter.x, stoneCenter.y, true);
+        lastSteppedCell = cell;
+        updateOrthogonalReachability();
+
+        // Check if monkey has reached the final stone on the right bank (col 6)
+        if (cell.c === COLS - 1 && steppedSet.size >= pathCoords.length) {
+          completeCrossing(stoneCenter);
+        }
+      });
+    } else {
+      // Orthogonal distractor stone clicked -> Wobble, sink, splash & monkey headshake
+      sound.playWrongSplash();
+      cell.el.classList.remove('wrong-sink');
+      void cell.el.offsetWidth;
+      cell.el.classList.add('wrong-sink');
+
+      charWrapper.classList.remove('monkey-no');
+      void charWrapper.offsetWidth;
+      charWrapper.classList.add('monkey-no');
+
+      const stoneCenter = getStoneCenterScreen(cell.el);
+      spawnWaterSplash(stoneCenter.x, stoneCenter.y, false);
+    }
+  }
+
+  function completeCrossing(lastStonePt) {
+    isCelebrating = true;
+    const finishDockPt = {
+      x: window.innerWidth * 0.935,
+      y: lastStonePt.y
+    };
+
+    setTimeout(() => {
+      // Build final wooden bridge from the last stone to the Banana Island Dock
+      buildWoodenBridge(lastStonePt, finishDockPt);
+      animateMonkeyJump(finishDockPt.x, finishDockPt.y, () => {
+        const variant = celebrationIndex++ % 3;
+        sound.playWinFanfare(variant);
+        triggerGrandCelebration(variant);
+
+        setTimeout(() => {
+          initLevel();
+        }, 3100);
+      });
+    }, 180);
+  }
+
+  /* =========================================================================
+     6. TOP-RIGHT HUD CONTROLS (Language, Reading Captions, Mode, Hint, Next)
+     ========================================================================= */
+  function refreshAllStoneCaptions() {
+    gridCells.forEach(cell => {
+      const plaque = cell.el.querySelector('.word-plaque');
+      if (plaque) {
+        const wordText = currentLang === 'uk' ? cell.item.uk : cell.item.ru;
+        plaque.innerHTML = formatWordWithHighlight(wordText);
+      }
+    });
+    btnLang.textContent = currentLang === 'uk' ? 'УКР' : 'РУС';
+    nextLabel.textContent = currentLang === 'uk' ? 'Далі' : 'Далее';
+  }
+
+  btnLang.addEventListener('click', () => {
+    sound.playClick();
+    currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+    refreshAllStoneCaptions();
+  });
+
+  btnWords.addEventListener('click', () => {
+    sound.playClick();
+    showWords = !showWords;
+    document.body.classList.toggle('show-words', showWords);
+    btnWords.classList.toggle('active-toggle', showWords);
+  });
+
+  btnMode.addEventListener('click', () => {
+    sound.playClick();
+    currentMode = currentMode === 1 ? 2 : 1;
+    renderModeButtonIcon();
+    initLevel();
+  });
+
+  btnHint.addEventListener('click', () => {
+    sound.playClick();
+    // Highlight the next unstepped orthogonal M stone in the path
+    for (const p of pathCoords) {
+      const idx = p.r * COLS + p.c;
+      if (!steppedSet.has(idx)) {
+        const cell = gridCells[idx];
+        if (cell && cell.el) {
+          cell.el.classList.add('next-hint');
+          const pt = getStoneCenterScreen(cell.el);
+          spawnWaterSplash(pt.x, pt.y, true);
+        }
+        break;
+      }
+    }
+  });
+
+  btnNext.addEventListener('click', () => {
+    sound.playClick();
+    initLevel();
+  });
+
+  renderModeButtonIcon();
+
+  /* =========================================================================
+     7. LIVING RIVER BACKGROUND & FX CANVASES (Koi Fish, Caustics, Celebrations)
+     ========================================================================= */
+  const riverCanvas = document.getElementById('river-canvas');
+  const rCtx = riverCanvas.getContext('2d');
+  const fxCanvas = document.getElementById('fx-canvas');
+  const fxCtx = fxCanvas.getContext('2d');
+
+  let cw = window.innerWidth;
+  let ch = window.innerHeight;
+
+  function resizeCanvases() {
+    cw = window.innerWidth;
+    ch = window.innerHeight;
+    riverCanvas.width = cw;
+    riverCanvas.height = ch;
+    fxCanvas.width = cw;
+    fxCanvas.height = ch;
+    alignDocksWithPath();
+    if (!isJumping && !lastSteppedCell) {
+      placeMonkeyAtStartDock();
+    } else if (!isJumping && lastSteppedCell) {
+      const pt = getStoneCenterScreen(lastSteppedCell.el);
+      charWrapper.style.left = `${pt.x}px`;
+      charWrapper.style.top = `${pt.y}px`;
+    }
+  }
+  window.addEventListener('resize', resizeCanvases);
+  resizeCanvases();
+
+  // Underwater Swimming Koi Fish
+  const koiFish = Array.from({ length: 9 }, (_, i) => ({
+    x: Math.random() * cw,
+    y: Math.random() * ch,
+    vx: (Math.random() * 0.65 + 0.35) * (i % 2 === 0 ? 1 : -1),
+    vy: (Math.random() - 0.5) * 0.35,
+    size: 16 + Math.random() * 12,
+    phase: Math.random() * Math.PI * 2,
+    color: i % 3 === 0 ? '#ff7b3b' : (i % 3 === 1 ? '#ffd042' : '#ff5468')
+  }));
+
+  // Shimmering Water Current Lines
+  const waterStreams = Array.from({ length: 26 }, () => ({
+    x: Math.random() * cw,
+    y: Math.random() * ch,
+    len: 60 + Math.random() * 110,
+    speed: 0.4 + Math.random() * 0.7,
+    alpha: 0.06 + Math.random() * 0.11
+  }));
+
+  // Floating Golden Fireflies / Sunlit Pollen
+  const fireflies = Array.from({ length: 22 }, () => ({
+    x: Math.random() * cw,
+    y: Math.random() * ch,
+    r: 1.8 + Math.random() * 2.5,
+    phase: Math.random() * Math.PI * 2,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: -0.2 - Math.random() * 0.35
+  }));
+
+  // Active FX Particles (Splashes & Celebration)
+  const fxParticles = [];
+  constfxRings = [];
+
+  function spawnWaterSplash(x, y, isCorrect) {
+    fxRings.push({
+      x, y,
+      r: 12,
+      maxR: isCorrect ? 85 : 65,
+      alpha: 0.85,
+      color: isCorrect ? '#a8ff78' : '#7ec8e3'
+    });
+
+    const count = isCorrect ? 22 : 14;
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+      const speed = 2.2 + Math.random() * 5.2;
+      fxParticles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - (isCorrect ? 2.5 : 1),
+        gravity: 0.18,
+        r: isCorrect ? (3.5 + Math.random() * 4) : (3 + Math.random() * 3),
+        alpha: 1,
+        color: isCorrect
+          ? (i % 2 === 0 ? '#ffe96b' : '#7ef556')
+          : (i % 2 === 0 ? '#89c4d7' : '#567d8c'),
+        type: 'drop'
+      });
+    }
+  }
+
+  // 3 Varied Non-Verbal Grand Celebrations
+  function triggerGrandCelebration(variant) {
+    if (variant === 0) {
+      // Variant 0: Golden Koi Leap & Rainbow River Mist
+      for (let i = 0; i < 65; i++) {
+        fxParticles.push({
+          x: cw * (0.2 + Math.random() * 0.65),
+          y: ch * 0.85,
+          vx: (Math.random() - 0.5) * 7,
+          vy: -8 - Math.random() * 9,
+          gravity: 0.22,
+          r: 5 + Math.random() * 6,
+          alpha: 1,
+          color: ['#ff5e7e', '#ffbe3b', '#6ef25c', '#5ce1ff', '#d47aff'][i % 5],
+          type: 'sparkle'
+        });
+      }
+    } else if (variant === 1) {
+      // Variant 1: Monarch Butterfly Swarm across the River
+      for (let i = 0; i < 36; i++) {
+        fxParticles.push({
+          x: cw * Math.random(),
+          y: ch + 20,
+          vx: (Math.random() - 0.5) * 3.5,
+          vy: -3.5 - Math.random() * 4,
+          gravity: -0.02,
+          r: 9 + Math.random() * 6,
+          alpha: 1,
+          phase: Math.random() * Math.PI * 2,
+          color: i % 2 === 0 ? '#ff9b29' : '#ffd84d',
+          type: 'butterfly'
+        });
+      }
+    } else {
+      // Variant 2: Blooming River Lotus & Golden Fountain
+      for (let i = 0; i < 55; i++) {
+        const cx = cw * (0.25 + (i % 5) * 0.12);
+        const cy = ch * 0.5;
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 7;
+        fxParticles.push({
+          x: cx,
+          y: cy,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 2,
+          gravity: 0.12,
+          r: 5 + Math.random() * 5,
+          alpha: 1,
+          color: i % 2 === 0 ? '#ff85b3' : '#ffe659',
+          type: 'petal'
+        });
+      }
+    }
+  }
+
+  const fxRings = [];
+
+  function renderLoop(time) {
+    rCtx.clearRect(0, 0, cw, ch);
+
+    // 1. Shimmering Water Current Ripples
+    rCtx.lineCap = 'round';
+    for (const s of waterStreams) {
+      s.y += s.speed;
+      if (s.y > ch + 50) {
+        s.y = -60;
+        s.x = cw * 0.12 + Math.random() * (cw * 0.76);
+      }
+      rCtx.strokeStyle = `rgba(145, 238, 255, ${s.alpha})`;
+      rCtx.lineWidth = 2.5;
+      rCtx.beginPath();
+      rCtx.moveTo(s.x, s.y);
+      rCtx.quadraticCurveTo(
+        s.x + Math.sin(time * 0.002 + s.y * 0.02) * 14,
+        s.y + s.len * 0.5,
+        s.x,
+        s.y + s.len
+      );
+      rCtx.stroke();
+    }
+
+    // 2. Swimming Underwater Koi Fish
+    for (const f of koiFish) {
+      f.x += f.vx;
+      f.y += f.vy + Math.sin(time * 0.003 + f.phase) * 0.25;
+      if (f.x > cw * 0.88) f.vx = -Math.abs(f.vx);
+      if (f.x < cw * 0.12) f.vx = Math.abs(f.vx);
+      if (f.y < 60) f.vy = Math.abs(f.vy);
+      if (f.y > ch - 60) f.vy = -Math.abs(f.vy);
+
+      const angle = Math.atan2(f.vy, f.vx);
+      rCtx.save();
+      rCtx.translate(f.x, f.y);
+      rCtx.rotate(angle);
+      rCtx.globalAlpha = 0.38;
+
+      // Tail wag
+      const wag = Math.sin(time * 0.012 + f.phase) * 5;
+      rCtx.fillStyle = f.color;
+      rCtx.beginPath();
+      rCtx.moveTo(-f.size * 0.7, 0);
+      rCtx.lineTo(-f.size * 1.45, -f.size * 0.45 + wag);
+      rCtx.lineTo(-f.size * 1.45, f.size * 0.45 + wag);
+      rCtx.closePath();
+      rCtx.fill();
+
+      // Body
+      rCtx.beginPath();
+      rCtx.ellipse(0, 0, f.size, f.size * 0.42, 0, 0, Math.PI * 2);
+      rCtx.fill();
+      rCtx.restore();
+    }
+
+    // 3. FX Canvas (Splash Rings, Droplets, Butterflies, Petals & Fireflies)
+    fxCtx.clearRect(0, 0, cw, ch);
+
+    // Floating Golden Fireflies
+    for (const fl of fireflies) {
+      fl.x += fl.vx + Math.sin(time * 0.002 + fl.phase) * 0.3;
+      fl.y += fl.vy;
+      if (fl.y < -10) {
+        fl.y = ch + 10;
+        fl.x = Math.random() * cw;
+      }
+      const glowAlpha = 0.35 + 0.45 * Math.sin(time * 0.004 + fl.phase);
+      fxCtx.fillStyle = `rgba(255, 240, 140, ${glowAlpha})`;
+      fxCtx.beginPath();
+      fxCtx.arc(fl.x, fl.y, fl.r, 0, Math.PI * 2);
+      fxCtx.fill();
+    }
+
+    // Expanding Ripple Rings
+    for (let i = fxRings.length - 1; i >= 0; i--) {
+      const ring = fxRings[i];
+      ring.r += 2.6;
+      ring.alpha -= 0.024;
+      if (ring.alpha <= 0 || ring.r >= ring.maxR) {
+        fxRings.splice(i, 1);
+        continue;
+      }
+      fxCtx.save();
+      fxCtx.globalAlpha = Math.max(0, ring.alpha);
+      fxCtx.strokeStyle = ring.color;
+      fxCtx.lineWidth = 3.2;
+      fxCtx.beginPath();
+      fxCtx.ellipse(ring.x, ring.y, ring.r, ring.r * 0.75, 0, 0, Math.PI * 2);
+      fxCtx.stroke();
+      fxCtx.restore();
+    }
+
+    // Active Splash & Celebration Particles
+    for (let i = fxParticles.length - 1; i >= 0; i--) {
+      const p = fxParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += p.gravity;
+      p.alpha -= 0.014;
+
+      if (p.alpha <= 0 || p.y > ch + 50 || p.y < -60) {
+        fxParticles.splice(i, 1);
+        continue;
+      }
+
+      fxCtx.save();
+      fxCtx.globalAlpha = Math.max(0, p.alpha);
+      fxCtx.fillStyle = p.color;
+
+      if (p.type === 'butterfly') {
+        const wingFlap = Math.abs(Math.sin(time * 0.02 + p.phase));
+        fxCtx.translate(p.x, p.y);
+        fxCtx.beginPath();
+        fxCtx.ellipse(-p.r * 0.5 * wingFlap, 0, p.r * 0.7 * wingFlap, p.r * 0.5, -0.3, 0, Math.PI * 2);
+        fxCtx.ellipse(p.r * 0.5 * wingFlap, 0, p.r * 0.7 * wingFlap, p.r * 0.5, 0.3, 0, Math.PI * 2);
+        fxCtx.fill();
+      } else {
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        fxCtx.fill();
+      }
+      fxCtx.restore();
+    }
+
+    requestAnimationFrame(renderLoop);
+  }
+
+  // Start Game & Animation Loop
+  window.onload = () => {
+    initLevel();
+    requestAnimationFrame(renderLoop);
+  };
+})();
+</script>
+</body>
+</html>
