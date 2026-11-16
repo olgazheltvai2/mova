@@ -1,0 +1,2113 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Climber</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Montserrat:wght@800;900&display=swap');
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #56ccf2;
+    font-family: 'Montserrat', 'Comfortaa', sans-serif;
+  }
+
+  #gameCanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    cursor: pointer;
+  }
+
+  /* Festive carved honey-wood & brass buttons - no white rectangles */
+  .hud-btn {
+    position: fixed;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 22px;
+    border: 3px solid #ffe066;
+    background: linear-gradient(180deg, #ff922b 0%, #d9480f 100%);
+    box-shadow:
+      0 6px 0 #7f2704,
+      0 10px 20px rgba(0, 0, 0, 0.35),
+      inset 0 2px 3px rgba(255, 255, 255, 0.55);
+    color: #fff9db;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.14s ease, filter 0.14s ease;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .hud-btn::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 15px;
+    border: 1.5px dashed rgba(255, 243, 191, 0.5);
+    pointer-events: none;
+  }
+
+  .hud-btn:hover {
+    transform: translateY(-2px) scale(1.05);
+    filter: brightness(1.08);
+    box-shadow:
+      0 8px 0 #7f2704,
+      0 14px 24px rgba(0, 0, 0, 0.4),
+      inset 0 2px 4px rgba(255, 255, 255, 0.7);
+  }
+
+  .hud-btn:active {
+    transform: translateY(4px) scale(0.97);
+    box-shadow:
+      0 2px 0 #7f2704,
+      0 4px 10px rgba(0, 0, 0, 0.3);
+  }
+
+  #langBtn {
+    top: 20px;
+    right: 96px;
+    height: 54px;
+    padding: 0 24px;
+    font-size: 20px;
+    text-shadow: 0 2px 0 #7f2704;
+  }
+
+  #nextBtn {
+    top: 20px;
+    right: 24px;
+    width: 58px;
+    height: 54px;
+  }
+
+  #nextBtn svg {
+    width: 30px;
+    height: 30px;
+    fill: none;
+    stroke: #fff9db;
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 2px 0 #7f2704);
+  }
+</style>
+</head>
+<body>
+
+<!-- Minimalistic Language Toggle Button (ONLY "УКР" or "РУС") -->
+<button id="langBtn" class="hud-btn" aria-label="Language">УКР</button>
+
+<!-- Minimalistic Skip/Next Button (Icon Only) -->
+<button id="nextBtn" class="hud-btn" aria-label="Next">
+  <svg viewBox="0 0 24 24">
+    <path d="M5 18l6-6-6-6" />
+    <path d="M13 18l6-6-6-6" />
+  </svg>
+</button>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+(() => {
+  'use strict';
+
+  // ============================================================================
+  // 1. WORD BANK (40+ UNIQUE PAIRS PER LANGUAGE: VOICED / VOICELESS CONSONANTS)
+  // Guaranteed: two variants of the same word (e.g., "берізка" & "беріска")
+  // NEVER appear together! Each row pulls 3 completely distinct word roots.
+  // ============================================================================
+  const WORD_POOLS = {
+    uk: [
+      { id: 'u1',  correct: 'берізка',   wrong: 'беріска' },
+      { id: 'u2',  correct: 'казка',     wrong: 'каска' },
+      { id: 'u3',  correct: 'кігті',     wrong: 'кіхті' },
+      { id: 'u4',  correct: 'нігті',     wrong: 'ніхті' },
+      { id: 'u5',  correct: 'легкий',    wrong: 'лехкий' },
+      { id: 'u6',  correct: 'вогкий',    wrong: 'вохкий' },
+      { id: 'u7',  correct: 'боротьба',  wrong: 'бородьба' },
+      { id: 'u8',  correct: 'молотьба',  wrong: 'молодьба' },
+      { id: 'u9',  correct: 'просьба',   wrong: 'прозьба' },
+      { id: 'u10', correct: 'лічба',     wrong: 'ліжба' },
+      { id: 'u11', correct: 'дубки',     wrong: 'дупки' },
+      { id: 'u12', correct: 'зубки',     wrong: 'зупки' },
+      { id: 'u13', correct: 'голубка',   wrong: 'голупка' },
+      { id: 'u14', correct: 'рибка',     wrong: 'рипка' },
+      { id: 'u15', correct: 'шубка',     wrong: 'шупка' },
+      { id: 'u16', correct: 'шапка',     wrong: 'шабка' },
+      { id: 'u17', correct: 'лапка',     wrong: 'лабка' },
+      { id: 'u18', correct: 'кізка',     wrong: 'кіска' },
+      { id: 'u19', correct: 'смужка',    wrong: 'смушка' },
+      { id: 'u20', correct: 'стежка',    wrong: 'стешка' },
+      { id: 'u21', correct: 'ложка',     wrong: 'лошка' },
+      { id: 'u22', correct: 'книжка',    wrong: 'книшка' },
+      { id: 'u23', correct: 'ніжка',     wrong: 'нішка' },
+      { id: 'u24', correct: 'ріжки',     wrong: 'рішки' },
+      { id: 'u25', correct: 'пиріжки',   wrong: 'пирішки' },
+      { id: 'u26', correct: 'сніжки',    wrong: 'снішки' },
+      { id: 'u27', correct: 'мотузка',   wrong: 'мотуска' },
+      { id: 'u28', correct: 'валізка',   wrong: 'валіска' },
+      { id: 'u29', correct: 'галузка',   wrong: 'галуска' },
+      { id: 'u30', correct: 'кладка',    wrong: 'клатка' },
+      { id: 'u31', correct: 'грядка',    wrong: 'грятка' },
+      { id: 'u32', correct: 'солодкий',  wrong: 'солоткий' },
+      { id: 'u33', correct: 'швидкий',   wrong: 'швиткий' },
+      { id: 'u34', correct: 'гладкий',   wrong: 'глаткий' },
+      { id: 'u35', correct: 'загадка',   wrong: 'загатка' },
+      { id: 'u36', correct: 'ягідка',    wrong: 'ягітка' },
+      { id: 'u37', correct: 'сусідка',   wrong: 'сусітка' },
+      { id: 'u38', correct: 'будка',     wrong: 'бутка' },
+      { id: 'u39', correct: 'дудка',     wrong: 'дутка' },
+      { id: 'u40', correct: 'миска',     wrong: 'мизка' },
+      { id: 'u41', correct: 'чашка',     wrong: 'чажка' },
+      { id: 'u42', correct: 'шишка',     wrong: 'шижка' }
+    ],
+    ru: [
+      { id: 'r1',  correct: 'берёзка',   wrong: 'берёска' },
+      { id: 'r2',  correct: 'сказка',    wrong: 'скаска' },
+      { id: 'r3',  correct: 'когти',     wrong: 'кохти' },
+      { id: 'r4',  correct: 'ногти',     wrong: 'нохти' },
+      { id: 'r5',  correct: 'лёгкий',    wrong: 'лёхкий' },
+      { id: 'r6',  correct: 'мягкий',    wrong: 'мяхкий' },
+      { id: 'r7',  correct: 'дубки',     wrong: 'дупки' },
+      { id: 'r8',  correct: 'зубки',     wrong: 'зупки' },
+      { id: 'r9',  correct: 'голубка',   wrong: 'голупка' },
+      { id: 'r10', correct: 'рыбка',     wrong: 'рыпка' },
+      { id: 'r11', correct: 'шубка',     wrong: 'шупка' },
+      { id: 'r12', correct: 'шапка',     wrong: 'шабка' },
+      { id: 'r13', correct: 'лапка',     wrong: 'лабка' },
+      { id: 'r14', correct: 'полоска',   wrong: 'полозка' },
+      { id: 'r15', correct: 'дорожка',   wrong: 'дорошка' },
+      { id: 'r16', correct: 'ложка',     wrong: 'лошка' },
+      { id: 'r17', correct: 'книжка',    wrong: 'книшка' },
+      { id: 'r18', correct: 'ножка',     wrong: 'ношка' },
+      { id: 'r19', correct: 'рожки',     wrong: 'рошки' },
+      { id: 'r20', correct: 'пирожки',   wrong: 'пирошки' },
+      { id: 'r21', correct: 'снежки',    wrong: 'снешки' },
+      { id: 'r22', correct: 'повозка',   wrong: 'повоска' },
+      { id: 'r23', correct: 'указка',    wrong: 'укаска' },
+      { id: 'r24', correct: 'грядка',    wrong: 'грятка' },
+      { id: 'r25', correct: 'сладкий',   wrong: 'слаткий' },
+      { id: 'r26', correct: 'гладкий',   wrong: 'глаткий' },
+      { id: 'r27', correct: 'загадка',   wrong: 'загатка' },
+      { id: 'r28', correct: 'ягодка',    wrong: 'яготка' },
+      { id: 'r29', correct: 'соседка',   wrong: 'сосетка' },
+      { id: 'r30', correct: 'будка',     wrong: 'бутка' },
+      { id: 'r31', correct: 'дудка',     wrong: 'дутка' },
+      { id: 'r32', correct: 'миска',     wrong: 'мизка' },
+      { id: 'r33', correct: 'чашка',     wrong: 'чажка' },
+      { id: 'r34', correct: 'шишка',     wrong: 'шижка' },
+      { id: 'r35', correct: 'травка',    wrong: 'трафка' },
+      { id: 'r36', correct: 'морковка',  wrong: 'моркофка' },
+      { id: 'r37', correct: 'головка',   wrong: 'голофка' },
+      { id: 'r38', correct: 'верёвка',   wrong: 'верёфка' },
+      { id: 'r39', correct: 'коровка',   wrong: 'корофка' },
+      { id: 'r40', correct: 'улыбка',    wrong: 'улыпка' }
+    ]
+  };
+
+  // ============================================================================
+  // 2. WEB AUDIO SYNTHESIZER (Joyful Chimes & 5 Distinct Hilarious Trap Sounds)
+  // ============================================================================
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    playJump() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(240, now);
+      osc.frequency.exponentialRampToValueAtTime(640, now + 0.18);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.21);
+    }
+
+    playSuccess(rowIdx = 0) {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const chords = [
+        [523.25, 659.25, 783.99, 1046.50, 1318.51],
+        [587.33, 739.99, 880.00, 1174.66, 1479.98],
+        [659.25, 830.61, 987.77, 1318.51, 1661.22],
+        [698.46, 880.00, 1046.50, 1396.91, 1760.00]
+      ];
+      const notes = chords[rowIdx % chords.length];
+
+      notes.forEach((freq, i) => {
+        const t = now + i * 0.055;
+        const osc = this.ctx.createOscillator();
+        const overtone = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        overtone.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        overtone.frequency.setValueAtTime(freq * 2, t);
+
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(0.2, t + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+
+        osc.connect(gain);
+        overtone.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(t);
+        overtone.start(t);
+        osc.stop(t + 0.52);
+        overtone.stop(t + 0.52);
+      });
+    }
+
+    playTrap(trapType) {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      if (trapType === 'spring') {
+        // Cartoon BOING-oing-oing!
+        const osc = this.ctx.createOscillator();
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(580, now + 0.15);
+        osc.frequency.exponentialRampToValueAtTime(260, now + 0.55);
+
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(26, now);
+        lfoGain.gain.setValueAtTime(130, now);
+
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        lfo.start(now);
+        osc.stop(now + 0.6);
+        lfo.stop(now + 0.6);
+      } else if (trapType === 'bellows') {
+        // Alpine accordion honk + wind whoosh
+        [233.08, 311.13, 392.00].forEach((f) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(f, now);
+          osc.frequency.linearRampToValueAtTime(f * 0.82, now + 0.42);
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.46);
+        });
+      } else if (trapType === 'honey') {
+        // Comical buzzing bees ("BZZZ-wah-wah!")
+        const osc = this.ctx.createOscillator();
+        const wab = this.ctx.createOscillator();
+        const wabGain = this.ctx.createGain();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(195, now);
+
+        wab.type = 'sine';
+        wab.frequency.setValueAtTime(16, now);
+        wabGain.gain.setValueAtTime(65, now);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+        wab.connect(wabGain);
+        wabGain.connect(osc.frequency);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        wab.start(now);
+        osc.stop(now + 0.56);
+        wab.stop(now + 0.56);
+      } else if (trapType === 'tilt') {
+        // Slippery slide whistle up & down + wood clunk
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(780, now);
+        osc.frequency.exponentialRampToValueAtTime(210, now + 0.25);
+        osc.frequency.exponentialRampToValueAtTime(520, now + 0.48);
+        gain.gain.setValueAtTime(0.24, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.52);
+      } else {
+        // Rainbow fountain splash + bubbly arpeggio
+        const notes = [440, 554, 659, 880, 554, 440];
+        notes.forEach((f, idx) => {
+          const t = now + idx * 0.055;
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, t);
+          osc.frequency.exponentialRampToValueAtTime(f * 1.25, t + 0.05);
+          g.gain.setValueAtTime(0.18, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.09);
+        });
+      }
+    }
+  }
+
+  const sfx = new SoundEngine();
+
+  // ============================================================================
+  // 3. DETERMINISTIC CAMERA & WORLD SETUP (100% Guaranteed On-Screen Visibility)
+  // ============================================================================
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const langBtn = document.getElementById('langBtn');
+  const nextBtn = document.getElementById('nextBtn');
+
+  let currentLang = 'uk';
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Deterministic row spacing:
+  // Row `currentRow` is ALWAYS at 77% screen height (bottom-center).
+  // Row `currentRow + 1` (the 3 choices) is ALWAYS at 40% screen height (middle!).
+  // Row `currentRow + 2` (upcoming preview) is at 3% screen height (top peek).
+  let ROW_STEP = Math.round(height * 0.37);
+  let currentRow = 0;
+  let camY = 0;
+  let targetCamY = 0;
+  let screenShake = 0;
+
+  function worldToScreenY(worldY) {
+    return (worldY - camY) + height * 0.77;
+  }
+
+  function screenToWorldY(screenY) {
+    return screenY - height * 0.77 + camY;
+  }
+
+  // Word Deck
+  let shuffledDeck = [];
+
+  function refillDeck() {
+    const pool = [...WORD_POOLS[currentLang]];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    shuffledDeck = pool;
+  }
+
+  function drawDistinctWords(count, excludeIds = new Set()) {
+    const picked = [];
+    const pool = WORD_POOLS[currentLang];
+
+    for (let i = shuffledDeck.length - 1; i >= 0 && picked.length < count; i--) {
+      const item = shuffledDeck[i];
+      if (!excludeIds.has(item.id)) {
+        picked.push(item);
+        excludeIds.add(item.id);
+        shuffledDeck.splice(i, 1);
+      }
+    }
+
+    if (picked.length < count) {
+      refillDeck();
+      for (let i = shuffledDeck.length - 1; i >= 0 && picked.length < count; i--) {
+        const item = shuffledDeck[i];
+        if (!excludeIds.has(item.id)) {
+          picked.push(item);
+          excludeIds.add(item.id);
+          shuffledDeck.splice(i, 1);
+        }
+      }
+    }
+
+    for (let i = 0; i < pool.length && picked.length < count; i++) {
+      if (!excludeIds.has(pool[i].id)) {
+        picked.push(pool[i]);
+        excludeIds.add(pool[i].id);
+      }
+    }
+
+    return picked;
+  }
+
+  const TRAP_TYPES = ['spring', 'bellows', 'honey', 'tilt', 'geyser'];
+  const rows = [];
+  let hoveredBlock = null;
+  let mouseX = width / 2;
+  let mouseY = height * 0.4;
+
+  function getSlotX(slotIdx, totalSlots) {
+    if (totalSlots === 1) return width * 0.5;
+    const usableW = Math.min(width * 0.88, 1280);
+    const startX = (width - usableW) * 0.5;
+    const step = usableW / totalSlots;
+    return startX + step * (slotIdx + 0.5);
+  }
+
+  function getBlockSize() {
+    return {
+      w: Math.min(390, Math.max(220, width * 0.27)),
+      h: Math.min(115, Math.max(76, height * 0.145))
+    };
+  }
+
+  function createRow(rIndex) {
+    const worldY = -rIndex * ROW_STEP;
+    const size = getBlockSize();
+
+    if (rIndex === 0) {
+      return {
+        index: 0,
+        worldY,
+        blocks: [
+          {
+            rowIndex: 0,
+            slot: 0,
+            totalSlots: 1,
+            x: width * 0.5,
+            y: worldY,
+            w: size.w * 0.95,
+            h: size.h * 0.9,
+            word: '',
+            rootId: 'start',
+            isCorrect: true,
+            isStart: true,
+            activated: true,
+            sprung: false,
+            trapType: 'spring',
+            trapAnim: 0,
+            glowAnim: 1,
+            bounceY: 0,
+            themeIdx: 0
+          }
+        ]
+      };
+    }
+
+    // Collect recent IDs so words never repeat across nearby rows
+    const recentIds = new Set();
+    for (let i = Math.max(1, rows.length - 4); i < rows.length; i++) {
+      if (rows[i]) {
+        rows[i].blocks.forEach(b => recentIds.add(b.rootId));
+      }
+    }
+
+    const totalSlots = 3;
+    const distinctWords = drawDistinctWords(totalSlots, recentIds);
+    const correctSlot = Math.floor(Math.random() * totalSlots);
+
+    const blocks = [];
+    for (let s = 0; s < totalSlots; s++) {
+      const item = distinctWords[s];
+      const isCorrect = (s === correctSlot);
+      const trapType = TRAP_TYPES[(rIndex * 3 + s) % TRAP_TYPES.length];
+
+      blocks.push({
+        rowIndex: rIndex,
+        slot: s,
+        totalSlots,
+        x: getSlotX(s, totalSlots),
+        y: worldY,
+        w: size.w,
+        h: size.h,
+        word: isCorrect ? item.correct : item.wrong,
+        rootId: item.id,
+        isCorrect,
+        isStart: false,
+        activated: false,
+        sprung: false,
+        trapType,
+        trapAnim: 0,
+        glowAnim: 0,
+        bounceY: 0,
+        themeIdx: (rIndex + s) % 4
+      });
+    }
+
+    return {
+      index: rIndex,
+      worldY,
+      blocks
+    };
+  }
+
+  function ensureRowsUpTo(maxRow) {
+    while (rows.length <= maxRow) {
+      rows.push(createRow(rows.length));
+    }
+  }
+
+  // ============================================================================
+  // 4. LIVING ALPINE FESTIVAL & SKY CARNIVAL ENVIRONMENT SETUP
+  // ============================================================================
+  const balloons = [];
+  const clouds = [];
+  const birds = [];
+  const sheepList = [];
+  const cableCars = [];
+  const particles = [];
+
+  function initStoryEnvironment() {
+    balloons.length = 0;
+    const balloonPalettes = [
+      ['#ff595e', '#ffca3a', '#ffffff'],
+      ['#1982c4', '#8ac926', '#ffca3a'],
+      ['#ff924c', '#ff595e', '#fff3b0'],
+      ['#6a4c93', '#ffca3a', '#4cc9f0'],
+      ['#2ec4b6', '#ff9f1c', '#ffffff']
+    ];
+    for (let i = 0; i < 6; i++) {
+      balloons.push({
+        x: (width / 6) * i + Math.random() * 120,
+        yOffset: i * 190 + Math.random() * 80,
+        r: 36 + (i % 3) * 10,
+        vx: (i % 2 === 0 ? 1 : -1) * (12 + Math.random() * 10),
+        bobPhase: Math.random() * Math.PI * 2,
+        colors: balloonPalettes[i % balloonPalettes.length]
+      });
+    }
+
+    clouds.length = 0;
+    for (let i = 0; i < 9; i++) {
+      clouds.push({
+        x: Math.random() * width,
+        yOffset: i * 140,
+        scale: 0.7 + Math.random() * 0.65,
+        vx: (i % 2 === 0 ? 1 : -1) * (8 + Math.random() * 10)
+      });
+    }
+
+    birds.length = 0;
+    for (let i = 0; i < 7; i++) {
+      birds.push({
+        x: Math.random() * width,
+        yOffset: Math.random() * height,
+        vx: (Math.random() > 0.5 ? 1 : -1) * (45 + Math.random() * 35),
+        phase: Math.random() * Math.PI * 2,
+        color: i % 2 === 0 ? '#ffffff' : '#ffe066'
+      });
+    }
+
+    sheepList.length = 0;
+    const sheepPositions = [0.09, 0.16, 0.81, 0.89];
+    sheepPositions.forEach((xr, i) => {
+      sheepList.push({
+        xRatio: xr,
+        dir: i % 2 === 0 ? 1 : -1,
+        grazePhase: i * 1.7
+      });
+    });
+
+    cableCars.length = 0;
+    cableCars.push(
+      { progress: 0.2, speed: 0.045, dir: 1, color: '#ff595e' },
+      { progress: 0.75, speed: 0.038, dir: -1, color: '#1982c4' }
+    );
+  }
+
+  // ============================================================================
+  // 5. ARTICULATED ALPINE CLIMBER CHARACTER
+  // ============================================================================
+  const climber = {
+    x: 0,
+    y: 0,
+    facing: 1,
+    state: 'idle', // 'idle', 'anticipation', 'jumping', 'celebrate', 'trapAction', 'trapReturn'
+    timer: 0,
+    jumpDur: 0.44,
+    startX: 0,
+    startY: 0,
+    targetX: 0,
+    targetY: 0,
+    currentBlock: null,
+    targetBlock: null,
+    breathPhase: 0,
+    blinkTimer: 0,
+    isBlinking: false,
+    flipAngle: 0,
+    hatOffset: 0,
+    squash: 1,
+    stretch: 1,
+    scarf: []
+  };
+
+  function initScarf(x, y) {
+    climber.scarf = [];
+    for (let i = 0; i < 6; i++) {
+      climber.scarf.push({ x: x - i * 9, y: y - 55 + i * 2 });
+    }
+  }
+
+  function jumpToBlock(block) {
+    if (!block) return;
+    if (climber.state !== 'idle' && climber.state !== 'celebrate') return;
+    if (block.sprung) return;
+
+    climber.targetBlock = block;
+    climber.startX = climber.x;
+    climber.startY = climber.y;
+    climber.targetX = block.x;
+    climber.targetY = block.y - block.h * 0.46;
+
+    if (Math.abs(climber.targetX - climber.x) > 10) {
+      climber.facing = climber.targetX >= climber.x ? 1 : -1;
+    }
+
+    climber.state = 'anticipation';
+    climber.timer = 0;
+  }
+
+  // ============================================================================
+  // 6. FESTIVE CONFETTI, FLOWERS & TRAP PARTICLES
+  // ============================================================================
+  function spawnCelebrationParticles(x, y) {
+    const colors = ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#ff924c', '#ffffff'];
+    const shapes = ['flower', 'star', 'ribbon', 'circle'];
+    for (let i = 0; i < 42; i++) {
+      const angle = -Math.PI + Math.random() * Math.PI * 2;
+      const speed = 110 + Math.random() * 320;
+      particles.push({
+        x: x + (Math.random() - 0.5) * 120,
+        y: y - 10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 150,
+        gravity: 390,
+        size: 7 + Math.random() * 9,
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 10,
+        color: colors[i % colors.length],
+        shape: shapes[i % shapes.length],
+        life: 1,
+        decay: 0.7 + Math.random() * 0.5
+      });
+    }
+  }
+
+  function spawnTrapParticles(x, y, trapType) {
+    const palettes = {
+      spring:  ['#ffca3a', '#ff924c', '#e63946'],
+      bellows: ['#e0fbfc', '#98c1d9', '#ffffff'],
+      honey:   ['#ffb703', '#fb8500', '#ffe066'],
+      tilt:    ['#ffca3a', '#a8dadc', '#f4a261'],
+      geyser:  ['#00bbf9', '#00f5d4', '#9b5de5', '#f15bb5']
+    };
+    const cols = palettes[trapType] || palettes.spring;
+
+    for (let i = 0; i < 32; i++) {
+      const angle = -Math.PI * 0.95 + Math.random() * Math.PI * 0.9;
+      const speed = 90 + Math.random() * 260;
+      particles.push({
+        x: x + (Math.random() - 0.5) * 110,
+        y: y - 12,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 90,
+        gravity: trapType === 'bellows' ? -80 : 420,
+        size: 6 + Math.random() * 8,
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 10,
+        color: cols[i % cols.length],
+        shape: trapType === 'honey' ? 'bee' : (trapType === 'geyser' ? 'circle' : 'star'),
+        life: 1,
+        decay: 0.85 + Math.random() * 0.5
+      });
+    }
+  }
+
+  // ============================================================================
+  // 7. UPDATE LOOP
+  // ============================================================================
+  function update(dt) {
+    // Deterministic camera tracking: keeps currentRow at 77% height and currentRow+1 at 40% height!
+    targetCamY = -currentRow * ROW_STEP;
+    camY += (targetCamY - camY) * Math.min(1, dt * 6.5);
+
+    if (screenShake > 0) {
+      screenShake = Math.max(0, screenShake - dt * 30);
+    }
+
+    // Update visible rows & blocks
+    for (let r = Math.max(0, currentRow - 1); r <= Math.min(rows.length - 1, currentRow + 3); r++) {
+      const row = rows[r];
+      if (!row) continue;
+      for (const b of row.blocks) {
+        if (b.activated && b.glowAnim < 1) {
+          b.glowAnim = Math.min(1, b.glowAnim + dt * 3);
+        }
+        if (b.sprung && b.trapAnim < 1) {
+          b.trapAnim = Math.min(1, b.trapAnim + dt * 3.2);
+        }
+        if (Math.abs(b.bounceY) > 0.1) {
+          b.bounceY *= Math.pow(0.03, dt);
+        } else {
+          b.bounceY = 0;
+        }
+      }
+    }
+
+    // Climber breathing & blinking
+    climber.breathPhase += dt * 3.6;
+    climber.blinkTimer += dt;
+    if (climber.blinkTimer > 3.4) {
+      climber.isBlinking = true;
+      if (climber.blinkTimer > 3.56) {
+        climber.isBlinking = false;
+        climber.blinkTimer = 0;
+      }
+    }
+
+    // Climber State Machine
+    if (climber.state === 'idle') {
+      climber.squash += (1 - climber.squash) * Math.min(1, dt * 12);
+      climber.stretch += (1 - climber.stretch) * Math.min(1, dt * 12);
+      climber.flipAngle = 0;
+      climber.hatOffset += (0 - climber.hatOffset) * Math.min(1, dt * 10);
+      if (climber.currentBlock) {
+        climber.x = climber.currentBlock.x;
+        climber.y = climber.currentBlock.y - climber.currentBlock.h * 0.46 + climber.currentBlock.bounceY;
+      }
+    } else if (climber.state === 'anticipation') {
+      climber.timer += dt;
+      const p = Math.min(1, climber.timer / 0.1);
+      climber.squash = 1 + 0.25 * p;
+      climber.stretch = 1 - 0.22 * p;
+      if (climber.timer >= 0.1) {
+        climber.state = 'jumping';
+        climber.timer = 0;
+        sfx.playJump();
+      }
+    } else if (climber.state === 'jumping') {
+      climber.timer += dt;
+      const t = Math.min(1, climber.timer / climber.jumpDur);
+      const easeX = 1 - Math.pow(1 - t, 1.7);
+      climber.x = climber.startX + (climber.targetX - climber.startX) * easeX;
+      const linearY = climber.startY + (climber.targetY - climber.startY) * t;
+      const arcH = Math.max(115, ROW_STEP * 0.48);
+      climber.y = linearY - Math.sin(t * Math.PI) * arcH;
+
+      const vyNorm = Math.cos(t * Math.PI);
+      climber.stretch = 1 + Math.abs(vyNorm) * 0.15;
+      climber.squash = 1 - Math.abs(vyNorm) * 0.1;
+
+      if (t >= 1) {
+        const block = climber.targetBlock;
+        if (block.isCorrect) {
+          block.activated = true;
+          block.bounceY = 15;
+          climber.currentBlock = block;
+          climber.state = 'celebrate';
+          climber.timer = 0;
+          climber.squash = 1.26;
+          climber.stretch = 0.78;
+
+          currentRow = block.rowIndex;
+          ensureRowsUpTo(currentRow + 5);
+
+          sfx.playSuccess(currentRow);
+          spawnCelebrationParticles(block.x, block.y - block.h * 0.45);
+        } else {
+          // Landed on a TRAP block! Trigger trap comedy sequence!
+          block.sprung = true;
+          block.bounceY = 18;
+          screenShake = 12;
+          sfx.playTrap(block.trapType);
+          spawnTrapParticles(block.x, block.y - block.h * 0.45, block.trapType);
+
+          climber.state = 'trapAction';
+          climber.timer = 0;
+          climber.x = block.x;
+          climber.y = block.y - block.h * 0.46;
+        }
+      }
+    } else if (climber.state === 'trapAction') {
+      // Short funny reaction right on the trap platform (0.32s) before flipping back
+      climber.timer += dt;
+      const block = climber.targetBlock;
+      const p = Math.min(1, climber.timer / 0.32);
+
+      if (block.trapType === 'bellows' || block.trapType === 'geyser') {
+        climber.y = (block.y - block.h * 0.46) - Math.sin(p * Math.PI) * 55;
+        climber.hatOffset = -28 * Math.sin(p * Math.PI);
+      } else if (block.trapType === 'honey') {
+        climber.x = block.x + Math.sin(p * Math.PI * 10) * 10;
+      } else if (block.trapType === 'tilt') {
+        climber.flipAngle = Math.sin(p * Math.PI * 6) * 0.35;
+      }
+
+      if (climber.timer >= 0.32) {
+        climber.state = 'trapReturn';
+        climber.timer = 0;
+        climber.startX = climber.x;
+        climber.startY = climber.y;
+        climber.targetX = climber.currentBlock.x;
+        climber.targetY = climber.currentBlock.y - climber.currentBlock.h * 0.46;
+      }
+    } else if (climber.state === 'trapReturn') {
+      climber.timer += dt;
+      const dur = 0.5;
+      const t = Math.min(1, climber.timer / dur);
+      climber.x = climber.startX + (climber.targetX - climber.startX) * t;
+      const linearY = climber.startY + (climber.targetY - climber.startY) * t;
+      climber.y = linearY - Math.sin(t * Math.PI) * 140;
+      climber.flipAngle = -climber.facing * t * Math.PI * 2;
+      climber.hatOffset = (1 - t) * -18;
+
+      if (t >= 1) {
+        climber.flipAngle = 0;
+        climber.hatOffset = 0;
+        climber.state = 'idle';
+        climber.squash = 1.22;
+        climber.stretch = 0.82;
+        climber.currentBlock.bounceY = 10;
+      }
+    } else if (climber.state === 'celebrate') {
+      climber.timer += dt;
+      const hop = Math.sin((climber.timer / 0.36) * Math.PI) * 24;
+      climber.squash += (1 - climber.squash) * Math.min(1, dt * 10);
+      climber.stretch += (1 - climber.stretch) * Math.min(1, dt * 10);
+      if (climber.currentBlock) {
+        climber.x = climber.currentBlock.x;
+        climber.y = climber.currentBlock.y - climber.currentBlock.h * 0.46 + climber.currentBlock.bounceY - Math.max(0, hop);
+      }
+      if (climber.timer >= 0.36) {
+        climber.state = 'idle';
+      }
+    }
+
+    // Scarf physics chain
+    if (climber.scarf.length > 0) {
+      climber.scarf[0].x = climber.x - climber.facing * 8;
+      climber.scarf[0].y = climber.y - 54 * climber.stretch;
+      for (let i = 1; i < climber.scarf.length; i++) {
+        const prev = climber.scarf[i - 1];
+        const pt = climber.scarf[i];
+        pt.x += (-climber.facing * 45 + Math.sin(climber.breathPhase * 2.5 + i) * 28) * dt;
+        pt.y += 35 * dt;
+        const dx = pt.x - prev.x;
+        const dy = pt.y - prev.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const maxDist = 9;
+        if (dist > maxDist) {
+          pt.x = prev.x + (dx / dist) * maxDist;
+          pt.y = prev.y + (dy / dist) * maxDist;
+        }
+      }
+    }
+
+    // Update Hot Air Balloons
+    for (const b of balloons) {
+      b.x += b.vx * dt;
+      b.bobPhase += dt * 1.8;
+      if (b.vx > 0 && b.x > width + 100) b.x = -100;
+      if (b.vx < 0 && b.x < -100) b.x = width + 100;
+    }
+
+    // Update Clouds
+    for (const c of clouds) {
+      c.x += c.vx * dt;
+      if (c.vx > 0 && c.x > width + 180) c.x = -180;
+      if (c.vx < 0 && c.x < -180) c.x = width + 180;
+    }
+
+    // Update Birds
+    for (const b of birds) {
+      b.x += b.vx * dt;
+      b.phase += dt * 9;
+      if (b.vx > 0 && b.x > width + 80) b.x = -80;
+      if (b.vx < 0 && b.x < -80) b.x = width + 80;
+    }
+
+    // Update Cable Cars
+    for (const cc of cableCars) {
+      cc.progress += cc.speed * cc.dir * dt;
+      if (cc.progress > 1) {
+        cc.progress = 1;
+        cc.dir = -1;
+      } else if (cc.progress < 0) {
+        cc.progress = 0;
+        cc.dir = 1;
+      }
+    }
+
+    // Update Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += p.gravity * dt;
+      p.rot += p.vRot * dt;
+      p.life -= p.decay * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  // ============================================================================
+  // 8. DRAW CHEERFUL STORY-DRIVEN ALPINE FESTIVAL & SKY CARNIVAL BACKGROUND
+  // ============================================================================
+  function drawStoryBackground(time) {
+    // Joyful daytime sky gradient that evolves subtly with altitude
+    const skyCycle = Math.min(1, (currentRow % 18) / 18);
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+    if (skyCycle < 0.5) {
+      skyGrad.addColorStop(0, '#2ec4b6');
+      skyGrad.addColorStop(0.45, '#72efdd');
+      skyGrad.addColorStop(1, '#fff3b0');
+    } else {
+      skyGrad.addColorStop(0, '#3a86ff');
+      skyGrad.addColorStop(0.5, '#8ecae6');
+      skyGrad.addColorStop(1, '#ffafcc');
+    }
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Radiant Smiling Sun with rotating golden beams in top-left sky
+    const sunX = width * 0.12;
+    const sunY = height * 0.14;
+    ctx.save();
+    ctx.translate(sunX, sunY);
+    ctx.rotate(time * 0.18);
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate((Math.PI * 2) / 12);
+      ctx.fillStyle = 'rgba(255, 238, 130, 0.28)';
+      ctx.beginPath();
+      ctx.moveTo(-14, 0);
+      ctx.lineTo(0, -135);
+      ctx.lineTo(14, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    const sunGrad = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, 68);
+    sunGrad.addColorStop(0, '#fffdf0');
+    sunGrad.addColorStop(0.55, '#ffdf5d');
+    sunGrad.addColorStop(1, 'rgba(255, 202, 58, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, 68, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fluffy Sunlit Clouds (Parallax)
+    for (const c of clouds) {
+      const cy = ((c.yOffset - camY * 0.18) % (height + 160));
+      const sy = cy < -80 ? cy + height + 160 : cy;
+      ctx.save();
+      ctx.translate(c.x, sy);
+      ctx.scale(c.scale, c.scale);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 34, 0, Math.PI * 2);
+      ctx.arc(-28, 8, 25, 0, Math.PI * 2);
+      ctx.arc(28, 6, 27, 0, Math.PI * 2);
+      ctx.arc(48, 14, 18, 0, Math.PI * 2);
+      ctx.arc(-46, 15, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Distant Snow-Capped Sunlit Alpine Peaks (slow parallax so always visible)
+    const mountainBaseY = height * 0.84 + Math.min(260, Math.max(-120, -camY * 0.12));
+
+    // Far Lavender-Blue Mountains
+    ctx.fillStyle = '#74a8c2';
+    ctx.beginPath();
+    ctx.moveTo(0, height);
+    ctx.lineTo(0, mountainBaseY - 190);
+    ctx.lineTo(width * 0.18, mountainBaseY - 340);
+    ctx.lineTo(width * 0.35, mountainBaseY - 180);
+    ctx.lineTo(width * 0.54, mountainBaseY - 370);
+    ctx.lineTo(width * 0.72, mountainBaseY - 210);
+    ctx.lineTo(width * 0.88, mountainBaseY - 350);
+    ctx.lineTo(width, mountainBaseY - 220);
+    ctx.lineTo(width, height);
+    ctx.closePath();
+    ctx.fill();
+
+    // Snow Caps on Peaks
+    ctx.fillStyle = '#fff9f0';
+    const peaks = [
+      { x: width * 0.18, y: mountainBaseY - 340, w: width * 0.06, h: 75 },
+      { x: width * 0.54, y: mountainBaseY - 370, w: width * 0.07, h: 85 },
+      { x: width * 0.88, y: mountainBaseY - 350, w: width * 0.06, h: 75 }
+    ];
+    for (const pk of peaks) {
+      ctx.beginPath();
+      ctx.moveTo(pk.x, pk.y);
+      ctx.lineTo(pk.x - pk.w, pk.y + pk.h);
+      ctx.lineTo(pk.x - pk.w * 0.3, pk.y + pk.h * 0.72);
+      ctx.lineTo(pk.x, pk.y + pk.h * 0.92);
+      ctx.lineTo(pk.x + pk.w * 0.35, pk.y + pk.h * 0.7);
+      ctx.lineTo(pk.x + pk.w, pk.y + pk.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Mountain Cable Cars (Фунікулери) gliding between peaks
+    const cableStart = { x: width * 0.05, y: mountainBaseY - 210 };
+    const cableEnd   = { x: width * 0.95, y: mountainBaseY - 280 };
+    ctx.strokeStyle = 'rgba(45, 65, 85, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cableStart.x, cableStart.y);
+    ctx.lineTo(cableEnd.x, cableEnd.y);
+    ctx.stroke();
+
+    for (const cc of cableCars) {
+      const cx = cableStart.x + (cableEnd.x - cableStart.x) * cc.progress;
+      const cy = cableStart.y + (cableEnd.y - cableStart.y) * cc.progress;
+      ctx.save();
+      ctx.translate(cx, cy);
+      // Hanger arm
+      ctx.strokeStyle = '#2b2d42';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, 14);
+      ctx.stroke();
+      // Cabin
+      ctx.fillStyle = cc.color;
+      ctx.beginPath();
+      ctx.roundRect(-16, 14, 32, 22, 6);
+      ctx.fill();
+      ctx.strokeStyle = '#fff3b0';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Cabin Windows
+      ctx.fillStyle = '#caf0f8';
+      ctx.fillRect(-11, 18, 9, 9);
+      ctx.fillRect(2, 18, 9, 9);
+      ctx.restore();
+    }
+
+    // Colorful Hot Air Balloons floating across the sky!
+    for (const b of balloons) {
+      const by = ((b.yOffset - camY * 0.32) % (height + 220));
+      const sy = (by < -110 ? by + height + 220 : by) + Math.sin(b.bobPhase) * 10;
+      drawHotAirBalloon(b.x, sy, b.r, b.colors, time);
+    }
+
+    // Cheerful Flying Birds
+    for (const b of birds) {
+      const by = ((b.yOffset - camY * 0.25) % (height + 100));
+      const sy = by < -50 ? by + height + 100 : by;
+      const flap = Math.sin(b.phase) * 7;
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 2.8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(b.x - 10, sy + flap);
+      ctx.quadraticCurveTo(b.x - 4, sy - 4, b.x, sy);
+      ctx.quadraticCurveTo(b.x + 4, sy - 4, b.x + 10, sy + flap);
+      ctx.stroke();
+    }
+
+    // Lush Sunlit Green Rolling Alpine Meadows (Valley Foreground)
+    const valleyY = height * 0.82 - camY * 0.45;
+    if (valleyY < height + 260) {
+      // Back green hill
+      const hill1Grad = ctx.createLinearGradient(0, valleyY - 120, 0, valleyY + 200);
+      hill1Grad.addColorStop(0, '#80ed99');
+      hill1Grad.addColorStop(1, '#38a3a5');
+      ctx.fillStyle = hill1Grad;
+      ctx.beginPath();
+      ctx.moveTo(0, height + 200);
+      ctx.lineTo(0, valleyY - 50);
+      ctx.quadraticCurveTo(width * 0.28, valleyY - 140, width * 0.55, valleyY - 40);
+      ctx.quadraticCurveTo(width * 0.82, valleyY + 30, width, valleyY - 80);
+      ctx.lineTo(width, height + 200);
+      ctx.closePath();
+      ctx.fill();
+
+      // Front sunlit meadow
+      const hill2Grad = ctx.createLinearGradient(0, valleyY - 40, 0, valleyY + 240);
+      hill2Grad.addColorStop(0, '#9ef01a');
+      hill2Grad.addColorStop(1, '#38b000');
+      ctx.fillStyle = hill2Grad;
+      ctx.beginPath();
+      ctx.moveTo(0, height + 200);
+      ctx.lineTo(0, valleyY + 20);
+      ctx.quadraticCurveTo(width * 0.22, valleyY - 45, width * 0.48, valleyY + 25);
+      ctx.quadraticCurveTo(width * 0.76, valleyY - 55, width, valleyY + 10);
+      ctx.lineTo(width, height + 200);
+      ctx.closePath();
+      ctx.fill();
+
+      // Spinning Wooden Windmill on the left meadow hill
+      drawWindmill(width * 0.13, valleyY - 38, time);
+
+      // Festive Striped Carnival Tent on the right meadow hill
+      drawFestivalTent(width * 0.86, valleyY - 22, time);
+
+      // Cute Grazing Animated Sheep on the meadows
+      for (const sh of sheepList) {
+        const sx = width * sh.xRatio;
+        const sy = valleyY + 18 + Math.sin(sh.xRatio * 12) * 14;
+        drawSheep(sx, sy, sh.dir, time + sh.grazePhase);
+      }
+    }
+  }
+
+  function drawHotAirBalloon(x, y, r, cols, time) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(time * 1.2 + x * 0.01) * 0.05);
+
+    // Wicker Basket
+    ctx.fillStyle = '#bc6c25';
+    ctx.beginPath();
+    ctx.roundRect(-r * 0.28, r * 1.15, r * 0.56, r * 0.42, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#7f4f24';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Little waving passenger silhouette inside basket
+    ctx.fillStyle = '#2b2d42';
+    ctx.beginPath();
+    ctx.arc(0, r * 1.05, r * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ropes
+    ctx.strokeStyle = '#dda15e';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.22, r * 1.15);
+    ctx.lineTo(-r * 0.35, r * 0.78);
+    ctx.moveTo(r * 0.22, r * 1.15);
+    ctx.lineTo(r * 0.35, r * 0.78);
+    ctx.stroke();
+
+    // Balloon Envelope
+    ctx.fillStyle = cols[0];
+    ctx.beginPath();
+    ctx.arc(0, 0, r, Math.PI * 0.82, Math.PI * 2.18);
+    ctx.lineTo(r * 0.38, r * 0.82);
+    ctx.lineTo(-r * 0.38, r * 0.82);
+    ctx.closePath();
+    ctx.fill();
+
+    // Center Vertical Stripe
+    ctx.fillStyle = cols[1];
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.45, r * 0.92, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Decorative Horizontal Chevron Band
+    ctx.fillStyle = cols[2];
+    ctx.fillRect(-r * 0.92, -r * 0.12, r * 1.84, r * 0.22);
+
+    ctx.restore();
+  }
+
+  function drawWindmill(x, y, time) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Tower body
+    ctx.fillStyle = '#d4a373';
+    ctx.beginPath();
+    ctx.moveTo(-26, 45);
+    ctx.lineTo(-16, -38);
+    ctx.lineTo(16, -38);
+    ctx.lineTo(26, 45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#8d5b4c';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Roof cone
+    ctx.fillStyle = '#e63946';
+    ctx.beginPath();
+    ctx.moveTo(-22, -36);
+    ctx.lineTo(0, -60);
+    ctx.lineTo(22, -36);
+    ctx.closePath();
+    ctx.fill();
+
+    // Spinning Sails
+    ctx.save();
+    ctx.translate(0, -28);
+    ctx.rotate(time * 0.9);
+    for (let i = 0; i < 4; i++) {
+      ctx.rotate(Math.PI / 2);
+      ctx.strokeStyle = '#6c3c28';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -56);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff3b0';
+      ctx.fillRect(2, -52, 13, 38);
+      ctx.strokeStyle = '#e09f3e';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(2, -52, 13, 38);
+    }
+    ctx.fillStyle = '#ffb703';
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawFestivalTent(x, y, time) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Tent Body
+    ctx.fillStyle = '#ff595e';
+    ctx.beginPath();
+    ctx.moveTo(-38, 35);
+    ctx.lineTo(-32, -8);
+    ctx.lineTo(32, -8);
+    ctx.lineTo(38, 35);
+    ctx.closePath();
+    ctx.fill();
+
+    // White/Gold Stripes
+    ctx.fillStyle = '#fff9db';
+    ctx.fillRect(-12, -8, 10, 43);
+    ctx.fillRect(6, -8, 10, 43);
+
+    // Canopy Roof
+    ctx.fillStyle = '#ffca3a';
+    ctx.beginPath();
+    ctx.moveTo(-42, -8);
+    ctx.lineTo(0, -42);
+    ctx.lineTo(42, -8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Fluttering Pennant Flag on top
+    const wave = Math.sin(time * 5) * 4;
+    ctx.fillStyle = '#1982c4';
+    ctx.beginPath();
+    ctx.moveTo(0, -42);
+    ctx.lineTo(0, -58);
+    ctx.lineTo(22, -50 + wave);
+    ctx.lineTo(0, -44);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawSheep(x, y, dir, phase) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(dir, 1);
+
+    // Legs
+    ctx.strokeStyle = '#2b2d42';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-8, 4); ctx.lineTo(-8, 14);
+    ctx.moveTo(8, 4);  ctx.lineTo(8, 14);
+    ctx.stroke();
+
+    // Fluffy wool cloud body
+    ctx.fillStyle = '#fffdf7';
+    ctx.beginPath();
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.arc(-9, 2, 9, 0, Math.PI * 2);
+    ctx.arc(9, 2, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head bobbing while grazing
+    const headBob = Math.sin(phase * 2.5) * 3;
+    ctx.fillStyle = '#3d405b';
+    ctx.beginPath();
+    ctx.ellipse(14, 1 + headBob, 7, 5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // 9. MASSIVE STYLIZED PLATFORMS & LARGE HIGH-CONTRAST WORDS
+  // ============================================================================
+  const PLATFORM_THEMES = [
+    // Warm Honey-Wood & Gold
+    { top: '#ffb703', mid: '#df7a16', bot: '#9c4100', rim: '#fff3b0', grass: '#70e000', flag1: '#ff595e', flag2: '#ffca3a' },
+    // Berry Rose & Amber Wood
+    { top: '#ff758f', mid: '#c9184a', bot: '#800f2f', rim: '#ffccd5', grass: '#80ed99', flag1: '#ffca3a', flag2: '#4cc9f0' },
+    // Sky Cerulean & Brass
+    { top: '#48cae4', mid: '#0077b6', bot: '#03045e', rim: '#caf0f8', grass: '#9ef01a', flag1: '#ff9f1c', flag2: '#ffffff' },
+    // Royal Violet & Marigold
+    { top: '#b5179e', mid: '#7209b7', bot: '#3c096c', rim: '#f72585', grass: '#70e000', flag1: '#ffca3a', flag2: '#8ac926' }
+  ];
+
+  function drawBlock(block, screenY, time, isTargetRow, isHovered) {
+    const x = block.x;
+    const bob = isTargetRow && !block.sprung ? Math.sin(time * 3.2 + block.slot * 1.4) * 4 : 0;
+    const y = screenY + block.bounceY + bob;
+    const w = block.w;
+    const h = block.h;
+    const theme = PLATFORM_THEMES[block.themeIdx % PLATFORM_THEMES.length];
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // If 'tilt' trap was triggered, tilt the plank on its center axle!
+    if (block.sprung && block.trapType === 'tilt') {
+      ctx.rotate(Math.sin(block.trapAnim * Math.PI * 1.4) * 0.36);
+    }
+
+    // 1. Draw Triggered Trap Contraptions Emerging Above the Platform
+    if (block.sprung) {
+      const p = block.trapAnim;
+      if (block.trapType === 'spring') {
+        // Giant Coiled Brass Spring & Bounce Pad
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        const coils = 5;
+        const springH = 55 * p;
+        for (let c = 0; c <= coils; c++) {
+          const cy = -h * 0.5 - (c / coils) * springH;
+          const cx = (c % 2 === 0 ? -1 : 1) * 26;
+          if (c === 0) ctx.moveTo(0, -h * 0.5);
+          else ctx.lineTo(cx, cy);
+        }
+        ctx.stroke();
+
+        ctx.fillStyle = '#e63946';
+        ctx.beginPath();
+        ctx.roundRect(-38, -h * 0.5 - springH - 12, 76, 14, 6);
+        ctx.fill();
+      } else if (block.trapType === 'bellows') {
+        // Puffing Alpine Accordion Bellows + Wind Swirls
+        ctx.fillStyle = '#4cc9f0';
+        for (let f = 0; f < 3; f++) {
+          ctx.beginPath();
+          ctx.roundRect(-34 + f * 4, -h * 0.5 - (f + 1) * 14 * p, 68 - f * 8, 12, 4);
+          ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 3;
+        for (let s = -1; s <= 1; s++) {
+          ctx.beginPath();
+          ctx.moveTo(s * 24, -h * 0.5 - 30 * p);
+          ctx.quadraticCurveTo(s * 42, -h * 0.5 - 60 * p, s * 18, -h * 0.5 - 85 * p);
+          ctx.stroke();
+        }
+      } else if (block.trapType === 'honey') {
+        // Bubbling Golden Honey Splash + Swirling Bumblebees
+        ctx.fillStyle = '#ffb703';
+        ctx.beginPath();
+        ctx.arc(0, -h * 0.5, 42 * p, Math.PI, 0);
+        ctx.fill();
+        for (let b = 0; b < 3; b++) {
+          const ang = time * 8 + b * 2.1;
+          const bx = Math.cos(ang) * 45 * p;
+          const by = -h * 0.5 - 28 * p + Math.sin(ang * 2) * 14;
+          ctx.fillStyle = '#ffca3a';
+          ctx.beginPath();
+          ctx.ellipse(bx, by, 9, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#1d1e2c';
+          ctx.fillRect(bx - 3, by - 5, 3, 10);
+        }
+      } else if (block.trapType === 'geyser') {
+        // Rainbow Water Fountain Jet
+        const gGrad = ctx.createLinearGradient(0, -h * 0.5 - 85 * p, 0, -h * 0.5);
+        gGrad.addColorStop(0, 'rgba(72, 202, 228, 0.1)');
+        gGrad.addColorStop(1, 'rgba(0, 180, 216, 0.88)');
+        ctx.fillStyle = gGrad;
+        ctx.beginPath();
+        ctx.moveTo(-22, -h * 0.5);
+        ctx.lineTo(-46, -h * 0.5 - 85 * p);
+        ctx.lineTo(46, -h * 0.5 - 85 * p);
+        ctx.lineTo(22, -h * 0.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // 2. Festive Bunting Flags Hanging Underneath the Platform
+    const flagCount = 5;
+    const flagSpan = w * 0.78;
+    const startFlagX = -flagSpan * 0.5;
+    const flagStep = flagSpan / flagCount;
+    for (let i = 0; i < flagCount; i++) {
+      const fx = startFlagX + i * flagStep;
+      ctx.fillStyle = i % 2 === 0 ? theme.flag1 : theme.flag2;
+      ctx.beginPath();
+      ctx.moveTo(fx, h * 0.44);
+      ctx.lineTo(fx + flagStep * 0.5, h * 0.44 + 17 + Math.sin(time * 4 + i) * 2);
+      ctx.lineTo(fx + flagStep, h * 0.44);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 3. Hover / Target Pulsing Golden Aura
+    if (isTargetRow && !block.sprung) {
+      const pulse = 0.5 + 0.5 * Math.sin(time * 5);
+      ctx.strokeStyle = isHovered
+        ? '#fffdf0'
+        : `rgba(255, 240, 150, ${0.45 + pulse * 0.35})`;
+      ctx.lineWidth = isHovered ? 6 : 3.5;
+      ctx.beginPath();
+      ctx.roundRect(-w * 0.5 - 7, -h * 0.5 - 7, w + 14, h + 14, 28);
+      ctx.stroke();
+    }
+
+    // 4. Platform 3D Bottom Shadow Rim
+    ctx.fillStyle = 'rgba(25, 10, 0, 0.38)';
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.5, -h * 0.5 + 10, w, h, 24);
+    ctx.fill();
+
+    // 5. Main Carved Wood & Folk Painted Platform Body (Zero White Rectangles!)
+    const bodyGrad = ctx.createLinearGradient(0, -h * 0.5, 0, h * 0.5);
+    if (block.sprung) {
+      bodyGrad.addColorStop(0, '#8d6e63');
+      bodyGrad.addColorStop(1, '#4e342e');
+    } else if (block.activated && !block.isStart) {
+      bodyGrad.addColorStop(0, '#52b788');
+      bodyGrad.addColorStop(0.5, '#2d6a4f');
+      bodyGrad.addColorStop(1, '#1b4332');
+    } else {
+      bodyGrad.addColorStop(0, theme.top);
+      bodyGrad.addColorStop(0.45, theme.mid);
+      bodyGrad.addColorStop(1, theme.bot);
+    }
+
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.5, -h * 0.5, w, h, 24);
+    ctx.fill();
+
+    // 6. Decorative Folk-Art Diamonds & lush green turf trim on top edge
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.5, -h * 0.5, w, h, 24);
+    ctx.clip();
+
+    // Top turf / sunlit glaze band
+    ctx.fillStyle = block.sprung ? 'rgba(255,255,255,0.12)' : theme.grass;
+    ctx.fillRect(-w * 0.5, -h * 0.5, w, 12);
+
+    // Scalloped grass blades along top
+    if (!block.sprung) {
+      ctx.fillStyle = theme.grass;
+      for (let gx = -w * 0.45; gx <= w * 0.45; gx += 26) {
+        ctx.beginPath();
+        ctx.arc(gx, -h * 0.5 + 11, 9, 0, Math.PI);
+        ctx.fill();
+      }
+    }
+
+    // Side folk diamond ornaments
+    for (let side = -1; side <= 1; side += 2) {
+      const dx = side * (w * 0.42);
+      ctx.fillStyle = 'rgba(255, 245, 200, 0.35)';
+      ctx.beginPath();
+      ctx.moveTo(dx, -10);
+      ctx.lineTo(dx + 8, 0);
+      ctx.lineTo(dx, 10);
+      ctx.lineTo(dx - 8, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // 7. Ornate Golden / Brass Border Frame
+    ctx.strokeStyle = block.activated
+      ? '#b7efc5'
+      : (isHovered ? '#ffffff' : theme.rim);
+    ctx.lineWidth = isHovered ? 4.5 : 3;
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.5, -h * 0.5, w, h, 24);
+    ctx.stroke();
+
+    // 8. LARGE, CRISP, HIGH-CONTRAST WORD TYPOGRAPHY
+    if (block.word) {
+      const fontSize = Math.round(Math.min(44, Math.max(26, w * 0.135)));
+      ctx.font = `900 ${fontSize}px 'Comfortaa', 'Montserrat', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Thick dark-brown outline for 100% legibility on any background
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
+      ctx.strokeStyle = '#2a1508';
+      ctx.lineWidth = 7.5;
+      ctx.strokeText(block.word, 0, 5);
+
+      // Warm cream-ivory fill
+      ctx.fillStyle = block.sprung ? '#ffd6d6' : '#fffdf2';
+      ctx.fillText(block.word, 0, 4);
+    } else if (block.isStart) {
+      // Festive compass star on start block
+      ctx.fillStyle = '#fff3b0';
+      ctx.beginPath();
+      ctx.arc(0, 3, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#7f2704';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // 10. DRAW REALISTIC ARTICULATED ALPINE CLIMBER CHARACTER
+  // ============================================================================
+  function drawLimb(x1, y1, x2, y2, r1, r2, color) {
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const perp = ang + Math.PI / 2;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x1 + Math.cos(perp) * r1, y1 + Math.sin(perp) * r1);
+    ctx.lineTo(x2 + Math.cos(perp) * r2, y2 + Math.sin(perp) * r2);
+    ctx.arc(x2, y2, r2, perp, perp + Math.PI);
+    ctx.lineTo(x1 - Math.cos(perp) * r1, y1 - Math.sin(perp) * r1);
+    ctx.arc(x1, y1, r1, perp + Math.PI, perp);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawClimber(screenY) {
+    const x = climber.x;
+    const y = screenY;
+    const f = climber.facing;
+
+    // Draw Physics Scarf Behind Character
+    if (climber.scarf.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = '#ff595e';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < climber.scarf.length; i++) {
+        const pt = climber.scarf[i];
+        const py = worldToScreenY(pt.y);
+        if (i === 0) ctx.moveTo(pt.x, py);
+        else ctx.lineTo(pt.x, py);
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffca3a';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(x, y);
+    if (climber.flipAngle !== 0) {
+      ctx.translate(0, -40);
+      ctx.rotate(climber.flipAngle);
+      ctx.translate(0, 40);
+    }
+    ctx.scale(f * climber.squash, climber.stretch);
+
+    const breath = Math.sin(climber.breathPhase) * 2.2;
+    let crouch = 0;
+    let armSwing = 0;
+    let kneeLift = 0;
+    let lean = 0.06;
+
+    if (climber.state === 'anticipation') {
+      crouch = 13;
+      lean = 0.25;
+      armSwing = -0.85;
+    } else if (climber.state === 'jumping') {
+      const p = climber.timer / climber.jumpDur;
+      crouch = -6;
+      lean = 0.2 - p * 0.15;
+      armSwing = 1.35 - p * 0.4;
+      kneeLift = Math.sin(p * Math.PI) * 16;
+    } else if (climber.state === 'trapAction' || climber.state === 'trapReturn') {
+      armSwing = 1.75;
+      kneeLift = 18;
+    } else if (climber.state === 'celebrate') {
+      armSwing = 1.95;
+    }
+
+    // Ground Contact Shadow
+    if (climber.state === 'idle' || climber.state === 'anticipation') {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+      ctx.beginPath();
+      ctx.ellipse(0, 3, 26, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const hipX = -2;
+    const hipY = -36 + crouch + breath * 0.5;
+    const shoulderX = hipX + Math.sin(lean) * 28;
+    const shoulderY = hipY - Math.cos(lean) * 28 + breath * 0.6;
+
+    // 1. Back Arm
+    const bElbowX = shoulderX - 7 + Math.sin(armSwing - 0.3) * 15;
+    const bElbowY = shoulderY + 12 - Math.sin(armSwing) * 12;
+    const bHandX = bElbowX + 11 + Math.cos(armSwing) * 10;
+    const bHandY = bElbowY + 7 - Math.sin(armSwing) * 15;
+    drawLimb(shoulderX, shoulderY, bElbowX, bElbowY, 5, 4.2, '#f4a261');
+    drawLimb(bElbowX, bElbowY, bHandX, bHandY, 4, 3.4, '#f4a261');
+
+    // 2. Back Leg
+    const bFootX = -10 - kneeLift * 0.25;
+    const bFootY = -2 - kneeLift * 0.7;
+    const bKneeX = (hipX + bFootX) * 0.5 + 8 + kneeLift * 0.35;
+    const bKneeY = (hipY + bFootY) * 0.5 - 2;
+    drawLimb(hipX, hipY, bKneeX, bKneeY, 6.2, 5, '#1d3557');
+    drawLimb(bKneeX, bKneeY, bFootX, bFootY - 4, 4.8, 3.8, '#f4a261');
+    ctx.fillStyle = '#6f1d1b';
+    ctx.beginPath();
+    ctx.roundRect(bFootX - 5, bFootY - 8, 16, 9, 4);
+    ctx.fill();
+
+    // 3. Torso (Festive Shirt & Alpine Suspenders/Vest)
+    ctx.save();
+    ctx.translate(hipX, hipY);
+    ctx.rotate(lean);
+    ctx.fillStyle = '#fff9db';
+    ctx.beginPath();
+    ctx.roundRect(-12, -29, 24, 30, 9);
+    ctx.fill();
+
+    // Festive Emerald Vest
+    ctx.fillStyle = '#2a9d8f';
+    ctx.beginPath();
+    ctx.roundRect(-12, -28, 8, 26, 4);
+    ctx.roundRect(4, -28, 8, 26, 4);
+    ctx.fill();
+
+    // Belt & Golden Buckle
+    ctx.fillStyle = '#6f1d1b';
+    ctx.fillRect(-12, -5, 24, 5);
+    ctx.fillStyle = '#ffca3a';
+    ctx.fillRect(-3, -6, 7, 7);
+    ctx.restore();
+
+    // 4. Front Leg
+    const fFootX = 9 - kneeLift * 0.2;
+    const fFootY = -1 - kneeLift * 0.5;
+    const fKneeX = (hipX + fFootX) * 0.5 + 10 + kneeLift * 0.4;
+    const fKneeY = (hipY + fFootY) * 0.5 - 2;
+    drawLimb(hipX, hipY, fKneeX, fKneeY, 6.5, 5.2, '#264653');
+    drawLimb(fKneeX, fKneeY, fFootX, fFootY - 4, 5, 4, '#f8ad77');
+    ctx.fillStyle = '#99582a';
+    ctx.beginPath();
+    ctx.roundRect(fFootX - 5, fFootY - 8, 17, 9, 4);
+    ctx.fill();
+    ctx.fillStyle = '#ffca3a';
+    ctx.fillRect(fFootX - 5, fFootY - 1, 17, 2.5);
+
+    // 5. Head, Expressive Face & Alpine Hat with Feather
+    const headX = shoulderX + 2;
+    const headY = shoulderY - 15;
+    drawLimb(shoulderX, shoulderY, headX, headY + 4, 4, 4, '#f8ad77');
+
+    // Face
+    ctx.fillStyle = '#f8ad77';
+    ctx.beginPath();
+    ctx.arc(headX, headY, 13, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rosy cheek
+    ctx.fillStyle = 'rgba(255, 89, 94, 0.45)';
+    ctx.beginPath();
+    ctx.arc(headX + 4, headY + 3, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes (blink or look toward cursor)
+    if (climber.isBlinking) {
+      ctx.strokeStyle = '#1d1e2c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(headX + 3, headY - 1);
+      ctx.lineTo(headX + 9, headY - 1);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(headX + 6, headY - 1.5, 3.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1d1e2c';
+      ctx.beginPath();
+      ctx.arc(headX + 7, headY - 2, 2.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Mouth (Smile or Surprised O on traps)
+    ctx.strokeStyle = '#6f1d1b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (climber.state === 'trapAction' || climber.state === 'trapReturn') {
+      ctx.arc(headX + 6, headY + 5, 3, 0, Math.PI * 2);
+    } else {
+      ctx.arc(headX + 4.5, headY + 3.5, 4, 0.15, Math.PI * 0.8);
+    }
+    ctx.stroke();
+
+    // Cheerful Alpine Hat + Red Feather (bounces when hatOffset is active)
+    const hy = headY - 9 + climber.hatOffset;
+    ctx.fillStyle = '#38b000';
+    ctx.beginPath();
+    ctx.ellipse(headX, hy + 2, 17, 5, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(headX, hy, 12, Math.PI, 0);
+    ctx.fill();
+    // Hat ribbon
+    ctx.fillStyle = '#ffca3a';
+    ctx.fillRect(headX - 11, hy - 2, 22, 3);
+    // Feather
+    ctx.fillStyle = '#ff595e';
+    ctx.beginPath();
+    ctx.ellipse(headX - 9, hy - 10, 4, 10, -0.45, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 6. Front Arm
+    const fElbowX = shoulderX - 3 + Math.sin(armSwing) * 15;
+    const fElbowY = shoulderY + 13 - Math.sin(armSwing) * 12;
+    const fHandX = fElbowX + 12 + Math.cos(armSwing) * 10;
+    const fHandY = fElbowY + 6 - Math.sin(armSwing) * 16;
+    drawLimb(shoulderX, shoulderY, fElbowX, fElbowY, 5.2, 4.4, '#f8ad77');
+    drawLimb(fElbowX, fElbowY, fHandX, fHandY, 4.2, 3.6, '#f8ad77');
+    ctx.fillStyle = '#f8ad77';
+    ctx.beginPath();
+    ctx.arc(fHandX, fHandY, 4.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // 11. DRAW INTERACTIVE JUMP ARC PREVIEW & PARTICLES
+  // ============================================================================
+  function drawJumpTrajectoryPreview(targetBlock, time) {
+    if (!targetBlock || climber.state !== 'idle') return;
+    const startX = climber.x;
+    const startY = worldToScreenY(climber.y) - 35;
+    const endX = targetBlock.x;
+    const endY = worldToScreenY(targetBlock.y - targetBlock.h * 0.48);
+
+    ctx.save();
+    const dots = 11;
+    for (let i = 1; i < dots; i++) {
+      const t = (i / dots + (time * 1.5) % (1 / dots));
+      if (t >= 1) continue;
+      const px = startX + (endX - startX) * t;
+      const py = startY + (endY - startY) * t - Math.sin(t * Math.PI) * 110;
+      const r = 3.5 + Math.sin(t * Math.PI) * 3;
+      ctx.fillStyle = 'rgba(255, 253, 220, 0.9)';
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#d9480f';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.save();
+      ctx.translate(p.x, worldToScreenY(p.y));
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+
+      if (p.shape === 'flower') {
+        for (let a = 0; a < 5; a++) {
+          const ang = (a / 5) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(Math.cos(ang) * p.size * 0.45, Math.sin(ang) * p.size * 0.45, p.size * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#fff3b0';
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.shape === 'star') {
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a1 = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+          const a2 = a1 + Math.PI / 5;
+          ctx.lineTo(Math.cos(a1) * p.size, Math.sin(a1) * p.size);
+          ctx.lineTo(Math.cos(a2) * p.size * 0.45, Math.sin(a2) * p.size * 0.45);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else if (p.shape === 'bee') {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size, p.size * 0.65, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#1d1e2c';
+        ctx.fillRect(-2, -p.size * 0.6, 3, p.size * 1.2);
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  // ============================================================================
+  // 12. MAIN RENDER LOOP
+  // ============================================================================
+  function render(time) {
+    ctx.save();
+
+    if (screenShake > 0) {
+      ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+    }
+
+    drawStoryBackground(time);
+
+    // Draw visible platform rows
+    const minR = Math.max(0, currentRow - 1);
+    const maxR = Math.min(rows.length - 1, currentRow + 3);
+
+    for (let r = minR; r <= maxR; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const sy = worldToScreenY(row.worldY);
+      if (sy < -180 || sy > height + 180) continue;
+
+      const isTargetRow = (r === currentRow + 1);
+      for (const block of row.blocks) {
+        const isHovered = (hoveredBlock === block);
+        drawBlock(block, sy, time, isTargetRow, isHovered);
+      }
+    }
+
+    // Draw Dotted Trajectory Preview if hovering over a target block
+    if (hoveredBlock && hoveredBlock.rowIndex === currentRow + 1 && !hoveredBlock.sprung) {
+      drawJumpTrajectoryPreview(hoveredBlock, time);
+    }
+
+    // Draw Realistic Articulated Climber
+    drawClimber(worldToScreenY(climber.y));
+
+    // Draw Celebration & Trap Particles
+    drawParticles();
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // 13. INPUT & UI CONTROLS
+  // ============================================================================
+  function findTargetBlockAt(clientX, clientY) {
+    const nextRow = rows[currentRow + 1];
+    if (!nextRow) return null;
+
+    let best = null;
+    let bestDist = Infinity;
+    for (const b of nextRow.blocks) {
+      if (b.sprung) continue;
+      const sy = worldToScreenY(b.y);
+      const dx = Math.abs(clientX - b.x);
+      const dy = Math.abs(clientY - sy);
+      if (dx <= b.w * 0.56 && dy <= b.h * 0.78) {
+        const d = Math.hypot(dx, dy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = b;
+        }
+      }
+    }
+    return best;
+  }
+
+  canvas.addEventListener('pointermove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    hoveredBlock = findTargetBlockAt(e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    sfx.init();
+    const clicked = findTargetBlockAt(e.clientX, e.clientY);
+    if (clicked) {
+      jumpToBlock(clicked);
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const nextRow = rows[currentRow + 1];
+    if (!nextRow) return;
+    if (e.key === 'ArrowLeft' || e.key === '1' || e.key === 'a' || e.key === 'A') {
+      jumpToBlock(nextRow.blocks[0]);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === '2' || e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') {
+      jumpToBlock(nextRow.blocks[1]);
+    } else if (e.key === 'ArrowRight' || e.key === '3' || e.key === 'd' || e.key === 'D') {
+      jumpToBlock(nextRow.blocks[2]);
+    }
+  });
+
+  // Language Toggle Button ("УКР" / "РУС")
+  langBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sfx.init();
+    currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+    langBtn.textContent = currentLang === 'uk' ? 'УКР' : 'РУС';
+
+    refillDeck();
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const used = new Set();
+      const picked = drawDistinctWords(row.blocks.length, used);
+      row.blocks.forEach((b, idx) => {
+        const item = picked[idx];
+        b.rootId = item.id;
+        b.word = b.isCorrect ? item.correct : item.wrong;
+      });
+    }
+  });
+
+  // Next / Skip Button (immediately jumps to the correct block of the next row)
+  nextBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sfx.init();
+    const nextRow = rows[currentRow + 1];
+    if (!nextRow) return;
+    const correctBlock = nextRow.blocks.find(b => b.isCorrect);
+    if (!correctBlock) return;
+
+    if (climber.state !== 'idle') {
+      const curRowObj = rows[currentRow];
+      if (curRowObj) {
+        const curCorrect = curRowObj.blocks.find(b => b.isCorrect) || curRowObj.blocks[0];
+        climber.currentBlock = curCorrect;
+        climber.x = curCorrect.x;
+        climber.y = curCorrect.y - curCorrect.h * 0.46;
+        climber.state = 'idle';
+      }
+    }
+    jumpToBlock(correctBlock);
+  });
+
+  // ============================================================================
+  // 14. WIDESCREEN RESIZE & BOOTSTRAP
+  // ============================================================================
+  function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    ROW_STEP = Math.round(height * 0.37);
+    const size = getBlockSize();
+
+    for (const row of rows) {
+      row.worldY = -row.index * ROW_STEP;
+      for (const b of row.blocks) {
+        b.y = row.worldY;
+        b.x = getSlotX(b.slot, b.totalSlots);
+        b.w = b.isStart ? size.w * 0.95 : size.w;
+        b.h = b.isStart ? size.h * 0.9 : size.h;
+      }
+    }
+
+    targetCamY = -currentRow * ROW_STEP;
+    camY = targetCamY;
+
+    if (climber.currentBlock && climber.state === 'idle') {
+      climber.x = climber.currentBlock.x;
+      climber.y = climber.currentBlock.y - climber.currentBlock.h * 0.46;
+    }
+  }
+
+  window.addEventListener('resize', resize);
+
+  function startGame() {
+    resize();
+    initStoryEnvironment();
+    refillDeck();
+    ensureRowsUpTo(8);
+
+    const startBlock = rows[0].blocks[0];
+    climber.currentBlock = startBlock;
+    climber.x = startBlock.x;
+    climber.y = startBlock.y - startBlock.h * 0.46;
+    targetCamY = 0;
+    camY = 0;
+    initScarf(climber.x, climber.y);
+
+    let lastTime = performance.now();
+    function loop(now) {
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+      update(dt);
+      render(now / 1000);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  }
+
+  window.onload = startGame;
+})();
+</script>
+</body>
+</html>
