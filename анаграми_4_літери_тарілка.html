@@ -1,0 +1,2837 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chef Anagrams</title>
+<style>
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #3a2416;
+    font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+    touch-action: none;
+  }
+
+  #bgCanvas, #fxCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+  }
+  #bgCanvas { z-index: 1; }
+  #fxCanvas { z-index: 50; }
+
+  /* Widescreen 3-zone kitchen layout */
+  .stage {
+    position: relative;
+    z-index: 10;
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 34% 43% 23%;
+    align-items: center;
+    padding: 2.2vh 2.2vw;
+    gap: 1.2vw;
+  }
+
+  /* Top-right minimalist wooden/brass controls */
+  .top-controls {
+    position: fixed;
+    top: 2.2vh;
+    right: 2.2vw;
+    z-index: 40;
+    display: flex;
+    gap: 0.9vw;
+    align-items: center;
+  }
+
+  .ctrl-btn {
+    height: clamp(44px, 6.2vh, 62px);
+    min-width: clamp(44px, 6.2vh, 62px);
+    padding: 0 14px;
+    border: 2.5px solid #e6be78;
+    border-radius: 999px;
+    background: radial-gradient(circle at 32% 28%, #8b5a34 0%, #5c361c 65%, #3d210f 100%);
+    color: #fff3d6;
+    font-size: clamp(16px, 2.2vh, 22px);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+      0 6px 14px rgba(20, 9, 3, 0.55),
+      inset 0 2px 3px rgba(255, 232, 185, 0.45),
+      inset 0 -3px 5px rgba(25, 10, 2, 0.5);
+    transition: transform 0.16s cubic-bezier(.34,1.56,.64,1), box-shadow 0.16s, filter 0.16s;
+  }
+
+  .ctrl-btn:hover {
+    transform: translateY(-2px) scale(1.05);
+    filter: brightness(1.1);
+  }
+
+  .ctrl-btn:active {
+    transform: translateY(2px) scale(0.95);
+    box-shadow: 0 2px 6px rgba(20, 9, 3, 0.6);
+  }
+
+  .ctrl-btn svg {
+    width: clamp(22px, 3.2vh, 30px);
+    height: clamp(22px, 3.2vh, 30px);
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.45));
+  }
+
+  .ctrl-btn.pulse-hint {
+    animation: brassPulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes brassPulse {
+    0%, 100% { box-shadow: 0 6px 14px rgba(20,9,3,0.55), 0 0 0 0 rgba(255, 212, 102, 0.7); }
+    50% { box-shadow: 0 6px 18px rgba(20,9,3,0.55), 0 0 0 12px rgba(255, 212, 102, 0); }
+  }
+
+  /* LEFT ZONE: Rustic Wooden Cutting Board for Anagrams */
+  .board-zone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding-top: 3vh;
+  }
+
+  .cutting-board {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    aspect-ratio: 1.08 / 1;
+    border-radius: 36px 36px 44px 44px;
+    padding: clamp(18px, 2.8vh, 30px) clamp(16px, 2vw, 28px);
+    background:
+      repeating-linear-gradient(
+        88deg,
+        rgba(82, 42, 16, 0.08) 0px,
+        rgba(82, 42, 16, 0.08) 3px,
+        transparent 3px,
+        transparent 11px
+      ),
+      radial-gradient(ellipse at 25% 20%, #d79c63 0%, #b5733c 48%, #8e5225 100%);
+    border: 3px solid #6b3b18;
+    box-shadow:
+      0 22px 40px rgba(22, 10, 3, 0.62),
+      0 8px 0 #5b3013,
+      inset 0 3px 6px rgba(255, 226, 178, 0.45),
+      inset 0 -8px 16px rgba(60, 28, 8, 0.45);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), box-shadow 0.35s, filter 0.35s;
+  }
+
+  /* Wooden cutting board handle tab */
+  .cutting-board::before {
+    content: "";
+    position: absolute;
+    top: -32px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 34%;
+    height: 36px;
+    border-radius: 22px 22px 0 0;
+    background: linear-gradient(180deg, #cf9157 0%, #a96934 100%);
+    border: 3px solid #6b3b18;
+    border-bottom: none;
+    box-shadow: inset 0 3px 4px rgba(255, 224, 173, 0.4);
+  }
+
+  /* Handle hole */
+  .cutting-board::after {
+    content: "";
+    position: absolute;
+    top: -19px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14%;
+    height: 13px;
+    border-radius: 99px;
+    background: radial-gradient(circle at 50% 35%, #2f1a0d 0%, #4b2b16 100%);
+    box-shadow: inset 0 3px 4px rgba(0,0,0,0.7), 0 1px 1px rgba(255,220,170,0.4);
+  }
+
+  /* Decorative carved groove around board */
+  .board-groove {
+    position: absolute;
+    inset: 12px;
+    border-radius: 26px 26px 34px 34px;
+    border: 2px solid rgba(72, 34, 10, 0.35);
+    box-shadow: inset 0 1px 1px rgba(255, 224, 176, 0.28);
+    pointer-events: none;
+  }
+
+  .cutting-board.solved-glow {
+    box-shadow:
+      0 22px 44px rgba(22, 10, 3, 0.6),
+      0 8px 0 #5b3013,
+      0 0 36px rgba(255, 214, 92, 0.72),
+      inset 0 3px 10px rgba(255, 245, 195, 0.7);
+  }
+
+  .cutting-board.guide-nudge {
+    animation: boardNudge 0.45s ease-in-out;
+  }
+
+  @keyframes boardNudge {
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    25% { transform: scale(1.03) rotate(-1.5deg); }
+    75% { transform: scale(1.03) rotate(1.5deg); }
+  }
+
+  .board-row {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(8px, 1vw, 14px);
+    align-items: center;
+    justify-items: center;
+  }
+
+  .slots-row {
+    margin-top: 2.2vh;
+    padding: clamp(10px, 1.5vh, 16px);
+    border-radius: 24px;
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(74, 37, 13, 0.46), rgba(48, 22, 7, 0.62));
+    box-shadow:
+      inset 0 5px 12px rgba(20, 8, 2, 0.65),
+      0 2px 2px rgba(255, 220, 170, 0.25);
+  }
+
+  .slot {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at 50% 55%, rgba(56, 26, 9, 0.78), rgba(86, 44, 18, 0.55));
+    border: 2px dashed rgba(246, 205, 140, 0.48);
+    box-shadow: inset 0 4px 10px rgba(0, 0, 0, 0.55);
+    position: relative;
+    transition: transform 0.18s, border-color 0.2s, background 0.2s;
+  }
+
+  .slot.drag-over {
+    transform: scale(1.07);
+    border-color: #ffe07d;
+    border-style: solid;
+    background: radial-gradient(circle at 50% 50%, rgba(255, 208, 94, 0.35), rgba(86, 44, 18, 0.6));
+  }
+
+  /* Decorative divider line between slots and bank */
+  .board-ornament {
+    width: 72%;
+    height: 10px;
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    opacity: 0.7;
+  }
+  .board-ornament span {
+    height: 3px;
+    flex: 1;
+    border-radius: 3px;
+    background: linear-gradient(90deg, transparent, #5c2e10, transparent);
+  }
+  .board-ornament i {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #f7d388, #9c6825);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+
+  .bank-row {
+    margin-bottom: 1.5vh;
+    padding: clamp(8px, 1.2vh, 14px);
+    min-height: 24%;
+  }
+
+  .bank-spot {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    position: relative;
+  }
+
+  /* Stylized Glazed Ceramic / Biscuit Letter Tiles (zero white rectangles!) */
+  .tile {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(28px, 4.6vh, 50px);
+    font-weight: 900;
+    color: #4a230e;
+    text-shadow: 0 2px 0 rgba(255, 245, 215, 0.75);
+    cursor: grab;
+    touch-action: none;
+    background:
+      radial-gradient(circle at 22% 20%, rgba(255, 248, 224, 0.9) 0%, transparent 45%),
+      radial-gradient(circle at 80% 82%, rgba(188, 114, 52, 0.35) 0%, transparent 50%),
+      linear-gradient(155deg, #f8dfad 0%, #eac078 52%, #d89b4e 100%);
+    border: 2.5px solid #9e5d24;
+    box-shadow:
+      0 7px 0 #8a4d1b,
+      0 11px 18px rgba(30, 12, 3, 0.45),
+      inset 0 3px 4px rgba(255, 250, 232, 0.75),
+      inset 0 -3px 5px rgba(138, 72, 22, 0.35);
+    transition: transform 0.2s cubic-bezier(.34,1.56,.64,1), box-shadow 0.2s, filter 0.2s;
+    z-index: 5;
+  }
+
+  /* Subtle speckled ceramic glaze dots */
+  .tile::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 15px;
+    border: 1.5px solid rgba(255, 244, 214, 0.45);
+    background-image:
+      radial-gradient(rgba(130, 66, 20, 0.24) 1px, transparent 1px),
+      radial-gradient(rgba(160, 88, 30, 0.18) 1.2px, transparent 1.2px);
+    background-size: 16px 16px, 23px 23px;
+    background-position: 0 0, 8px 11px;
+    pointer-events: none;
+  }
+
+  .tile[data-tint="0"] {
+    background:
+      radial-gradient(circle at 25% 20%, rgba(255, 250, 230, 0.85), transparent 46%),
+      linear-gradient(155deg, #fbe1a8 0%, #ecb866 55%, #d6933f 100%);
+  }
+  .tile[data-tint="1"] {
+    background:
+      radial-gradient(circle at 25% 20%, rgba(255, 245, 228, 0.85), transparent 46%),
+      linear-gradient(155deg, #f7d0b3 0%, #e5a37a 55%, #c97d52 100%);
+  }
+  .tile[data-tint="2"] {
+    background:
+      radial-gradient(circle at 25% 20%, rgba(242, 255, 236, 0.85), transparent 46%),
+      linear-gradient(155deg, #d7e8b5 0%, #b3cc83 55%, #8eab5c 100%);
+    border-color: #5b7334;
+    box-shadow:
+      0 7px 0 #4d622b,
+      0 11px 18px rgba(30, 12, 3, 0.45),
+      inset 0 3px 4px rgba(245, 255, 230, 0.75);
+  }
+  .tile[data-tint="3"] {
+    background:
+      radial-gradient(circle at 25% 20%, rgba(235, 252, 255, 0.85), transparent 46%),
+      linear-gradient(155deg, #c3e4df 0%, #8ec7bf 55%, #63a49b 100%);
+    border-color: #3a6e67;
+    box-shadow:
+      0 7px 0 #315e58,
+      0 11px 18px rgba(30, 12, 3, 0.45),
+      inset 0 3px 4px rgba(235, 255, 252, 0.75);
+  }
+
+  .tile:hover {
+    transform: translateY(-4px) scale(1.04);
+    filter: brightness(1.05);
+  }
+
+  .tile.dragging {
+    position: fixed;
+    z-index: 100;
+    cursor: grabbing;
+    transition: none;
+    transform: scale(1.12) rotate(-3deg);
+    box-shadow:
+      0 18px 28px rgba(15, 6, 1, 0.55),
+      0 5px 0 rgba(90, 48, 16, 0.85),
+      inset 0 3px 5px rgba(255, 250, 230, 0.8);
+    pointer-events: none;
+  }
+
+  .tile.correct {
+    animation: tileCelebrate 0.65s cubic-bezier(.34,1.56,.64,1) forwards;
+    filter: brightness(1.12) saturate(1.2);
+  }
+
+  .tile.wrong {
+    animation: tileWrong 0.46s ease-in-out;
+    filter: hue-rotate(-25deg) saturate(1.4);
+  }
+
+  @keyframes tileCelebrate {
+    0% { transform: scale(1) rotate(0deg); }
+    35% { transform: scale(1.18) translateY(-10px) rotate(-6deg); }
+    65% { transform: scale(0.96) translateY(2px) rotate(4deg); }
+    100% { transform: scale(1.04) translateY(-2px) rotate(0deg); }
+  }
+
+  @keyframes tileWrong {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    20% { transform: translateX(-9px) rotate(-7deg); }
+    45% { transform: translateX(9px) rotate(7deg); }
+    70% { transform: translateX(-6px) rotate(-4deg); }
+    88% { transform: translateX(5px) rotate(3deg); }
+  }
+
+  /* CENTER ZONE: Interactive Porcelain Plate Canvas */
+  .plate-zone {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #plateCanvas {
+    width: 100%;
+    height: 100%;
+    max-height: 92vh;
+    cursor: default;
+    touch-action: none;
+  }
+
+  #plateCanvas.tool-active {
+    cursor: none;
+  }
+
+  /* RIGHT ZONE: Painted Teal-Wood Ingredient Rack */
+  .rack-zone {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 6.5vh;
+    padding-bottom: 1vh;
+  }
+
+  .ingredient-rack {
+    position: relative;
+    width: 100%;
+    height: 85vh;
+    max-height: 760px;
+    border-radius: 30px;
+    padding: clamp(10px, 1.6vh, 18px) clamp(10px, 1vw, 15px);
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(14, 48, 46, 0.14) 0px,
+        rgba(14, 48, 46, 0.14) 2px,
+        transparent 2px,
+        transparent 9px
+      ),
+      linear-gradient(160deg, #3c7870 0%, #2b5b55 52%, #1d423e 100%);
+    border: 4px solid #8a562d;
+    box-shadow:
+      0 20px 38px rgba(15, 7, 2, 0.6),
+      inset 0 0 0 3px rgba(235, 195, 128, 0.28),
+      inset 0 8px 22px rgba(8, 28, 26, 0.55);
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: clamp(8px, 1.2vh, 13px) clamp(8px, 0.8vw, 12px);
+    transition: filter 0.35s, box-shadow 0.35s, transform 0.35s;
+  }
+
+  .ingredient-rack.locked {
+    filter: saturate(0.55) brightness(0.76);
+  }
+
+  .ingredient-rack.unlocked {
+    box-shadow:
+      0 20px 40px rgba(15, 7, 2, 0.6),
+      0 0 32px rgba(255, 216, 107, 0.55),
+      inset 0 0 0 3px rgba(255, 224, 130, 0.68),
+      inset 0 8px 20px rgba(8, 28, 26, 0.35);
+  }
+
+  /* Shelf ledges visual illusion */
+  .ing-btn {
+    position: relative;
+    border: 2px solid rgba(242, 206, 144, 0.35);
+    border-radius: 20px;
+    background:
+      radial-gradient(ellipse at 50% 25%, rgba(255, 236, 190, 0.2) 0%, rgba(22, 54, 50, 0.52) 85%);
+    box-shadow:
+      0 6px 0 rgba(122, 72, 34, 0.9),
+      0 10px 14px rgba(10, 22, 20, 0.45),
+      inset 0 2px 3px rgba(255, 240, 205, 0.25);
+    cursor: pointer;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    transition: transform 0.2s cubic-bezier(.34,1.56,.64,1), box-shadow 0.2s, border-color 0.2s, background 0.2s;
+  }
+
+  .ing-btn canvas {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .ingredient-rack.unlocked .ing-btn:hover {
+    transform: translateY(-4px) scale(1.06);
+    border-color: #ffe28a;
+    background: radial-gradient(ellipse at 50% 35%, rgba(255, 232, 160, 0.38) 0%, rgba(30, 74, 68, 0.55) 85%);
+  }
+
+  .ingredient-rack.unlocked .ing-btn.selected {
+    transform: translateY(-5px) scale(1.09);
+    border-color: #ffde6b;
+    border-width: 3px;
+    background: radial-gradient(ellipse at 50% 40%, rgba(255, 224, 118, 0.55) 0%, rgba(44, 96, 86, 0.68) 90%);
+    box-shadow:
+      0 6px 0 #9b5b22,
+      0 0 22px rgba(255, 214, 92, 0.85),
+      inset 0 2px 6px rgba(255, 250, 220, 0.65);
+  }
+
+  /* Frosted dome reflection when locked */
+  .ing-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(220, 240, 238, 0.18) 0%, transparent 45%, rgba(12, 28, 26, 0.28) 100%);
+    opacity: 0;
+    transition: opacity 0.35s;
+    pointer-events: none;
+  }
+
+  .ingredient-rack.locked .ing-btn::after {
+    opacity: 1;
+  }
+
+  .ingredient-rack.locked .ing-btn {
+    cursor: not-allowed;
+  }
+
+  .ing-btn.wake-pop {
+    animation: ingWake 0.55s cubic-bezier(.34,1.56,.64,1);
+  }
+
+  @keyframes ingWake {
+    0% { transform: scale(0.92); }
+    50% { transform: scale(1.12) translateY(-5px); }
+    100% { transform: scale(1); }
+  }
+
+  .ing-btn.locked-jiggle {
+    animation: lockJiggle 0.32s ease-in-out;
+  }
+
+  @keyframes lockJiggle {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-6deg); }
+    75% { transform: rotate(6deg); }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<canvas id="fxCanvas"></canvas>
+
+<!-- Minimalist Controls: Language (single button), Serve/Fresh Plate, Next Word -->
+<div class="top-controls">
+  <button class="ctrl-btn" id="langBtn" aria-label="Language">укр</button>
+  <button class="ctrl-btn" id="serveBtn" aria-label="Serve Plate">
+    <svg viewBox="0 0 36 36" fill="none">
+      <path d="M5 24.5C5 16.5 10.8 10.5 18 10.5C25.2 10.5 31 16.5 31 24.5" stroke="#fff2cf" stroke-width="2.6" stroke-linecap="round" fill="rgba(255,224,148,0.22)"/>
+      <circle cx="18" cy="7.5" r="2.6" fill="#ffd978" stroke="#fff2cf" stroke-width="1.6"/>
+      <path d="M3 25.5H33" stroke="#ffd978" stroke-width="3.2" stroke-linecap="round"/>
+      <path d="M11 16.5C12.3 14.3 14.4 13 16.5 12.6" stroke="#fff9e8" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <button class="ctrl-btn" id="nextBtn" aria-label="Next">
+    <svg viewBox="0 0 36 36" fill="none">
+      <path d="M7 18H27" stroke="#fff3d4" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M19.5 10L28 18L19.5 26" stroke="#ffd978" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+</div>
+
+<div class="stage">
+  <!-- LEFT: Wooden Cutting Board Anagram Area -->
+  <section class="board-zone">
+    <div class="cutting-board" id="cuttingBoard">
+      <div class="board-groove"></div>
+      <div class="board-row slots-row" id="slotsRow">
+        <div class="slot" data-slot="0"></div>
+        <div class="slot" data-slot="1"></div>
+        <div class="slot" data-slot="2"></div>
+        <div class="slot" data-slot="3"></div>
+      </div>
+      <div class="board-ornament"><span></span><i></i><span></span></div>
+      <div class="board-row bank-row" id="bankRow">
+        <div class="bank-spot" data-bank="0"></div>
+        <div class="bank-spot" data-bank="1"></div>
+        <div class="bank-spot" data-bank="2"></div>
+        <div class="bank-spot" data-bank="3"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CENTER: Realistic Porcelain Plate -->
+  <section class="plate-zone">
+    <canvas id="plateCanvas"></canvas>
+  </section>
+
+  <!-- RIGHT: 10 Realistic Interactive Ingredients -->
+  <section class="rack-zone">
+    <div class="ingredient-rack locked" id="ingredientRack"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ============================================================
+     1. BILINGUAL 4-LETTER NOUN ANAGRAM POOLS (30 UA + 30 RU)
+     ============================================================ */
+  const WORDS = {
+    uk: [
+      'СОВА','ЛАПА','МОРЕ','НЕБО','ЗИМА','ШАРФ','ВОДА','ХАТА','РИБА','КАВА',
+      'КАША','ЖАБА','МУХА','ВАЗА','СТІЛ','ПОЛЕ','ХЛІБ','ГРИБ','СНІГ','СЛОН',
+      'ТИГР','ВОВК','ТОРТ','ДИНЯ','БОРЩ','ПЕРО','МІСТ','КОЗА','КЛЮЧ','ШУБА'
+    ],
+    ru: [
+      'СОВА','ЛАПА','МОРЕ','НЕБО','ЗИМА','ШАРФ','ВОДА','ДАЧА','РЫБА','КЕКС',
+      'КАША','ЖАБА','МУХА','ВАЗА','СТОЛ','ПОЛЕ','ХЛЕБ','ГРИБ','СНЕГ','СЛОН',
+      'ТИГР','ВОЛК','ТОРТ','ДЫНЯ','БОРЩ','ПЕРО','МОСТ','КОЗА','КЛЮЧ','ШУБА'
+    ]
+  };
+
+  /* 10 Realistic & Weird Ingredient Definitions */
+  const INGREDIENTS = [
+    { id: 'noodles',     type: 'solid',   cost: 1 },
+    { id: 'berry_sauce', type: 'pour',    cost: 2 },
+    { id: 'green_sauce', type: 'pour',    cost: 2 },
+    { id: 'egg',         type: 'solid',   cost: 1 },
+    { id: 'worm',        type: 'solid',   cost: 1 },
+    { id: 'kiwi',        type: 'solid',   cost: 1 },
+    { id: 'mushroom',    type: 'solid',   cost: 1 },
+    { id: 'eyeball',     type: 'solid',   cost: 1 },
+    { id: 'marshmallow', type: 'solid',   cost: 1 },
+    { id: 'sprinkles',   type: 'scatter', cost: 2 }
+  ];
+
+  /* ============================================================
+     2. PROCEDURAL WEB AUDIO ENGINE (ACTIVE, VARIED, WORDLESS)
+     ============================================================ */
+  const Sound = (() => {
+    let ctx = null;
+
+    function ensure() {
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        ctx = new AC();
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+      return ctx;
+    }
+
+    function noiseBuffer(duration = 0.4) {
+      const c = ensure();
+      const len = Math.floor(c.sampleRate * duration);
+      const buf = c.createBuffer(1, len, c.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      return buf;
+    }
+
+    function tone(freq, type, startOffset, dur, vol = 0.16, slideTo = null) {
+      const c = ensure();
+      const t = c.currentTime + startOffset;
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g);
+      g.connect(c.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    }
+
+    return {
+      woodTap(pitchIdx = 0) {
+        const notes = [330, 392, 440, 523.25, 587.33];
+        const f = notes[pitchIdx % notes.length];
+        tone(f, 'triangle', 0, 0.11, 0.18, f * 0.96);
+        tone(f * 2.02, 'sine', 0, 0.05, 0.06);
+      },
+
+      tileReturn() {
+        tone(340, 'triangle', 0, 0.09, 0.12, 230);
+      },
+
+      wrong() {
+        tone(220, 'sawtooth', 0, 0.12, 0.09, 170);
+        tone(175, 'triangle', 0.11, 0.22, 0.14, 120);
+      },
+
+      lockedClink() {
+        tone(920, 'sine', 0, 0.06, 0.07, 860);
+        tone(1340, 'sine', 0.04, 0.08, 0.05);
+      },
+
+      skipWhoosh() {
+        const c = ensure();
+        const src = c.createBufferSource();
+        src.buffer = noiseBuffer(0.18);
+        const f = c.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.setValueAtTime(500, c.currentTime);
+        f.frequency.exponentialRampToValueAtTime(1900, c.currentTime + 0.15);
+        f.Q.value = 2.5;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.001, c.currentTime);
+        g.gain.linearRampToValueAtTime(0.12, c.currentTime + 0.04);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.17);
+        src.connect(f); f.connect(g); g.connect(c.destination);
+        src.start();
+      },
+
+      celebrate(variant) {
+        const v = variant % 4;
+        if (v === 0) {
+          // Sparkling marimba + bell arpeggio
+          [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((n, i) => {
+            tone(n, 'triangle', i * 0.065, 0.28, 0.16);
+            tone(n * 2, 'sine', i * 0.065 + 0.02, 0.22, 0.06);
+          });
+        } else if (v === 1) {
+          // Cork pop + joyful kitchen chord
+          tone(180, 'sine', 0, 0.07, 0.22, 720);
+          [440, 554.37, 659.25, 880].forEach((n, i) => {
+            tone(n, 'sine', 0.08 + i * 0.05, 0.35, 0.14);
+          });
+          tone(1108.7, 'triangle', 0.28, 0.35, 0.12);
+        } else if (v === 2) {
+          // Bouncy xylophone fanfare
+          const seq = [[587.3,0],[739.9,0.07],[880,0.14],[739.9,0.21],[1174.6,0.28]];
+          seq.forEach(([f, t]) => {
+            tone(f, 'triangle', t, 0.2, 0.16);
+            tone(f * 3, 'sine', t, 0.08, 0.04);
+          });
+        } else {
+          // Sunny harp-like major-9 sweep
+          [392, 493.88, 587.33, 739.99, 880, 1174.66].forEach((n, i) => {
+            tone(n, 'sine', i * 0.055, 0.36, 0.13);
+          });
+        }
+      },
+
+      selectTool() {
+        tone(520, 'sine', 0, 0.08, 0.11, 780);
+      },
+
+      ingredient(id) {
+        const c = ensure();
+        const t = c.currentTime;
+        if (id === 'noodles') {
+          tone(210, 'sine', 0, 0.14, 0.16, 95);
+          tone(340, 'triangle', 0.05, 0.1, 0.09, 170);
+        } else if (id === 'egg') {
+          // Plop + pan sizzle!
+          tone(280, 'sine', 0, 0.09, 0.16, 130);
+          const src = c.createBufferSource();
+          src.buffer = noiseBuffer(0.45);
+          const hp = c.createBiquadFilter();
+          hp.type = 'highpass';
+          hp.frequency.value = 3200;
+          const g = c.createGain();
+          g.gain.setValueAtTime(0.001, t + 0.04);
+          g.gain.linearRampToValueAtTime(0.11, t + 0.09);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.44);
+          src.connect(hp); hp.connect(g); g.connect(c.destination);
+          src.start(t + 0.04);
+        } else if (id === 'worm') {
+          // Rubbery boing!
+          tone(240, 'sine', 0, 0.28, 0.18, 490);
+          tone(490, 'sine', 0.12, 0.22, 0.12, 310);
+        } else if (id === 'kiwi') {
+          tone(620, 'triangle', 0, 0.08, 0.14, 320);
+          tone(980, 'sine', 0.03, 0.06, 0.07, 1200);
+        } else if (id === 'mushroom') {
+          tone(190, 'triangle', 0, 0.12, 0.18, 110);
+          tone(420, 'sine', 0.02, 0.07, 0.07, 520);
+        } else if (id === 'eyeball') {
+          // Squishy bubble pop!
+          tone(320, 'sine', 0, 0.1, 0.16, 760);
+          tone(760, 'sine', 0.09, 0.06, 0.1, 1080);
+        } else if (id === 'marshmallow') {
+          tone(260, 'sine', 0, 0.14, 0.14, 340);
+          const src = c.createBufferSource();
+          src.buffer = noiseBuffer(0.12);
+          const lp = c.createBiquadFilter();
+          lp.type = 'lowpass';
+          lp.frequency.value = 900;
+          const g = c.createGain();
+          g.gain.setValueAtTime(0.07, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+          src.connect(lp); lp.connect(g); g.connect(c.destination);
+          src.start(t);
+        }
+      },
+
+      pourTick(isCream = false) {
+        const c = ensure();
+        const t = c.currentTime;
+        const f = isCream ? (190 + Math.random() * 90) : (320 + Math.random() * 190);
+        tone(f, 'sine', 0, 0.065, 0.065, f * (isCream ? 0.85 : 1.35));
+        const src = c.createBufferSource();
+        src.buffer = noiseBuffer(0.06);
+        const bp = c.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = isCream ? 750 : 1400;
+        bp.Q.value = 3;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.04, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+        src.connect(bp); bp.connect(g); g.connect(c.destination);
+        src.start(t);
+      },
+
+      sprinklePop() {
+        const f = 1400 + Math.random() * 1800;
+        tone(f, 'sine', 0, 0.045, 0.055, f * 1.4);
+      },
+
+      serveBell() {
+        // Metallic service bell + cheerful swoosh
+        [1046.5, 2093, 2793.8, 3520].forEach((f, i) => {
+          tone(f, 'sine', 0, 0.75 - i * 0.1, 0.13 / (i + 1));
+        });
+        setTimeout(() => {
+          tone(360, 'triangle', 0, 0.14, 0.12, 680);
+        }, 260);
+      }
+    };
+  })();
+
+  /* ============================================================
+     3. GAME STATE & NON-REPEATING SHUFFLE BAG
+     ============================================================ */
+  let lang = 'uk';
+  const bags = { uk: [], ru: [] };
+  let currentWord = '';
+  let solved = false;
+  let unlockedActions = 0; // Silent action allowance per solved word (2 touches)
+  let selectedTool = null;
+  let celebrationCount = 0;
+  let autoNextTimer = null;
+
+  // Anagram tile state
+  let tiles = []; // { id, char, tint, loc: 'bank'|'slot', index, el }
+  let dragState = null;
+
+  // Plate contents (normalized coordinates -1..1 relative to plate inner radius)
+  let plateItems = [];   // solid items & sprinkle groups
+  let plateSauces = [];  // poured ribbon strokes
+  let activeSauce = null;
+  let activeSprinkling = false;
+  let lastPourSoundAt = 0;
+  let lastSprinkleAt = 0;
+  let sprinkleMoveAccum = 0;
+
+  // Plate slide animation for serving new plate
+  let plateAnim = { state: 'idle', offsetX: 0, velX: 0, clocheY: -2, phase: 0 };
+
+  // Pointer tracking for blinking eyes & custom tool cursor
+  const pointer = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5, overPlate: false };
+
+  // Global particles (confetti, flour clouds, sparkles, steam, popping sparks)
+  const fxParticles = [];
+
+  function shuffleArray(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function nextWordFromBag() {
+    if (bags[lang].length === 0) {
+      bags[lang] = shuffleArray(WORDS[lang]);
+      // Avoid immediate repeat across bag boundary
+      if (bags[lang][bags[lang].length - 1] === currentWord && bags[lang].length > 1) {
+        const tmp = bags[lang][0];
+        bags[lang][0] = bags[lang][bags[lang].length - 1];
+        bags[lang][bags[lang].length - 1] = tmp;
+      }
+    }
+    return bags[lang].pop();
+  }
+
+  function scrambleWord(word) {
+    const letters = word.split('');
+    let scrambled = letters.slice();
+    let tries = 0;
+    do {
+      scrambled = shuffleArray(letters);
+      tries++;
+    } while (scrambled.join('') === word && tries < 30);
+    if (scrambled.join('') === word) {
+      // Guaranteed swap of two differing characters
+      for (let i = 1; i < scrambled.length; i++) {
+        if (scrambled[i] !== scrambled[0]) {
+          [scrambled[0], scrambled[i]] = [scrambled[i], scrambled[0]];
+          break;
+        }
+      }
+    }
+    return scrambled;
+  }
+
+  /* ============================================================
+     4. ANAGRAM BOARD LOGIC (DRAG & DROP + ONE-TAP PLACEMENT)
+     ============================================================ */
+  const boardEl = document.getElementById('cuttingBoard');
+  const slotEls = Array.from(document.querySelectorAll('.slot'));
+  const bankEls = Array.from(document.querySelectorAll('.bank-spot'));
+  const rackEl = document.getElementById('ingredientRack');
+  const nextBtn = document.getElementById('nextBtn');
+  const langBtn = document.getElementById('langBtn');
+  const serveBtn = document.getElementById('serveBtn');
+  const plateCanvas = document.getElementById('plateCanvas');
+
+  function loadNewWord() {
+    if (autoNextTimer) {
+      clearTimeout(autoNextTimer);
+      autoNextTimer = null;
+    }
+    currentWord = nextWordFromBag();
+    solved = false;
+    unlockedActions = 0;
+    selectedTool = null;
+    updateRackUI();
+    boardEl.classList.remove('solved-glow');
+    nextBtn.classList.remove('pulse-hint');
+
+    // Clear existing tile elements
+    slotEls.forEach(s => s.innerHTML = '');
+    bankEls.forEach(b => b.innerHTML = '');
+
+    const scrambled = scrambleWord(currentWord);
+    const tints = shuffleArray([0, 1, 2, 3]);
+    tiles = scrambled.map((char, idx) => {
+      const el = document.createElement('div');
+      el.className = 'tile';
+      el.textContent = char;
+      el.dataset.tint = tints[idx];
+      el.style.transform = 'scale(0.4) translateY(18px)';
+      el.style.opacity = '0';
+
+      const tileObj = { id: idx, char, tint: tints[idx], loc: 'bank', index: idx, el };
+      bankEls[idx].appendChild(el);
+      attachTileEvents(tileObj);
+
+      setTimeout(() => {
+        el.style.transform = '';
+        el.style.opacity = '1';
+      }, 30 + idx * 55);
+
+      return tileObj;
+    });
+  }
+
+  function getTileAt(loc, index) {
+    return tiles.find(t => t.loc === loc && t.index === index) || null;
+  }
+
+  function mountTile(tile, loc, index) {
+    tile.loc = loc;
+    tile.index = index;
+    const container = loc === 'slot' ? slotEls[index] : bankEls[index];
+    container.appendChild(tile.el);
+  }
+
+  function attachTileEvents(tile) {
+    tile.el.addEventListener('pointerdown', (e) => {
+      if (solved) return;
+      e.preventDefault();
+      Sound.woodTap(tile.index);
+
+      const rect = tile.el.getBoundingClientRect();
+      dragState = {
+        tile,
+        startX: e.clientX,
+        startY: e.clientY,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+        moved: false,
+        pointerId: e.pointerId
+      };
+      tile.el.setPointerCapture(e.pointerId);
+    });
+
+    tile.el.addEventListener('pointermove', (e) => {
+      if (!dragState || dragState.tile !== tile) return;
+      const dx = e.clientX - dragState.startX;
+      const dy = e.clientY - dragState.startY;
+      if (!dragState.moved && Math.hypot(dx, dy) > 8) {
+        dragState.moved = true;
+        tile.el.classList.add('dragging');
+        tile.el.style.width = dragState.width + 'px';
+        tile.el.style.height = dragState.height + 'px';
+        document.body.appendChild(tile.el);
+      }
+      if (dragState.moved) {
+        tile.el.style.left = (e.clientX - dragState.offsetX) + 'px';
+        tile.el.style.top = (e.clientY - dragState.offsetY) + 'px';
+        highlightHoveredSlot(e.clientX, e.clientY);
+      }
+    });
+
+    const finishDrag = (e) => {
+      if (!dragState || dragState.tile !== tile) return;
+      const ds = dragState;
+      dragState = null;
+      slotEls.forEach(s => s.classList.remove('drag-over'));
+
+      if (!ds.moved) {
+        // Click/tap behavior: move to first free slot or return to bank
+        if (tile.loc === 'bank') {
+          const freeSlot = [0, 1, 2, 3].find(i => !getTileAt('slot', i));
+          if (freeSlot !== undefined) {
+            mountTile(tile, 'slot', freeSlot);
+            Sound.woodTap(freeSlot + 1);
+            checkWordCompletion();
+          }
+        } else {
+          const freeBank = [0, 1, 2, 3].find(i => !getTileAt('bank', i));
+          if (freeBank !== undefined) {
+            mountTile(tile, 'bank', freeBank);
+            Sound.tileReturn();
+          }
+        }
+        return;
+      }
+
+      // Reset fixed drag styles
+      tile.el.classList.remove('dragging');
+      tile.el.style.left = '';
+      tile.el.style.top = '';
+      tile.el.style.width = '';
+      tile.el.style.height = '';
+
+      const dropSlot = findSlotUnder(e.clientX, e.clientY);
+      if (dropSlot !== -1) {
+        const prevLoc = tile.loc;
+        const prevIdx = tile.index;
+        const occupant = getTileAt('slot', dropSlot);
+        if (occupant && occupant !== tile) {
+          mountTile(occupant, prevLoc, prevIdx);
+        }
+        mountTile(tile, 'slot', dropSlot);
+        Sound.woodTap(dropSlot + 1);
+        checkWordCompletion();
+      } else {
+        // Check if dropped near bank; if originally in slot, send back to bank
+        if (tile.loc === 'slot') {
+          const freeBank = [0, 1, 2, 3].find(i => !getTileAt('bank', i));
+          if (freeBank !== undefined) {
+            mountTile(tile, 'bank', freeBank);
+            Sound.tileReturn();
+          } else {
+            mountTile(tile, tile.loc, tile.index);
+          }
+        } else {
+          mountTile(tile, tile.loc, tile.index);
+        }
+      }
+    };
+
+    tile.el.addEventListener('pointerup', finishDrag);
+    tile.el.addEventListener('pointercancel', finishDrag);
+  }
+
+  function findSlotUnder(x, y) {
+    let best = -1;
+    let bestDist = 90;
+    slotEls.forEach((s, i) => {
+      const r = s.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const d = Math.hypot(x - cx, y - cy);
+      if (x >= r.left - 18 && x <= r.right + 18 && y >= r.top - 18 && y <= r.bottom + 18 && d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  function highlightHoveredSlot(x, y) {
+    const idx = findSlotUnder(x, y);
+    slotEls.forEach((s, i) => s.classList.toggle('drag-over', i === idx));
+  }
+
+  function checkWordCompletion() {
+    const placed = [0, 1, 2, 3].map(i => getTileAt('slot', i));
+    if (placed.some(t => !t)) return;
+
+    const attempt = placed.map(t => t.char).join('');
+    if (attempt === currentWord) {
+      solved = true;
+      unlockedActions = 2;
+      boardEl.classList.add('solved-glow');
+      placed.forEach((t, i) => {
+        setTimeout(() => t.el.classList.add('correct'), i * 55);
+      });
+
+      Sound.celebrate(celebrationCount);
+      spawnWordCelebration(celebrationCount);
+      celebrationCount++;
+
+      // Wake up ingredient rack with lively staggered bounce
+      updateRackUI(true);
+    } else {
+      Sound.wrong();
+      placed.forEach(t => t.el.classList.add('wrong'));
+      setTimeout(() => {
+        placed.forEach((t, idx) => {
+          t.el.classList.remove('wrong');
+          mountTile(t, 'bank', idx);
+        });
+      }, 480);
+    }
+  }
+
+  function spawnWordCelebration(variant) {
+    const rect = boardEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height * 0.36;
+    const v = variant % 4;
+    const palettes = [
+      ['#ffd95a', '#ff7c5c', '#63e2c6', '#fff2b2', '#ff9ec4'],
+      ['#fff6dc', '#f7c95c', '#e86f51', '#8ad879', '#6ac7e8'],
+      ['#ffca3a', '#ff595e', '#8ac926', '#1982c4', '#f7a1c4'],
+      ['#ffe680', '#ffb703', '#fb8500', '#9ef01a', '#72efdd']
+    ];
+    const pal = palettes[v];
+
+    // Burst from cutting board
+    for (let i = 0; i < 42; i++) {
+      const ang = (Math.PI * 2 * i) / 42 + (Math.random() - 0.5) * 0.3;
+      const spd = 2.6 + Math.random() * 6.8;
+      fxParticles.push({
+        kind: v === 1 ? 'flour' : (i % 3 === 0 ? 'star' : 'confetti'),
+        x: cx + (Math.random() - 0.5) * rect.width * 0.5,
+        y: cy + (Math.random() - 0.5) * 40,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 2.4,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.25,
+        size: 5 + Math.random() * 8,
+        color: pal[i % pal.length],
+        life: 1,
+        decay: 0.013 + Math.random() * 0.012
+      });
+    }
+
+    // Golden energy trail arcs toward the ingredient rack!
+    const rackRect = rackEl.getBoundingClientRect();
+    for (let i = 0; i < 16; i++) {
+      fxParticles.push({
+        kind: 'spark',
+        x: cx,
+        y: cy,
+        tx: rackRect.left + Math.random() * rackRect.width,
+        ty: rackRect.top + Math.random() * rackRect.height,
+        t: 0,
+        speed: 0.025 + Math.random() * 0.02,
+        arcY: -80 - Math.random() * 140,
+        size: 4 + Math.random() * 5,
+        color: '#ffe078',
+        life: 1,
+        decay: 0.02
+      });
+    }
+  }
+
+  /* ============================================================
+     5. INGREDIENT RACK & REALISTIC MINIATURE VESSEL ICONS
+     ============================================================ */
+  const ingButtons = [];
+
+  function buildIngredientRack() {
+    rackEl.innerHTML = '';
+    INGREDIENTS.forEach((ing, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'ing-btn';
+      btn.dataset.id = ing.id;
+
+      const cv = document.createElement('canvas');
+      cv.width = 160;
+      cv.height = 140;
+      btn.appendChild(cv);
+      drawIngredientIcon(cv.getContext('2d'), ing.id, 160, 140);
+
+      btn.addEventListener('click', () => {
+        if (unlockedActions <= 0) {
+          Sound.lockedClink();
+          btn.classList.remove('locked-jiggle');
+          void btn.offsetWidth;
+          btn.classList.add('locked-jiggle');
+          boardEl.classList.remove('guide-nudge');
+          void boardEl.offsetWidth;
+          boardEl.classList.add('guide-nudge');
+          return;
+        }
+        Sound.selectTool();
+        selectedTool = ing;
+        ingButtons.forEach(b => b.classList.toggle('selected', b.dataset.id === ing.id));
+        plateCanvas.classList.add('tool-active');
+      });
+
+      rackEl.appendChild(btn);
+      ingButtons.push(btn);
+    });
+  }
+
+  function updateRackUI(animateWake = false) {
+    const isOpen = unlockedActions > 0;
+    rackEl.classList.toggle('unlocked', isOpen);
+    rackEl.classList.toggle('locked', !isOpen);
+    if (!isOpen) {
+      selectedTool = null;
+      ingButtons.forEach(b => b.classList.remove('selected'));
+      plateCanvas.classList.remove('tool-active');
+    } else if (animateWake) {
+      ingButtons.forEach((b, i) => {
+        b.classList.remove('wake-pop');
+        setTimeout(() => b.classList.add('wake-pop'), i * 38);
+      });
+    }
+  }
+
+  function consumeAction(cost) {
+    unlockedActions = Math.max(0, unlockedActions - cost);
+    if (unlockedActions <= 0) {
+      updateRackUI(false);
+      nextBtn.classList.add('pulse-hint');
+      autoNextTimer = setTimeout(() => {
+        loadNewWord();
+      }, 950);
+    }
+  }
+
+  /* ============================================================
+     6. REALISTIC PROCEDURAL DRAWING FUNCTIONS (10 INGREDIENTS!)
+     ============================================================ */
+  function drawBowlBase(ctx, cx, cy, rw, rh, rimColor = '#f4e4c7', bodyColor = '#c97b53') {
+    ctx.save();
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + rh * 0.72, rw * 0.85, rh * 0.34, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Ceramic bowl body
+    const g = ctx.createLinearGradient(cx - rw, cy, cx + rw, cy + rh);
+    g.addColorStop(0, bodyColor);
+    g.addColorStop(1, '#5e2f1a');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + rh * 0.25, rw, rh * 0.72, 0, 0, Math.PI);
+    ctx.closePath();
+    ctx.fill();
+    // Rim
+    ctx.fillStyle = rimColor;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + rh * 0.22, rw, rh * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(55, 28, 12, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + rh * 0.25, rw * 0.86, rh * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSqueezeBottle(ctx, cx, cy, bodyCol1, bodyCol2, capCol, angle = -0.18) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.26)';
+    ctx.beginPath();
+    ctx.ellipse(4, 34, 24, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Bottle body
+    const bg = ctx.createLinearGradient(-22, 0, 22, 0);
+    bg.addColorStop(0, bodyCol2);
+    bg.addColorStop(0.35, bodyCol1);
+    bg.addColorStop(0.75, bodyCol2);
+    bg.addColorStop(1, '#2a0c0e');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.roundRect(-20, -16, 40, 50, [14, 14, 9, 9]);
+    ctx.fill();
+    // Glossy stripe
+    ctx.fillStyle = 'rgba(255,255,255,0.34)';
+    ctx.beginPath();
+    ctx.roundRect(-13, -10, 7, 36, 4);
+    ctx.fill();
+    // Collar + nozzle
+    ctx.fillStyle = capCol;
+    ctx.beginPath();
+    ctx.roundRect(-14, -26, 28, 12, 4);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-7, -26);
+    ctx.lineTo(-2.2, -45);
+    ctx.lineTo(2.2, -45);
+    ctx.lineTo(7, -26);
+    ctx.closePath();
+    ctx.fill();
+    // Droplet at tip
+    ctx.fillStyle = bodyCol1;
+    ctx.beginPath();
+    ctx.arc(0, -47, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath();
+    ctx.arc(-1.2, -48.2, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawIngredientIcon(ctx, id, w, h) {
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+
+    if (id === 'noodles') {
+      drawBowlBase(ctx, cx, cy + 16, 46, 30, '#f5e6cc', '#d47c3e');
+      drawNoodlesShape(ctx, cx, cy + 2, 34, 1);
+    } else if (id === 'berry_sauce') {
+      drawSqueezeBottle(ctx, cx, cy + 12, '#e6224a', '#9c0d2e', '#f8d7a8', -0.22);
+    } else if (id === 'green_sauce') {
+      drawSqueezeBottle(ctx, cx, cy + 12, '#7ce03c', '#3d8f1b', '#f8e6b4', 0.22);
+    } else if (id === 'egg') {
+      drawFriedEggShape(ctx, cx, cy, 42, 0, 0);
+    } else if (id === 'worm') {
+      drawGummyWormShape(ctx, cx - 10, cy + 8, 36, -0.35, 0, '#ff4d6d', '#ffd166');
+      drawGummyWormShape(ctx, cx + 14, cy - 10, 32, 0.55, 0, '#38d9a9', '#4dabf7');
+    } else if (id === 'kiwi') {
+      drawKiwiShape(ctx, cx - 10, cy + 6, 30, -0.2);
+      drawKiwiShape(ctx, cx + 16, cy - 8, 28, 0.35);
+    } else if (id === 'mushroom') {
+      drawMushroomShape(ctx, cx - 12, cy + 8, 28, -0.22);
+      drawMushroomShape(ctx, cx + 16, cy + 2, 24, 0.28);
+    } else if (id === 'eyeball') {
+      drawEyeballShape(ctx, cx - 18, cy + 4, 24, 0.15, -0.1, 0, '#4ea854');
+      drawEyeballShape(ctx, cx + 18, cy - 2, 24, -0.15, 0.08, 0, '#3e92cc');
+    } else if (id === 'marshmallow') {
+      drawMarshmallowShape(ctx, cx - 12, cy + 10, 26, -0.25);
+      drawMarshmallowShape(ctx, cx + 16, cy - 8, 25, 0.3);
+    } else if (id === 'sprinkles') {
+      // Realistic glass sprinkle shaker jar
+      ctx.save();
+      ctx.translate(cx, cy + 6);
+      ctx.rotate(-0.18);
+      ctx.fillStyle = 'rgba(0,0,0,0.26)';
+      ctx.beginPath();
+      ctx.ellipse(2, 34, 26, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Glass body
+      const gg = ctx.createLinearGradient(-24, 0, 24, 0);
+      gg.addColorStop(0, 'rgba(225, 245, 255, 0.65)');
+      gg.addColorStop(0.5, 'rgba(255, 255, 255, 0.25)');
+      gg.addColorStop(1, 'rgba(180, 220, 235, 0.6)');
+      ctx.fillStyle = gg;
+      ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-22, -20, 44, 52, 11);
+      ctx.fill();
+      ctx.stroke();
+      // Colorful sprinkles inside jar
+      const cols = ['#ff4d8d','#ffd43b','#38d9a9','#4dabf7','#ff922b','#cc5de8'];
+      for (let i = 0; i < 24; i++) {
+        const sx = -14 + (i * 19 % 29);
+        const sy = -8 + (i * 13 % 34);
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate((i * 1.1) % Math.PI);
+        ctx.fillStyle = cols[i % cols.length];
+        ctx.beginPath();
+        ctx.roundRect(-5, -2.2, 10, 4.4, 2.2);
+        ctx.fill();
+        ctx.restore();
+      }
+      // Perforated brass shaker lid
+      const lg = ctx.createLinearGradient(-20, -34, 20, -20);
+      lg.addColorStop(0, '#f9df92');
+      lg.addColorStop(0.5, '#c9933b');
+      lg.addColorStop(1, '#8c5c19');
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      ctx.roundRect(-18, -34, 36, 15, [8, 8, 2, 2]);
+      ctx.fill();
+      ctx.fillStyle = '#4a2b08';
+      [-8, 0, 8].forEach(hx => {
+        ctx.beginPath();
+        ctx.arc(hx, -28, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+  }
+
+  /* --- Detailed Individual Food Renderers (Used on Plate & Icons) --- */
+
+  function drawNoodlesShape(ctx, x, y, r, seed = 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    // Soft shadow under nest
+    ctx.fillStyle = 'rgba(42, 22, 8, 0.22)';
+    ctx.beginPath();
+    ctx.ellipse(2, 6, r * 1.05, r * 0.78, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const strands = 16;
+    for (let i = 0; i < strands; i++) {
+      const a1 = (i / strands) * Math.PI * 2 + seed * 1.7;
+      const a2 = a1 + 1.8 + ((i * 7) % 5) * 0.25;
+      const rad1 = r * (0.45 + ((i * 13) % 10) * 0.055);
+      const rad2 = r * (0.4 + ((i * 17) % 10) * 0.055);
+      const x1 = Math.cos(a1) * rad1;
+      const y1 = Math.sin(a1) * rad1 * 0.8;
+      const x2 = Math.cos(a2) * rad2;
+      const y2 = Math.sin(a2) * rad2 * 0.8;
+      const cpx = Math.cos((a1 + a2) / 2 + 0.5) * r * 0.95;
+      const cpy = Math.sin((a1 + a2) / 2 + 0.5) * r * 0.78;
+
+      ctx.lineCap = 'round';
+      // Lower shadow edge
+      ctx.strokeStyle = '#b97b22';
+      ctx.lineWidth = r * 0.19;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1 + 1.8);
+      ctx.quadraticCurveTo(cpx, cpy + 1.8, x2, y2 + 1.8);
+      ctx.stroke();
+
+      // Golden pasta body
+      ctx.strokeStyle = i % 2 === 0 ? '#f6cc68' : '#ecc054';
+      ctx.lineWidth = r * 0.14;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(cpx, cpy, x2, y2);
+      ctx.stroke();
+
+      // Glossy highlight
+      ctx.strokeStyle = 'rgba(255, 250, 224, 0.65)';
+      ctx.lineWidth = r * 0.045;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1 - 1.2);
+      ctx.quadraticCurveTo(cpx, cpy - 1.2, x2, y2 - 1.2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawFriedEggShape(ctx, x, y, r, rot = 0, wobble = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+
+    // Organic crispy egg-white contour
+    ctx.beginPath();
+    const pts = 24;
+    for (let i = 0; i <= pts; i++) {
+      const a = (i / pts) * Math.PI * 2;
+      const wave = 1 + 0.12 * Math.sin(a * 3 + 0.7) + 0.08 * Math.cos(a * 5 - 1.2);
+      const px = Math.cos(a) * r * wave;
+      const py = Math.sin(a) * r * 0.88 * wave;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+
+    // Cast shadow
+    ctx.save();
+    ctx.translate(2, 5);
+    ctx.fillStyle = 'rgba(40, 20, 8, 0.24)';
+    ctx.fill();
+    ctx.restore();
+
+    // Crispy toasted edge & warm ivory white
+    const wg = ctx.createRadialGradient(-r * 0.1, -r * 0.1, r * 0.15, 0, 0, r * 1.12);
+    wg.addColorStop(0, '#fffcf2');
+    wg.addColorStop(0.76, '#f7eed9');
+    wg.addColorStop(0.92, '#dfae67');
+    wg.addColorStop(1, '#a96828');
+    ctx.fillStyle = wg;
+    ctx.fill();
+
+    // Subtle fried bubbles along rim
+    ctx.fillStyle = 'rgba(255, 250, 235, 0.75)';
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.05 + 0.4;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * r * 0.76, Math.sin(a) * r * 0.65, r * 0.055, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Domed glossy orange-gold yolk (wobbles on impact!)
+    const yx = Math.sin(wobble) * r * 0.08;
+    const yy = Math.cos(wobble * 1.3) * r * 0.05;
+    const yr = r * 0.42;
+
+    ctx.fillStyle = 'rgba(180, 95, 10, 0.28)';
+    ctx.beginPath();
+    ctx.arc(yx + 2, yy + 3.5, yr * 1.03, 0, Math.PI * 2);
+    ctx.fill();
+
+    const yg = ctx.createRadialGradient(yx - yr * 0.28, yy - yr * 0.28, yr * 0.08, yx, yy, yr);
+    yg.addColorStop(0, '#ffe359');
+    yg.addColorStop(0.55, '#ffa719');
+    yg.addColorStop(1, '#d95d07');
+    ctx.fillStyle = yg;
+    ctx.beginPath();
+    ctx.arc(yx, yy, yr, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wet specular highlight on yolk
+    ctx.fillStyle = 'rgba(255, 255, 240, 0.85)';
+    ctx.beginPath();
+    ctx.ellipse(yx - yr * 0.3, yy - yr * 0.32, yr * 0.26, yr * 0.14, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawGummyWormShape(ctx, x, y, r, rot = 0, wiggle = 0, colA = '#ff4d6d', colB = '#ffd166') {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+
+    const wOffset = Math.sin(wiggle) * r * 0.14;
+    const p0 = { x: -r * 0.9, y: r * 0.15 };
+    const p1 = { x: -r * 0.3, y: -r * 0.65 + wOffset };
+    const p2 = { x: r * 0.3, y: r * 0.65 - wOffset };
+    const p3 = { x: r * 0.9, y: -r * 0.1 };
+
+    const g = ctx.createLinearGradient(p0.x, 0, p3.x, 0);
+    g.addColorStop(0, colA);
+    g.addColorStop(0.48, colA);
+    g.addColorStop(0.55, colB);
+    g.addColorStop(1, colB);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Shadow
+    ctx.strokeStyle = 'rgba(30, 12, 6, 0.26)';
+    ctx.lineWidth = r * 0.44;
+    ctx.beginPath();
+    ctx.moveTo(p0.x + 2, p0.y + 4);
+    ctx.bezierCurveTo(p1.x + 2, p1.y + 4, p2.x + 2, p2.y + 4, p3.x + 2, p3.y + 4);
+    ctx.stroke();
+
+    // Translucent gummy body
+    ctx.strokeStyle = g;
+    ctx.lineWidth = r * 0.4;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+    ctx.stroke();
+
+    // Segmented ridges along spine
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+    ctx.lineWidth = 2;
+    for (let t = 0.14; t <= 0.88; t += 0.12) {
+      const mt = 1 - t;
+      const sx = mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x;
+      const sy = mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r * 0.13, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Wet candy specular highlight
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.68)';
+    ctx.lineWidth = r * 0.09;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y - r * 0.08);
+    ctx.bezierCurveTo(p1.x, p1.y - r * 0.08, p2.x, p2.y - r * 0.08, p3.x, p3.y - r * 0.08);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawKiwiShape(ctx, x, y, r, rot = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(30, 15, 5, 0.26)';
+    ctx.beginPath();
+    ctx.ellipse(2, 5, r * 1.02, r * 0.94, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fuzzy brown skin
+    ctx.fillStyle = '#7c532d';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * 0.92, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Juicy emerald flesh
+    const fg = ctx.createRadialGradient(0, 0, r * 0.1, 0, 0, r * 0.92);
+    fg.addColorStop(0, '#eef7c8');
+    fg.addColorStop(0.28, '#c5e86c');
+    fg.addColorStop(0.68, '#6bbf35');
+    fg.addColorStop(1, '#3e8c1e');
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.91, r * 0.83, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Radial translucent fiber rays
+    ctx.strokeStyle = 'rgba(235, 252, 195, 0.42)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.22, Math.sin(a) * r * 0.2);
+      ctx.lineTo(Math.cos(a) * r * 0.78, Math.sin(a) * r * 0.7);
+      ctx.stroke();
+    }
+
+    // Creamy star core
+    ctx.fillStyle = '#f2f7d4';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.27, r * 0.21, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glossy black teardrop seeds
+    ctx.fillStyle = '#1b1610';
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + 0.15;
+      const sx = Math.cos(a) * r * 0.44;
+      const sy = Math.sin(a) * r * 0.38;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(a);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 0.065, r * 0.032, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Juicy wet sheen
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.26, -r * 0.28, r * 0.34, r * 0.16, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawMushroomShape(ctx, x, y, r, rot = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(30, 15, 5, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(2, r * 0.72, r * 0.65, r * 0.26, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Creamy stem
+    const sg = ctx.createLinearGradient(-r * 0.3, 0, r * 0.35, 0);
+    sg.addColorStop(0, '#f5e7cb');
+    sg.addColorStop(0.55, '#e8d0ab');
+    sg.addColorStop(1, '#b59267');
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.28, 0);
+    ctx.quadraticCurveTo(-r * 0.34, r * 0.6, -r * 0.22, r * 0.75);
+    ctx.quadraticCurveTo(0, r * 0.88, r * 0.24, r * 0.74);
+    ctx.quadraticCurveTo(r * 0.34, r * 0.56, r * 0.28, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Under-cap gills
+    ctx.fillStyle = '#8f623c';
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.06, r * 0.82, r * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glossy roasted red-caramel cap
+    const cg = ctx.createRadialGradient(-r * 0.28, -r * 0.42, r * 0.08, 0, -r * 0.1, r * 0.95);
+    cg.addColorStop(0, '#f26a4b');
+    cg.addColorStop(0.55, '#c93824');
+    cg.addColorStop(1, '#7a1c12');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.88, r * 0.04);
+    ctx.bezierCurveTo(-r * 0.95, -r * 0.92, r * 0.95, -r * 0.92, r * 0.88, r * 0.04);
+    ctx.quadraticCurveTo(0, r * 0.24, -r * 0.88, r * 0.04);
+    ctx.closePath();
+    ctx.fill();
+
+    // Creamy spots on cap
+    ctx.fillStyle = '#fdf3dc';
+    [[-0.36, -0.35, 0.14], [0.18, -0.45, 0.16], [0.46, -0.14, 0.11], [-0.08, -0.14, 0.1]].forEach(([sx, sy, sr]) => {
+      ctx.beginPath();
+      ctx.ellipse(r * sx, r * sy, r * sr, r * sr * 0.78, sx, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Specular glaze highlight
+    ctx.fillStyle = 'rgba(255, 240, 225, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.32, -r * 0.5, r * 0.28, r * 0.12, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawEyeballShape(ctx, x, y, r, lookX = 0, lookY = 0, blink = 0, irisColor = '#4ea854') {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(28, 14, 6, 0.26)';
+    ctx.beginPath();
+    ctx.ellipse(2, 5, r * 1.0, r * 0.88, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glossy mozzarella white sphere
+    const sg = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r);
+    sg.addColorStop(0, '#fffdf7');
+    sg.addColorStop(0.7, '#f2ead9');
+    sg.addColorStop(1, '#c9bda4');
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Clip to eyeball circle for iris + eyelid blink
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.98, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Tracking iris & olive pupil
+    const px = lookX * r * 0.32;
+    const py = lookY * r * 0.32;
+    const ir = r * 0.48;
+
+    const ig = ctx.createRadialGradient(px, py, ir * 0.2, px, py, ir);
+    ig.addColorStop(0, irisColor);
+    ig.addColorStop(1, '#1d3c28');
+    ctx.fillStyle = ig;
+    ctx.beginPath();
+    ctx.arc(px, py, ir, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Deep glossy black olive pupil
+    ctx.fillStyle = '#141210';
+    ctx.beginPath();
+    ctx.arc(px, py, ir * 0.56, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Double catchlight sparkle
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.beginPath();
+    ctx.arc(px - ir * 0.26, py - ir * 0.28, ir * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px + ir * 0.22, py + ir * 0.18, ir * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Smooth creamy blink eyelid
+    if (blink > 0.01) {
+      const lidH = r * 2.1 * blink;
+      const lg = ctx.createLinearGradient(0, -r, 0, -r + lidH);
+      lg.addColorStop(0, '#efe3cb');
+      lg.addColorStop(1, '#d8c5a2');
+      ctx.fillStyle = lg;
+      ctx.fillRect(-r - 2, -r - 2, r * 2 + 4, lidH);
+      ctx.strokeStyle = '#9c835d';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-r, -r + lidH);
+      ctx.quadraticCurveTo(0, -r + lidH + 4, r, -r + lidH);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function drawMarshmallowShape(ctx, x, y, r, rot = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(32, 16, 6, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(3, 6, r * 0.96, r * 0.72, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Plump cylindrical pillow body
+    const bg = ctx.createLinearGradient(-r * 0.85, -r * 0.5, r * 0.85, r * 0.6);
+    bg.addColorStop(0, '#fff7f0');
+    bg.addColorStop(0.5, '#fae2e6');
+    bg.addColorStop(0.85, '#dfbcc4');
+    bg.addColorStop(1, '#b88c96');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.roundRect(-r * 0.82, -r * 0.62, r * 1.64, r * 1.24, r * 0.44);
+    ctx.fill();
+
+    // Caramelized golden-brown toasted sear spot on top
+    const tg = ctx.createRadialGradient(-r * 0.15, -r * 0.15, r * 0.05, -r * 0.1, -r * 0.1, r * 0.65);
+    tg.addColorStop(0, 'rgba(130, 58, 16, 0.72)');
+    tg.addColorStop(0.45, 'rgba(212, 128, 42, 0.55)');
+    tg.addColorStop(1, 'rgba(212, 128, 42, 0)');
+    ctx.fillStyle = tg;
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.1, -r * 0.1, r * 0.62, r * 0.42, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // End oval face
+    ctx.fillStyle = '#fff5ee';
+    ctx.beginPath();
+    ctx.ellipse(r * 0.56, 0, r * 0.26, r * 0.52, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(180, 140, 145, 0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawSauceRibbon(ctx, stroke, cx, cy, pr) {
+    if (stroke.pts.length < 2) return;
+    const isCream = stroke.id === 'green_sauce';
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const tracePath = (ox = 0, oy = 0) => {
+      ctx.beginPath();
+      const p0 = stroke.pts[0];
+      ctx.moveTo(cx + p0.nx * pr + ox, cy + p0.ny * pr + oy);
+      for (let i = 1; i < stroke.pts.length - 1; i++) {
+        const p = stroke.pts[i];
+        const next = stroke.pts[i + 1];
+        const mx = cx + ((p.nx + next.nx) * 0.5) * pr + ox;
+        const my = cy + ((p.ny + next.ny) * 0.5) * pr + oy;
+        ctx.quadraticCurveTo(cx + p.nx * pr + ox, cy + p.ny * pr + oy, mx, my);
+      }
+      const last = stroke.pts[stroke.pts.length - 1];
+      ctx.lineTo(cx + last.nx * pr + ox, cy + last.ny * pr + oy);
+    };
+
+    const baseW = pr * (isCream ? 0.115 : 0.088);
+
+    // 1. Soft drop shadow
+    ctx.strokeStyle = 'rgba(30, 10, 8, 0.24)';
+    ctx.lineWidth = baseW * 1.12;
+    tracePath(2.5, 4);
+    ctx.stroke();
+
+    // 2. Deep outer edge
+    ctx.strokeStyle = isCream ? '#2e7d19' : '#7a0922';
+    ctx.lineWidth = baseW;
+    tracePath(0, 0);
+    ctx.stroke();
+
+    // 3. Rich inner viscous body
+    ctx.strokeStyle = isCream ? '#7de03c' : '#db1d45';
+    ctx.lineWidth = baseW * 0.78;
+    tracePath(-0.5, -0.5);
+    ctx.stroke();
+
+    // 4. Piped texture ridges for pistachio cream OR seeds for berry glaze
+    if (isCream) {
+      ctx.strokeStyle = '#bdf77e';
+      ctx.lineWidth = baseW * 0.34;
+      ctx.setLineDash([baseW * 0.45, baseW * 0.35]);
+      tracePath(-1.5, -1.8);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      // Wet specular gloss line
+      ctx.strokeStyle = 'rgba(255, 228, 236, 0.72)';
+      ctx.lineWidth = baseW * 0.22;
+      tracePath(-baseW * 0.16, -baseW * 0.18);
+      ctx.stroke();
+      // Tiny dark berry seeds along path
+      ctx.fillStyle = 'rgba(65, 6, 18, 0.7)';
+      for (let i = 1; i < stroke.pts.length; i += 3) {
+        const p = stroke.pts[i];
+        ctx.beginPath();
+        ctx.arc(cx + p.nx * pr + (i % 2 ? 2 : -2), cy + p.ny * pr + (i % 3 - 1), 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Glossy splatter drops around sauce
+    if (stroke.drops) {
+      stroke.drops.forEach(d => {
+        const dx = cx + d.nx * pr;
+        const dy = cy + d.ny * pr;
+        const dr = d.nr * pr;
+        ctx.fillStyle = isCream ? '#6bd62f' : '#cc183e';
+        ctx.beginPath();
+        ctx.arc(dx, dy, dr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
+        ctx.beginPath();
+        ctx.arc(dx - dr * 0.3, dy - dr * 0.3, dr * 0.32, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    ctx.restore();
+  }
+
+  /* ============================================================
+     7. PLATE INTERACTION (POUR, SPRINKLE, DROP WITH PHYSICS)
+     ============================================================ */
+  function getPlateMetrics() {
+    const rect = plateCanvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    const radius = Math.min(w, h) * 0.41;
+    const cx = w * 0.5 + plateAnim.offsetX * w;
+    const cy = h * 0.52;
+    return { w, h, cx, cy, radius, innerR: radius * 0.76, rect };
+  }
+
+  function clientToPlateNorm(clientX, clientY) {
+    const m = getPlateMetrics();
+    const lx = clientX - m.rect.left;
+    const ly = clientY - m.rect.top;
+    const nx = (lx - m.cx) / m.innerR;
+    const ny = (ly - m.cy) / m.innerR;
+    return { nx, ny, dist: Math.hypot(nx, ny), lx, ly, m };
+  }
+
+  function addSprinkleBurst(nx, ny, count = 14) {
+    const cols = ['#ff4d8d','#ffd43b','#38d9a9','#4dabf7','#ff922b','#cc5de8','#fff0f6'];
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.random() * 0.28;
+      let sx = nx + Math.cos(a) * d;
+      let sy = ny + Math.sin(a) * d;
+      const len = Math.hypot(sx, sy);
+      if (len > 0.94) { sx *= 0.94 / len; sy *= 0.94 / len; }
+      plateItems.push({
+        id: 'sprinkle_bit',
+        nx: sx,
+        ny: sy,
+        rot: Math.random() * Math.PI,
+        color: cols[Math.floor(Math.random() * cols.length)],
+        isPopper: Math.random() < 0.28,
+        popTimer: 0.4 + Math.random() * 2.2,
+        scale: 0.01,
+        targetScale: 1,
+        vy: 0
+      });
+    }
+    Sound.sprinklePop();
+  }
+
+  function jigglePlateItems() {
+    plateItems.forEach(it => {
+      if (it.wobbleVel !== undefined) {
+        it.wobbleVel += (Math.random() - 0.5) * 0.9;
+      }
+    });
+  }
+
+  plateCanvas.addEventListener('pointerenter', () => { pointer.overPlate = true; });
+  plateCanvas.addEventListener('pointerleave', () => { pointer.overPlate = false; });
+
+  plateCanvas.addEventListener('pointerdown', (e) => {
+    if (unlockedActions <= 0 || !selectedTool || plateAnim.state !== 'idle') return;
+    const pos = clientToPlateNorm(e.clientX, e.clientY);
+    if (pos.dist > 1.05) return;
+
+    e.preventDefault();
+    plateCanvas.setPointerCapture(e.pointerId);
+
+    // Clamp inside inner plate area
+    const clampD = Math.min(pos.dist, 0.88);
+    const scaleClamp = pos.dist > 0 ? clampD / pos.dist : 1;
+    const nx = pos.nx * scaleClamp;
+    const ny = pos.ny * scaleClamp;
+
+    if (selectedTool.type === 'pour') {
+      activeSauce = {
+        id: selectedTool.id,
+        pts: [{ nx, ny }],
+        drops: [],
+        startTime: performance.now()
+      };
+      plateSauces.push(activeSauce);
+      Sound.pourTick(selectedTool.id === 'green_sauce');
+      lastPourSoundAt = performance.now();
+    } else if (selectedTool.type === 'scatter') {
+      activeSprinkling = true;
+      sprinkleMoveAccum = 0;
+      addSprinkleBurst(nx, ny, 18);
+      lastSprinkleAt = performance.now();
+    } else {
+      // Drop solid topping with juicy spring physics!
+      const wormPalettes = [
+        ['#ff4d6d', '#ffd166'],
+        ['#38d9a9', '#4dabf7'],
+        ['#ff922b', '#cc5de8'],
+        ['#a9e34b', '#ff6b6b']
+      ];
+      const irisColors = ['#4ea854', '#3e92cc', '#c98a2e', '#8b5fbf'];
+      const wp = wormPalettes[Math.floor(Math.random() * wormPalettes.length)];
+
+      plateItems.push({
+        id: selectedTool.id,
+        nx,
+        ny,
+        rot: (Math.random() - 0.5) * 1.4,
+        seed: Math.random() * 10,
+        scale: 1.55,
+        targetScale: 1,
+        scaleVel: -0.14,
+        wobble: 0,
+        wobbleVel: 0.65,
+        colA: wp[0],
+        colB: wp[1],
+        irisColor: irisColors[Math.floor(Math.random() * irisColors.length)],
+        blink: 0,
+        nextBlink: performance.now() + 1200 + Math.random() * 3500,
+        hot: ['noodles', 'egg', 'mushroom', 'marshmallow'].includes(selectedTool.id),
+        placedAt: performance.now()
+      });
+
+      Sound.ingredient(selectedTool.id);
+      jigglePlateItems();
+
+      // Local splash sparkles on impact
+      for (let i = 0; i < 10; i++) {
+        const a = Math.random() * Math.PI * 2;
+        fxParticles.push({
+          kind: 'star',
+          x: e.clientX,
+          y: e.clientY,
+          vx: Math.cos(a) * (1.8 + Math.random() * 3.4),
+          vy: Math.sin(a) * (1.8 + Math.random() * 3.4) - 1.5,
+          rot: Math.random() * 6,
+          vrot: 0.15,
+          size: 4 + Math.random() * 4,
+          color: '#ffe588',
+          life: 1,
+          decay: 0.032
+        });
+      }
+
+      consumeAction(selectedTool.cost);
+    }
+  });
+
+  plateCanvas.addEventListener('pointermove', (e) => {
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+    const pos = clientToPlateNorm(e.clientX, e.clientY);
+    pointer.overPlate = pos.dist <= 1.15;
+
+    if (activeSauce) {
+      const clampD = Math.min(pos.dist, 0.9);
+      const sc = pos.dist > 0 ? clampD / pos.dist : 1;
+      const nx = pos.nx * sc;
+      const ny = pos.ny * sc;
+      const last = activeSauce.pts[activeSauce.pts.length - 1];
+      const step = Math.hypot(nx - last.nx, ny - last.ny);
+      if (step > 0.035 && activeSauce.pts.length < 95) {
+        activeSauce.pts.push({ nx, ny });
+        if (Math.random() < 0.25 && activeSauce.drops.length < 18) {
+          activeSauce.drops.push({
+            nx: nx + (Math.random() - 0.5) * 0.16,
+            ny: ny + (Math.random() - 0.5) * 0.16,
+            nr: 0.014 + Math.random() * 0.022
+          });
+        }
+        const now = performance.now();
+        if (now - lastPourSoundAt > 75) {
+          Sound.pourTick(activeSauce.id === 'green_sauce');
+          lastPourSoundAt = now;
+        }
+      }
+    } else if (activeSprinkling) {
+      const now = performance.now();
+      if (pos.dist <= 0.95 && now - lastSprinkleAt > 85) {
+        addSprinkleBurst(pos.nx, pos.ny, 9);
+        lastSprinkleAt = now;
+        sprinkleMoveAccum++;
+      }
+    }
+  });
+
+  function finishPlateGesture() {
+    if (activeSauce) {
+      if (activeSauce.pts.length === 1) {
+        // Single tap creates a cute glossy sauce swirl!
+        const c = activeSauce.pts[0];
+        for (let i = 1; i <= 14; i++) {
+          const a = i * 0.55;
+          const r = i * 0.015;
+          activeSauce.pts.push({ nx: c.nx + Math.cos(a) * r, ny: c.ny + Math.sin(a) * r });
+        }
+      }
+      const toolCost = selectedTool ? selectedTool.cost : 2;
+      activeSauce = null;
+      consumeAction(toolCost);
+    }
+    if (activeSprinkling) {
+      activeSprinkling = false;
+      const toolCost = selectedTool ? selectedTool.cost : 2;
+      consumeAction(toolCost);
+    }
+  }
+
+  plateCanvas.addEventListener('pointerup', finishPlateGesture);
+  plateCanvas.addEventListener('pointercancel', finishPlateGesture);
+
+  window.addEventListener('pointermove', (e) => {
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+  });
+
+  /* ============================================================
+     8. CONTROLS: LANGUAGE TOGGLE, SERVE FRESH PLATE, NEXT WORD
+     ============================================================ */
+  langBtn.addEventListener('click', () => {
+    lang = lang === 'uk' ? 'ru' : 'uk';
+    langBtn.textContent = lang === 'uk' ? 'укр' : 'рус';
+    Sound.woodTap(2);
+    loadNewWord();
+  });
+
+  nextBtn.addEventListener('click', () => {
+    Sound.skipWhoosh();
+    loadNewWord();
+  });
+
+  serveBtn.addEventListener('click', () => {
+    if (plateAnim.state !== 'idle') return;
+    Sound.serveBell();
+    plateAnim.state = 'out';
+    plateAnim.phase = 0;
+
+    // Celebratory sparkles around plate when serving!
+    const m = getPlateMetrics();
+    const cx = m.rect.left + m.cx;
+    const cy = m.rect.top + m.cy;
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      fxParticles.push({
+        kind: 'star',
+        x: cx + Math.cos(a) * m.radius * 0.6,
+        y: cy + Math.sin(a) * m.radius * 0.6,
+        vx: Math.cos(a) * 3.5,
+        vy: Math.sin(a) * 3.5 - 2,
+        rot: 0,
+        vrot: 0.14,
+        size: 6 + Math.random() * 5,
+        color: '#ffe078',
+        life: 1,
+        decay: 0.022
+      });
+    }
+  });
+
+  /* ============================================================
+     9. LIVING BACKGROUND CANVAS (COZY SUNLIT WOODEN KITCHEN)
+     ============================================================ */
+  const bgCanvas = document.getElementById('bgCanvas');
+  const bgCtx = bgCanvas.getContext('2d');
+  const fxCanvas = document.getElementById('fxCanvas');
+  const fxCtx = fxCanvas.getContext('2d');
+  const plateCtx = plateCanvas.getContext('2d');
+
+  // Pre-rendered static wood table layer for crisp 60fps performance
+  let woodCache = document.createElement('canvas');
+  const dustMotes = Array.from({ length: 34 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: 1.2 + Math.random() * 2.8,
+    vx: 0.00012 + Math.random() * 0.0002,
+    vy: -0.00008 - Math.random() * 0.00018,
+    phase: Math.random() * Math.PI * 2
+  }));
+
+  function buildWoodTableCache(w, h) {
+    woodCache.width = w;
+    woodCache.height = h;
+    const ctx = woodCache.getContext('2d');
+
+    // Warm sunlit oak tabletop planks
+    const plankCount = 7;
+    const plankH = h / plankCount;
+    for (let p = 0; p < plankCount; p++) {
+      const py = p * plankH;
+      const toneShift = (p % 2 === 0 ? 1 : -1) * 7;
+      const g = ctx.createLinearGradient(0, py, w, py + plankH);
+      g.addColorStop(0, `rgb(${124 + toneShift}, ${76 + toneShift}, ${44 + toneShift})`);
+      g.addColorStop(0.5, `rgb(${106 + toneShift}, ${62 + toneShift}, ${34 + toneShift})`);
+      g.addColorStop(1, `rgb(${84 + toneShift}, ${47 + toneShift}, ${25 + toneShift})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, py, w, plankH + 1);
+
+      // Organic wood grain lines
+      ctx.strokeStyle = 'rgba(48, 22, 8, 0.16)';
+      ctx.lineWidth = 1.6;
+      for (let gLine = 0; gLine < 11; gLine++) {
+        const gy = py + (gLine + 0.5) * (plankH / 11);
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        for (let x = 0; x <= w; x += 90) {
+          const wave = Math.sin(x * 0.004 + p * 2.1 + gLine * 0.7) * 5;
+          ctx.lineTo(x, gy + wave);
+        }
+        ctx.stroke();
+      }
+
+      // Plank seam
+      ctx.fillStyle = 'rgba(28, 12, 4, 0.55)';
+      ctx.fillRect(0, py, w, 2);
+      ctx.fillStyle = 'rgba(255, 210, 155, 0.12)';
+      ctx.fillRect(0, py + 2, w, 1.5);
+    }
+
+    // Woven terracotta-linen placemat behind the center plate
+    const pmX = w * 0.345;
+    const pmW = w * 0.43;
+    const pmH = Math.min(h * 0.86, pmW * 0.92);
+    const pmY = (h - pmH) * 0.52;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(18, 7, 2, 0.52)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 10;
+    ctx.fillStyle = '#c8734b';
+    ctx.beginPath();
+    ctx.roundRect(pmX, pmY, pmW, pmH, 32);
+    ctx.fill();
+    ctx.restore();
+
+    // Clip woven fabric stripes inside placemat
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(pmX, pmY, pmW, pmH, 32);
+    ctx.clip();
+
+    // Gingham / folk woven linen pattern
+    const step = 28;
+    ctx.fillStyle = 'rgba(246, 224, 184, 0.22)';
+    for (let x = pmX; x < pmX + pmW; x += step * 2) {
+      ctx.fillRect(x, pmY, step, pmH);
+    }
+    ctx.fillStyle = 'rgba(120, 42, 22, 0.18)';
+    for (let y = pmY; y < pmY + pmH; y += step * 2) {
+      ctx.fillRect(pmX, y, pmW, step);
+    }
+    // Fine linen weave crosshatch
+    ctx.strokeStyle = 'rgba(255, 236, 200, 0.1)';
+    ctx.lineWidth = 1;
+    for (let x = pmX; x < pmX + pmW; x += 6) {
+      ctx.beginPath(); ctx.moveTo(x, pmY); ctx.lineTo(x, pmY + pmH); ctx.stroke();
+    }
+    for (let y = pmY; y < pmY + pmH; y += 6) {
+      ctx.beginPath(); ctx.moveTo(pmX, y); ctx.lineTo(pmX + pmW, y); ctx.stroke();
+    }
+    // Stitched decorative border
+    ctx.strokeStyle = 'rgba(255, 238, 200, 0.58)';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([9, 7]);
+    ctx.beginPath();
+    ctx.roundRect(pmX + 14, pmY + 14, pmW - 28, pmH - 28, 22);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Brushed Silver Fork (left of plate) & Spoon (right of plate)
+    drawSilverFork(ctx, pmX + pmW * 0.085, pmY + pmH * 0.52, pmH * 0.42);
+    drawSilverSpoon(ctx, pmX + pmW * 0.915, pmY + pmH * 0.52, pmH * 0.42);
+
+    // Warm vignette lighting
+    const vig = ctx.createRadialGradient(w * 0.48, h * 0.46, Math.min(w, h) * 0.25, w * 0.5, h * 0.5, Math.max(w, h) * 0.78);
+    vig.addColorStop(0, 'rgba(255, 224, 158, 0.08)');
+    vig.addColorStop(0.6, 'rgba(30, 12, 4, 0.05)');
+    vig.addColorStop(1, 'rgba(18, 7, 2, 0.58)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function drawSilverFork(ctx, x, y, len) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.shadowColor = 'rgba(20, 8, 2, 0.45)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetX = 4;
+    ctx.shadowOffsetY = 6;
+    const mg = ctx.createLinearGradient(-12, 0, 12, 0);
+    mg.addColorStop(0, '#969da6');
+    mg.addColorStop(0.35, '#eef3f8');
+    mg.addColorStop(0.7, '#b5bcc4');
+    mg.addColorStop(1, '#6f7782');
+    ctx.fillStyle = mg;
+
+    // Handle
+    ctx.beginPath();
+    ctx.roundRect(-5, -len * 0.08, 10, len * 0.62, 5);
+    ctx.fill();
+    // Neck + head
+    ctx.beginPath();
+    ctx.roundRect(-13, -len * 0.28, 26, len * 0.22, [4, 4, 12, 12]);
+    ctx.fill();
+    // 4 tines
+    [-10, -3.5, 3.5, 10].forEach(tx => {
+      ctx.beginPath();
+      ctx.roundRect(tx - 1.8, -len * 0.52, 3.6, len * 0.28, 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawSilverSpoon(ctx, x, y, len) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.shadowColor = 'rgba(20, 8, 2, 0.45)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetX = 4;
+    ctx.shadowOffsetY = 6;
+    const mg = ctx.createLinearGradient(-14, 0, 14, 0);
+    mg.addColorStop(0, '#8d959e');
+    mg.addColorStop(0.35, '#eff4f8');
+    mg.addColorStop(0.7, '#adb5be');
+    mg.addColorStop(1, '#68707a');
+    ctx.fillStyle = mg;
+
+    ctx.beginPath();
+    ctx.roundRect(-5, -len * 0.08, 10, len * 0.62, 5);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(0, -len * 0.3, 15, len * 0.23, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Concave bowl shade
+    ctx.fillStyle = 'rgba(80, 90, 105, 0.22)';
+    ctx.beginPath();
+    ctx.ellipse(1, -len * 0.3, 10, len * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLivingBackground(time) {
+    const w = bgCanvas.width;
+    const h = bgCanvas.height;
+    bgCtx.clearRect(0, 0, w, h);
+    bgCtx.drawImage(woodCache, 0, 0);
+
+    // Gently swaying diagonal sunlit beams from window
+    bgCtx.save();
+    const sway = Math.sin(time * 0.0007) * 28;
+    const grad = bgCtx.createLinearGradient(0, 0, w * 0.72, h * 0.85);
+    grad.addColorStop(0, 'rgba(255, 232, 165, 0.17)');
+    grad.addColorStop(0.55, 'rgba(255, 224, 150, 0.05)');
+    grad.addColorStop(1, 'rgba(255, 224, 150, 0)');
+    bgCtx.fillStyle = grad;
+
+    for (let i = 0; i < 3; i++) {
+      const bx = w * (0.04 + i * 0.22) + sway * (1 + i * 0.2);
+      bgCtx.beginPath();
+      bgCtx.moveTo(bx, 0);
+      bgCtx.lineTo(bx + w * 0.11, 0);
+      bgCtx.lineTo(bx + w * 0.38, h);
+      bgCtx.lineTo(bx + w * 0.24, h);
+      bgCtx.closePath();
+      bgCtx.fill();
+    }
+    bgCtx.restore();
+
+    // Animated potted basil leaves swaying softly in top-left corner
+    bgCtx.save();
+    bgCtx.translate(w * 0.02, h * 0.03);
+    const leafAngles = [0.2, 0.65, 1.15, 1.55, 0.9];
+    leafAngles.forEach((baseA, idx) => {
+      const a = baseA + Math.sin(time * 0.0014 + idx * 1.1) * 0.06;
+      const len = Math.min(w, h) * (0.095 + (idx % 2) * 0.025);
+      bgCtx.save();
+      bgCtx.rotate(a);
+      bgCtx.shadowColor = 'rgba(15, 8, 2, 0.4)';
+      bgCtx.shadowBlur = 12;
+      bgCtx.shadowOffsetY = 8;
+      const lg = bgCtx.createLinearGradient(0, 0, len, 0);
+      lg.addColorStop(0, '#2d6a34');
+      lg.addColorStop(0.6, '#4fa346');
+      lg.addColorStop(1, '#78c958');
+      bgCtx.fillStyle = lg;
+      bgCtx.beginPath();
+      bgCtx.moveTo(0, 0);
+      bgCtx.quadraticCurveTo(len * 0.5, -len * 0.34, len, 0);
+      bgCtx.quadraticCurveTo(len * 0.5, len * 0.34, 0, 0);
+      bgCtx.fill();
+      bgCtx.strokeStyle = 'rgba(215, 250, 185, 0.4)';
+      bgCtx.lineWidth = 1.5;
+      bgCtx.beginPath();
+      bgCtx.moveTo(4, 0);
+      bgCtx.lineTo(len * 0.85, 0);
+      bgCtx.stroke();
+      bgCtx.restore();
+    });
+    bgCtx.restore();
+
+    // Floating sunlit dust motes
+    dustMotes.forEach(m => {
+      m.x = (m.x + m.vx) % 1;
+      m.y = (m.y + m.vy + 1) % 1;
+      const alpha = 0.16 + 0.2 * Math.sin(time * 0.002 + m.phase);
+      bgCtx.fillStyle = `rgba(255, 238, 185, ${alpha})`;
+      bgCtx.beginPath();
+      bgCtx.arc(m.x * w, m.y * h, m.r, 0, Math.PI * 2);
+      bgCtx.fill();
+    });
+  }
+
+  /* ============================================================
+     10. PLATE & REALISTIC PORCELAIN RENDERING LOOP
+     ============================================================ */
+  function drawPorcelainPlate(ctx, cx, cy, r, time) {
+    ctx.save();
+
+    // Deep realistic drop shadow on linen cloth
+    ctx.fillStyle = 'rgba(22, 9, 3, 0.44)';
+    ctx.beginPath();
+    ctx.arc(cx + 4, cy + 12, r * 1.01, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer stoneware cream rim (warm handcrafted ceramic — never sterile white!)
+    const rimG = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, r * 0.2, cx, cy, r);
+    rimG.addColorStop(0, '#fbf3e1');
+    rimG.addColorStop(0.76, '#f0e2c6');
+    rimG.addColorStop(0.95, '#d7c29f');
+    rimG.addColorStop(1, '#a98e68');
+    ctx.fillStyle = rimG;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hand-painted folk-ceramic decorative rim pattern (cobalt & terracotta)
+    ctx.strokeStyle = '#31607a';
+    ctx.lineWidth = r * 0.022;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.94, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const scallops = 24;
+    for (let i = 0; i < scallops; i++) {
+      const a = (i / scallops) * Math.PI * 2;
+      const dx = cx + Math.cos(a) * r * 0.875;
+      const dy = cy + Math.sin(a) * r * 0.875;
+      ctx.fillStyle = i % 2 === 0 ? '#31607a' : '#c95f3c';
+      ctx.beginPath();
+      ctx.arc(dx, dy, r * 0.026, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Inner recessed dish well
+    const wellR = r * 0.78;
+    const wellG = ctx.createRadialGradient(cx - wellR * 0.2, cy - wellR * 0.2, wellR * 0.1, cx, cy, wellR);
+    wellG.addColorStop(0, '#fcf6e8');
+    wellG.addColorStop(0.82, '#efe2c8');
+    wellG.addColorStop(1, '#d8c5a3');
+    ctx.fillStyle = wellG;
+    ctx.beginPath();
+    ctx.arc(cx, cy, wellR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle recessed inner rim shadow
+    ctx.strokeStyle = 'rgba(130, 96, 60, 0.26)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, wellR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Soft inviting glow ripple on plate when tool is selected and ready!
+    if (unlockedActions > 0 && selectedTool && plateAnim.state === 'idle') {
+      const pulse = (Math.sin(time * 0.0055) + 1) * 0.5;
+      ctx.strokeStyle = `rgba(255, 206, 75, ${0.22 + pulse * 0.35})`;
+      ctx.lineWidth = 4;
+      ctx.setLineDash([12, 10]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, wellR * (0.82 + pulse * 0.07), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+  }
+
+  function renderPlate(time) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = plateCanvas.getBoundingClientRect();
+    const targetW = Math.round(rect.width * dpr);
+    const targetH = Math.round(rect.height * dpr);
+    if (plateCanvas.width !== targetW || plateCanvas.height !== targetH) {
+      plateCanvas.width = targetW;
+      plateCanvas.height = targetH;
+    }
+
+    // Update serve-plate slide animation
+    if (plateAnim.state === 'out') {
+      plateAnim.offsetX += 0.075;
+      if (plateAnim.offsetX > 1.35) {
+        plateItems = [];
+        plateSauces = [];
+        plateAnim.offsetX = -1.35;
+        plateAnim.state = 'in';
+      }
+    } else if (plateAnim.state === 'in') {
+      plateAnim.offsetX += (0 - plateAnim.offsetX) * 0.16;
+      if (Math.abs(plateAnim.offsetX) < 0.005) {
+        plateAnim.offsetX = 0;
+        plateAnim.state = 'idle';
+      }
+    }
+
+    plateCtx.save();
+    plateCtx.scale(dpr, dpr);
+    plateCtx.clearRect(0, 0, rect.width, rect.height);
+
+    const m = getPlateMetrics();
+    drawPorcelainPlate(plateCtx, m.cx, m.cy, m.radius, time);
+
+    // Clip contents neatly to plate rim
+    plateCtx.save();
+    plateCtx.beginPath();
+    plateCtx.arc(m.cx, m.cy, m.radius * 0.84, 0, Math.PI * 2);
+    plateCtx.clip();
+
+    // 1. Render base noodles first, then sauces, then other toppings!
+    // Actually render in chronological layering order so sauces can go over noodles or under eyes!
+    // Wait: let's render noodles -> sauces -> solid items -> sprinkles for ultra-appetizing layering,
+    // OR strictly chronological by combining? Sauces drawn over noodles & under eyes look super realistic;
+    // let's draw noodles, then sauces, then other solids, then sprinkles!
+    const pr = m.innerR;
+
+    // Layer A: Noodles
+    plateItems.forEach(it => {
+      if (it.id === 'noodles') drawAnimatedPlateItem(plateCtx, it, m, time);
+    });
+
+    // Layer B: Glossy Poured Sauces
+    plateSauces.forEach(s => drawSauceRibbon(plateCtx, s, m.cx, m.cy, pr));
+
+    // Layer C: Solid Toppings (eggs, worms, kiwis, mushrooms, blinking eyes, marshmallows)
+    plateItems.forEach(it => {
+      if (it.id !== 'noodles' && it.id !== 'sprinkle_bit') {
+        drawAnimatedPlateItem(plateCtx, it, m, time);
+      }
+    });
+
+    // Layer D: Sprinkles & Popping Sugar Crystals
+    plateItems.forEach(it => {
+      if (it.id === 'sprinkle_bit') {
+        it.scale += (it.targetScale - it.scale) * 0.25;
+        const sx = m.cx + it.nx * pr;
+        const sy = m.cy + it.ny * pr;
+
+        // Popping candy spark micro-event!
+        if (it.isPopper && it.popTimer > 0) {
+          it.popTimer -= 0.016;
+          if (it.popTimer <= 0) {
+            it.popTimer = 1.6 + Math.random() * 3.5;
+            if (Math.random() < 0.45) {
+              fxParticles.push({
+                kind: 'star',
+                x: m.rect.left + sx,
+                y: m.rect.top + sy,
+                vx: (Math.random() - 0.5) * 2.2,
+                vy: -1.5 - Math.random() * 2,
+                rot: Math.random() * 5,
+                vrot: 0.2,
+                size: 3 + Math.random() * 3,
+                color: '#fff6b0',
+                life: 1,
+                decay: 0.06
+              });
+            }
+          }
+        }
+
+        plateCtx.save();
+        plateCtx.translate(sx, sy);
+        plateCtx.rotate(it.rot);
+        plateCtx.scale(it.scale, it.scale);
+        plateCtx.fillStyle = 'rgba(0,0,0,0.22)';
+        plateCtx.beginPath();
+        plateCtx.roundRect(-4.5, -1.2, 9.5, 4.2, 2);
+        plateCtx.fill();
+        plateCtx.fillStyle = it.color;
+        plateCtx.beginPath();
+        plateCtx.roundRect(-5, -2.2, 10, 4.4, 2.2);
+        plateCtx.fill();
+        plateCtx.fillStyle = 'rgba(255,255,255,0.6)';
+        plateCtx.beginPath();
+        plateCtx.roundRect(-3.2, -1.6, 5.5, 1.4, 1);
+        plateCtx.fill();
+        plateCtx.restore();
+      }
+    });
+
+    plateCtx.restore();
+
+    // Subtle rising steam wisps from hot toppings
+    plateItems.forEach(it => {
+      if (it.hot && time - it.placedAt < 14000 && Math.random() < 0.03) {
+        fxParticles.push({
+          kind: 'steam',
+          x: m.rect.left + m.cx + it.nx * pr + (Math.random() - 0.5) * 22,
+          y: m.rect.top + m.cy + it.ny * pr - 6,
+          vx: (Math.random() - 0.5) * 0.35,
+          vy: -0.65 - Math.random() * 0.45,
+          size: 8 + Math.random() * 9,
+          life: 0.65,
+          decay: 0.008
+        });
+      }
+    });
+
+    plateCtx.restore();
+  }
+
+  function drawAnimatedPlateItem(ctx, it, m, time) {
+    // Spring squash & stretch settle
+    const force = (it.targetScale - it.scale) * 0.24;
+    it.scaleVel = (it.scaleVel + force) * 0.72;
+    it.scale += it.scaleVel;
+
+    it.wobble += it.wobbleVel;
+    it.wobbleVel *= 0.92;
+
+    const ix = m.cx + it.nx * m.innerR;
+    const iy = m.cy + it.ny * m.innerR;
+    const baseR = m.innerR * 0.23 * it.scale;
+
+    ctx.save();
+    if (it.id === 'noodles') {
+      drawNoodlesShape(ctx, ix, iy, baseR * 1.45, it.seed);
+    } else if (it.id === 'egg') {
+      drawFriedEggShape(ctx, ix, iy, baseR * 1.28, it.rot, it.wobble);
+    } else if (it.id === 'worm') {
+      drawGummyWormShape(ctx, ix, iy, baseR * 1.18, it.rot, it.wobble, it.colA, it.colB);
+    } else if (it.id === 'kiwi') {
+      drawKiwiShape(ctx, ix, iy, baseR * 1.05, it.rot);
+    } else if (it.id === 'mushroom') {
+      drawMushroomShape(ctx, ix, iy, baseR * 0.95, it.rot);
+    } else if (it.id === 'marshmallow') {
+      drawMarshmallowShape(ctx, ix, iy, baseR * 0.9, it.rot);
+    } else if (it.id === 'eyeball') {
+      // Track cursor smoothly + natural randomized blinking!
+      const screenX = m.rect.left + ix;
+      const screenY = m.rect.top + iy;
+      const dx = pointer.x - screenX;
+      const dy = pointer.y - screenY;
+      const dist = Math.hypot(dx, dy) || 1;
+      const mag = Math.min(1, dist / 140);
+      const lookX = (dx / dist) * mag;
+      const lookY = (dy / dist) * mag;
+
+      if (time > it.nextBlink) {
+        const dt = (time - it.nextBlink) / 180;
+        if (dt < 1) {
+          it.blink = Math.sin(dt * Math.PI);
+        } else {
+          it.blink = 0;
+          it.nextBlink = time + 2000 + Math.random() * 4200;
+        }
+      }
+      drawEyeballShape(ctx, ix, iy, baseR * 0.82, lookX, lookY, it.blink, it.irisColor);
+    }
+    ctx.restore();
+  }
+
+  /* ============================================================
+     11. FULL-SCREEN FX OVERLAY & FLOATING TOOL CURSOR
+     ============================================================ */
+  function renderFX(time) {
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+    // Update & render particles
+    for (let i = fxParticles.length - 1; i >= 0; i--) {
+      const p = fxParticles[i];
+      if (p.kind === 'spark') {
+        p.t += p.speed;
+        const t = Math.min(1, p.t);
+        const mt = 1 - t;
+        const cx = (p.x + p.tx) * 0.5;
+        const cy = Math.min(p.y, p.ty) + p.arcY;
+        const px = mt*mt*p.x + 2*mt*t*cx + t*t*p.tx;
+        const py = mt*mt*p.y + 2*mt*t*cy + t*t*p.ty;
+        fxCtx.save();
+        fxCtx.globalAlpha = 1 - t * 0.6;
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        fxCtx.arc(px, py, p.size * (1 - t * 0.4), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+        if (t >= 1) fxParticles.splice(i, 1);
+        continue;
+      }
+
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.kind !== 'steam') p.vy += 0.14;
+      if (p.rot !== undefined) p.rot += p.vrot;
+      p.life -= p.decay;
+
+      if (p.life <= 0) {
+        fxParticles.splice(i, 1);
+        continue;
+      }
+
+      fxCtx.save();
+      fxCtx.globalAlpha = Math.max(0, p.life);
+      fxCtx.translate(p.x, p.y);
+      if (p.rot) fxCtx.rotate(p.rot);
+
+      if (p.kind === 'confetti') {
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        fxCtx.roundRect(-p.size * 0.6, -p.size * 0.35, p.size * 1.2, p.size * 0.7, 2);
+        fxCtx.fill();
+      } else if (p.kind === 'star') {
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        for (let s = 0; s < 5; s++) {
+          const a = (s * Math.PI * 2) / 5 - Math.PI / 2;
+          const a2 = a + Math.PI / 5;
+          const r1 = p.size;
+          const r2 = p.size * 0.45;
+          if (s === 0) fxCtx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+          else fxCtx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+          fxCtx.lineTo(Math.cos(a2) * r2, Math.sin(a2) * r2);
+        }
+        fxCtx.closePath();
+        fxCtx.fill();
+      } else if (p.kind === 'flour') {
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, p.size * (1.4 - p.life * 0.5), 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.kind === 'steam') {
+        p.size += 0.14;
+        const sg = fxCtx.createRadialGradient(0, 0, 1, 0, 0, p.size);
+        sg.addColorStop(0, 'rgba(255, 250, 240, 0.38)');
+        sg.addColorStop(1, 'rgba(255, 250, 240, 0)');
+        fxCtx.fillStyle = sg;
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, p.size, 0, Math.PI * 2);
+        fxCtx.fill();
+      }
+      fxCtx.restore();
+    }
+
+    // Floating realistic cursor preview over the plate when a topping is selected
+    if (unlockedActions > 0 && selectedTool && pointer.overPlate && plateAnim.state === 'idle') {
+      fxCtx.save();
+      const tilt = (activeSauce || activeSprinkling) ? -0.55 + Math.sin(time * 0.025) * 0.14 : -0.15;
+      fxCtx.translate(pointer.x, pointer.y);
+      if (selectedTool.id === 'berry_sauce') {
+        fxCtx.translate(18, -32);
+        drawSqueezeBottle(fxCtx, 0, 0, '#e6224a', '#9c0d2e', '#f8d7a8', Math.PI + 0.45 + tilt * 0.3);
+      } else if (selectedTool.id === 'green_sauce') {
+        fxCtx.translate(18, -32);
+        drawSqueezeBottle(fxCtx, 0, 0, '#7ce03c', '#3d8f1b', '#f8e6b4', Math.PI + 0.45 + tilt * 0.3);
+      } else if (selectedTool.id === 'sprinkles') {
+        fxCtx.translate(16, -24);
+        fxCtx.rotate(tilt * 1.4 - 1.9);
+        drawIngredientIcon(fxCtx, 'sprinkles', 70, 70);
+      } else {
+        fxCtx.globalAlpha = 0.88;
+        const r = 24;
+        if (selectedTool.id === 'noodles') drawNoodlesShape(fxCtx, 0, 0, r * 1.25, 2);
+        else if (selectedTool.id === 'egg') drawFriedEggShape(fxCtx, 0, 0, r * 1.2, 0, 0);
+        else if (selectedTool.id === 'worm') drawGummyWormShape(fxCtx, 0, 0, r * 1.15, -0.2, time * 0.01);
+        else if (selectedTool.id === 'kiwi') drawKiwiShape(fxCtx, 0, 0, r, 0);
+        else if (selectedTool.id === 'mushroom') drawMushroomShape(fxCtx, 0, 0, r, 0);
+        else if (selectedTool.id === 'eyeball') drawEyeballShape(fxCtx, 0, 0, r * 0.9, 0, 0, 0, '#4ea854');
+        else if (selectedTool.id === 'marshmallow') drawMarshmallowShape(fxCtx, 0, 0, r * 0.9, 0);
+      }
+      fxCtx.restore();
+    }
+  }
+
+  /* ============================================================
+     12. RESIZE & MAIN ANIMATION LOOP
+     ============================================================ */
+  function resizeAll() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    bgCanvas.width = w;
+    bgCanvas.height = h;
+    fxCanvas.width = w;
+    fxCanvas.height = h;
+    buildWoodTableCache(w, h);
+  }
+
+  function loop(time) {
+    drawLivingBackground(time);
+    renderPlate(time);
+    renderFX(time);
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resizeAll);
+  buildIngredientRack();
+  resizeAll();
+  loadNewWord();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
