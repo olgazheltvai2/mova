@@ -1,0 +1,2721 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Grammar Desk</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    background: #2b1d14;
+  }
+
+  /* Living Background Canvas */
+  #bgCanvas, #fxCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  #bgCanvas { z-index: 0; }
+  #fxCanvas { z-index: 40; }
+
+  /* Main Widescreen Layout */
+  .app {
+    position: relative;
+    z-index: 10;
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 1fr auto auto;
+    align-items: center;
+    justify-items: center;
+    padding: 1.8vh 4vw 2.4vh;
+    gap: 1.8vh;
+  }
+
+  /* Minimalist Top-Right Controls */
+  .top-controls {
+    position: fixed;
+    top: 2.2vh;
+    right: 2.4vw;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .brass-btn {
+    position: relative;
+    height: 54px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 224, 155, 0.55);
+    background:
+      radial-gradient(circle at 30% 25%, #f5d88c 0%, #c8943e 45%, #8b5d1e 100%);
+    box-shadow:
+      0 8px 20px rgba(15, 8, 3, 0.55),
+      inset 0 2px 3px rgba(255, 246, 210, 0.75),
+      inset 0 -3px 6px rgba(68, 40, 10, 0.7);
+    color: #261507;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.18s cubic-bezier(.22,1.25,.36,1), box-shadow 0.2s ease, filter 0.2s ease;
+  }
+
+  .brass-btn:hover {
+    transform: translateY(-2px) scale(1.04);
+    filter: brightness(1.08);
+  }
+  .brass-btn:active {
+    transform: translateY(1px) scale(0.96);
+  }
+
+  #langBtn {
+    width: 78px;
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+    font-weight: 800;
+    font-size: 1.08rem;
+    letter-spacing: 0.08em;
+    text-shadow: 0 1px 0 rgba(255, 240, 195, 0.65);
+  }
+
+  #nextBtn {
+    width: 62px;
+  }
+
+  #nextBtn.pulse-ready {
+    animation: nextGlow 1.7s ease-in-out infinite;
+  }
+
+  @keyframes nextGlow {
+    0%, 100% {
+      box-shadow: 0 8px 20px rgba(15,8,3,0.55), 0 0 0 0 rgba(255, 215, 110, 0.7), inset 0 2px 3px rgba(255,246,210,0.8);
+      transform: scale(1);
+    }
+    50% {
+      box-shadow: 0 8px 24px rgba(15,8,3,0.55), 0 0 26px 9px rgba(255, 215, 110, 0.55), inset 0 2px 3px rgba(255,246,210,0.9);
+      transform: scale(1.07);
+    }
+  }
+
+  /* Realistic Showcase Medallion Stage (No white rectangles) */
+  .stage-wrap {
+    position: relative;
+    width: min(74vw, 820px);
+    height: min(46vh, 410px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.45s cubic-bezier(.22,1,.36,1), opacity 0.35s ease;
+  }
+  .stage-wrap.switching {
+    transform: scale(0.93) translateY(10px);
+    opacity: 0;
+  }
+
+  .stage-mat {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 48% 52% 49% 51% / 44% 46% 54% 56%;
+    background:
+      radial-gradient(ellipse at 50% 42%, rgba(240, 224, 194, 0.24) 0%, rgba(110, 79, 52, 0.12) 56%, rgba(35, 20, 10, 0.48) 100%),
+      repeating-linear-gradient(45deg, rgba(255,235,205,0.035) 0 2px, transparent 2px 6px),
+      repeating-linear-gradient(-45deg, rgba(20,10,5,0.06) 0 2px, transparent 2px 6px),
+      radial-gradient(circle at 50% 45%, #5c4331 0%, #3d2b1f 68%, #281a12 100%);
+    box-shadow:
+      0 22px 45px rgba(10, 5, 2, 0.65),
+      inset 0 0 0 3px rgba(212, 165, 86, 0.42),
+      inset 0 0 0 9px rgba(42, 26, 16, 0.72),
+      inset 0 0 0 11px rgba(212, 165, 86, 0.22),
+      inset 0 18px 34px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  #stageCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Textured Craft-Parchment Sentence Ribbon (Styled, patterned, never plain white) */
+  .sentence-board {
+    position: relative;
+    width: min(91vw, 1280px);
+    padding: clamp(18px, 2.5vh, 30px) clamp(26px, 3.6vw, 56px);
+    border-radius: 26px 32px 28px 30px;
+    background:
+      radial-gradient(ellipse at 18% 20%, rgba(255, 240, 205, 0.55) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 80%, rgba(196, 146, 86, 0.35) 0%, transparent 55%),
+      repeating-linear-gradient(0deg, rgba(130, 88, 42, 0.04) 0 1px, transparent 1px 5px),
+      repeating-linear-gradient(90deg, rgba(110, 74, 34, 0.03) 0 1px, transparent 1px 7px),
+      linear-gradient(155deg, #ebd7b3 0%, #dfc292 48%, #d1ae77 100%);
+    box-shadow:
+      0 18px 38px rgba(10, 5, 2, 0.62),
+      0 2px 0 rgba(255, 244, 214, 0.55) inset,
+      0 -4px 10px rgba(99, 62, 22, 0.45) inset,
+      0 0 0 3px #8b5f2b,
+      0 0 0 6px rgba(235, 198, 126, 0.32);
+    transition: transform 0.38s cubic-bezier(.22,1,.36,1), opacity 0.3s ease;
+  }
+
+  /* Stitched inner border & brass rivets */
+  .sentence-board::before {
+    content: "";
+    position: absolute;
+    inset: 9px;
+    border-radius: 20px 25px 22px 24px;
+    border: 2px dashed rgba(122, 79, 34, 0.38);
+    pointer-events: none;
+  }
+
+  .rivet {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffe9ad, #b88130 55%, #5d3b10 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.45);
+    pointer-events: none;
+  }
+  .rivet.tl { top: 14px; left: 16px; }
+  .rivet.tr { top: 14px; right: 16px; }
+  .rivet.bl { bottom: 14px; left: 16px; }
+  .rivet.br { bottom: 14px; right: 16px; }
+
+  .sentence-board.switching {
+    transform: translateY(14px) scale(0.97);
+    opacity: 0;
+  }
+
+  .sentence-text {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: baseline;
+    gap: 0.26em 0.38em;
+    font-size: clamp(1.95rem, 3.25vw, 3.35rem);
+    line-height: 1.48;
+    font-weight: 700;
+    color: #2b1a0e;
+    text-shadow: 0 1px 0 rgba(255, 245, 220, 0.65);
+    letter-spacing: 0.01em;
+  }
+
+  .word-token {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    padding: 4px 10px 12px;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.16s ease, background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .word-token:hover {
+    background-color: rgba(139, 95, 43, 0.16);
+    transform: translateY(-2px);
+  }
+
+  .word-token.pen-subj:hover {
+    background-color: rgba(24, 88, 168, 0.14);
+  }
+  .word-token.pen-pred:hover {
+    background-color: rgba(182, 36, 46, 0.14);
+  }
+
+  .word-core {
+    position: relative;
+    display: inline-block;
+  }
+
+  .word-punct {
+    display: inline-block;
+    pointer-events: none;
+  }
+
+  /* Hand-drawn SVG ink underlines */
+  .ink-svg {
+    position: absolute;
+    left: -3px;
+    right: -3px;
+    bottom: -11px;
+    width: calc(100% + 6px);
+    height: 16px;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .ink-path {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 420;
+    stroke-dashoffset: 420;
+  }
+
+  .word-token.found-subj .word-core {
+    color: #133c7c;
+  }
+  .word-token.found-subj .ink-path.p1 {
+    stroke: #1857b5;
+    stroke-width: 5.2;
+    filter: drop-shadow(0 2px 3px rgba(24, 87, 181, 0.38));
+    animation: drawStroke 0.45s cubic-bezier(.2,.85,.35,1) forwards;
+  }
+
+  .word-token.found-pred .word-core {
+    color: #8c1622;
+  }
+  .word-token.found-pred .ink-path.p1 {
+    stroke: #c42333;
+    stroke-width: 4.4;
+    filter: drop-shadow(0 2px 3px rgba(196, 35, 51, 0.35));
+    animation: drawStroke 0.38s cubic-bezier(.2,.85,.35,1) forwards;
+  }
+  .word-token.found-pred .ink-path.p2 {
+    stroke: #c42333;
+    stroke-width: 4.4;
+    filter: drop-shadow(0 2px 3px rgba(196, 35, 51, 0.35));
+    animation: drawStroke 0.38s cubic-bezier(.2,.85,.35,1) 0.14s forwards;
+  }
+
+  @keyframes drawStroke {
+    to { stroke-dashoffset: 0; }
+  }
+
+  .word-token.found-pop {
+    animation: foundBounce 0.55s cubic-bezier(.22,1.35,.36,1);
+  }
+  @keyframes foundBounce {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.13) translateY(-4px); }
+    70% { transform: scale(0.97); }
+    100% { transform: scale(1); }
+  }
+
+  .word-token.wrong-wobble {
+    animation: wobbleJelly 0.46s ease;
+  }
+  @keyframes wobbleJelly {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    20% { transform: translateX(-8px) rotate(-2.5deg); }
+    40% { transform: translateX(7px) rotate(2.2deg); }
+    60% { transform: translateX(-5px) rotate(-1.4deg); }
+    80% { transform: translateX(4px) rotate(1deg); }
+  }
+
+  /* Realistic Brass & Walnut Pen Tray (Tool Selector: Single line vs Double line) */
+  .pen-tray {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(22px, 4vw, 56px);
+    padding: 12px 34px 14px;
+    border-radius: 999px;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,220,170,0.03) 0 4px, transparent 4px 12px),
+      linear-gradient(180deg, #4b311e 0%, #341f12 52%, #23140b 100%);
+    box-shadow:
+      0 14px 28px rgba(8, 4, 2, 0.65),
+      inset 0 2px 4px rgba(255, 224, 175, 0.25),
+      inset 0 -4px 10px rgba(0, 0, 0, 0.6),
+      0 0 0 2px rgba(206, 158, 78, 0.42);
+  }
+
+  .pen-slot {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 24px;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background: radial-gradient(ellipse at 50% 60%, rgba(0,0,0,0.34), rgba(0,0,0,0.12));
+    cursor: pointer;
+    transition: transform 0.26s cubic-bezier(.22,1.3,.36,1), box-shadow 0.26s ease, border-color 0.25s ease, background 0.25s ease;
+  }
+
+  .pen-slot:hover {
+    transform: translateY(-3px);
+  }
+
+  .pen-slot.active[data-tool="subj"] {
+    transform: translateY(-7px) scale(1.06);
+    border-color: rgba(118, 182, 255, 0.8);
+    background: radial-gradient(ellipse at 50% 50%, rgba(28, 96, 198, 0.42), rgba(14, 42, 92, 0.35));
+    box-shadow:
+      0 12px 24px rgba(10, 32, 74, 0.65),
+      0 0 22px rgba(84, 158, 255, 0.48),
+      inset 0 1px 4px rgba(185, 220, 255, 0.45);
+  }
+
+  .pen-slot.active[data-tool="pred"] {
+    transform: translateY(-7px) scale(1.06);
+    border-color: rgba(255, 136, 138, 0.85);
+    background: radial-gradient(ellipse at 50% 50%, rgba(196, 36, 52, 0.44), rgba(92, 16, 24, 0.38));
+    box-shadow:
+      0 12px 24px rgba(74, 10, 18, 0.65),
+      0 0 22px rgba(255, 104, 112, 0.48),
+      inset 0 1px 4px rgba(255, 200, 204, 0.45);
+  }
+
+  .pen-slot.done-tool {
+    opacity: 0.72;
+  }
+
+  .pen-svg {
+    width: 118px;
+    height: 36px;
+    filter: drop-shadow(0 6px 6px rgba(0,0,0,0.55));
+    transition: transform 0.28s cubic-bezier(.22,1.3,.36,1);
+  }
+
+  .pen-slot.active .pen-svg {
+    transform: rotate(-4deg) translateY(-2px);
+  }
+
+  .line-emblem {
+    width: 58px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(242, 221, 182, 0.92), rgba(212, 179, 126, 0.92));
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.7), 0 3px 6px rgba(0,0,0,0.4);
+  }
+
+  @media (max-width: 900px) {
+    .pen-svg { width: 84px; height: 28px; }
+    .line-emblem { width: 46px; height: 26px; }
+    .pen-slot { padding: 8px 16px; gap: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<canvas id="fxCanvas"></canvas>
+
+<div class="top-controls">
+  <button id="langBtn" class="brass-btn" aria-label="Language">УКР</button>
+  <button id="nextBtn" class="brass-btn" aria-label="Next">
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
+      <path d="M6 14H21M15 7L22 14L15 21" stroke="#261507" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+</div>
+
+<main class="app">
+  <div class="stage-wrap" id="stageWrap">
+    <div class="stage-mat" id="stageMat">
+      <canvas id="stageCanvas"></canvas>
+    </div>
+  </div>
+
+  <section class="sentence-board" id="sentenceBoard">
+    <span class="rivet tl"></span>
+    <span class="rivet tr"></span>
+    <span class="rivet bl"></span>
+    <span class="rivet br"></span>
+    <div class="sentence-text" id="sentenceText"></div>
+  </section>
+
+  <nav class="pen-tray" aria-label="Pens">
+    <button class="pen-slot active" data-tool="subj" id="btnSubj">
+      <svg class="pen-svg" viewBox="0 0 150 42">
+        <defs>
+          <linearGradient id="blueBarrel" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#5da5ff"/>
+            <stop offset="32%" stop-color="#1b5cc4"/>
+            <stop offset="72%" stop-color="#0d3478"/>
+            <stop offset="100%" stop-color="#1d4d9e"/>
+          </linearGradient>
+          <linearGradient id="goldTrim" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fff0b5"/>
+            <stop offset="45%" stop-color="#d49b3b"/>
+            <stop offset="100%" stop-color="#7c5212"/>
+          </linearGradient>
+        </defs>
+        <!-- Fountain Pen Body -->
+        <rect x="8" y="12" width="96" height="18" rx="9" fill="url(#blueBarrel)"/>
+        <rect x="14" y="14" width="84" height="3.5" rx="2" fill="rgba(255,255,255,0.34)"/>
+        <!-- Gold Clip & Rings -->
+        <rect x="22" y="10" width="46" height="4" rx="2" fill="url(#goldTrim)"/>
+        <rect x="84" y="11" width="6" height="20" rx="1.5" fill="url(#goldTrim)"/>
+        <rect x="99" y="12" width="8" height="18" rx="1.5" fill="url(#goldTrim)"/>
+        <!-- Grip & Nib -->
+        <path d="M107 13 L122 16 L122 26 L107 29 Z" fill="#102952"/>
+        <path d="M122 16.5 L145 21 L122 25.5 Z" fill="url(#goldTrim)"/>
+        <line x1="128" y1="21" x2="145" y2="21" stroke="#3b2205" stroke-width="1.3"/>
+        <circle cx="131" cy="21" r="1.7" fill="#3b2205"/>
+      </svg>
+      <div class="line-emblem">
+        <svg width="42" height="18" viewBox="0 0 42 18">
+          <path d="M4 9 Q 21 7.5 38 9.2" stroke="#1857b5" stroke-width="4.2" stroke-linecap="round" fill="none"/>
+        </svg>
+      </div>
+    </button>
+
+    <button class="pen-slot" data-tool="pred" id="btnPred">
+      <svg class="pen-svg" viewBox="0 0 150 42">
+        <defs>
+          <linearGradient id="redBarrel" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ff858c"/>
+            <stop offset="32%" stop-color="#c92232"/>
+            <stop offset="72%" stop-color="#780d18"/>
+            <stop offset="100%" stop-color="#a81d2b"/>
+          </linearGradient>
+        </defs>
+        <rect x="8" y="12" width="96" height="18" rx="9" fill="url(#redBarrel)"/>
+        <rect x="14" y="14" width="84" height="3.5" rx="2" fill="rgba(255,255,255,0.34)"/>
+        <rect x="22" y="10" width="46" height="4" rx="2" fill="url(#goldTrim)"/>
+        <rect x="84" y="11" width="6" height="20" rx="1.5" fill="url(#goldTrim)"/>
+        <rect x="99" y="12" width="8" height="18" rx="1.5" fill="url(#goldTrim)"/>
+        <path d="M107 13 L122 16 L122 26 L107 29 Z" fill="#4f0d15"/>
+        <path d="M122 16.5 L145 21 L122 25.5 Z" fill="url(#goldTrim)"/>
+        <line x1="128" y1="21" x2="145" y2="21" stroke="#3b2205" stroke-width="1.3"/>
+        <circle cx="131" cy="21" r="1.7" fill="#3b2205"/>
+      </svg>
+      <div class="line-emblem">
+        <svg width="42" height="18" viewBox="0 0 42 18">
+          <path d="M4 5.8 Q 21 4.5 38 6" stroke="#c42333" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+          <path d="M4 12.6 Q 21 11.4 38 12.8" stroke="#c42333" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+        </svg>
+      </div>
+    </button>
+  </nav>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =========================================================
+     1. DATA: 15 REAL FASCINATING FACTS ABOUT EVERYDAY OBJECTS
+     ========================================================= */
+  const FACTS = [
+    {
+      id: 'toothbrush',
+      tint: [45, 160, 175],
+      uk: { words: ['Щетину', 'дикого', 'кабана', 'мали', 'перші', 'зубні', 'щітки.'], subj: 6, pred: 3 },
+      ru: { words: ['Щетину', 'дикого', 'кабана', 'имели', 'первые', 'зубные', 'щётки.'], subj: 6, pred: 3 }
+    },
+    {
+      id: 'pencil',
+      tint: [224, 172, 58],
+      uk: { words: ['Звичайний', 'олівець', 'малює', 'лінію', 'завдовжки', 'п’ятдесят', 'кілометрів.'], subj: 1, pred: 2 },
+      ru: { words: ['Обычный', 'карандаш', 'рисует', 'линию', 'длиной', 'пятьдесят', 'километров.'], subj: 1, pred: 2 }
+    },
+    {
+      id: 'jeans',
+      tint: [52, 92, 165],
+      uk: { words: ['На', 'джинсах', 'маленька', 'кишеня', 'колись', 'ховала', 'годинник.'], subj: 3, pred: 5 },
+      ru: { words: ['На', 'джинсах', 'маленький', 'карман', 'когда-то', 'прятал', 'часы.'], subj: 3, pred: 5 }
+    },
+    {
+      id: 'bread',
+      tint: [212, 148, 74],
+      uk: { words: ['Колись', 'м’який', 'хліб', 'стирав', 'сліди', 'простого', 'олівця.'], subj: 2, pred: 3 },
+      ru: { words: ['Когда-то', 'мягкий', 'хлеб', 'стирал', 'следы', 'простого', 'карандаша.'], subj: 2, pred: 3 }
+    },
+    {
+      id: 'pencap',
+      tint: [46, 132, 214],
+      uk: { words: ['У', 'ковпачку', 'ручки', 'маленький', 'отвір', 'рятує', 'життя.'], subj: 4, pred: 5 },
+      ru: { words: ['В', 'колпачке', 'ручки', 'маленькое', 'отверстие', 'спасает', 'жизни.'], subj: 4, pred: 5 }
+    },
+    {
+      id: 'sneaker',
+      tint: [204, 86, 52],
+      uk: { words: ['Звичайна', 'вафельниця', 'подарувала', 'візерунок', 'підошві', 'спортивних', 'кросівок.'], subj: 1, pred: 2 },
+      ru: { words: ['Обычная', 'вафельница', 'подарила', 'узор', 'подошве', 'спортивных', 'кроссовок.'], subj: 1, pred: 2 }
+    },
+    {
+      id: 'velcro',
+      tint: [110, 152, 68],
+      uk: { words: ['Ідею', 'зручної', 'липучки', 'підказав', 'винахіднику', 'колючий', 'реп’ях.'], subj: 6, pred: 3 },
+      ru: { words: ['Идею', 'удобной', 'липучки', 'подсказал', 'изобретателю', 'колючий', 'репейник.'], subj: 6, pred: 3 }
+    },
+    {
+      id: 'honey',
+      tint: [232, 160, 32],
+      uk: { words: ['Тисячі', 'років', 'зберігається', 'у', 'банці', 'справжній', 'мед.'], subj: 6, pred: 2 },
+      ru: { words: ['Тысячи', 'лет', 'хранится', 'в', 'банке', 'настоящий', 'мёд.'], subj: 6, pred: 2 }
+    },
+    {
+      id: 'bubblewrap',
+      tint: [92, 178, 212],
+      uk: { words: ['Спершу', 'інженери', 'задумали', 'пухирчасту', 'плівку', 'як', 'шпалери.'], subj: 1, pred: 2 },
+      ru: { words: ['Сначала', 'инженеры', 'задумали', 'пузырчатую', 'плёнку', 'как', 'обои.'], subj: 1, pred: 2 }
+    },
+    {
+      id: 'cacao',
+      tint: [176, 108, 52],
+      uk: { words: ['Зернами', 'какао', 'платили', 'на', 'ринку', 'давні', 'люди.'], subj: 6, pred: 2 },
+      ru: { words: ['Зёрнами', 'какао', 'платили', 'на', 'рынке', 'древние', 'люди.'], subj: 6, pred: 2 }
+    },
+    {
+      id: 'playdoh',
+      tint: [224, 96, 118],
+      uk: { words: ['Від', 'чорної', 'сажі', 'кольоровий', 'пластилін', 'чистив', 'стіни.'], subj: 4, pred: 5 },
+      ru: { words: ['От', 'чёрной', 'сажи', 'цветной', 'пластилин', 'чистил', 'стены.'], subj: 4, pred: 5 }
+    },
+    {
+      id: 'straw',
+      tint: [218, 192, 68],
+      uk: { words: ['На', 'житньому', 'полі', 'росли', 'перші', 'соломинки', 'для', 'напоїв.'], subj: 5, pred: 3 },
+      ru: { words: ['На', 'ржаном', 'поле', 'росли', 'первые', 'соломинки', 'для', 'напитков.'], subj: 5, pred: 3 }
+    },
+    {
+      id: 'umbrella',
+      tint: [188, 66, 78],
+      uk: { words: ['Від', 'гарячого', 'сонця', 'перехожих', 'захищала', 'перша', 'парасолька.'], subj: 6, pred: 4 },
+      ru: { words: ['От', 'горячего', 'солнца', 'прохожих', 'защищал', 'первый', 'зонт.'], subj: 6, pred: 4 }
+    },
+    {
+      id: 'buttons',
+      tint: [164, 152, 204],
+      uk: { words: ['Давні', 'перламутрові', 'ґудзики', 'прикрашали', 'одяг', 'замість', 'намиста.'], subj: 2, pred: 3 },
+      ru: { words: ['Древние', 'перламутровые', 'пуговицы', 'украшали', 'одежду', 'вместо', 'бус.'], subj: 2, pred: 3 }
+    },
+    {
+      id: 'pillow',
+      tint: [198, 166, 124],
+      uk: { words: ['На', 'твердих', 'кам’яних', 'подушках', 'спали', 'давні', 'єгиптяни.'], subj: 6, pred: 4 },
+      ru: { words: ['На', 'твёрдых', 'каменных', 'подушках', 'спали', 'древние', 'египтяне.'], subj: 6, pred: 4 }
+    }
+  ];
+
+  /* =========================================================
+     2. PROCEDURAL WEB AUDIO ENGINE (NO EXTERNAL FILES)
+     ========================================================= */
+  class SoundEngine {
+    constructor() { this.ctx = null; }
+    ensure() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      return this.ctx;
+    }
+
+    noise(duration, filterFreq, q = 1, gainVal = 0.14, type = 'bandpass') {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const len = Math.floor(ctx.sampleRate * duration);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const filter = ctx.createBiquadFilter();
+      filter.type = type;
+      filter.frequency.value = filterFreq;
+      filter.Q.value = q;
+      const g = ctx.createGain();
+      const now = ctx.currentTime;
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(gainVal, now + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      src.connect(filter).connect(g).connect(ctx.destination);
+      src.start(now);
+      src.stop(now + duration + 0.02);
+    }
+
+    tone(freq, dur = 0.25, type = 'sine', vol = 0.15, delay = 0, slideTo = null) {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime + delay;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, now + dur);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(vol, now + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + dur + 0.03);
+    }
+
+    playPenSelect(isPred) {
+      this.tone(isPred ? 520 : 420, 0.09, 'triangle', 0.1, 0, isPred ? 640 : 510);
+      this.noise(0.04, 2400, 2, 0.05);
+    }
+
+    playInkSuccess(isPred) {
+      this.noise(0.18, isPred ? 2800 : 2100, 1.5, 0.08);
+      if (!isPred) {
+        this.tone(523.25, 0.26, 'triangle', 0.16, 0.02);
+        this.tone(659.25, 0.34, 'sine', 0.16, 0.1);
+      } else {
+        this.tone(587.33, 0.24, 'triangle', 0.16, 0.02);
+        this.tone(783.99, 0.26, 'triangle', 0.15, 0.09);
+        this.tone(987.77, 0.36, 'sine', 0.14, 0.16);
+      }
+    }
+
+    playWrong() {
+      this.tone(240, 0.14, 'triangle', 0.14, 0, 175);
+      this.tone(185, 0.18, 'sine', 0.12, 0.07, 130);
+    }
+
+    playNextPage() {
+      this.noise(0.22, 1400, 0.9, 0.09, 'highpass');
+      this.tone(330, 0.12, 'sine', 0.08, 0.02, 460);
+    }
+
+    playCelebration(styleIdx) {
+      const scales = [
+        [523.25, 659.25, 783.99, 1046.5, 1318.5],
+        [440, 554.37, 659.25, 880, 1108.73],
+        [587.33, 739.99, 880, 1174.66, 1479.98],
+        [392, 493.88, 587.33, 783.99, 987.77, 1174.66],
+        [523.25, 587.33, 659.25, 783.99, 1046.5]
+      ];
+      const notes = scales[styleIdx % scales.length];
+      const wave = ['triangle', 'sine', 'sine', 'triangle', 'sine'][styleIdx % 5];
+      notes.forEach((n, i) => {
+        this.tone(n, 0.48, wave, 0.14, i * 0.075);
+        this.tone(n * 2, 0.28, 'sine', 0.045, i * 0.075 + 0.02);
+      });
+    }
+
+    playObjectSound(id) {
+      switch (id) {
+        case 'toothbrush':
+          this.noise(0.16, 3200, 2.2, 0.12);
+          this.noise(0.14, 3800, 2.2, 0.1, 'bandpass');
+          this.tone(720, 0.1, 'sine', 0.08, 0.05, 980);
+          break;
+        case 'pencil':
+          this.noise(0.28, 2600, 3.0, 0.09);
+          break;
+        case 'jeans':
+          this.tone(1800, 0.04, 'square', 0.06, 0);
+          this.tone(2200, 0.04, 'square', 0.05, 0.12);
+          this.tone(1320, 0.45, 'sine', 0.1, 0.18);
+          break;
+        case 'bread':
+          this.noise(0.2, 1100, 1.4, 0.12);
+          break;
+        case 'pencap':
+          this.noise(0.28, 1900, 5.5, 0.1);
+          this.tone(920, 0.26, 'sine', 0.07, 0.02, 1260);
+          break;
+        case 'sneaker':
+          this.tone(160, 0.18, 'sine', 0.18, 0, 75);
+          this.tone(320, 0.12, 'triangle', 0.09, 0.08, 480);
+          break;
+        case 'velcro':
+          this.noise(0.24, 4200, 1.2, 0.14);
+          break;
+        case 'honey':
+          this.tone(360, 0.22, 'sine', 0.11, 0, 540);
+          this.tone(540, 0.18, 'sine', 0.08, 0.12, 720);
+          break;
+        case 'bubblewrap':
+          this.tone(340 + Math.random() * 180, 0.065, 'sine', 0.2, 0, 920);
+          this.noise(0.03, 2800, 1.5, 0.14);
+          break;
+        case 'cacao':
+          this.tone(2150, 0.24, 'sine', 0.1, 0);
+          this.tone(2820, 0.28, 'sine', 0.08, 0.06);
+          break;
+        case 'playdoh':
+          this.tone(260, 0.16, 'sine', 0.15, 0, 140);
+          this.noise(0.12, 750, 2, 0.09);
+          break;
+        case 'straw':
+          this.tone(1550, 0.18, 'sine', 0.08, 0);
+          this.tone(620, 0.09, 'sine', 0.1, 0.05, 980);
+          this.tone(740, 0.09, 'sine', 0.09, 0.12, 1140);
+          break;
+        case 'umbrella':
+          this.tone(1100, 0.09, 'sine', 0.08, 0, 1500);
+          this.tone(1340, 0.09, 'sine', 0.07, 0.09, 1720);
+          this.noise(0.18, 1800, 1.5, 0.06);
+          break;
+        case 'buttons':
+          this.tone(1680, 0.12, 'triangle', 0.09, 0);
+          this.tone(2180, 0.16, 'sine', 0.08, 0.07);
+          break;
+        case 'pillow':
+          this.noise(0.24, 900, 0.8, 0.08, 'lowpass');
+          this.tone(290, 0.1, 'triangle', 0.1, 0, 190);
+          break;
+      }
+    }
+  }
+  const sfx = new SoundEngine();
+
+  /* =========================================================
+     3. LIVING WOODEN DESK BACKGROUND & CELEBRATION FX CANVAS
+     ========================================================= */
+  const bgCanvas = document.getElementById('bgCanvas');
+  const bgCtx = bgCanvas.getContext('2d');
+  const fxCanvas = document.getElementById('fxCanvas');
+  const fxCtx = fxCanvas.getContext('2d');
+
+  let bgW = window.innerWidth, bgH = window.innerHeight;
+  let woodPatternCanvas = null;
+  let currentTint = [180, 130, 75];
+  let targetTint = [180, 130, 75];
+
+  const dustMotes = Array.from({ length: 42 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: 1 + Math.random() * 2.4,
+    vx: (Math.random() - 0.35) * 0.00018,
+    vy: -0.00008 - Math.random() * 0.00016,
+    phase: Math.random() * Math.PI * 2
+  }));
+
+  function buildWoodTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 512;
+    const g = c.getContext('2d');
+    const base = g.createLinearGradient(0, 0, 0, 512);
+    base.addColorStop(0, '#442c1d');
+    base.addColorStop(0.5, '#3b2417');
+    base.addColorStop(1, '#311e13');
+    g.fillStyle = base;
+    g.fillRect(0, 0, 512, 512);
+
+    // Rich horizontal oak wood grain planks
+    for (let y = 0; y < 512; y += 2) {
+      const wave = Math.sin(y * 0.05) * 6 + Math.cos(y * 0.14) * 3;
+      const alpha = 0.03 + (Math.sin(y * 0.27) + 1) * 0.025;
+      g.strokeStyle = y % 4 === 0 ? `rgba(22, 11, 5, ${alpha * 1.4})` : `rgba(205, 148, 92, ${alpha * 0.7})`;
+      g.lineWidth = 1.6;
+      g.beginPath();
+      g.moveTo(0, y);
+      g.bezierCurveTo(170, y + wave, 340, y - wave, 512, y);
+      g.stroke();
+    }
+    // Subtle plank seams
+    [128, 256, 384].forEach(py => {
+      g.strokeStyle = 'rgba(15, 7, 3, 0.38)';
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(0, py); g.lineTo(512, py); g.stroke();
+      g.strokeStyle = 'rgba(225, 175, 120, 0.07)';
+      g.lineWidth = 1;
+      g.beginPath(); g.moveTo(0, py + 2); g.lineTo(512, py + 2); g.stroke();
+    });
+    woodPatternCanvas = c;
+  }
+
+  function resizeCanvases() {
+    bgW = window.innerWidth;
+    bgH = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    bgCanvas.width = bgW * dpr; bgCanvas.height = bgH * dpr;
+    bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fxCanvas.width = bgW * dpr; fxCanvas.height = bgH * dpr;
+    fxCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    resizeStageCanvas();
+  }
+
+  function renderBackground(t) {
+    for (let i = 0; i < 3; i++) currentTint[i] += (targetTint[i] - currentTint[i]) * 0.035;
+
+    if (woodPatternCanvas) {
+      const pat = bgCtx.createPattern(woodPatternCanvas, 'repeat');
+      bgCtx.fillStyle = pat;
+      bgCtx.fillRect(0, 0, bgW, bgH);
+    }
+
+    // Warm atmospheric spotlight matching the current object's mood
+    const [r, g, b] = currentTint.map(Math.round);
+    const amb = bgCtx.createRadialGradient(bgW * 0.5, bgH * 0.36, 40, bgW * 0.5, bgH * 0.45, Math.max(bgW, bgH) * 0.72);
+    amb.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.24)`);
+    amb.addColorStop(0.55, `rgba(${r}, ${g}, ${b}, 0.06)`);
+    amb.addColorStop(1, 'rgba(12, 6, 3, 0.68)');
+    bgCtx.fillStyle = amb;
+    bgCtx.fillRect(0, 0, bgW, bgH);
+
+    // Living diagonal sunlit window rays gently breathing
+    bgCtx.save();
+    for (let i = 0; i < 3; i++) {
+      const shift = Math.sin(t * 0.00045 + i * 1.9) * 38;
+      const rx = bgW * (0.14 + i * 0.3) + shift;
+      const grad = bgCtx.createLinearGradient(rx, 0, rx + bgW * 0.22, bgH);
+      grad.addColorStop(0, 'rgba(255, 236, 186, 0.09)');
+      grad.addColorStop(0.55, 'rgba(255, 224, 155, 0.035)');
+      grad.addColorStop(1, 'rgba(255, 224, 155, 0)');
+      bgCtx.fillStyle = grad;
+      bgCtx.beginPath();
+      bgCtx.moveTo(rx, 0);
+      bgCtx.lineTo(rx + bgW * 0.13, 0);
+      bgCtx.lineTo(rx + bgW * 0.34, bgH);
+      bgCtx.lineTo(rx + bgW * 0.16, bgH);
+      bgCtx.closePath();
+      bgCtx.fill();
+    }
+    bgCtx.restore();
+
+    // Floating sunlit dust motes
+    for (const m of dustMotes) {
+      m.x += m.vx + Math.sin(t * 0.0007 + m.phase) * 0.00008;
+      m.y += m.vy;
+      if (m.y < -0.04) { m.y = 1.04; m.x = Math.random(); }
+      if (m.x < -0.04) m.x = 1.04;
+      if (m.x > 1.04) m.x = -0.04;
+      const glow = 0.22 + 0.28 * Math.sin(t * 0.0018 + m.phase);
+      bgCtx.fillStyle = `rgba(255, 238, 188, ${glow})`;
+      bgCtx.beginPath();
+      bgCtx.arc(m.x * bgW, m.y * bgH, m.r, 0, Math.PI * 2);
+      bgCtx.fill();
+    }
+  }
+
+  /* =========================================================
+     4. DIVERSE CELEBRATION & FEEDBACK PARTICLE SYSTEM
+     ========================================================= */
+  const particles = [];
+  let celebrationCounter = 0;
+
+  function spawnWordSparkles(rect, colorHex) {
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    for (let i = 0; i < 24; i++) {
+      const ang = (Math.PI * 2 * i) / 24 + Math.random() * 0.3;
+      const spd = 2.2 + Math.random() * 5.2;
+      particles.push({
+        kind: 'spark',
+        x: cx + (Math.random() - 0.5) * rect.width * 0.65,
+        y: cy + (Math.random() - 0.5) * 14,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 1.5,
+        size: 3 + Math.random() * 4.5,
+        color: i % 3 === 0 ? '#ffe58f' : colorHex,
+        life: 1,
+        decay: 0.02 + Math.random() * 0.015
+      });
+    }
+  }
+
+  function spawnDustPuff(rect) {
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    for (let i = 0; i < 12; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.4 + Math.random() * 2.8;
+      particles.push({
+        kind: 'dust',
+        x: cx, y: cy,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 0.6,
+        size: 4 + Math.random() * 6,
+        color: 'rgba(130, 92, 54, 0.55)',
+        life: 1,
+        decay: 0.032 + Math.random() * 0.02
+      });
+    }
+  }
+
+  function spawnGrandCelebration() {
+    const style = celebrationCounter++ % 5;
+    sfx.playCelebration(style);
+
+    if (style === 0) {
+      // 1. Golden Firefly & Starburst Swarm
+      for (let i = 0; i < 75; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 8;
+        particles.push({
+          kind: 'firefly',
+          x: bgW * 0.5 + (Math.random() - 0.5) * 160,
+          y: bgH * 0.48 + (Math.random() - 0.5) * 80,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 2,
+          size: 3 + Math.random() * 5,
+          color: ['#ffe680', '#ffd15c', '#fff4cc', '#ffae42'][i % 4],
+          phase: Math.random() * Math.PI * 2,
+          life: 1,
+          decay: 0.0085 + Math.random() * 0.006
+        });
+      }
+    } else if (style === 1) {
+      // 2. Realistic 3D Tumbling Craft-Paper Confetti
+      const palette = ['#d94343', '#2d72c9', '#e8b638', '#3e9c68', '#e07b39', '#b85aa8'];
+      for (let i = 0; i < 95; i++) {
+        const fromLeft = i % 2 === 0;
+        particles.push({
+          kind: 'confetti',
+          x: fromLeft ? bgW * 0.15 : bgW * 0.85,
+          y: bgH * 0.62,
+          vx: (fromLeft ? 1 : -1) * (3.5 + Math.random() * 8.5),
+          vy: -(8 + Math.random() * 9),
+          w: 7 + Math.random() * 9,
+          h: 5 + Math.random() * 6,
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 0.25,
+          tilt: Math.random() * Math.PI,
+          color: palette[i % palette.length],
+          life: 1,
+          decay: 0.007 + Math.random() * 0.004
+        });
+      }
+    } else if (style === 2) {
+      // 3. Rising Iridescent Soap Bubbles
+      for (let i = 0; i < 42; i++) {
+        particles.push({
+          kind: 'bubble',
+          x: bgW * (0.12 + Math.random() * 0.76),
+          y: bgH + 20 + Math.random() * 140,
+          vx: (Math.random() - 0.5) * 1.4,
+          vy: -(2.4 + Math.random() * 3.8),
+          size: 12 + Math.random() * 24,
+          phase: Math.random() * Math.PI * 2,
+          life: 1,
+          decay: 0.0055 + Math.random() * 0.004
+        });
+      }
+    } else if (style === 3) {
+      // 4. Botanical Swirling Leaves & Petals
+      const cols = ['#e87461', '#f3b749', '#6ba368', '#e29578', '#f2d06b'];
+      for (let i = 0; i < 68; i++) {
+        particles.push({
+          kind: 'petal',
+          x: Math.random() * bgW,
+          y: -20 - Math.random() * 160,
+          vx: (Math.random() - 0.3) * 3.2,
+          vy: 2.2 + Math.random() * 3.2,
+          size: 8 + Math.random() * 10,
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 0.12,
+          phase: Math.random() * Math.PI * 2,
+          color: cols[i % cols.length],
+          life: 1,
+          decay: 0.0065 + Math.random() * 0.004
+        });
+      }
+    } else {
+      // 5. Warm Sparkler Fountain Streams
+      for (let burst = 0; burst < 3; burst++) {
+        const bx = bgW * (0.26 + burst * 0.24);
+        const by = bgH * (0.26 + (burst % 2) * 0.14);
+        for (let i = 0; i < 36; i++) {
+          const ang = (Math.PI * 2 * i) / 36 + Math.random() * 0.15;
+          const spd = 2.5 + Math.random() * 6.5;
+          particles.push({
+            kind: 'ember',
+            x: bx, y: by,
+            px: bx, py: by,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            color: ['#ffe89c', '#ff9b54', '#7fd1ff', '#ff758f'][burst % 4],
+            life: 1,
+            decay: 0.014 + Math.random() * 0.01
+          });
+        }
+      }
+    }
+  }
+
+  function renderParticles(t) {
+    fxCtx.clearRect(0, 0, bgW, bgH);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= p.decay;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+
+      if (p.kind === 'spark') {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.vx *= 0.98;
+        fxCtx.save();
+        fxCtx.globalAlpha = p.life;
+        fxCtx.fillStyle = p.color;
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.life * 6);
+        fxCtx.beginPath();
+        for (let s = 0; s < 4; s++) {
+          const a = s * Math.PI / 2;
+          fxCtx.lineTo(Math.cos(a) * p.size, Math.sin(a) * p.size);
+          fxCtx.lineTo(Math.cos(a + Math.PI / 4) * p.size * 0.35, Math.sin(a + Math.PI / 4) * p.size * 0.35);
+        }
+        fxCtx.closePath(); fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.kind === 'dust') {
+        p.x += p.vx; p.y += p.vy; p.vx *= 0.94; p.vy *= 0.94;
+        fxCtx.save();
+        fxCtx.globalAlpha = p.life * 0.7;
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, p.size * (1.4 - p.life * 0.4), 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.kind === 'firefly') {
+        p.x += p.vx + Math.sin(t * 0.008 + p.phase) * 1.4;
+        p.y += p.vy;
+        p.vx *= 0.97; p.vy *= 0.97;
+        const pulse = 0.65 + 0.35 * Math.sin(t * 0.015 + p.phase);
+        fxCtx.save();
+        fxCtx.globalAlpha = p.life * pulse;
+        const gr = fxCtx.createRadialGradient(p.x, p.y, 0.5, p.x, p.y, p.size * 3.2);
+        gr.addColorStop(0, '#fffdf0');
+        gr.addColorStop(0.35, p.color);
+        gr.addColorStop(1, 'rgba(255,210,80,0)');
+        fxCtx.fillStyle = gr;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, p.size * 3.2, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.kind === 'confetti') {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.24; p.vx *= 0.985;
+        p.rot += p.vrot; p.tilt += 0.14;
+        fxCtx.save();
+        fxCtx.globalAlpha = Math.min(1, p.life * 1.6);
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.rot);
+        fxCtx.scale(1, Math.cos(p.tilt));
+        fxCtx.fillStyle = p.color;
+        fxCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        fxCtx.restore();
+      } else if (p.kind === 'bubble') {
+        p.x += p.vx + Math.sin(t * 0.004 + p.phase) * 1.1;
+        p.y += p.vy;
+        fxCtx.save();
+        fxCtx.globalAlpha = Math.min(0.88, p.life * 1.5);
+        const bg = fxCtx.createRadialGradient(p.x - p.size * 0.3, p.y - p.size * 0.3, p.size * 0.1, p.x, p.y, p.size);
+        bg.addColorStop(0, 'rgba(255,255,255,0.68)');
+        bg.addColorStop(0.55, 'rgba(165, 225, 255, 0.18)');
+        bg.addColorStop(0.85, 'rgba(255, 175, 225, 0.38)');
+        bg.addColorStop(1, 'rgba(255, 245, 190, 0.55)');
+        fxCtx.fillStyle = bg;
+        fxCtx.beginPath(); fxCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2); fxCtx.fill();
+        fxCtx.strokeStyle = 'rgba(255,255,255,0.55)';
+        fxCtx.lineWidth = 1.2;
+        fxCtx.stroke();
+        fxCtx.fillStyle = 'rgba(255,255,255,0.85)';
+        fxCtx.beginPath();
+        fxCtx.ellipse(p.x - p.size * 0.34, p.y - p.size * 0.34, p.size * 0.24, p.size * 0.13, -0.7, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.restore();
+      } else if (p.kind === 'petal') {
+        p.x += p.vx + Math.sin(t * 0.005 + p.phase) * 1.6;
+        p.y += p.vy;
+        p.rot += p.vrot;
+        fxCtx.save();
+        fxCtx.globalAlpha = Math.min(1, p.life * 1.5);
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.rot);
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        fxCtx.ellipse(0, 0, p.size, p.size * 0.48, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+        fxCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+        fxCtx.lineWidth = 1;
+        fxCtx.beginPath(); fxCtx.moveTo(-p.size * 0.7, 0); fxCtx.lineTo(p.size * 0.7, 0); fxCtx.stroke();
+        fxCtx.restore();
+      } else if (p.kind === 'ember') {
+        p.px = p.x; p.py = p.y;
+        p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.vx *= 0.96;
+        fxCtx.save();
+        fxCtx.globalAlpha = p.life;
+        fxCtx.strokeStyle = p.color;
+        fxCtx.lineWidth = 3 * p.life;
+        fxCtx.lineCap = 'round';
+        fxCtx.beginPath(); fxCtx.moveTo(p.px, p.py); fxCtx.lineTo(p.x, p.y); fxCtx.stroke();
+        fxCtx.restore();
+      }
+    }
+  }
+
+  /* =========================================================
+     5. REALISTIC PROCEDURAL OBJECT STAGE (15 INTERACTIVE SCENES)
+     ========================================================= */
+  const stageCanvas = document.getElementById('stageCanvas');
+  const stageCtx = stageCanvas.getContext('2d');
+  const stageMat = document.getElementById('stageMat');
+  let stW = 720, stH = 360;
+
+  const objState = {
+    actionTimer: 0,
+    actionCount: 0,
+    pointerX: 360,
+    pointerY: 180,
+    bubblesPopped: new Array(28).fill(0),
+    eraserProgress: 0,
+    foam: [],
+    feathers: [],
+    rainDrops: Array.from({ length: 18 }, (_, i) => ({ x: 180 + i * 21, y: Math.random() * 140, v: 2.2 + Math.random() * 1.8 })),
+    pencilPathLen: 0.35
+  };
+
+  function resetObjectState() {
+    objState.actionTimer = 0;
+    objState.actionCount = 0;
+    objState.bubblesPopped.fill(0);
+    objState.eraserProgress = 0;
+    objState.foam = [];
+    objState.feathers = [];
+    objState.pencilPathLen = 0.35;
+  }
+
+  function resizeStageCanvas() {
+    const rect = stageMat.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    stW = Math.max(300, rect.width);
+    stH = Math.max(180, rect.height);
+    stageCanvas.width = stW * dpr;
+    stageCanvas.height = stH * dpr;
+    stageCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function triggerObjectInteraction(nx = 360, ny = 180, silent = false) {
+    const fact = getCurrentFact();
+    objState.actionTimer = 1.0;
+    objState.actionCount++;
+    objState.pointerX = nx;
+    objState.pointerY = ny;
+    if (!silent) sfx.playObjectSound(fact.id);
+
+    if (fact.id === 'toothbrush') {
+      for (let i = 0; i < 14; i++) {
+        objState.foam.push({
+          x: 470 + (Math.random() - 0.5) * 80,
+          y: 145 + (Math.random() - 0.5) * 40,
+          vx: (Math.random() - 0.5) * 2.4,
+          vy: -1.1 - Math.random() * 2.2,
+          r: 4 + Math.random() * 9,
+          life: 1
+        });
+      }
+    } else if (fact.id === 'bubblewrap') {
+      // Pop nearest bubble(s) to click
+      const cols = 7, rows = 4;
+      const startX = 165, startY = 84, gapX = 64, gapY = 58;
+      let hit = false;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          const bx = startX + c * gapX + (r % 2) * 18;
+          const by = startY + r * gapY;
+          if (Math.hypot(nx - bx, ny - by) < 34) {
+            objState.bubblesPopped[idx] = 1.0;
+            hit = true;
+          }
+        }
+      }
+      if (!hit) {
+        // Pop 3 random bubbles on celebration
+        for (let k = 0; k < 4; k++) {
+          objState.bubblesPopped[Math.floor(Math.random() * 28)] = 1.0;
+        }
+      }
+    } else if (fact.id === 'bread') {
+      objState.eraserProgress = Math.min(1, objState.eraserProgress + 0.34);
+      if (objState.eraserProgress >= 0.99 && objState.actionCount > 3) objState.eraserProgress = 0.15;
+    } else if (fact.id === 'pillow') {
+      for (let i = 0; i < 10; i++) {
+        objState.feathers.push({
+          x: 470 + (Math.random() - 0.5) * 110,
+          y: 170 + (Math.random() - 0.5) * 35,
+          vx: (Math.random() - 0.5) * 2.6,
+          vy: -1.6 - Math.random() * 2.4,
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 0.08,
+          life: 1
+        });
+      }
+    } else if (fact.id === 'pencil') {
+      objState.pencilPathLen = Math.min(1, objState.pencilPathLen + 0.25);
+      if (objState.pencilPathLen >= 1 && objState.actionCount % 4 === 0) objState.pencilPathLen = 0.25;
+    }
+  }
+
+  // Helper: Draw realistic soft shadow
+  function softShadow(ctx, x, y, rx, ry, alpha = 0.42) {
+    ctx.save();
+    const g = ctx.createRadialGradient(x, y, rx * 0.1, x, y, rx);
+    g.addColorStop(0, `rgba(10, 5, 2, ${alpha})`);
+    g.addColorStop(1, 'rgba(10, 5, 2, 0)');
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, rx, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  /* ----- 15 HIGH-DETAIL PROCEDURAL RENDERERS (720 x 360 virtual coords) ----- */
+  const RENDERERS = {
+    toothbrush(ctx, t, act) {
+      const scrub = Math.sin(act * Math.PI * 6) * 24 * act;
+      const sway = Math.sin(t * 0.002) * 3;
+      softShadow(ctx, 360 + scrub * 0.5, 258, 250, 32, 0.48);
+
+      ctx.save();
+      ctx.translate(scrub, sway);
+      // Carved bamboo/beechwood handle
+      ctx.save();
+      ctx.translate(340, 195);
+      ctx.rotate(-0.08);
+      const wood = ctx.createLinearGradient(0, -24, 0, 24);
+      wood.addColorStop(0, '#efd29f');
+      wood.addColorStop(0.35, '#cfa062');
+      wood.addColorStop(0.75, '#9d6c34');
+      wood.addColorStop(1, '#7a5022');
+      ctx.fillStyle = wood;
+      ctx.beginPath();
+      ctx.moveTo(-210, -14);
+      ctx.quadraticCurveTo(-50, -19, 105, -11);
+      ctx.quadraticCurveTo(180, -16, 205, -14);
+      ctx.quadraticCurveTo(222, 0, 205, 14);
+      ctx.quadraticCurveTo(160, 15, 105, 10);
+      ctx.quadraticCurveTo(-50, 20, -210, 14);
+      ctx.quadraticCurveTo(-228, 0, -210, -14);
+      ctx.closePath();
+      ctx.fill();
+
+      // Wood grain lines
+      ctx.strokeStyle = 'rgba(85, 48, 16, 0.28)';
+      ctx.lineWidth = 1.4;
+      for (let i = -9; i <= 9; i += 4.5) {
+        ctx.beginPath();
+        ctx.moveTo(-200, i);
+        ctx.bezierCurveTo(-60, i + 3, 70, i - 3, 195, i * 0.7);
+        ctx.stroke();
+      }
+      // Specular wood highlight
+      ctx.strokeStyle = 'rgba(255, 244, 215, 0.35)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-195, -9); ctx.quadraticCurveTo(0, -13, 190, -9); ctx.stroke();
+
+      // Natural wild-boar dark & ivory bristles (layered individual tufts)
+      for (let i = 0; i < 36; i++) {
+        const bx = 112 + i * 2.55;
+        const h = 44 + Math.sin(i * 0.9) * 3.5;
+        const lean = Math.sin(act * 18 + i * 0.4) * 3.5 * act;
+        ctx.strokeStyle = i % 3 === 0 ? '#403229' : (i % 2 === 0 ? '#cbb89d' : '#6e5746');
+        ctx.lineWidth = 2.1;
+        ctx.beginPath();
+        ctx.moveTo(bx, -11);
+        ctx.quadraticCurveTo(bx + lean * 0.6, -11 - h * 0.55, bx + lean, -11 - h);
+        ctx.stroke();
+      }
+
+      // Glossy mint toothpaste wave resting on bristles
+      const paste = ctx.createLinearGradient(115, -80, 200, -45);
+      paste.addColorStop(0, '#9cf5f0');
+      paste.addColorStop(0.5, '#3ec7c4');
+      paste.addColorStop(1, '#1b8a91');
+      ctx.fillStyle = paste;
+      ctx.beginPath();
+      ctx.moveTo(114, -52);
+      ctx.bezierCurveTo(128, -82, 165, -84, 198, -62);
+      ctx.bezierCurveTo(212, -55, 204, -46, 186, -48);
+      ctx.bezierCurveTo(158, -46, 128, -46, 114, -52);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(128, -62);
+      ctx.quadraticCurveTo(160, -76, 189, -62);
+      ctx.stroke();
+      ctx.restore();
+      ctx.restore();
+
+      // Live floating foam bubbles
+      for (let i = objState.foam.length - 1; i >= 0; i--) {
+        const f = objState.foam[i];
+        f.x += f.vx; f.y += f.vy; f.life -= 0.015;
+        if (f.life <= 0) { objState.foam.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = f.life * 0.85;
+        const g = ctx.createRadialGradient(f.x - f.r * 0.3, f.y - f.r * 0.3, 1, f.x, f.y, f.r);
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(0.7, '#c7f5f2');
+        g.addColorStop(1, 'rgba(80,195,205,0.35)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    },
+
+    pencil(ctx, t, act) {
+      // Textured paper scroll underneath showing a long winding graphite line
+      ctx.save();
+      const paper = ctx.createLinearGradient(110, 210, 610, 310);
+      paper.addColorStop(0, '#efe1c4');
+      paper.addColorStop(1, '#d8c094');
+      ctx.fillStyle = paper;
+      ctx.beginPath();
+      ctx.roundRect(110, 208, 500, 102, 16);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(110,76,40,0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Winding 50 km graphite ribbon path
+      const totalPts = 90;
+      const drawCount = Math.floor(totalPts * Math.min(1, objState.pencilPathLen + act * 0.12));
+      ctx.strokeStyle = '#3c3e42';
+      ctx.lineWidth = 3.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      let tipX = 150, tipY = 258;
+      for (let i = 0; i <= drawCount; i++) {
+        const u = i / totalPts;
+        const x = 148 + u * 420;
+        const y = 260 + Math.sin(u * Math.PI * 6) * 26 * Math.sin(u * Math.PI);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        tipX = x; tipY = y;
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Realistic hexagonal yellow cedar pencil leaning right onto the tip
+      softShadow(ctx, tipX - 55, 272, 130, 18, 0.36);
+      ctx.save();
+      ctx.translate(tipX, tipY);
+      ctx.rotate(-0.62 + Math.sin(t * 0.003) * 0.03 + Math.sin(act * 20) * 0.05 * act);
+
+      // Graphite lead
+      ctx.fillStyle = '#25272b';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-22, -6); ctx.lineTo(-22, 6); ctx.closePath(); ctx.fill();
+      // Sharpened cedar cone
+      const cone = ctx.createLinearGradient(-22, -16, -22, 16);
+      cone.addColorStop(0, '#f3d4a4'); cone.addColorStop(0.55, '#d9ab71'); cone.addColorStop(1, '#a97742');
+      ctx.fillStyle = cone;
+      ctx.beginPath(); ctx.moveTo(-22, -6); ctx.lineTo(-68, -16); ctx.lineTo(-68, 16); ctx.lineTo(-22, 6); ctx.closePath(); ctx.fill();
+      // 3 hexagonal painted yellow faces
+      ctx.fillStyle = '#ffd54f'; ctx.fillRect(-288, -16, 220, 10);
+      ctx.fillStyle = '#f0a81d'; ctx.fillRect(-288, -6, 220, 12);
+      ctx.fillStyle = '#c47b0e'; ctx.fillRect(-288, 6, 220, 10);
+      // Scalloped wood collar
+      ctx.fillStyle = '#f0a81d';
+      for (let s = -12; s <= 12; s += 12) {
+        ctx.beginPath(); ctx.arc(-68, s, 6, -Math.PI / 2, Math.PI / 2); ctx.fill();
+      }
+      // Brass crimp ferrule
+      const fer = ctx.createLinearGradient(-316, -16, -316, 16);
+      fer.addColorStop(0, '#fff2bc'); fer.addColorStop(0.45, '#cfa042'); fer.addColorStop(1, '#7a5214');
+      ctx.fillStyle = fer;
+      ctx.fillRect(-318, -16.5, 30, 33);
+      ctx.strokeStyle = 'rgba(70,40,8,0.45)';
+      ctx.lineWidth = 2;
+      for (let gx = -312; gx <= -294; gx += 6) {
+        ctx.beginPath(); ctx.moveTo(gx, -16); ctx.lineTo(gx, 16); ctx.stroke();
+      }
+      // Soft coral-pink eraser
+      const er = ctx.createLinearGradient(-346, -16, -346, 16);
+      er.addColorStop(0, '#ffb3bc'); er.addColorStop(0.5, '#e87a8a'); er.addColorStop(1, '#b54d5e');
+      ctx.fillStyle = er;
+      ctx.beginPath(); ctx.roundRect(-350, -15.5, 34, 31, [10, 0, 0, 10]); ctx.fill();
+      ctx.restore();
+    },
+
+    jeans(ctx, t, act) {
+      softShadow(ctx, 360, 292, 230, 26, 0.5);
+      // Rich indigo denim patch with diagonal twill texture
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(150, 56, 420, 248, 28);
+      ctx.clip();
+
+      const denim = ctx.createLinearGradient(150, 56, 570, 304);
+      denim.addColorStop(0, '#36588c');
+      denim.addColorStop(0.5, '#264270');
+      denim.addColorStop(1, '#182b4d');
+      ctx.fillStyle = denim;
+      ctx.fillRect(150, 56, 420, 248);
+
+      // Diagonal twill weave
+      ctx.strokeStyle = 'rgba(175, 208, 255, 0.08)';
+      ctx.lineWidth = 2;
+      for (let x = -200; x < 780; x += 7) {
+        ctx.beginPath(); ctx.moveTo(x, 56); ctx.lineTo(x + 250, 304); ctx.stroke();
+      }
+
+      // Main curved pocket seam
+      ctx.strokeStyle = '#df8d36';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 5]);
+      ctx.beginPath();
+      ctx.moveTo(150, 128);
+      ctx.quadraticCurveTo(360, 165, 570, 118);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Antique gold pocket watch peeking out & lifting on click!
+      const lift = Math.sin(act * Math.PI) * 38 + Math.sin(t * 0.0022) * 3;
+      const wx = 365, wy = 148 - lift;
+      // Gold chain curving to belt loop
+      ctx.strokeStyle = '#f2c763';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(wx, wy - 56);
+      ctx.bezierCurveTo(wx - 70, wy - 70, 220, 130, 185, 86);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Watch crown & bow
+      ctx.strokeStyle = '#f7d57c';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(wx, wy - 58, 12, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#c8912a';
+      ctx.fillRect(wx - 7, wy - 50, 14, 12);
+
+      // Watch gold case
+      const gold = ctx.createRadialGradient(wx - 18, wy - 18, 6, wx, wy, 56);
+      gold.addColorStop(0, '#fff4bf');
+      gold.addColorStop(0.55, '#dca338');
+      gold.addColorStop(1, '#7c510d');
+      ctx.fillStyle = gold;
+      ctx.beginPath(); ctx.arc(wx, wy, 54, 0, Math.PI * 2); ctx.fill();
+
+      // Ivory clock face
+      ctx.fillStyle = '#f7efe0';
+      ctx.beginPath(); ctx.arc(wx, wy, 44, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#523819';
+      ctx.lineWidth = 2;
+      for (let h = 0; h < 12; h++) {
+        const a = (h / 12) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(wx + Math.cos(a) * 34, wy + Math.sin(a) * 34);
+        ctx.lineTo(wx + Math.cos(a) * 40, wy + Math.sin(a) * 40);
+        ctx.stroke();
+      }
+      // Ticking watch hands
+      const sec = (t * 0.004) + act * 8;
+      ctx.strokeStyle = '#1e1610';
+      ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + Math.cos(sec * 0.1 - 1.2) * 24, wy + Math.sin(sec * 0.1 - 1.2) * 24); ctx.stroke();
+      ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + Math.cos(sec - 1.5) * 33, wy + Math.sin(sec - 1.5) * 33); ctx.stroke();
+      ctx.fillStyle = '#a62626';
+      ctx.beginPath(); ctx.arc(wx, wy, 3.5, 0, Math.PI * 2); ctx.fill();
+
+      // The Iconic Tiny Watch Pocket overlapping lower half of watch
+      const pkt = ctx.createLinearGradient(280, 152, 450, 276);
+      pkt.addColorStop(0, '#325285');
+      pkt.addColorStop(1, '#1c3359');
+      ctx.fillStyle = pkt;
+      ctx.shadowColor = 'rgba(8, 14, 28, 0.55)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 6;
+      ctx.beginPath();
+      ctx.moveTo(282, 162);
+      ctx.lineTo(448, 162);
+      ctx.lineTo(442, 255);
+      ctx.quadraticCurveTo(365, 282, 288, 255);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+
+      // Double orange topstitching
+      ctx.strokeStyle = '#e8963c';
+      ctx.lineWidth = 2.4;
+      ctx.setLineDash([7, 4]);
+      ctx.beginPath();
+      ctx.moveTo(289, 170); ctx.lineTo(441, 170);
+      ctx.lineTo(436, 250); ctx.quadraticCurveTo(365, 274, 294, 250); ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Iconic Copper Rivets on both corners
+      [[291, 172], [439, 172]].forEach(([rx, ry]) => {
+        const cop = ctx.createRadialGradient(rx - 3, ry - 3, 1, rx, ry, 10);
+        cop.addColorStop(0, '#ffd4ad');
+        cop.addColorStop(0.55, '#c46c38');
+        cop.addColorStop(1, '#612c10');
+        ctx.fillStyle = cop;
+        ctx.beginPath(); ctx.arc(rx, ry, 9.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#5a290f';
+        ctx.beginPath(); ctx.arc(rx, ry, 2.5, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.restore();
+    },
+
+    bread(ctx, t, act) {
+      // Sketch sheet with pencil marks that fade as the bread crumb rubs them!
+      ctx.save();
+      ctx.fillStyle = '#ebdcc0';
+      ctx.beginPath(); ctx.roundRect(140, 72, 440, 224, 18); ctx.fill();
+      ctx.strokeStyle = 'rgba(120,86,48,0.3)'; ctx.lineWidth = 2; ctx.stroke();
+
+      // Pencil scribble smudge (fades with eraserProgress)
+      const alpha = Math.max(0.08, 1 - objState.eraserProgress * 0.9);
+      ctx.strokeStyle = `rgba(62, 65, 70, ${alpha})`;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const x = 190 + i * 20;
+        const y = 185 + (i % 2 === 0 ? -34 : 34);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Realistic Artisan Bread Slice on left
+      softShadow(ctx, 255, 266, 95, 22, 0.35);
+      ctx.save();
+      ctx.translate(250, 186);
+      ctx.rotate(-0.12);
+      // Golden brown crust
+      const crust = ctx.createLinearGradient(-85, -80, 85, 80);
+      crust.addColorStop(0, '#c27a34'); crust.addColorStop(0.5, '#9e591d'); crust.addColorStop(1, '#6b380f');
+      ctx.fillStyle = crust;
+      ctx.beginPath();
+      ctx.moveTo(-72, 62);
+      ctx.lineTo(-76, -18);
+      ctx.bezierCurveTo(-84, -72, -32, -88, 0, -82);
+      ctx.bezierCurveTo(36, -88, 86, -72, 76, -18);
+      ctx.lineTo(72, 62);
+      ctx.quadraticCurveTo(0, 72, -72, 62);
+      ctx.fill();
+      // Soft porous crumb
+      const crumb = ctx.createRadialGradient(-10, -10, 10, 0, 0, 82);
+      crumb.addColorStop(0, '#fff4dc'); crumb.addColorStop(0.75, '#ecd2a7'); crumb.addColorStop(1, '#d3ad76');
+      ctx.fillStyle = crumb;
+      ctx.beginPath();
+      ctx.moveTo(-62, 52);
+      ctx.lineTo(-65, -15);
+      ctx.bezierCurveTo(-72, -60, -28, -74, 0, -68);
+      ctx.bezierCurveTo(30, -74, 72, -60, 65, -15);
+      ctx.lineTo(62, 52);
+      ctx.quadraticCurveTo(0, 60, -62, 52);
+      ctx.fill();
+      // Air pockets in crumb
+      ctx.fillStyle = 'rgba(155, 112, 62, 0.28)';
+      [[-28,-32,5],[18,-42,6],[34,-12,4.5],[-12,8,7],[22,26,5.5],[-36,24,4],[4,-14,3.5]].forEach(([px,py,pr]) => {
+        ctx.beginPath(); ctx.ellipse(px, py, pr, pr * 0.7, 0.5, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.restore();
+
+      // Pinched soft bread-crumb ball actively rubbing the graphite!
+      const rubX = 430 + Math.sin(act * Math.PI * 6) * 44 * act + Math.sin(t * 0.0025) * 6;
+      const rubY = 186 + Math.cos(act * Math.PI * 6) * 14 * act;
+      softShadow(ctx, rubX, rubY + 34, 42, 12, 0.32);
+      const ball = ctx.createRadialGradient(rubX - 10, rubY - 12, 4, rubX, rubY, 36);
+      ball.addColorStop(0, '#fff7e6');
+      ball.addColorStop(0.65, '#e8cfa0');
+      ball.addColorStop(1, '#b8945e');
+      ctx.fillStyle = ball;
+      ctx.beginPath();
+      ctx.ellipse(rubX, rubY, 34, 28, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Tiny scattered bread crumbs around
+      ctx.fillStyle = '#dec08c';
+      for (let i = 0; i < 8; i++) {
+        const cx = rubX - 38 + i * 11 + Math.sin(i * 4 + act * 8) * 6;
+        const cy = rubY + 26 + Math.cos(i * 3) * 9;
+        ctx.beginPath(); ctx.arc(cx, cy, 2.2 + (i % 3), 0, Math.PI * 2); ctx.fill();
+      }
+    },
+
+    pencap(ctx, t, act) {
+      softShadow(ctx, 360, 265, 220, 26, 0.42);
+      ctx.save();
+      ctx.translate(360, 178);
+      ctx.rotate(-0.08 + Math.sin(t * 0.002) * 0.025);
+
+      // Crystal transparent hexagonal pen body on left
+      const bodyGrad = ctx.createLinearGradient(-230, -16, -230, 16);
+      bodyGrad.addColorStop(0, 'rgba(225, 244, 255, 0.65)');
+      bodyGrad.addColorStop(0.5, 'rgba(130, 195, 245, 0.35)');
+      bodyGrad.addColorStop(1, 'rgba(70, 130, 200, 0.55)');
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath(); ctx.roundRect(-245, -15, 215, 30, 6); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      // Inner blue ink tube
+      ctx.fillStyle = '#184eb0';
+      ctx.fillRect(-238, -4.5, 196, 9);
+      // Brass ballpoint tip
+      const brass = ctx.createLinearGradient(-30, -12, -30, 12);
+      brass.addColorStop(0, '#fff2b0'); brass.addColorStop(0.5, '#d49e38'); brass.addColorStop(1, '#7a5110');
+      ctx.fillStyle = brass;
+      ctx.beginPath(); ctx.moveTo(-30, -13); ctx.lineTo(14, -3); ctx.lineTo(14, 3); ctx.lineTo(-30, 13); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#dce6f2';
+      ctx.beginPath(); ctx.arc(15, 0, 3.2, 0, Math.PI * 2); ctx.fill();
+
+      // Ventilated Royal-Blue Pen Cap (separated slightly on right so airflow is crystal clear!)
+      const capShift = 58 + Math.sin(act * Math.PI) * 18;
+      ctx.save();
+      ctx.translate(capShift, 0);
+      const capGrad = ctx.createLinearGradient(0, -24, 0, 24);
+      capGrad.addColorStop(0, '#5ea8ff');
+      capGrad.addColorStop(0.42, '#1d64cc');
+      capGrad.addColorStop(0.85, '#0e367a');
+      capGrad.addColorStop(1, '#1e52a8');
+      ctx.fillStyle = capGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, -22);
+      ctx.lineTo(132, -16);
+      ctx.lineTo(132, 16);
+      ctx.lineTo(0, 22);
+      ctx.closePath();
+      ctx.fill();
+
+      // Pocket clip
+      ctx.fillStyle = '#2d76e0';
+      ctx.beginPath();
+      ctx.roundRect(14, -33, 108, 12, 5);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(20, -30, 94, 3);
+
+      // Highlighted Life-Saving Safety Hole at the end of the cap!
+      ctx.fillStyle = '#081b3d';
+      ctx.beginPath();
+      ctx.ellipse(132, 0, 6.5, 11.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#9cd0ff';
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+
+      // Continuous shimmering air-stream ribbons flowing smoothly through the safety hole
+      const speed = t * 0.0045 + act * 5;
+      for (let s = -1; s <= 1; s++) {
+        ctx.strokeStyle = `rgba(180, 238, 255, ${0.42 + act * 0.45})`;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.setLineDash([18, 14]);
+        ctx.lineDashOffset = -speed * 35;
+        ctx.beginPath();
+        ctx.moveTo(18, s * 7);
+        ctx.bezierCurveTo(78, s * 4, 120, s * 3, 212, s * 18 + Math.sin(speed + s) * 8);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+      ctx.restore();
+    },
+
+    sneaker(ctx, t, act) {
+      const bounce = Math.abs(Math.sin(act * Math.PI * 2)) * 24;
+      softShadow(ctx, 220, 286, 115, 20, 0.4);
+      softShadow(ctx, 495, 286, 120, 22, 0.45);
+
+      // Left: Realistic Vintage Cast-Iron Waffle Iron Grid
+      ctx.save();
+      ctx.translate(225, 185);
+      const iron = ctx.createRadialGradient(-25, -25, 15, 0, 0, 112);
+      iron.addColorStop(0, '#62666e');
+      iron.addColorStop(0.6, '#363940');
+      iron.addColorStop(1, '#1d1f24');
+      ctx.fillStyle = iron;
+      ctx.beginPath(); ctx.arc(0, 0, 96, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#8b909a'; ctx.lineWidth = 4; ctx.stroke();
+
+      // Golden waffle pockets inside
+      ctx.save();
+      ctx.beginPath(); ctx.arc(0, 0, 82, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = '#c88c3b';
+      ctx.fillRect(-85, -85, 170, 170);
+      for (let gx = -76; gx <= 68; gx += 22) {
+        for (let gy = -76; gy <= 68; gy += 22) {
+          ctx.fillStyle = '#8a5519';
+          ctx.beginPath(); ctx.roundRect(gx, gy, 16, 16, 3); ctx.fill();
+          ctx.fillStyle = '#e8b45a';
+          ctx.fillRect(gx + 2, gy + 2, 12, 3);
+        }
+      }
+      ctx.restore();
+      ctx.restore();
+
+      // Right: Realistic Athletic Sneaker tilted to show its Waffle Rubber Sole!
+      ctx.save();
+      ctx.translate(495, 182 - bounce);
+      ctx.rotate(-0.18 + Math.sin(t * 0.0024) * 0.04);
+
+      // Shoe upper body (coral-red suede & mesh)
+      const upper = ctx.createLinearGradient(-120, -70, 120, 40);
+      upper.addColorStop(0, '#e35542');
+      upper.addColorStop(0.55, '#c43528');
+      upper.addColorStop(1, '#8c1d18');
+      ctx.fillStyle = upper;
+      ctx.beginPath();
+      ctx.moveTo(-115, 22);
+      ctx.quadraticCurveTo(-118, -58, -58, -68);
+      ctx.lineTo(-14, -36);
+      ctx.quadraticCurveTo(42, -32, 96, -8);
+      ctx.quadraticCurveTo(126, 4, 118, 28);
+      ctx.closePath();
+      ctx.fill();
+
+      // Cream midsole foam
+      ctx.fillStyle = '#f2e8d5';
+      ctx.beginPath(); ctx.roundRect(-120, 22, 242, 22, 10); ctx.fill();
+
+      // Signature Waffle Rubber Outsole with protruding lugs!
+      ctx.fillStyle = '#262322';
+      ctx.beginPath(); ctx.roundRect(-122, 40, 244, 16, 6); ctx.fill();
+      for (let lx = -112; lx <= 104; lx += 19) {
+        ctx.fillStyle = '#141212';
+        ctx.beginPath(); ctx.roundRect(lx, 52, 12, 10, 2); ctx.fill();
+        ctx.fillStyle = '#474240';
+        ctx.fillRect(lx + 2, 53, 8, 3);
+      }
+
+      // Crisp laces
+      ctx.strokeStyle = '#f7efe1';
+      ctx.lineWidth = 4.5;
+      ctx.lineCap = 'round';
+      for (let k = 0; k < 4; k++) {
+        ctx.beginPath();
+        ctx.moveTo(-24 + k * 17, -40 + k * 6);
+        ctx.lineTo(-8 + k * 17, -26 + k * 6);
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+
+    velcro(ctx, t, act) {
+      const pull = Math.sin(act * Math.PI) * 32;
+      softShadow(ctx, 240, 278, 105, 20, 0.42);
+      softShadow(ctx, 490, 278, 130, 22, 0.42);
+
+      // Left: Macro-Realistic Spiky Burdock Burr (Реп'ях) with tiny curved hooks!
+      ctx.save();
+      ctx.translate(238, 174);
+      ctx.rotate(Math.sin(t * 0.002) * 0.06 + act * 0.4);
+      // Outer ring of microscopic curved hooks
+      for (let i = 0; i < 42; i++) {
+        const a = (i / 42) * Math.PI * 2;
+        const len = 84 + (i % 3) * 8;
+        ctx.save();
+        ctx.rotate(a);
+        ctx.strokeStyle = i % 2 === 0 ? '#789e48' : '#967c3e';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(48, 0);
+        ctx.lineTo(len, 0);
+        ctx.arc(len, 6, 6, -Math.PI / 2, Math.PI * 0.65);
+        ctx.stroke();
+        ctx.restore();
+      }
+      // Textured woven green-purple burr core
+      const core = ctx.createRadialGradient(-16, -16, 8, 0, 0, 62);
+      core.addColorStop(0, '#96ba58');
+      core.addColorStop(0.65, '#597a32');
+      core.addColorStop(1, '#314719');
+      ctx.fillStyle = core;
+      ctx.beginPath(); ctx.arc(0, 0, 60, 0, Math.PI * 2); ctx.fill();
+      // Purple flower tuft on top
+      for (let f = -4; f <= 4; f++) {
+        ctx.strokeStyle = '#a8559e';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(f * 3, -55);
+        ctx.quadraticCurveTo(f * 7, -78, f * 9, -86);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Right: Macro Velcro Hook-and-Loop Mechanism peeling open & snapping shut!
+      ctx.save();
+      ctx.translate(495, 178);
+      // Bottom Loop Fabric Strip (Soft dark navy nylon loops)
+      ctx.fillStyle = '#25395e';
+      ctx.beginPath(); ctx.roundRect(-115, 22, 230, 34, 8); ctx.fill();
+      ctx.strokeStyle = '#6f96d6';
+      ctx.lineWidth = 2.6;
+      for (let lx = -96; lx <= 96; lx += 16) {
+        ctx.beginPath();
+        ctx.arc(lx, 22, 11, Math.PI, 0);
+        ctx.stroke();
+      }
+
+      // Top Hook Strip (Lifts slightly when clicked!)
+      ctx.save();
+      ctx.translate(0, -pull);
+      ctx.rotate(-pull * 0.004);
+      ctx.fillStyle = '#3c5c94';
+      ctx.beginPath(); ctx.roundRect(-115, -48, 230, 32, 8); ctx.fill();
+      ctx.strokeStyle = '#d9e6ff';
+      ctx.lineWidth = 2.8;
+      ctx.lineCap = 'round';
+      for (let hx = -96; hx <= 96; hx += 16) {
+        ctx.beginPath();
+        ctx.moveTo(hx, -16);
+        ctx.lineTo(hx, 8);
+        ctx.arc(hx + 5, 8, 5, Math.PI, 0, true);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.restore();
+    },
+
+    honey(ctx, t, act) {
+      softShadow(ctx, 345, 294, 155, 24, 0.48);
+
+      // Realistic Faceted Glass Jar of Glowing Amber Honey
+      ctx.save();
+      ctx.translate(345, 198);
+      // Golden liquid interior
+      const hon = ctx.createRadialGradient(-20, -10, 12, 0, 10, 110);
+      hon.addColorStop(0, '#ffe373');
+      hon.addColorStop(0.45, '#e89d1c');
+      hon.addColorStop(0.85, '#b5610a');
+      hon.addColorStop(1, '#7a3804');
+      ctx.fillStyle = hon;
+      ctx.beginPath();
+      ctx.roundRect(-84, -64, 168, 154, 38);
+      ctx.fill();
+
+      // Subtle glowing honey caustics & floating golden bubbles inside jar
+      ctx.fillStyle = 'rgba(255, 248, 200, 0.32)';
+      for (let b = 0; b < 7; b++) {
+        const bx = -45 + b * 15;
+        const by = 45 - ((t * 0.015 + b * 23) % 95);
+        ctx.beginPath(); ctx.arc(bx, by, 3 + (b % 3) * 1.6, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Glass jar rim & vertical specular reflection
+      ctx.strokeStyle = 'rgba(255, 248, 224, 0.55)';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.roundRect(-86, -68, 172, 160, 40); ctx.stroke();
+
+      // Glass neck
+      const neck = ctx.createLinearGradient(-56, -96, 56, -96);
+      neck.addColorStop(0, 'rgba(255,255,255,0.45)');
+      neck.addColorStop(0.5, 'rgba(255,220,140,0.2)');
+      neck.addColorStop(1, 'rgba(255,255,255,0.5)');
+      ctx.fillStyle = neck;
+      ctx.beginPath(); ctx.roundRect(-58, -96, 116, 30, 8); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2; ctx.stroke();
+
+      // Curved glass specular sheen
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.34)';
+      ctx.beginPath();
+      ctx.ellipse(-54, 6, 13, 56, -0.06, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Wooden Honey Dipper hovering & pouring a lush golden ribbon!
+      const dipLift = Math.sin(t * 0.0024) * 7 - Math.sin(act * Math.PI) * 18;
+      ctx.save();
+      ctx.translate(45, -104 + dipLift);
+      ctx.rotate(-0.48 + Math.sin(act * Math.PI * 2) * 0.12);
+
+      // Wooden handle
+      const wd = ctx.createLinearGradient(0, -7, 0, 7);
+      wd.addColorStop(0, '#efd09b'); wd.addColorStop(0.6, '#b88140'); wd.addColorStop(1, '#7a4d1d');
+      ctx.fillStyle = wd;
+      ctx.beginPath(); ctx.roundRect(10, -6.5, 145, 13, 6); ctx.fill();
+
+      // Grooved dipper head
+      for (let g = -22; g <= 16; g += 9.5) {
+        ctx.fillStyle = '#c4863b';
+        ctx.beginPath(); ctx.ellipse(g, 0, 5.5, 20 - Math.abs(g) * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#734212'; ctx.lineWidth = 1.4; ctx.stroke();
+      }
+      ctx.restore();
+
+      // Dripping glossy amber honey strand pouring into jar
+      const dripY = -88 + dipLift;
+      ctx.strokeStyle = '#f5b025';
+      ctx.lineWidth = 8 + act * 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(30, dripY + 12);
+      ctx.quadraticCurveTo(28 + Math.sin(t * 0.006) * 4, dripY + 55, 26, -32);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 248, 195, 0.7)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(28, dripY + 16);
+      ctx.lineTo(25, -36);
+      ctx.stroke();
+      ctx.restore();
+    },
+
+    bubblewrap(ctx, t, act) {
+      // Interactive Sheet of Translucent Bubble Wrap on a Vintage Wallpaper Backing!
+      ctx.save();
+      // Decorative textured wallpaper swatch behind the bubble wrap
+      const wp = ctx.createLinearGradient(120, 48, 600, 312);
+      wp.addColorStop(0, '#507278');
+      wp.addColorStop(1, '#314b52');
+      ctx.fillStyle = wp;
+      ctx.beginPath(); ctx.roundRect(120, 48, 480, 264, 24); ctx.fill();
+      ctx.strokeStyle = 'rgba(225, 205, 155, 0.22)';
+      ctx.lineWidth = 2;
+      for (let x = 148; x < 590; x += 48) {
+        for (let y = 78; y < 300; y += 48) {
+          ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.stroke();
+        }
+      }
+
+      // Glossy translucent polyethylene sheet
+      ctx.fillStyle = 'rgba(215, 242, 255, 0.22)';
+      ctx.beginPath(); ctx.roundRect(126, 54, 468, 252, 20); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const cols = 7, rows = 4;
+      const startX = 165, startY = 84, gapX = 64, gapY = 58;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          if (objState.bubblesPopped[idx] > 0) {
+            objState.bubblesPopped[idx] = Math.max(0, objState.bubblesPopped[idx] - 0.0045);
+          }
+          const popped = objState.bubblesPopped[idx];
+          const bx = startX + c * gapX + (r % 2) * 18;
+          const by = startY + r * gapY;
+          const rad = 23 * (1 - popped * 0.28);
+
+          if (popped > 0.25) {
+            // Wrinkled popped dome
+            ctx.fillStyle = 'rgba(200, 230, 245, 0.16)';
+            ctx.beginPath(); ctx.arc(bx, by, rad, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(bx - 10, by - 5); ctx.lineTo(bx + 9, by + 6);
+            ctx.moveTo(bx + 7, by - 8); ctx.lineTo(bx - 6, by + 9);
+            ctx.stroke();
+          } else {
+            // Plump inflated 3D air dome with dual specular highlights
+            const bGrad = ctx.createRadialGradient(bx - 7, by - 7, 2, bx, by, rad);
+            bGrad.addColorStop(0, 'rgba(255, 255, 255, 0.65)');
+            bGrad.addColorStop(0.5, 'rgba(185, 232, 255, 0.34)');
+            bGrad.addColorStop(0.85, 'rgba(120, 185, 225, 0.42)');
+            bGrad.addColorStop(1, 'rgba(255, 255, 255, 0.52)');
+            ctx.fillStyle = bGrad;
+            ctx.beginPath(); ctx.arc(bx, by, rad, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.82)';
+            ctx.beginPath(); ctx.ellipse(bx - 7, by - 7, 7, 4, -0.6, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      }
+      ctx.restore();
+    },
+
+    cacao(ctx, t, act) {
+      softShadow(ctx, 255, 268, 125, 24, 0.48);
+      softShadow(ctx, 475, 262, 120, 24, 0.44);
+
+      // Left: Glossy Sculpted Dark Chocolate Bar with Gold Foil Peel
+      ctx.save();
+      ctx.translate(250, 186);
+      ctx.rotate(-0.1);
+      // Gold foil wrapper bottom half
+      const foil = ctx.createLinearGradient(-90, -10, 90, 95);
+      foil.addColorStop(0, '#ffe89a'); foil.addColorStop(0.45, '#d49d35'); foil.addColorStop(1, '#8c5c12');
+      ctx.fillStyle = foil;
+      ctx.beginPath(); ctx.roundRect(-84, -4, 168, 92, 10); ctx.fill();
+      // Chocolate beveled squares
+      for (let r = 0; r < 2; r++) {
+        for (let c = 0; c < 3; c++) {
+          const sx = -76 + c * 52, sy = -88 + r * 46;
+          ctx.fillStyle = '#4a2514';
+          ctx.beginPath(); ctx.roundRect(sx, sy, 48, 42, 5); ctx.fill();
+          ctx.fillStyle = '#6e3a20';
+          ctx.beginPath(); ctx.roundRect(sx + 4, sy + 4, 40, 34, 3); ctx.fill();
+          ctx.fillStyle = '#36190c';
+          ctx.fillRect(sx + 8, sy + 32, 34, 5);
+          ctx.fillStyle = 'rgba(255, 224, 195, 0.24)';
+          ctx.fillRect(sx + 6, sy + 6, 34, 4);
+        }
+      }
+      ctx.restore();
+
+      // Right: Ancient Roasted Cacao Beans & Gleaming Coins (bouncing on click!)
+      const beans = [
+        { x: 435, y: 155, r: -0.4 },
+        { x: 495, y: 142, r: 0.35 },
+        { x: 545, y: 185, r: -0.2 },
+        { x: 455, y: 215, r: 0.55 },
+        { x: 518, y: 230, r: -0.6 }
+      ];
+      beans.forEach((b, i) => {
+        const hop = Math.abs(Math.sin(act * Math.PI * 2 + i * 0.7)) * 22 * act;
+        ctx.save();
+        ctx.translate(b.x, b.y - hop);
+        ctx.rotate(b.r + Math.sin(t * 0.002 + i) * 0.05);
+        const bg = ctx.createRadialGradient(-8, -8, 4, 0, 0, 34);
+        bg.addColorStop(0, '#9e6238');
+        bg.addColorStop(0.55, '#66381b');
+        bg.addColorStop(1, '#361a0a');
+        ctx.fillStyle = bg;
+        ctx.beginPath(); ctx.ellipse(0, 0, 32, 19, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#291206'; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(-24, 0); ctx.quadraticCurveTo(0, 5, 24, 0); ctx.stroke();
+        ctx.restore();
+      });
+
+      // Shimmering Ancient Gold Coins beside the cacao beans
+      [[400, 232], [568, 128]].forEach(([cx, cy], i) => {
+        const spin = Math.cos(t * 0.003 + act * 9 + i);
+        ctx.save();
+        ctx.translate(cx, cy - Math.abs(Math.sin(act * Math.PI)) * 18);
+        ctx.scale(0.65 + 0.35 * Math.abs(spin), 1);
+        const cg = ctx.createRadialGradient(-6, -6, 3, 0, 0, 24);
+        cg.addColorStop(0, '#fff4be'); cg.addColorStop(0.55, '#dfa434'); cg.addColorStop(1, '#855610');
+        ctx.fillStyle = cg;
+        ctx.beginPath(); ctx.arc(0, 0, 23, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#a16b14'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      });
+    },
+
+    playdoh(ctx, t, act) {
+      const sq = Math.sin(act * Math.PI * 3) * 0.14 * act;
+      softShadow(ctx, 360, 276, 235, 28, 0.45);
+
+      // 4 Sculptural Tactile Clay Sticks & Squished Modeling Mound
+      const sticks = [
+        { x: 195, y: 205, c1: '#ff7d8a', c2: '#d9384a', c3: '#8f1b28', rot: -0.22 },
+        { x: 295, y: 175, c1: '#ffd966', c2: '#e8a825', c3: '#a36b0c', rot: 0.08 },
+        { x: 405, y: 182, c1: '#5fd4b8', c2: '#23967f', c3: '#125c4d', rot: -0.06 },
+        { x: 515, y: 202, c1: '#75aaff', c2: '#2b66c9', c3: '#163a7d', rot: 0.24 }
+      ];
+
+      sticks.forEach((s, i) => {
+        const w = Math.sin(t * 0.0025 + i * 1.4) * 3;
+        ctx.save();
+        ctx.translate(s.x, s.y + w);
+        ctx.rotate(s.rot);
+        ctx.scale(1 + sq, 1 - sq);
+        const g = ctx.createLinearGradient(-34, -58, 34, 58);
+        g.addColorStop(0, s.c1); g.addColorStop(0.5, s.c2); g.addColorStop(1, s.c3);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.roundRect(-34, -64, 68, 128, 22); ctx.fill();
+
+        // Matte clay specular band & subtle organic fingerprint swirl
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.beginPath(); ctx.ellipse(-13, -10, 9, 44, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+        ctx.lineWidth = 1.6;
+        for (let r = 6; r <= 18; r += 5) {
+          ctx.beginPath(); ctx.arc(4, 16, r, 0.3, 2.4); ctx.stroke();
+        }
+        ctx.restore();
+      });
+
+      // Soft sculpted clay spiral ribbon in front
+      ctx.save();
+      ctx.translate(360, 244);
+      ctx.scale(1 + sq * 1.4, 1 - sq * 1.4);
+      const rg = ctx.createRadialGradient(-20, -10, 8, 0, 0, 90);
+      rg.addColorStop(0, '#ffa866'); rg.addColorStop(0.6, '#e36426'); rg.addColorStop(1, '#94350c');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 82, 26, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,240,220,0.3)';
+      ctx.beginPath(); ctx.ellipse(-22, -8, 32, 7, -0.1, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
+
+    straw(ctx, t, act) {
+      softShadow(ctx, 250, 290, 80, 18, 0.35);
+      softShadow(ctx, 455, 292, 95, 20, 0.45);
+
+      // Left: Golden Swaying Rye Stalks (showing hollow natural straw!)
+      for (let k = 0; k < 4; k++) {
+        const sway = Math.sin(t * 0.002 + k * 0.8 + act * 6) * (9 + act * 14);
+        const bx = 185 + k * 28;
+        ctx.save();
+        ctx.strokeStyle = k % 2 === 0 ? '#e3bd56' : '#c99e36';
+        ctx.lineWidth = 6.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(bx, 286);
+        ctx.quadraticCurveTo(bx + sway * 0.5, 190, bx + sway, 92 + k * 8);
+        ctx.stroke();
+        // Rye grain head
+        const hx = bx + sway, hy = 92 + k * 8;
+        for (let g = 0; g < 6; g++) {
+          ctx.fillStyle = '#f2d06b';
+          ctx.beginPath();
+          ctx.ellipse(hx - 6, hy + g * 8, 6, 3, -0.5, 0, Math.PI * 2);
+          ctx.ellipse(hx + 6, hy + g * 8 + 3, 6, 3, 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Right: Chilled Glass of Lemonade with Striped Bendy Straw & Fizzing Bubbles
+      ctx.save();
+      ctx.translate(455, 198);
+      // Striped straw angled inside glass
+      ctx.save();
+      ctx.rotate(0.16 + Math.sin(act * Math.PI * 3) * 0.08);
+      ctx.fillStyle = '#f7f1e3';
+      ctx.fillRect(-7, -142, 14, 215);
+      ctx.fillStyle = '#d94141';
+      for (let sy = -136; sy < 65; sy += 22) {
+        ctx.beginPath();
+        ctx.moveTo(-7, sy); ctx.lineTo(7, sy - 8); ctx.lineTo(7, sy + 2); ctx.lineTo(-7, sy + 10);
+        ctx.closePath(); ctx.fill();
+      }
+      // Bent top part
+      ctx.translate(0, -140);
+      ctx.rotate(0.75);
+      ctx.fillStyle = '#f7f1e3';
+      ctx.fillRect(-7, -46, 14, 48);
+      ctx.fillStyle = '#d94141';
+      ctx.fillRect(-7, -34, 14, 10);
+      ctx.fillRect(-7, -14, 14, 10);
+      ctx.restore();
+
+      // Golden chilled lemonade liquid
+      const lem = ctx.createLinearGradient(-64, -30, 64, 90);
+      lem.addColorStop(0, 'rgba(255, 232, 92, 0.88)');
+      lem.addColorStop(1, 'rgba(232, 168, 28, 0.92)');
+      ctx.fillStyle = lem;
+      ctx.beginPath();
+      ctx.moveTo(-64, -22); ctx.lineTo(64, -22); ctx.lineTo(50, 88); ctx.lineTo(-50, 88);
+      ctx.closePath(); ctx.fill();
+
+      // Translucent floating ice cubes
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      [[-26, -2, 0.2], [18, 12, -0.35]].forEach(([ix, iy, ir]) => {
+        ctx.save();
+        ctx.translate(ix, iy + Math.sin(t * 0.003 + ix) * 3);
+        ctx.rotate(ir + act * 0.5);
+        ctx.beginPath(); ctx.roundRect(-16, -16, 32, 32, 6); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.restore();
+      });
+
+      // Rising fizz bubbles
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+      for (let b = 0; b < 11; b++) {
+        const bx = -38 + (b * 19) % 76;
+        const by = 78 - ((t * (0.04 + act * 0.1) + b * 27) % 94);
+        ctx.beginPath(); ctx.arc(bx, by, 2.2 + (b % 3), 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Glass silhouette & highlight
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.62)';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(-72, -62); ctx.lineTo(-54, 92); ctx.lineTo(54, 92); ctx.lineTo(72, -62);
+      ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, -62, 72, 12, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.beginPath(); ctx.moveTo(-58, -46); ctx.lineTo(-44, 78); ctx.lineTo(-32, 78); ctx.lineTo(-44, -46); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    },
+
+    umbrella(ctx, t, act) {
+      // Warm Golden Sun glowing on upper left
+      const sunPulse = 1 + Math.sin(t * 0.003) * 0.06 + act * 0.15;
+      ctx.save();
+      ctx.translate(182, 92);
+      const sg = ctx.createRadialGradient(0, 0, 10, 0, 0, 86 * sunPulse);
+      sg.addColorStop(0, '#fff7cc');
+      sg.addColorStop(0.35, 'rgba(255, 206, 84, 0.85)');
+      sg.addColorStop(1, 'rgba(255, 170, 40, 0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(0, 0, 86 * sunPulse, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      softShadow(ctx, 375, 298, 130, 18, 0.42);
+
+      // Realistic Domed Crimson-and-Gold Parasol / Umbrella
+      ctx.save();
+      ctx.translate(375, 182);
+      ctx.rotate(-0.12 + Math.sin(t * 0.002) * 0.04 + Math.sin(act * Math.PI * 2) * 0.12);
+
+      // Polished wooden shaft & curved crook handle
+      ctx.strokeStyle = '#6e3c1a';
+      ctx.lineWidth = 8.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, -112);
+      ctx.lineTo(0, 82);
+      ctx.arc(18, 82, 18, Math.PI, 0, true);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 224, 175, 0.35)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(-2, -108); ctx.lineTo(-2, 78); ctx.stroke();
+
+      // Domed multi-panel silk canopy
+      const panels = [
+        ['#d9434e', '#8f1b26'],
+        ['#f0d8a8', '#c49d5a'],
+        ['#c9323e', '#78141e'],
+        ['#e6c88e', '#b58a45'],
+        ['#b82834', '#691018']
+      ];
+      ctx.beginPath();
+      ctx.arc(0, 18, 136, Math.PI, 0);
+      ctx.quadraticCurveTo(100, 0, 68, 18);
+      ctx.quadraticCurveTo(34, 0, 0, 18);
+      ctx.quadraticCurveTo(-34, 0, -68, 18);
+      ctx.quadraticCurveTo(-100, 0, -136, 18);
+      ctx.closePath();
+      const domeGrad = ctx.createRadialGradient(-42, -52, 18, 0, -10, 145);
+      domeGrad.addColorStop(0, '#ff8f7a');
+      domeGrad.addColorStop(0.45, '#c9323e');
+      domeGrad.addColorStop(1, '#63121a');
+      ctx.fillStyle = domeGrad;
+      ctx.fill();
+
+      // Golden decorative ribs & fringe scallops
+      ctx.strokeStyle = '#f2c86b';
+      ctx.lineWidth = 2.6;
+      [-76, -30, 30, 76].forEach(rx => {
+        ctx.beginPath();
+        ctx.moveTo(0, -118);
+        ctx.quadraticCurveTo(rx * 1.1, -55, rx, 14);
+        ctx.stroke();
+      });
+      // Brass ferrule tip
+      ctx.fillStyle = '#f0c45d';
+      ctx.beginPath(); ctx.arc(0, -120, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      // Sparkling droplets bouncing off right side of canopy on interaction
+      ctx.fillStyle = 'rgba(185, 232, 255, 0.72)';
+      for (const d of objState.rainDrops) {
+        d.y += d.v + act * 4;
+        if (d.y > 165) d.y = 35;
+        ctx.beginPath();
+        ctx.ellipse(d.x + 80, d.y, 2.2, 5.5, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+
+    buttons(ctx, t, act) {
+      softShadow(ctx, 225, 266, 95, 22, 0.42);
+      softShadow(ctx, 415, 268, 110, 24, 0.45);
+      softShadow(ctx, 548, 240, 65, 18, 0.35);
+
+      // Left: Antique Iridescent Seashell (origin of earliest buttons!)
+      ctx.save();
+      ctx.translate(222, 194);
+      ctx.rotate(-0.15);
+      const sh = ctx.createRadialGradient(-10, -25, 8, 0, 0, 88);
+      sh.addColorStop(0, '#fff7f0');
+      sh.addColorStop(0.45, '#e8d2d9');
+      sh.addColorStop(0.8, '#b8a9c4');
+      sh.addColorStop(1, '#7c6f8c');
+      ctx.fillStyle = sh;
+      ctx.beginPath();
+      ctx.moveTo(0, 62);
+      ctx.bezierCurveTo(-92, 10, -88, -74, 0, -76);
+      ctx.bezierCurveTo(88, -74, 92, 10, 0, 62);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 2;
+      for (let r = -3; r <= 3; r++) {
+        ctx.beginPath();
+        ctx.moveTo(0, 56);
+        ctx.quadraticCurveTo(r * 22, -10, r * 24, -68 + Math.abs(r) * 7);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Center & Right: Sculpted Mother-of-Pearl Buttons with Iridescent Shimmer & Crossed Thread
+      const btns = [
+        { x: 410, y: 186, r: 68, thread: '#c9414e' },
+        { x: 545, y: 158, r: 46, thread: '#2d68b8' },
+        { x: 522, y: 248, r: 36, thread: '#d99a2b' }
+      ];
+      btns.forEach((b, idx) => {
+        const spin = Math.sin(act * Math.PI * 2 + idx) * 0.45 * act;
+        const sheen = Math.sin(t * 0.003 + idx * 1.8) * 18;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(spin);
+
+        // Mother-of-pearl iridescent body
+        const pg = ctx.createLinearGradient(-b.r + sheen, -b.r, b.r + sheen, b.r);
+        pg.addColorStop(0, '#fff8f2');
+        pg.addColorStop(0.28, '#d9eef5');
+        pg.addColorStop(0.54, '#f2d9eb');
+        pg.addColorStop(0.78, '#dcf2e4');
+        pg.addColorStop(1, '#b5a8bd');
+        ctx.fillStyle = pg;
+        ctx.beginPath(); ctx.arc(0, 0, b.r, 0, Math.PI * 2); ctx.fill();
+
+        // Raised sculpted rim
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.arc(0, 0, b.r * 0.84, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(90, 72, 98, 0.26)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, b.r * 0.78, 0, Math.PI * 2); ctx.stroke();
+
+        // 4 holes & silk cross-stitch thread
+        const d = b.r * 0.24;
+        [[-d,-d],[d,-d],[-d,d],[d,d]].forEach(([hx, hy]) => {
+          ctx.fillStyle = '#36282e';
+          ctx.beginPath(); ctx.arc(hx, hy, b.r * 0.09, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.strokeStyle = b.thread;
+        ctx.lineWidth = b.r * 0.1;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-d, -d); ctx.lineTo(d, d);
+        ctx.moveTo(d, -d); ctx.lineTo(-d, d);
+        ctx.stroke();
+        ctx.restore();
+      });
+    },
+
+    pillow(ctx, t, act) {
+      softShadow(ctx, 232, 276, 118, 22, 0.48);
+      softShadow(ctx, 490, 272, 130, 24, 0.42);
+
+      // Left: Authentic Ancient Egyptian Carved Limestone/Alabaster Headrest Pillow
+      ctx.save();
+      ctx.translate(232, 206);
+      const stone = ctx.createLinearGradient(-95, -90, 95, 70);
+      stone.addColorStop(0, '#f2e0be');
+      stone.addColorStop(0.5, '#cfb284');
+      stone.addColorStop(1, '#8c6e44');
+      ctx.fillStyle = stone;
+
+      // Wide carved base
+      ctx.beginPath(); ctx.roundRect(-84, 42, 168, 26, 8); ctx.fill();
+      // Fluted central column
+      ctx.beginPath(); ctx.roundRect(-28, -32, 56, 78, 6); ctx.fill();
+      // Curved crescent neck cradle
+      ctx.beginPath();
+      ctx.moveTo(-98, -74);
+      ctx.quadraticCurveTo(0, -18, 98, -74);
+      ctx.quadraticCurveTo(86, -24, 0, -20);
+      ctx.quadraticCurveTo(-86, -24, -98, -74);
+      ctx.closePath();
+      ctx.fill();
+
+      // Subtle chiseled stone markings
+      ctx.strokeStyle = 'rgba(92, 66, 34, 0.35)';
+      ctx.lineWidth = 2;
+      for (let fx = -16; fx <= 16; fx += 8) {
+        ctx.beginPath(); ctx.moveTo(fx, -22); ctx.lineTo(fx, 40); ctx.stroke();
+      }
+      ctx.restore();
+
+      // Right: Plush Modern Quilted Down Pillow puffing feathers!
+      const puff = 1 + Math.sin(act * Math.PI * 3) * 0.08 * act;
+      ctx.save();
+      ctx.translate(490, 198 + Math.sin(t * 0.0022) * 3);
+      ctx.scale(puff, 2 - puff);
+      const pil = ctx.createRadialGradient(-28, -28, 12, 0, 0, 132);
+      pil.addColorStop(0, '#fff9f0');
+      pil.addColorStop(0.55, '#e8dcc8');
+      pil.addColorStop(1, '#b5a389');
+      ctx.fillStyle = pil;
+      ctx.beginPath();
+      ctx.moveTo(-108, -56);
+      ctx.quadraticCurveTo(0, -76, 108, -56);
+      ctx.quadraticCurveTo(124, 0, 108, 56);
+      ctx.quadraticCurveTo(0, 74, -108, 56);
+      ctx.quadraticCurveTo(-124, 0, -108, -56);
+      ctx.closePath();
+      ctx.fill();
+      // Quilted stitching border
+      ctx.strokeStyle = 'rgba(130, 110, 88, 0.35)';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([6, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Floating soft goose feathers
+      for (let i = objState.feathers.length - 1; i >= 0; i--) {
+        const f = objState.feathers[i];
+        f.x += f.vx + Math.sin(t * 0.006 + i) * 0.9;
+        f.y += f.vy; f.vy += 0.04; f.rot += f.vrot; f.life -= 0.012;
+        if (f.life <= 0) { objState.feathers.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = f.life;
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.rot);
+        ctx.fillStyle = '#fffaf0';
+        ctx.beginPath(); ctx.ellipse(0, 0, 18, 6.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#d4c4ac'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(18, 0); ctx.stroke();
+        ctx.restore();
+      }
+    }
+  };
+
+  function renderStage(t) {
+    stageCtx.clearRect(0, 0, stW, stH);
+    const fact = getCurrentFact();
+    if (!fact) return;
+
+    if (objState.actionTimer > 0) {
+      objState.actionTimer = Math.max(0, objState.actionTimer - 0.018);
+    }
+
+    // Scale virtual 720x360 artwork proportionally into stage canvas
+    const scale = Math.min(stW / 720, stH / 360);
+    const ox = (stW - 720 * scale) / 2;
+    const oy = (stH - 360 * scale) / 2;
+
+    stageCtx.save();
+    stageCtx.translate(ox, oy);
+    stageCtx.scale(scale, scale);
+
+    const drawFn = RENDERERS[fact.id];
+    if (drawFn) drawFn(stageCtx, t, objState.actionTimer);
+
+    stageCtx.restore();
+  }
+
+  /* =========================================================
+     6. GAME STATE, INFINITE SHUFFLE QUEUE & INTERACTION
+     ========================================================= */
+  let lang = 'uk';
+  let activeTool = 'subj'; // 'subj' (1 line) | 'pred' (2 lines)
+  let deck = [];
+  let deckPos = 0;
+  let foundSubj = false;
+  let foundPred = false;
+  let solvedCurrent = false;
+
+  const langBtn = document.getElementById('langBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const sentenceText = document.getElementById('sentenceText');
+  const sentenceBoard = document.getElementById('sentenceBoard');
+  const stageWrap = document.getElementById('stageWrap');
+  const btnSubj = document.getElementById('btnSubj');
+  const btnPred = document.getElementById('btnPred');
+
+  function refillDeck(avoidId = null) {
+    const indices = FACTS.map((_, i) => i);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    if (avoidId && FACTS[indices[0]].id === avoidId && indices.length > 1) {
+      [indices[0], indices[1]] = [indices[1], indices[0]];
+    }
+    deck = indices;
+    deckPos = 0;
+  }
+
+  function getCurrentFact() {
+    return FACTS[deck[deckPos]];
+  }
+
+  function setActiveTool(tool, playAudio = false) {
+    activeTool = tool;
+    btnSubj.classList.toggle('active', tool === 'subj');
+    btnPred.classList.toggle('active', tool === 'pred');
+    btnSubj.classList.toggle('done-tool', foundSubj);
+    btnPred.classList.toggle('done-tool', foundPred);
+    document.querySelectorAll('.word-token').forEach(el => {
+      el.classList.toggle('pen-subj', tool === 'subj');
+      el.classList.toggle('pen-pred', tool === 'pred');
+    });
+    if (playAudio) sfx.playPenSelect(tool === 'pred');
+  }
+
+  function splitPunctuation(word) {
+    const m = word.match(/^(.+?)([.,!?;:]+)$/);
+    return m ? { core: m[1], punct: m[2] } : { core: word, punct: '' };
+  }
+
+  function renderSentence() {
+    const fact = getCurrentFact();
+    const data = fact[lang];
+    sentenceText.innerHTML = '';
+
+    data.words.forEach((rawWord, idx) => {
+      const { core, punct } = splitPunctuation(rawWord);
+      const token = document.createElement('span');
+      token.className = `word-token ${activeTool === 'subj' ? 'pen-subj' : 'pen-pred'}`;
+      token.dataset.idx = idx;
+
+      const coreSpan = document.createElement('span');
+      coreSpan.className = 'word-core';
+      coreSpan.textContent = core;
+
+      // SVG hand-drawn ink underline container (1 line for subj, 2 lines for pred)
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'ink-svg');
+      svg.setAttribute('viewBox', '0 0 120 18');
+      svg.setAttribute('preserveAspectRatio', 'none');
+
+      const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p1.setAttribute('class', 'ink-path p1');
+      p1.setAttribute('d', 'M2,6 Q60,2.5 118,6.2');
+      svg.appendChild(p1);
+
+      const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p2.setAttribute('class', 'ink-path p2');
+      p2.setAttribute('d', 'M2,13.5 Q60,10.5 118,13.8');
+      svg.appendChild(p2);
+
+      coreSpan.appendChild(svg);
+      token.appendChild(coreSpan);
+
+      if (punct) {
+        const pSpan = document.createElement('span');
+        pSpan.className = 'word-punct';
+        pSpan.textContent = punct;
+        token.appendChild(pSpan);
+      }
+
+      if (foundSubj && idx === data.subj) token.classList.add('found-subj');
+      if (foundPred && idx === data.pred) token.classList.add('found-pred');
+
+      token.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handleWordClick(idx, token);
+      });
+
+      sentenceText.appendChild(token);
+    });
+  }
+
+  function handleWordClick(idx, tokenEl) {
+    sfx.ensure();
+    const fact = getCurrentFact();
+    const data = fact[lang];
+    const rect = tokenEl.getBoundingClientRect();
+
+    // Already solved word -> playful sparkle bounce
+    if ((foundSubj && idx === data.subj) || (foundPred && idx === data.pred)) {
+      tokenEl.classList.remove('found-pop');
+      void tokenEl.offsetWidth;
+      tokenEl.classList.add('found-pop');
+      sfx.playPenSelect(idx === data.pred);
+      return;
+    }
+
+    if (activeTool === 'subj' && idx === data.subj) {
+      foundSubj = true;
+      tokenEl.classList.add('found-subj', 'found-pop');
+      sfx.playInkSuccess(false);
+      spawnWordSparkles(rect, '#2d7be8');
+      if (!foundPred) setActiveTool('pred', false);
+      else finishSentence();
+    } else if (activeTool === 'pred' && idx === data.pred) {
+      foundPred = true;
+      tokenEl.classList.add('found-pred', 'found-pop');
+      sfx.playInkSuccess(true);
+      spawnWordSparkles(rect, '#e03142');
+      if (!foundSubj) setActiveTool('subj', false);
+      else finishSentence();
+    } else {
+      // Gentle playful wobble + dust puff (no text, no harsh red X)
+      tokenEl.classList.remove('wrong-wobble');
+      void tokenEl.offsetWidth;
+      tokenEl.classList.add('wrong-wobble');
+      sfx.playWrong();
+      spawnDustPuff(rect);
+    }
+  }
+
+  function finishSentence() {
+    if (solvedCurrent) return;
+    solvedCurrent = true;
+    btnSubj.classList.add('done-tool');
+    btnPred.classList.add('done-tool');
+    nextBtn.classList.add('pulse-ready');
+    setTimeout(() => {
+      spawnGrandCelebration();
+      triggerObjectInteraction(360, 180, true);
+    }, 180);
+  }
+
+  function loadTask(animate = true) {
+    const apply = () => {
+      const fact = getCurrentFact();
+      foundSubj = false;
+      foundPred = false;
+      solvedCurrent = false;
+      targetTint = fact.tint.slice();
+      nextBtn.classList.remove('pulse-ready');
+      resetObjectState();
+      setActiveTool('subj', false);
+      renderSentence();
+      stageWrap.classList.remove('switching');
+      sentenceBoard.classList.remove('switching');
+    };
+
+    if (!animate) { apply(); return; }
+    stageWrap.classList.add('switching');
+    sentenceBoard.classList.add('switching');
+    setTimeout(apply, 250);
+  }
+
+  function goNext() {
+    sfx.ensure();
+    sfx.playNextPage();
+    const prevId = getCurrentFact().id;
+    deckPos++;
+    if (deckPos >= deck.length) refillDeck(prevId);
+    loadTask(true);
+  }
+
+  /* =========================================================
+     7. EVENTS & ANIMATION LOOP
+     ========================================================= */
+  btnSubj.addEventListener('click', () => setActiveTool('subj', true));
+  btnPred.addEventListener('click', () => setActiveTool('pred', true));
+
+  langBtn.addEventListener('click', () => {
+    sfx.ensure();
+    sfx.playPenSelect(lang === 'uk');
+    lang = lang === 'uk' ? 'ru' : 'uk';
+    langBtn.textContent = lang === 'uk' ? 'УКР' : 'РУС';
+    document.documentElement.lang = lang;
+    renderSentence();
+  });
+
+  nextBtn.addEventListener('click', goNext);
+
+  stageMat.addEventListener('pointerdown', (e) => {
+    sfx.ensure();
+    const rect = stageCanvas.getBoundingClientRect();
+    const scale = Math.min(stW / 720, stH / 360);
+    const ox = (stW - 720 * scale) / 2;
+    const oy = (stH - 360 * scale) / 2;
+    const nx = (e.clientX - rect.left - ox) / scale;
+    const ny = (e.clientY - rect.top - oy) / scale;
+    triggerObjectInteraction(nx, ny, false);
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goNext(); }
+    if (e.key === '1') setActiveTool('subj', true);
+    if (e.key === '2') setActiveTool('pred', true);
+  });
+
+  window.addEventListener('resize', resizeCanvases);
+
+  function loop(t) {
+    renderBackground(t);
+    renderStage(t);
+    renderParticles(t);
+    requestAnimationFrame(loop);
+  }
+
+  // Boot
+  buildWoodTexture();
+  refillDeck();
+  resizeCanvases();
+  loadTask(false);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
