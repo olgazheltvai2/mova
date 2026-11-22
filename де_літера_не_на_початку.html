@@ -1,0 +1,2241 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Лісова Гра</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #1a472a;
+    font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  }
+
+  #game-root {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Living Forest Background */
+  #bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Celebration Particle Canvas */
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 30;
+    pointer-events: none;
+  }
+
+  /* Top Hanging Sign Assembly */
+  #sign-wrapper {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: clamp(260px, 31vw, 440px);
+    height: 45vh;
+    z-index: 15;
+    pointer-events: none;
+  }
+
+  #sign-rig {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    transform-origin: 50% 0%;
+    will-change: transform;
+  }
+
+  #chains-svg {
+    position: absolute;
+    top: -160px;
+    left: 0;
+    width: 100%;
+    height: 240px;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  #plaque-svg {
+    position: relative;
+    width: 100%;
+    height: auto;
+    display: block;
+    margin-top: 34px;
+    filter: drop-shadow(0 16px 20px rgba(10, 30, 12, 0.55));
+  }
+
+  /* Pedestals Stage */
+  #stage {
+    position: absolute;
+    bottom: clamp(22px, 5.5vh, 64px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(92vw, 1340px);
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-end;
+    gap: clamp(12px, 3vw, 48px);
+    z-index: 10;
+  }
+
+  .pedestal-slot {
+    position: relative;
+    flex: 1 1 0;
+    max-width: clamp(210px, 26vw, 370px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    outline: none;
+  }
+
+  .pedestal-slot:hover .item-stage {
+    transform: translateY(-10px) scale(1.045);
+    filter: drop-shadow(0 18px 18px rgba(255, 224, 102, 0.45));
+  }
+
+  .pedestal-slot:active .item-stage {
+    transform: translateY(-2px) scale(0.97);
+  }
+
+  .item-aura {
+    position: absolute;
+    bottom: 26%;
+    left: 50%;
+    transform: translateX(-50%) scale(0.6);
+    width: 92%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 240, 130, 0.85) 0%, rgba(255, 195, 50, 0.35) 45%, rgba(255, 180, 0, 0) 72%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease, transform 0.4s ease;
+    z-index: 1;
+  }
+
+  .pedestal-slot.correct-glow .item-aura {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.22);
+    animation: auraPulse 0.9s ease-in-out infinite alternate;
+  }
+
+  .item-stage {
+    position: relative;
+    width: 84%;
+    aspect-ratio: 1 / 1;
+    margin-bottom: -17%;
+    z-index: 4;
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.28s ease;
+    filter: drop-shadow(0 10px 10px rgba(15, 35, 15, 0.38));
+    will-change: transform;
+  }
+
+  .item-stage svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    animation: idleFloat 3.6s ease-in-out infinite;
+  }
+
+  .pedestal-slot:nth-child(2) .item-stage svg { animation-delay: -1.2s; }
+  .pedestal-slot:nth-child(3) .item-stage svg { animation-delay: -2.4s; }
+
+  .pedestal-base {
+    position: relative;
+    width: 100%;
+    height: auto;
+    z-index: 2;
+    pointer-events: none;
+    filter: drop-shadow(0 12px 14px rgba(12, 32, 10, 0.48));
+  }
+
+  /* Animations for Items */
+  .item-enter {
+    animation: popInItem 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  .item-exit {
+    animation: popOutItem 0.32s ease-in forwards;
+  }
+
+  .wrong-wobble .item-stage {
+    animation: playfulWobble 0.56s cubic-bezier(0.36, 0.07, 0.19, 0.97) both !important;
+  }
+
+  .correct-jump .item-stage {
+    animation: joyfulJump 0.85s cubic-bezier(0.28, 0.84, 0.42, 1) infinite !important;
+  }
+
+  /* Top-Right Language Toggle Button */
+  #lang-btn {
+    position: absolute;
+    top: clamp(14px, 2.4vh, 26px);
+    right: clamp(14px, 2.2vw, 30px);
+    z-index: 40;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    width: clamp(86px, 8.2vw, 118px);
+    height: clamp(46px, 4.8vw, 64px);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+    filter: drop-shadow(0 6px 10px rgba(10, 28, 10, 0.48));
+  }
+
+  #lang-btn:hover {
+    transform: scale(1.07) rotate(-1.5deg);
+    filter: drop-shadow(0 8px 14px rgba(255, 220, 110, 0.35));
+  }
+
+  #lang-btn:active {
+    transform: scale(0.94);
+  }
+
+  /* Bottom-Right Minimalist Next Button */
+  #next-btn {
+    position: absolute;
+    bottom: clamp(14px, 2.6vh, 28px);
+    right: clamp(14px, 2.2vw, 30px);
+    z-index: 40;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    width: clamp(84px, 7.6vw, 112px);
+    height: clamp(84px, 7.6vw, 112px);
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
+    filter: drop-shadow(0 8px 12px rgba(10, 30, 10, 0.5));
+  }
+
+  #next-btn:hover {
+    transform: scale(1.09) rotate(3deg);
+    filter: drop-shadow(0 10px 18px rgba(255, 200, 60, 0.45));
+  }
+
+  #next-btn:active {
+    transform: scale(0.93);
+  }
+
+  /* Living Background Keyframes */
+  @keyframes swaySlow {
+    0%, 100% { transform: rotate(-1.6deg); }
+    50% { transform: rotate(1.8deg); }
+  }
+  @keyframes swayFast {
+    0%, 100% { transform: rotate(-3.5deg); }
+    50% { transform: rotate(3.5deg); }
+  }
+  @keyframes swingGentle {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+  }
+  @keyframes cloudDrift {
+    0% { transform: translateX(-140px); }
+    100% { transform: translateX(1740px); }
+  }
+  @keyframes sunPulse {
+    0%, 100% { opacity: 0.26; }
+    50% { opacity: 0.44; }
+  }
+  @keyframes idleFloat {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    50% { transform: translateY(-4px) scale(1.015); }
+  }
+  @keyframes blinkEye {
+    0%, 92%, 100% { transform: scaleY(1); }
+    96% { transform: scaleY(0.08); }
+  }
+  @keyframes playfulWobble {
+    0% { transform: translateX(0) rotate(0deg) scale(1); }
+    18% { transform: translateX(-14px) rotate(-9deg) scale(1.04, 0.96); }
+    38% { transform: translateX(13px) rotate(8deg) scale(0.96, 1.04); }
+    58% { transform: translateX(-9px) rotate(-5deg) scale(1.02, 0.98); }
+    78% { transform: translateX(6px) rotate(3deg) scale(0.99, 1.01); }
+    100% { transform: translateX(0) rotate(0deg) scale(1); }
+  }
+  @keyframes joyfulJump {
+    0%, 100% { transform: translateY(0) scale(1, 1); }
+    15% { transform: translateY(6px) scale(1.1, 0.88); }
+    48% { transform: translateY(-34px) scale(0.94, 1.08) rotate(-3deg); }
+    62% { transform: translateY(-32px) scale(0.96, 1.06) rotate(3deg); }
+    85% { transform: translateY(3px) scale(1.05, 0.94); }
+  }
+  @keyframes auraPulse {
+    0% { transform: translateX(-50%) scale(1.12); opacity: 0.85; }
+    100% { transform: translateX(-50%) scale(1.3); opacity: 1; }
+  }
+  @keyframes popInItem {
+    0% { transform: translateY(28px) scale(0.3); opacity: 0; }
+    70% { transform: translateY(-8px) scale(1.06); opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  @keyframes popOutItem {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.4) translateY(20px); opacity: 0; }
+  }
+
+  .sway-tree { transform-origin: bottom center; animation: swaySlow 6.5s ease-in-out infinite; }
+  .sway-flower { transform-origin: bottom center; animation: swayFast 3.8s ease-in-out infinite; }
+  .tree-swing { transform-origin: 1272px 472px; animation: swingGentle 4.8s ease-in-out infinite; }
+  .sun-beam { animation: sunPulse 7s ease-in-out infinite; }
+  .blink-eye { transform-box: fill-box; transform-origin: center; animation: blinkEye 4.2s infinite; }
+
+  @media (max-aspect-ratio: 4/3) {
+    #sign-wrapper { width: clamp(230px, 44vw, 380px); }
+    #stage { bottom: 9vh; width: 96vw; gap: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-root">
+  <!-- GLOBAL SHARED SVG DEFS FOR REALISTIC SHADING & TEXTURES -->
+  <svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <defs>
+      <!-- Realistic Glossy & Organic Gradients -->
+      <radialGradient id="gRed" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#ff7b6b"/>
+        <stop offset="48%" stop-color="#e52d27"/>
+        <stop offset="100%" stop-color="#8b0f14"/>
+      </radialGradient>
+      <radialGradient id="gOrange" cx="32%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#ffd17a"/>
+        <stop offset="45%" stop-color="#f5821f"/>
+        <stop offset="100%" stop-color="#a83d08"/>
+      </radialGradient>
+      <radialGradient id="gYellow" cx="35%" cy="28%" r="70%">
+        <stop offset="0%" stop-color="#fff8b0"/>
+        <stop offset="50%" stop-color="#f7c825"/>
+        <stop offset="100%" stop-color="#b87d07"/>
+      </radialGradient>
+      <radialGradient id="gGreen" cx="32%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#a8f065"/>
+        <stop offset="50%" stop-color="#3da832"/>
+        <stop offset="100%" stop-color="#19541a"/>
+      </radialGradient>
+      <radialGradient id="gDarkGreen" cx="35%" cy="25%" r="75%">
+        <stop offset="0%" stop-color="#69b84f"/>
+        <stop offset="55%" stop-color="#266e2c"/>
+        <stop offset="100%" stop-color="#0f3815"/>
+      </radialGradient>
+      <radialGradient id="gBlue" cx="32%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#8cd6ff"/>
+        <stop offset="50%" stop-color="#2286d6"/>
+        <stop offset="100%" stop-color="#0e3d78"/>
+      </radialGradient>
+      <radialGradient id="gPink" cx="35%" cy="28%" r="70%">
+        <stop offset="0%" stop-color="#ffc4dc"/>
+        <stop offset="50%" stop-color="#f05a94"/>
+        <stop offset="100%" stop-color="#9e1c52"/>
+      </radialGradient>
+      <radialGradient id="gPurple" cx="35%" cy="28%" r="70%">
+        <stop offset="0%" stop-color="#d79eff"/>
+        <stop offset="50%" stop-color="#8238c9"/>
+        <stop offset="100%" stop-color="#41126e"/>
+      </radialGradient>
+      <radialGradient id="gBrown" cx="35%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#c98e5b"/>
+        <stop offset="52%" stop-color="#7c4824"/>
+        <stop offset="100%" stop-color="#3d1e0b"/>
+      </radialGradient>
+      <radialGradient id="gTan" cx="35%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#fce3be"/>
+        <stop offset="55%" stop-color="#d49e62"/>
+        <stop offset="100%" stop-color="#8c5827"/>
+      </radialGradient>
+      <radialGradient id="gCream" cx="35%" cy="30%" r="72%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="60%" stop-color="#f2e4cc"/>
+        <stop offset="100%" stop-color="#c9b291"/>
+      </radialGradient>
+      <radialGradient id="gGrey" cx="34%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#ced6de"/>
+        <stop offset="52%" stop-color="#7c8a99"/>
+        <stop offset="100%" stop-color="#3c4652"/>
+      </radialGradient>
+      <radialGradient id="gDarkGrey" cx="35%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#66707a"/>
+        <stop offset="55%" stop-color="#30363d"/>
+        <stop offset="100%" stop-color="#14181c"/>
+      </radialGradient>
+      <linearGradient id="gMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="28%" stop-color="#b8c4cf"/>
+        <stop offset="58%" stop-color="#6e7c8a"/>
+        <stop offset="85%" stop-color="#cfd8e0"/>
+        <stop offset="100%" stop-color="#45505c"/>
+      </linearGradient>
+      <linearGradient id="gGold" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fff4ad"/>
+        <stop offset="35%" stop-color="#f5c02e"/>
+        <stop offset="70%" stop-color="#b57609"/>
+        <stop offset="100%" stop-color="#ffe169"/>
+      </linearGradient>
+      <linearGradient id="gWoodPlaque" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#c98648"/>
+        <stop offset="22%" stop-color="#a8632d"/>
+        <stop offset="65%" stop-color="#87491d"/>
+        <stop offset="100%" stop-color="#5e2e0f"/>
+      </linearGradient>
+      <linearGradient id="gWoodDark" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#8f5122"/>
+        <stop offset="50%" stop-color="#693612"/>
+        <stop offset="100%" stop-color="#3e1c07"/>
+      </linearGradient>
+      <linearGradient id="gLetter3D" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ff8c6b"/>
+        <stop offset="32%" stop-color="#f2341b"/>
+        <stop offset="75%" stop-color="#c9120e"/>
+        <stop offset="100%" stop-color="#870606"/>
+      </linearGradient>
+      <linearGradient id="gGloss" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.72"/>
+        <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+      </linearGradient>
+      <radialGradient id="gContactShadow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#173010" stop-opacity="0.52"/>
+        <stop offset="70%" stop-color="#173010" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="#173010" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- LIVING SUNLIT FAIRY-TALE FOREST CLEARING BACKGROUND -->
+  <svg id="bg-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5cc3f2"/>
+        <stop offset="42%" stop-color="#a8e6f7"/>
+        <stop offset="78%" stop-color="#e5f9c8"/>
+        <stop offset="100%" stop-color="#c9ed9a"/>
+      </linearGradient>
+      <radialGradient id="sunHalo" cx="24%" cy="14%" r="36%">
+        <stop offset="0%" stop-color="#fffbe0" stop-opacity="0.95"/>
+        <stop offset="35%" stop-color="#fff099" stop-opacity="0.45"/>
+        <stop offset="100%" stop-color="#fff099" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="hillFar" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#69b56c"/>
+        <stop offset="100%" stop-color="#3c8248"/>
+      </linearGradient>
+      <linearGradient id="hillMid" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#7acc4b"/>
+        <stop offset="100%" stop-color="#3b8a2e"/>
+      </linearGradient>
+      <linearGradient id="meadowGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#8bd941"/>
+        <stop offset="48%" stop-color="#52a829"/>
+        <stop offset="100%" stop-color="#286617"/>
+      </linearGradient>
+      <linearGradient id="pathGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ebd59e"/>
+        <stop offset="60%" stop-color="#cfa96b"/>
+        <stop offset="100%" stop-color="#a37a43"/>
+      </linearGradient>
+      <linearGradient id="beamGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fff9c4" stop-opacity="0.52"/>
+        <stop offset="100%" stop-color="#fff9c4" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="trunkGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#4d2911"/>
+        <stop offset="42%" stop-color="#804b24"/>
+        <stop offset="78%" stop-color="#5c3114"/>
+        <stop offset="100%" stop-color="#381b09"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Sky & Sun -->
+    <rect width="1600" height="900" fill="url(#skyGrad)"/>
+    <rect width="1600" height="900" fill="url(#sunHalo)"/>
+
+    <!-- Drifting Soft Clouds -->
+    <g style="animation: cloudDrift 72s linear infinite;" opacity="0.72">
+      <path d="M0 130 Q30 95 75 105 Q105 70 155 95 Q195 92 210 130 Z" fill="#ffffff"/>
+    </g>
+    <g style="animation: cloudDrift 96s linear infinite; animation-delay: -38s;" opacity="0.62">
+      <path d="M0 190 Q40 155 92 168 Q128 135 182 158 Q230 155 250 190 Z" fill="#ffffff"/>
+    </g>
+
+    <!-- Distant Forest Silhouette & Hills -->
+    <path d="M0 520 Q260 400 580 465 T1220 440 T1600 490 L1600 900 L0 900 Z" fill="url(#hillFar)"/>
+    <g fill="#428c4b" opacity="0.7">
+      <circle cx="150" cy="455" r="55"/><circle cx="230" cy="445" r="65"/><circle cx="320" cy="465" r="50"/>
+      <circle cx="620" cy="460" r="62"/><circle cx="710" cy="445" r="70"/><circle cx="800" cy="468" r="54"/>
+      <circle cx="1010" cy="450" r="58"/><circle cx="1100" cy="442" r="68"/><circle cx="1440" cy="460" r="75"/>
+    </g>
+
+    <!-- Midground Sunlit Hills -->
+    <path d="M0 570 Q340 485 740 540 T1600 515 L1600 900 L0 900 Z" fill="url(#hillMid)"/>
+
+    <!-- TREEHOUSE OAK ON BACK RIGHT -->
+    <g id="treehouse-group">
+      <!-- Big Oak Trunk -->
+      <path d="M1290 615 Q1315 510 1308 390 L1395 385 Q1385 510 1425 615 Q1355 628 1290 615 Z" fill="url(#trunkGrad)"/>
+      <!-- Left Branch for Swing -->
+      <path d="M1312 462 Q1260 452 1215 470 L1218 485 Q1265 474 1315 486 Z" fill="url(#trunkGrad)"/>
+      <!-- Swinging Wooden Swing -->
+      <g class="tree-swing">
+        <line x1="1250" y1="472" x2="1250" y2="570" stroke="#7d5329" stroke-width="3"/>
+        <line x1="1294" y1="472" x2="1294" y2="570" stroke="#7d5329" stroke-width="3"/>
+        <rect x="1240" y="566" width="64" height="11" rx="4" fill="#b36d32" stroke="#592e0e" stroke-width="2"/>
+      </g>
+      <!-- Rich Oak Foliage Behind House -->
+      <g class="sway-tree" style="transform-origin:1350px 380px;">
+        <circle cx="1220" cy="310" r="95" fill="#2d7a2b"/>
+        <circle cx="1360" cy="245" r="115" fill="#3a9432"/>
+        <circle cx="1475" cy="305" r="105" fill="#2a7328"/>
+        <circle cx="1275" cy="240" r="85" fill="#4fb03c"/>
+        <circle cx="1425" cy="240" r="88" fill="#52b83e"/>
+      </g>
+      <!-- Wooden Platform & Fence -->
+      <rect x="1245" y="420" width="210" height="18" rx="4" fill="#8f5122" stroke="#4a240b" stroke-width="2"/>
+      <g stroke="#5c2e10" stroke-width="3" fill="#b06a32">
+        <rect x="1252" y="388" width="9" height="34" rx="2"/>
+        <rect x="1272" y="388" width="9" height="34" rx="2"/>
+        <rect x="1292" y="388" width="9" height="34" rx="2"/>
+        <rect x="1246" y="394" width="60" height="7" rx="2"/>
+      </g>
+      <!-- Cozy Wooden Cabin -->
+      <rect x="1296" y="318" width="136" height="104" rx="4" fill="#b56c33" stroke="#54280c" stroke-width="2.5"/>
+      <!-- Plank lines -->
+      <g stroke="#7a4218" stroke-width="1.5" opacity="0.65">
+        <line x1="1298" y1="338" x2="1430" y2="338"/>
+        <line x1="1298" y1="358" x2="1430" y2="358"/>
+        <line x1="1298" y1="378" x2="1430" y2="378"/>
+        <line x1="1298" y1="398" x2="1430" y2="398"/>
+      </g>
+      <!-- Warm Glowing Window & Door -->
+      <rect x="1314" y="352" width="38" height="68" rx="18" fill="#633210" stroke="#3d1b06" stroke-width="2.5"/>
+      <circle cx="1342" cy="388" r="3.5" fill="#ffd966"/>
+      <rect x="1368" y="346" width="44" height="40" rx="5" fill="#ffe894" stroke="#54280c" stroke-width="3"/>
+      <line x1="1390" y1="346" x2="1390" y2="386" stroke="#54280c" stroke-width="2.5"/>
+      <line x1="1368" y1="366" x2="1412" y2="366" stroke="#54280c" stroke-width="2.5"/>
+      <!-- Shingled Pitched Roof -->
+      <polygon points="1274,324 1364,254 1454,324" fill="#8f3f1b" stroke="#4a1d08" stroke-width="3"/>
+      <polygon points="1288,320 1364,264 1440,320" fill="#a84e24"/>
+      <!-- Wooden Ladder -->
+      <g stroke="#6b3814" stroke-width="5" stroke-linecap="round">
+        <line x1="1312" y1="436" x2="1282" y2="612"/>
+        <line x1="1342" y1="436" x2="1312" y2="612"/>
+      </g>
+      <g stroke="#9c5928" stroke-width="4" stroke-linecap="round">
+        <line x1="1307" y1="462" x2="1337" y2="462"/>
+        <line x1="1302" y1="490" x2="1332" y2="490"/>
+        <line x1="1297" y1="518" x2="1327" y2="518"/>
+        <line x1="1292" y1="546" x2="1322" y2="546"/>
+        <line x1="1287" y1="574" x2="1317" y2="574"/>
+      </g>
+    </g>
+
+    <!-- Foreground Sunlit Clearing Meadow -->
+    <path d="M0 600 Q450 565 820 595 T1600 580 L1600 900 L0 900 Z" fill="url(#meadowGrad)"/>
+
+    <!-- Warm Sunlit Dirt Path Winding Across Clearing -->
+    <path d="M-40 835 Q380 760 800 805 T1640 770 L1640 855 Q1180 885 800 865 T-40 900 Z" fill="url(#pathGrad)" opacity="0.72"/>
+
+    <!-- Framing Lush Trees Left & Right -->
+    <g class="sway-tree" style="transform-origin:80px 680px;">
+      <path d="M-20 710 Q35 500 20 220 L110 220 Q95 500 140 710 Z" fill="url(#trunkGrad)"/>
+      <circle cx="40" cy="180" r="155" fill="#236b24"/>
+      <circle cx="170" cy="130" r="145" fill="#328a2e"/>
+      <circle cx="290" cy="70" r="120" fill="#46a836"/>
+      <circle cx="80" cy="270" r="115" fill="#3d9932"/>
+      <circle cx="195" cy="225" r="95" fill="#63bd42" opacity="0.85"/>
+    </g>
+
+    <g class="sway-tree" style="transform-origin:1550px 700px; animation-delay:-2.5s;">
+      <circle cx="1560" cy="145" r="165" fill="#246e26"/>
+      <circle cx="1430" cy="85" r="130" fill="#3b9631"/>
+      <circle cx="1520" cy="280" r="125" fill="#30822c"/>
+    </g>
+
+    <!-- Dappled Sunlight Beams -->
+    <g class="sun-beam" style="mix-blend-mode: screen;">
+      <polygon points="180,0 380,0 680,900 360,900" fill="url(#beamGrad)"/>
+      <polygon points="480,0 640,0 1050,900 820,900" fill="url(#beamGrad)"/>
+      <polygon points="880,0 1000,0 1340,900 1180,900" fill="url(#beamGrad)" opacity="0.65"/>
+    </g>
+
+    <!-- Foreground Soft Sun Spots on Grass -->
+    <ellipse cx="420" cy="780" rx="180" ry="38" fill="#d9ff70" opacity="0.22"/>
+    <ellipse cx="810" cy="825" rx="220" ry="42" fill="#d9ff70" opacity="0.2"/>
+    <ellipse cx="1210" cy="790" rx="170" ry="34" fill="#d9ff70" opacity="0.2"/>
+
+    <!-- Swaying Wildflowers & Bushes -->
+    <g id="bg-flowers">
+      <!-- Left Bush with Pink Flowers -->
+      <ellipse cx="75" cy="720" rx="135" ry="72" fill="#1e5e20"/>
+      <ellipse cx="45" cy="740" rx="110" ry="60" fill="#2d7d29"/>
+      <g class="sway-flower" style="transform-origin:90px 710px;">
+        <circle cx="70" cy="692" r="11" fill="#ff6b9e"/><circle cx="70" cy="692" r="4" fill="#ffe047"/>
+        <circle cx="115" cy="712" r="10" fill="#ff85b3"/><circle cx="115" cy="712" r="3.5" fill="#ffe047"/>
+        <circle cx="48" cy="732" r="12" fill="#ff548d"/><circle cx="48" cy="732" r="4.5" fill="#ffe047"/>
+      </g>
+      <!-- Midground Meadow Daisies & Buttercups -->
+      <g class="sway-flower" style="transform-origin:300px 670px; animation-delay:-1s;">
+        <circle cx="290" cy="660" r="6" fill="#ffffff"/><circle cx="290" cy="660" r="2.5" fill="#ffcc29"/>
+        <circle cx="315" cy="672" r="5" fill="#ffe359"/>
+        <circle cx="520" cy="635" r="7" fill="#ffb830"/>
+        <circle cx="545" cy="645" r="6" fill="#ff8a30"/>
+      </g>
+      <g class="sway-flower" style="transform-origin:1100px 660px; animation-delay:-2s;">
+        <circle cx="1080" cy="655" r="6" fill="#ffffff"/><circle cx="1080" cy="655" r="2.5" fill="#ffcc29"/>
+        <circle cx="1112" cy="668" r="6" fill="#82cfff"/><circle cx="1112" cy="668" r="2.5" fill="#ffe359"/>
+        <circle cx="1450" cy="690" r="10" fill="#ff73a4"/><circle cx="1450" cy="690" r="4" fill="#ffe359"/>
+        <circle cx="1495" cy="715" r="11" fill="#ff944d"/><circle cx="1495" cy="715" r="4" fill="#fff078"/>
+      </g>
+    </g>
+
+    <!-- Ambient Fluttering Butterflies Container (animated via JS) -->
+    <g id="ambient-butterflies"></g>
+  </svg>
+
+  <!-- HANGING CARVED WOODEN SIGN ON METALLIC CHAINS -->
+  <div id="sign-wrapper">
+    <div id="sign-rig">
+      <!-- Metallic Chains -->
+      <svg id="chains-svg" viewBox="0 0 420 240">
+        <defs>
+          <g id="chain-link">
+            <rect x="-7" y="0" width="14" height="24" rx="7" fill="none" stroke="url(#gMetal)" stroke-width="4.2"/>
+            <rect x="-5" y="13" width="10" height="20" rx="5" fill="none" stroke="#4d5966" stroke-width="3.2"/>
+            <line x1="-2.5" y1="4" x2="-2.5" y2="12" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.8"/>
+          </g>
+        </defs>
+        <!-- Left Chain -->
+        <g transform="translate(88, 0)">
+          <use href="#chain-link" y="0"/><use href="#chain-link" y="28"/><use href="#chain-link" y="56"/>
+          <use href="#chain-link" y="84"/><use href="#chain-link" y="112"/><use href="#chain-link" y="140"/>
+          <use href="#chain-link" y="168"/><use href="#chain-link" y="196"/>
+        </g>
+        <!-- Right Chain -->
+        <g transform="translate(332, 0)">
+          <use href="#chain-link" y="0"/><use href="#chain-link" y="28"/><use href="#chain-link" y="56"/>
+          <use href="#chain-link" y="84"/><use href="#chain-link" y="112"/><use href="#chain-link" y="140"/>
+          <use href="#chain-link" y="168"/><use href="#chain-link" y="196"/>
+        </g>
+      </svg>
+
+      <!-- Ornate Carved Wooden Plaque with Vines & 3D Letter -->
+      <svg id="plaque-svg" viewBox="0 0 420 198">
+        <!-- Iron Rings at Top -->
+        <circle cx="88" cy="24" r="11" fill="none" stroke="url(#gMetal)" stroke-width="5"/>
+        <circle cx="332" cy="24" r="11" fill="none" stroke="url(#gMetal)" stroke-width="5"/>
+
+        <!-- Outer Carved Wood Frame -->
+        <rect x="22" y="24" width="376" height="156" rx="22" fill="#4f250b"/>
+        <rect x="28" y="29" width="364" height="144" rx="18" fill="url(#gWoodPlaque)" stroke="#6e3814" stroke-width="3"/>
+
+        <!-- Wood Grain Texture Lines -->
+        <g stroke="#5c2b0e" stroke-width="1.6" fill="none" opacity="0.34">
+          <path d="M36 52 Q140 44 240 54 T384 50"/>
+          <path d="M36 82 Q165 92 275 78 T384 86"/>
+          <path d="M36 118 Q130 108 230 122 T384 114"/>
+          <path d="M36 148 Q180 156 290 144 T384 150"/>
+        </g>
+
+        <!-- Folk Carved Side Ornaments -->
+        <g fill="none" stroke="#d99c5b" stroke-width="2.2" opacity="0.55">
+          <path d="M44 46 L78 100 L44 154"/>
+          <path d="M56 62 L82 100 L56 138"/>
+          <path d="M376 46 L342 100 L376 154"/>
+          <path d="M364 62 L338 100 L364 138"/>
+          <rect x="38" y="39" width="344" height="124" rx="12" stroke-dasharray="10 6"/>
+        </g>
+
+        <!-- Brass Rivets -->
+        <circle cx="48" cy="48" r="5" fill="url(#gGold)" stroke="#5c3605" stroke-width="1"/>
+        <circle cx="372" cy="48" r="5" fill="url(#gGold)" stroke="#5c3605" stroke-width="1"/>
+        <circle cx="48" cy="154" r="5" fill="url(#gGold)" stroke="#5c3605" stroke-width="1"/>
+        <circle cx="372" cy="154" r="5" fill="url(#gGold)" stroke="#5c3605" stroke-width="1"/>
+
+        <!-- Wrapping Green Ivy Vines & Glossy Leaves -->
+        <g>
+          <path d="M18 65 Q32 22 92 28" fill="none" stroke="#266e22" stroke-width="4" stroke-linecap="round"/>
+          <path d="M328 28 Q386 20 400 72" fill="none" stroke="#266e22" stroke-width="4" stroke-linecap="round"/>
+          <path d="M396 128 Q384 176 322 174" fill="none" stroke="#266e22" stroke-width="3.5" stroke-linecap="round"/>
+          <!-- Left Vine Leaves -->
+          <ellipse cx="26" cy="46" rx="16" ry="9" transform="rotate(-35 26 46)" fill="url(#gGreen)"/>
+          <ellipse cx="48" cy="24" rx="15" ry="8" transform="rotate(-15 48 24)" fill="url(#gGreen)"/>
+          <ellipse cx="18" cy="74" rx="13" ry="7" transform="rotate(-72 18 74)" fill="url(#gDarkGreen)"/>
+          <ellipse cx="76" cy="29" rx="13" ry="7" transform="rotate(14 76 29)" fill="url(#gGreen)"/>
+          <ellipse cx="32" cy="98" rx="11" ry="6" transform="rotate(-25 32 98)" fill="url(#gGreen)"/>
+          <!-- Right Vine Leaves -->
+          <ellipse cx="392" cy="46" rx="16" ry="9" transform="rotate(35 392 46)" fill="url(#gGreen)"/>
+          <ellipse cx="370" cy="24" rx="15" ry="8" transform="rotate(15 370 24)" fill="url(#gGreen)"/>
+          <ellipse cx="400" cy="78" rx="13" ry="7" transform="rotate(72 400 78)" fill="url(#gDarkGreen)"/>
+          <ellipse cx="342" cy="30" rx="12" ry="6.5" transform="rotate(-18 342 30)" fill="url(#gGreen)"/>
+          <ellipse cx="386" cy="148" rx="14" ry="8" transform="rotate(42 386 148)" fill="url(#gGreen)"/>
+          <ellipse cx="356" cy="172" rx="13" ry="7" transform="rotate(10 356 172)" fill="url(#gDarkGreen)"/>
+        </g>
+
+        <!-- 3D Glossy Sculpted Capital Letter -->
+        <g id="letter-group">
+          <text id="sign-letter-shadow" x="210" y="139" text-anchor="middle" font-size="112" font-weight="900"
+                fill="#4a0905" stroke="#4a0905" stroke-width="10" stroke-linejoin="round" opacity="0.65">К</text>
+          <text id="sign-letter-extrude" x="210" y="135" text-anchor="middle" font-size="112" font-weight="900"
+                fill="#800c08" stroke="#630805" stroke-width="7" stroke-linejoin="round">К</text>
+          <text id="sign-letter-main" x="210" y="129" text-anchor="middle" font-size="112" font-weight="900"
+                fill="url(#gLetter3D)" stroke="#ffe0a3" stroke-width="2.2" stroke-linejoin="round">К</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- THREE COLORFUL FOLK-PATTERNED WOODEN PEDESTALS -->
+  <div id="stage">
+    <div class="pedestal-slot" data-slot="0" role="button" tabindex="0">
+      <div class="item-aura"></div>
+      <div class="item-stage" id="item-0"></div>
+      <svg class="pedestal-base" viewBox="0 0 280 132"></svg>
+    </div>
+    <div class="pedestal-slot" data-slot="1" role="button" tabindex="0">
+      <div class="item-aura"></div>
+      <div class="item-stage" id="item-1"></div>
+      <svg class="pedestal-base" viewBox="0 0 280 132"></svg>
+    </div>
+    <div class="pedestal-slot" data-slot="2" role="button" tabindex="0">
+      <div class="item-aura"></div>
+      <div class="item-stage" id="item-2"></div>
+      <svg class="pedestal-base" viewBox="0 0 280 132"></svg>
+    </div>
+  </div>
+
+  <!-- TOP-RIGHT WOODEN LANGUAGE TOGGLE ("УКР" / "РУС") -->
+  <button id="lang-btn" aria-label="Language">
+    <svg viewBox="0 0 120 66" width="100%" height="100%">
+      <line x1="28" y1="0" x2="28" y2="14" stroke="#70431d" stroke-width="4" stroke-linecap="round"/>
+      <line x1="92" y1="0" x2="92" y2="14" stroke="#70431d" stroke-width="4" stroke-linecap="round"/>
+      <rect x="6" y="10" width="108" height="50" rx="14" fill="#4f250b"/>
+      <rect x="9" y="13" width="102" height="44" rx="12" fill="url(#gWoodPlaque)" stroke="#d99a57" stroke-width="2"/>
+      <ellipse cx="16" cy="18" rx="9" ry="5" transform="rotate(-30 16 18)" fill="url(#gGreen)"/>
+      <ellipse cx="106" cy="52" rx="9" ry="5" transform="rotate(28 106 52)" fill="url(#gGreen)"/>
+      <text id="lang-label" x="60" y="43" text-anchor="middle" font-size="24" font-weight="900"
+            fill="#fff7db" stroke="#522407" stroke-width="3.5" paint-order="stroke">УКР</text>
+    </svg>
+  </button>
+
+  <!-- BOTTOM-RIGHT MINIMALIST LEAFY-WOODEN NEXT BUTTON ("Далі" / "Далее") -->
+  <button id="next-btn" aria-label="Next">
+    <svg viewBox="0 0 120 120" width="100%" height="100%">
+      <!-- Surrounding Glossy Leaves -->
+      <ellipse cx="22" cy="82" rx="19" ry="10" transform="rotate(35 22 82)" fill="url(#gDarkGreen)"/>
+      <ellipse cx="20" cy="60" rx="17" ry="9" transform="rotate(-8 20 60)" fill="url(#gGreen)"/>
+      <ellipse cx="96" cy="36" rx="19" ry="10" transform="rotate(-32 96 36)" fill="url(#gGreen)"/>
+      <ellipse cx="101" cy="60" rx="16" ry="8.5" transform="rotate(14 101 60)" fill="url(#gDarkGreen)"/>
+      <ellipse cx="44" cy="100" rx="15" ry="8" transform="rotate(12 44 100)" fill="url(#gGreen)"/>
+      <!-- Wooden Outer Rim -->
+      <circle cx="60" cy="60" r="44" fill="#59280a"/>
+      <circle cx="60" cy="60" r="40" fill="url(#gOrange)" stroke="#ffe08a" stroke-width="2.5"/>
+      <!-- Top Gloss Highlight -->
+      <ellipse cx="60" cy="40" rx="28" ry="14" fill="url(#gGloss)"/>
+      <!-- Label & Subtle Arrow -->
+      <text id="next-label" x="60" y="61" text-anchor="middle" font-size="22" font-weight="900"
+            fill="#ffffff" stroke="#853506" stroke-width="3.5" paint-order="stroke">Далі</text>
+      <path d="M47 74 L70 74 M63 68 L71 74 L63 80" fill="none" stroke="#fff6cf" stroke-width="3.2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- CELEBRATION FX CANVAS -->
+  <canvas id="fx-canvas"></canvas>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =========================================================================
+     1. WEB AUDIO API SOUND SYNTHESIZER (NO EXTERNAL AUDIO FILES)
+     ========================================================================= */
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    }
+
+    playChainDrop() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      // Sequence of metallic chain clinks
+      const clinkTimes = [0.02, 0.09, 0.17, 0.26, 0.36, 0.48];
+      clinkTimes.forEach((t, idx) => {
+        const osc = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc2.type = 'sine';
+        const baseFreq = 1650 + (idx % 3) * 340 + Math.random() * 180;
+        osc.frequency.setValueAtTime(baseFreq, now + t);
+        osc2.frequency.setValueAtTime(baseFreq * 1.47, now + t);
+        gain.gain.setValueAtTime(0.0001, now + t);
+        gain.gain.linearRampToValueAtTime(0.065, now + t + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.085);
+        osc.connect(gain);
+        osc2.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + t);
+        osc2.start(now + t);
+        osc.stop(now + t + 0.095);
+        osc2.stop(now + t + 0.095);
+      });
+      // Warm wooden settle thud
+      const thud = this.ctx.createOscillator();
+      const tGain = this.ctx.createGain();
+      thud.type = 'sine';
+      thud.frequency.setValueAtTime(145, now + 0.34);
+      thud.frequency.exponentialRampToValueAtTime(52, now + 0.48);
+      tGain.gain.setValueAtTime(0.0001, now + 0.34);
+      tGain.gain.linearRampToValueAtTime(0.11, now + 0.355);
+      tGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+      thud.connect(tGain);
+      tGain.connect(this.ctx.destination);
+      thud.start(now + 0.34);
+      thud.stop(now + 0.52);
+    }
+
+    playChainLift() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      [0, 0.07, 0.14, 0.21].forEach((t, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1900 + i * 240, now + t);
+        gain.gain.setValueAtTime(0.045, now + t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.065);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + t);
+        osc.stop(now + t + 0.075);
+      });
+    }
+
+    playBoing() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(210, now);
+      osc.frequency.exponentialRampToValueAtTime(340, now + 0.09);
+      osc.frequency.exponentialRampToValueAtTime(165, now + 0.22);
+      osc.frequency.exponentialRampToValueAtTime(260, now + 0.34);
+      osc.frequency.exponentialRampToValueAtTime(145, now + 0.46);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.16, now + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.5);
+    }
+
+    playWoodClick() {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(240, now + 0.07);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.09);
+    }
+
+    playCelebration(variant) {
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const melodies = [
+        // Bright Xylophone Fanfare
+        [523.25, 659.25, 783.99, 1046.5, 1318.5],
+        // Fairy Harp Glissando
+        [587.33, 739.99, 880.0, 1174.66, 1479.98, 1760.0],
+        // Playful Marimba Bounce
+        [440.0, 554.37, 659.25, 880.0, 659.25, 1108.73],
+        // Joyful Bell Chimes
+        [523.25, 587.33, 659.25, 783.99, 1046.5, 1567.98]
+      ];
+      const notes = melodies[variant % melodies.length];
+      const step = variant % 2 === 0 ? 0.095 : 0.075;
+
+      notes.forEach((freq, i) => {
+        const t = now + i * step;
+        const osc = this.ctx.createOscillator();
+        const overtone = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = variant % 2 === 0 ? 'sine' : 'triangle';
+        overtone.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        overtone.frequency.setValueAtTime(freq * 2, t);
+
+        const vol = i === notes.length - 1 ? 0.16 : 0.12;
+        const dur = i === notes.length - 1 ? 0.65 : 0.28;
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.linearRampToValueAtTime(vol, t + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+        const overGain = this.ctx.createGain();
+        overGain.gain.setValueAtTime(0.32, t);
+        overtone.connect(overGain);
+        overGain.connect(gain);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(t);
+        overtone.start(t);
+        osc.stop(t + dur + 0.05);
+        overtone.stop(t + dur + 0.05);
+      });
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  /* =========================================================================
+     2. PEDESTAL SVG BUILDER (COLORFUL FOLK-PATTERNED WOODEN PEDESTALS)
+     ========================================================================= */
+  function buildPedestalSVG(idx) {
+    const palettes = [
+      { top: '#43b8c9', rim: '#f5b82e', chev1: '#e84338', chev2: '#ffd447' },
+      { top: '#e066a8', rim: '#5ed1c2', chev1: '#ff962e', chev2: '#4cd16d' },
+      { top: '#58b3e8', rim: '#ff8a47', chev1: '#e63e6d', chev2: '#ffe14d' }
+    ];
+    const p = palettes[idx % 3];
+    return `
+      <!-- Contact Shadow on Ground -->
+      <ellipse cx="140" cy="112" rx="126" ry="18" fill="url(#gContactShadow)"/>
+      <!-- Cylindrical Wooden Body -->
+      <path d="M26 42 L26 98 A114 24 0 0 0 254 98 L254 42 Z" fill="url(#gWoodPlaque)" stroke="#4f240b" stroke-width="2.5"/>
+      <!-- Carved Folk Chevron Band -->
+      <path d="M27 64 L46 84 L65 64 L84 84 L103 64 L122 84 L140 64 L158 84 L177 64 L196 84 L215 64 L234 84 L253 64 L253 92 A114 22 0 0 1 27 92 Z"
+            fill="${p.chev1}" opacity="0.88"/>
+      <path d="M27 64 L46 84 L65 64 L84 84 L103 64 L122 84 L140 64 L158 84 L177 64 L196 84 L215 64 L234 84 L253 64"
+            fill="none" stroke="${p.chev2}" stroke-width="5" stroke-linejoin="round"/>
+      <!-- Top Rim & Patterned Surface -->
+      <ellipse cx="140" cy="42" rx="116" ry="26" fill="${p.rim}" stroke="#5c2d0e" stroke-width="2.5"/>
+      <ellipse cx="140" cy="40" rx="104" ry="21" fill="${p.top}" stroke="#ffffff" stroke-width="2" stroke-dasharray="10 7" opacity="0.95"/>
+      <ellipse cx="140" cy="40" rx="84" ry="15" fill="url(#gWoodPlaque)" opacity="0.28"/>
+      <!-- Item Contact Shadow on Pedestal Top -->
+      <ellipse cx="140" cy="41" rx="68" ry="12" fill="url(#gContactShadow)"/>
+      <!-- Grass Tufts & Tiny Wildflowers Around Base -->
+      <g fill="#36992c">
+        <path d="M18 106 Q14 86 24 94 Q28 76 36 98 Q44 84 48 108 Z"/>
+        <path d="M232 108 Q238 82 246 96 Q254 78 260 96 Q268 88 264 108 Z"/>
+        <path d="M98 118 Q104 102 110 116 Q116 100 122 118 Z"/>
+        <path d="M168 118 Q174 100 180 116 Q186 102 192 118 Z"/>
+      </g>
+      <!-- Tiny Daisies -->
+      <g>
+        <circle cx="38" cy="102" r="5" fill="#fff"/><circle cx="38" cy="102" r="2.2" fill="#ffcc29"/>
+        <circle cx="62" cy="112" r="4.5" fill="#ff94b8"/><circle cx="62" cy="112" r="2" fill="#ffe14d"/>
+        <circle cx="242" cy="103" r="5" fill="#fff"/><circle cx="242" cy="103" r="2.2" fill="#ffcc29"/>
+        <circle cx="216" cy="114" r="4.5" fill="#ffe14d"/><circle cx="216" cy="114" r="1.8" fill="#ff7b29"/>
+        <circle cx="140" cy="118" r="4.5" fill="#fff"/><circle cx="140" cy="118" r="2" fill="#ffcc29"/>
+      </g>
+    `;
+  }
+
+  document.querySelectorAll('.pedestal-base').forEach((svg, idx) => {
+    svg.innerHTML = buildPedestalSVG(idx);
+  });
+
+  /* =========================================================================
+     3. 56 HIGHLY DETAILED, REALISTIC LAYERED SVG ILLUSTRATIONS
+     ========================================================================= */
+  const ART = {
+    // 1. Pineapple (ананас)
+    pineapple: () => `
+      <g>
+        <path d="M100 72 Q72 22 52 38 Q78 52 84 78 Z" fill="url(#gDarkGreen)"/>
+        <path d="M100 72 Q128 22 148 38 Q122 52 116 78 Z" fill="url(#gDarkGreen)"/>
+        <path d="M100 74 Q84 14 100 10 Q116 14 100 74 Z" fill="url(#gGreen)"/>
+        <path d="M96 76 Q62 38 42 58 Q74 64 88 82 Z" fill="url(#gGreen)"/>
+        <path d="M104 76 Q138 38 158 58 Q126 64 112 82 Z" fill="url(#gGreen)"/>
+        <ellipse cx="100" cy="130" rx="46" ry="56" fill="url(#gOrange)" stroke="#8c4207" stroke-width="2"/>
+        <g stroke="#9e4d08" stroke-width="2.2" opacity="0.6" fill="none">
+          <path d="M62 98 L134 162 M56 122 L118 178 M74 82 L144 142"/>
+          <path d="M138 98 L66 162 M144 122 L82 178 M126 82 L56 142"/>
+        </g>
+        <g fill="#ffe285" opacity="0.7">
+          <circle cx="84" cy="110" r="3"/><circle cx="104" cy="110" r="3"/><circle cx="122" cy="112" r="3"/>
+          <circle cx="74" cy="132" r="3"/><circle cx="94" cy="132" r="3"/><circle cx="114" cy="132" r="3"/>
+          <circle cx="84" cy="154" r="3"/><circle cx="104" cy="154" r="3"/>
+        </g>
+        <ellipse cx="82" cy="112" rx="12" ry="26" transform="rotate(-14 82 112)" fill="url(#gGloss)" opacity="0.55"/>
+      </g>`,
+
+    // 2. Bus (автобус)
+    bus: () => `
+      <g>
+        <rect x="20" y="62" width="160" height="84" rx="18" fill="url(#gYellow)" stroke="#8f5b04" stroke-width="2.5"/>
+        <path d="M22 106 L178 106 L178 126 L22 126 Z" fill="url(#gRed)" opacity="0.88"/>
+        <rect x="30" y="72" width="32" height="28" rx="5" fill="url(#gBlue)" stroke="#5c3d04" stroke-width="2"/>
+        <rect x="70" y="72" width="32" height="28" rx="5" fill="url(#gBlue)" stroke="#5c3d04" stroke-width="2"/>
+        <rect x="110" y="72" width="32" height="28" rx="5" fill="url(#gBlue)" stroke="#5c3d04" stroke-width="2"/>
+        <path d="M150 72 L170 72 Q176 72 176 80 L176 100 L150 100 Z" fill="url(#gBlue)" stroke="#5c3d04" stroke-width="2"/>
+        <path d="M35 76 L54 76 L44 96 L35 96 Z M75 76 L94 76 L84 96 L75 96 Z M115 76 L134 76 L124 96 L115 96 Z" fill="#ffffff" opacity="0.32"/>
+        <rect x="166" y="128" width="14" height="10" rx="3" fill="#fff7a8" stroke="#8f5b04" stroke-width="1.5"/>
+        <rect x="20" y="128" width="10" height="10" rx="2" fill="#ff3b30"/>
+        <circle cx="56" cy="148" r="20" fill="url(#gDarkGrey)" stroke="#111" stroke-width="2"/>
+        <circle cx="56" cy="148" r="9" fill="url(#gMetal)"/>
+        <circle cx="144" cy="148" r="20" fill="url(#gDarkGrey)" stroke="#111" stroke-width="2"/>
+        <circle cx="144" cy="148" r="9" fill="url(#gMetal)"/>
+      </g>`,
+
+    // 3. Cow (корова)
+    cow: () => `
+      <g>
+        <path d="M148 112 Q172 118 168 144" fill="none" stroke="#c9b291" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="168" cy="148" rx="6" ry="9" fill="#4a2e1b"/>
+        <rect x="52" y="138" width="14" height="42" rx="6" fill="url(#gCream)" stroke="#7a6855" stroke-width="1.5"/>
+        <rect x="74" y="142" width="14" height="38" rx="6" fill="#d9ccb8" stroke="#7a6855" stroke-width="1.5"/>
+        <rect x="122" y="138" width="14" height="42" rx="6" fill="url(#gCream)" stroke="#7a6855" stroke-width="1.5"/>
+        <rect x="140" y="142" width="14" height="38" rx="6" fill="#d9ccb8" stroke="#7a6855" stroke-width="1.5"/>
+        <rect x="52" y="170" width="14" height="10" rx="3" fill="#3a2d26"/>
+        <rect x="122" y="170" width="14" height="10" rx="3" fill="#3a2d26"/>
+        <ellipse cx="104" cy="120" rx="54" ry="34" fill="url(#gCream)" stroke="#7a6855" stroke-width="2"/>
+        <ellipse cx="108" cy="150" rx="18" ry="11" fill="url(#gPink)"/>
+        <path d="M88 94 Q112 90 116 112 Q98 124 84 110 Z" fill="#453023"/>
+        <path d="M132 104 Q152 108 148 128 Q132 132 126 116 Z" fill="#453023"/>
+        <path d="M40 62 Q30 46 44 42 Q48 52 54 58 Z" fill="url(#gTan)"/>
+        <path d="M84 62 Q94 46 80 42 Q76 52 70 58 Z" fill="url(#gTan)"/>
+        <ellipse cx="32" cy="72" rx="14" ry="7" transform="rotate(-22 32 72)" fill="url(#gCream)" stroke="#7a6855" stroke-width="1.5"/>
+        <ellipse cx="92" cy="72" rx="14" ry="7" transform="rotate(22 92 72)" fill="url(#gCream)" stroke="#7a6855" stroke-width="1.5"/>
+        <ellipse cx="62" cy="84" rx="28" ry="30" fill="url(#gCream)" stroke="#7a6855" stroke-width="2"/>
+        <path d="M62 56 Q86 58 84 82 Q68 86 64 72 Z" fill="#453023"/>
+        <ellipse cx="62" cy="102" rx="24" ry="15" fill="url(#gPink)"/>
+        <circle cx="53" cy="101" r="3" fill="#7d2948"/><circle cx="71" cy="101" r="3" fill="#7d2948"/>
+        <g class="blink-eye"><circle cx="50" cy="78" r="5" fill="#1a120b"/><circle cx="48.5" cy="76.5" r="1.8" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="74" cy="78" r="5" fill="#1a120b"/><circle cx="72.5" cy="76.5" r="1.8" fill="#fff"/></g>
+      </g>`,
+
+    // 4. Banana (банан)
+    banana: () => `
+      <g>
+        <path d="M44 134 Q92 178 156 122 Q178 92 162 46 Q156 36 146 42 Q150 84 122 114 Q86 144 46 124 Q34 122 44 134 Z"
+              fill="url(#gYellow)" stroke="#9e6d06" stroke-width="2.5"/>
+        <path d="M56 132 Q98 164 148 116 Q164 90 156 54" fill="none" stroke="#fff9c4" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+        <path d="M148 42 Q154 24 162 24 L166 36 Q158 44 152 48 Z" fill="#6b4218"/>
+        <circle cx="41" cy="128" r="4.5" fill="#4f2d0d"/>
+      </g>`,
+
+    // 5. Drum (барабан)
+    drum: () => `
+      <g>
+        <path d="M36 74 L36 148 A64 22 0 0 0 164 148 L164 74 Z" fill="url(#gRed)" stroke="#700e12" stroke-width="2.5"/>
+        <path d="M38 82 L68 154 L100 84 L132 154 L162 82" fill="none" stroke="url(#gGold)" stroke-width="5" stroke-linejoin="round"/>
+        <ellipse cx="100" cy="74" rx="66" ry="22" fill="url(#gGold)" stroke="#8a5607" stroke-width="2.5"/>
+        <ellipse cx="100" cy="74" rx="58" ry="17" fill="url(#gCream)"/>
+        <line x1="34" y1="30" x2="88" y2="74" stroke="#a86228" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="88" cy="74" r="7.5" fill="url(#gTan)" stroke="#6b3811" stroke-width="1.5"/>
+        <line x1="166" y1="30" x2="112" y2="74" stroke="#a86228" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="112" cy="74" r="7.5" fill="url(#gTan)" stroke="#6b3811" stroke-width="1.5"/>
+      </g>`,
+
+    // 6. Fish (риба/рыба)
+    fish: () => `
+      <g>
+        <path d="M138 100 Q174 62 184 68 Q170 100 184 132 Q174 138 138 100 Z" fill="url(#gOrange)" stroke="#943908" stroke-width="2"/>
+        <path d="M78 66 Q104 34 130 68 Z" fill="url(#gYellow)" stroke="#a36407" stroke-width="2"/>
+        <path d="M84 132 Q104 162 124 132 Z" fill="url(#gYellow)" stroke="#a36407" stroke-width="2"/>
+        <ellipse cx="92" cy="100" rx="64" ry="42" fill="url(#gBlue)" stroke="#0d3d78" stroke-width="2.5"/>
+        <path d="M84 62 Q98 100 84 138 M108 62 Q122 100 108 138" fill="none" stroke="#ffd24d" stroke-width="7" opacity="0.82"/>
+        <path d="M44 82 Q66 70 96 76" fill="none" stroke="url(#gGloss)" stroke-width="8" stroke-linecap="round"/>
+        <g class="blink-eye">
+          <circle cx="54" cy="92" r="10" fill="#ffffff" stroke="#0e3d78" stroke-width="1.5"/>
+          <circle cx="52" cy="92" r="5.5" fill="#101820"/>
+          <circle cx="50" cy="90" r="2" fill="#fff"/>
+        </g>
+        <path d="M32 108 Q42 114 52 108" fill="none" stroke="#0d3d78" stroke-width="2.5" stroke-linecap="round"/>
+      </g>`,
+
+    // 7. Cherry (вишня)
+    cherry: () => `
+      <g>
+        <path d="M70 124 Q82 64 114 34 Q118 76 132 126" fill="none" stroke="#2c7a26" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="138" cy="48" rx="28" ry="13" transform="rotate(-18 138 48)" fill="url(#gGreen)" stroke="#1b5919" stroke-width="1.8"/>
+        <circle cx="68" cy="138" r="34" fill="url(#gRed)" stroke="#6e0a10" stroke-width="2"/>
+        <ellipse cx="56" cy="124" rx="10" ry="6" transform="rotate(-30 56 124)" fill="#ffffff" opacity="0.68"/>
+        <circle cx="132" cy="144" r="34" fill="url(#gRed)" stroke="#6e0a10" stroke-width="2"/>
+        <ellipse cx="120" cy="130" rx="10" ry="6" transform="rotate(-30 120 130)" fill="#ffffff" opacity="0.68"/>
+      </g>`,
+
+    // 8. Bicycle (велосипед)
+    bicycle: () => `
+      <g>
+        <circle cx="52" cy="138" r="34" fill="none" stroke="#2b3036" stroke-width="7"/>
+        <circle cx="52" cy="138" r="28" fill="none" stroke="url(#gMetal)" stroke-width="2.5"/>
+        <circle cx="148" cy="138" r="34" fill="none" stroke="#2b3036" stroke-width="7"/>
+        <circle cx="148" cy="138" r="28" fill="none" stroke="url(#gMetal)" stroke-width="2.5"/>
+        <g stroke="#9aa6b2" stroke-width="1.5">
+          <line x1="52" y1="110" x2="52" y2="166"/><line x1="24" y1="138" x2="80" y2="138"/>
+          <line x1="148" y1="110" x2="148" y2="166"/><line x1="120" y1="138" x2="176" y2="138"/>
+        </g>
+        <path d="M52 138 L94 138 L130 88 L76 88 Z M94 138 L76 74 M148 138 L128 70 L144 66"
+              fill="none" stroke="url(#gRed)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <ellipse cx="74" cy="70" rx="16" ry="6" fill="#3a2518"/>
+        <circle cx="94" cy="138" r="10" fill="url(#gMetal)" stroke="#333" stroke-width="2"/>
+      </g>`,
+
+    // 9. Owl (сова)
+    owl: () => `
+      <g>
+        <path d="M74 166 L68 178 M74 166 L76 178 M126 166 L124 178 M126 166 L132 178" stroke="#e68a19" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="100" cy="112" rx="52" ry="60" fill="url(#gBrown)" stroke="#3d1e0b" stroke-width="2.5"/>
+        <ellipse cx="100" cy="132" rx="34" ry="36" fill="url(#gCream)"/>
+        <path d="M76 122 Q86 130 96 122 M104 122 Q114 130 124 122 M84 140 Q94 148 104 140 M96 140 Q106 148 116 140"
+              fill="none" stroke="#9e6d43" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M56 64 L48 38 L76 54 Z M144 64 L152 38 L124 54 Z" fill="url(#gBrown)"/>
+        <ellipse cx="48" cy="116" rx="14" ry="34" transform="rotate(14 48 116)" fill="#5c3216"/>
+        <ellipse cx="152" cy="116" rx="14" ry="34" transform="rotate(-14 152 116)" fill="#5c3216"/>
+        <circle cx="78" cy="80" r="21" fill="url(#gTan)" stroke="#5c3216" stroke-width="2"/>
+        <circle cx="122" cy="80" r="21" fill="url(#gTan)" stroke="#5c3216" stroke-width="2"/>
+        <g class="blink-eye">
+          <circle cx="78" cy="80" r="13" fill="#ffcf33"/><circle cx="78" cy="80" r="7.5" fill="#140d08"/><circle cx="75" cy="77" r="2.6" fill="#fff"/>
+        </g>
+        <g class="blink-eye">
+          <circle cx="122" cy="80" r="13" fill="#ffcf33"/><circle cx="122" cy="80" r="7.5" fill="#140d08"/><circle cx="119" cy="77" r="2.6" fill="#fff"/>
+        </g>
+        <polygon points="92,90 108,90 100,106" fill="url(#gOrange)" stroke="#8a3d06" stroke-width="1.5"/>
+      </g>`,
+
+    // 10. Pear (груша)
+    pear: () => `
+      <g>
+        <path d="M100 46 Q104 24 114 20" fill="none" stroke="#5e3312" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="124" cy="36" rx="22" ry="10" transform="rotate(-24 124 36)" fill="url(#gGreen)" stroke="#1b5919" stroke-width="1.5"/>
+        <path d="M100 44 C122 44 126 78 136 98 C152 126 144 176 100 176 C56 176 48 126 64 98 C74 78 78 44 100 44 Z"
+              fill="url(#gYellow)" stroke="#7a6809" stroke-width="2.2"/>
+        <ellipse cx="122" cy="136" rx="18" ry="24" fill="#ff6b4a" opacity="0.32"/>
+        <ellipse cx="78" cy="116" rx="10" ry="22" transform="rotate(14 78 116)" fill="url(#gGloss)" opacity="0.65"/>
+      </g>`,
+
+    // 11. Mushroom (гриб)
+    mushroom: () => `
+      <g>
+        <path d="M74 104 C70 144 64 174 100 174 C136 174 130 144 126 104 Z" fill="url(#gCream)" stroke="#8f785c" stroke-width="2.2"/>
+        <ellipse cx="100" cy="102" rx="68" ry="18" fill="#d9be98"/>
+        <path d="M26 102 C28 32 172 32 174 102 Q100 116 26 102 Z" fill="url(#gRed)" stroke="#6e0e0e" stroke-width="2.5"/>
+        <g fill="#fff8eb" opacity="0.92">
+          <ellipse cx="66" cy="70" rx="12" ry="9" transform="rotate(-18 66 70)"/>
+          <ellipse cx="116" cy="58" rx="14" ry="10" transform="rotate(12 116 58)"/>
+          <ellipse cx="144" cy="84" rx="10" ry="7" transform="rotate(24 144 84)"/>
+          <ellipse cx="92" cy="86" rx="9" ry="6.5"/>
+          <ellipse cx="48" cy="88" rx="8" ry="5.5"/>
+        </g>
+      </g>`,
+
+    // 12. Tiger (тигр)
+    tiger: () => `
+      <g>
+        <path d="M148 134 Q176 122 170 92" fill="none" stroke="url(#gOrange)" stroke-width="10" stroke-linecap="round"/>
+        <rect x="64" y="138" width="18" height="38" rx="8" fill="url(#gOrange)" stroke="#8a3806" stroke-width="1.8"/>
+        <rect x="118" y="138" width="18" height="38" rx="8" fill="url(#gOrange)" stroke="#8a3806" stroke-width="1.8"/>
+        <ellipse cx="100" cy="130" rx="44" ry="38" fill="url(#gOrange)" stroke="#8a3806" stroke-width="2"/>
+        <ellipse cx="100" cy="138" rx="24" ry="26" fill="url(#gCream)"/>
+        <circle cx="62" cy="54" r="15" fill="url(#gOrange)" stroke="#8a3806" stroke-width="2"/>
+        <circle cx="62" cy="54" r="7" fill="#ffd9c4"/>
+        <circle cx="138" cy="54" r="15" fill="url(#gOrange)" stroke="#8a3806" stroke-width="2"/>
+        <circle cx="138" cy="54" r="7" fill="#ffd9c4"/>
+        <ellipse cx="100" cy="82" rx="44" ry="38" fill="url(#gOrange)" stroke="#8a3806" stroke-width="2"/>
+        <path d="M92 46 L100 62 L108 46 M60 76 L76 80 L62 88 M140 76 L124 80 L138 88" fill="#21140b"/>
+        <ellipse cx="86" cy="98" rx="14" ry="11" fill="url(#gCream)"/>
+        <ellipse cx="114" cy="98" rx="14" ry="11" fill="url(#gCream)"/>
+        <polygon points="92,88 108,88 100,98" fill="#e85b7a"/>
+        <g class="blink-eye"><circle cx="82" cy="76" r="6" fill="#1c1108"/><circle cx="80" cy="74" r="2" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="118" cy="76" r="6" fill="#1c1108"/><circle cx="116" cy="74" r="2" fill="#fff"/></g>
+      </g>`,
+
+    // 13. Tree (дерево)
+    tree: () => `
+      <g>
+        <path d="M84 176 Q90 132 88 94 L112 94 Q110 132 120 176 Z" fill="url(#gBrown)" stroke="#3d1e0b" stroke-width="2"/>
+        <circle cx="66" cy="88" r="36" fill="url(#gDarkGreen)"/>
+        <circle cx="134" cy="88" r="36" fill="url(#gDarkGreen)"/>
+        <circle cx="100" cy="56" r="44" fill="url(#gGreen)"/>
+        <circle cx="76" cy="74" r="26" fill="url(#gGreen)"/>
+        <circle cx="124" cy="76" r="26" fill="url(#gGreen)"/>
+        <circle cx="82" cy="64" r="6" fill="url(#gRed)"/>
+        <circle cx="122" cy="82" r="6" fill="url(#gRed)"/>
+        <circle cx="104" cy="46" r="5.5" fill="url(#gRed)"/>
+      </g>`,
+
+    // 14. Dinosaur (динозавр)
+    dinosaur: () => `
+      <g>
+        <path d="M126 140 Q168 148 182 124 Q158 128 134 120 Z" fill="url(#gGreen)" stroke="#1b5919" stroke-width="2"/>
+        <polygon points="94,46 106,36 108,52 122,48 116,66 130,72 118,86 132,98 118,108" fill="url(#gOrange)"/>
+        <rect x="64" y="144" width="18" height="32" rx="7" fill="url(#gGreen)" stroke="#1b5919" stroke-width="2"/>
+        <rect x="108" y="144" width="18" height="32" rx="7" fill="url(#gGreen)" stroke="#1b5919" stroke-width="2"/>
+        <ellipse cx="96" cy="128" rx="44" ry="30" fill="url(#gGreen)" stroke="#1b5919" stroke-width="2"/>
+        <ellipse cx="86" cy="134" rx="26" ry="18" fill="#d7f794"/>
+        <path d="M62 114 Q52 72 68 48 Q98 40 102 68 Q94 94 92 114 Z" fill="url(#gGreen)" stroke="#1b5919" stroke-width="2"/>
+        <ellipse cx="64" cy="60" rx="28" ry="18" fill="url(#gGreen)" stroke="#1b5919" stroke-width="2"/>
+        <g class="blink-eye"><circle cx="62" cy="54" r="5.5" fill="#141a10"/><circle cx="60" cy="52" r="2" fill="#fff"/></g>
+        <path d="M40 66 Q54 72 68 66" fill="none" stroke="#1b5919" stroke-width="2.5" stroke-linecap="round"/>
+      </g>`,
+
+    // 15. Bucket (відро/ведро)
+    bucket: () => `
+      <g>
+        <path d="M46 68 Q100 12 154 68" fill="none" stroke="url(#gMetal)" stroke-width="6" stroke-linecap="round"/>
+        <path d="M44 68 L60 166 A40 12 0 0 0 140 166 L156 68 Z" fill="url(#gBlue)" stroke="#0d3d78" stroke-width="2.5"/>
+        <ellipse cx="100" cy="68" rx="58" ry="16" fill="#8fd6ff" stroke="#0d3d78" stroke-width="2.5"/>
+        <ellipse cx="100" cy="68" rx="48" ry="11" fill="#1a63ad"/>
+        <path d="M56 102 Q100 116 144 102" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.45"/>
+        <path d="M64 86 L72 154" stroke="url(#gGloss)" stroke-width="10" stroke-linecap="round" opacity="0.55"/>
+      </g>`,
+
+    // 16. Giraffe (жираф)
+    giraffe: () => `
+      <g>
+        <rect x="74" y="138" width="11" height="40" rx="4" fill="url(#gYellow)" stroke="#9c6806" stroke-width="1.5"/>
+        <rect x="92" y="142" width="11" height="36" rx="4" fill="#d9a518" stroke="#9c6806" stroke-width="1.5"/>
+        <rect x="122" y="138" width="11" height="40" rx="4" fill="url(#gYellow)" stroke="#9c6806" stroke-width="1.5"/>
+        <ellipse cx="106" cy="128" rx="36" ry="22" fill="url(#gYellow)" stroke="#9c6806" stroke-width="2"/>
+        <path d="M74 118 L82 46 L102 48 L98 118 Z" fill="url(#gYellow)" stroke="#9c6806" stroke-width="2"/>
+        <line x1="84" y1="36" x2="82" y2="20" stroke="#9c6806" stroke-width="4"/><circle cx="82" cy="18" r="5" fill="#6b3811"/>
+        <line x1="98" y1="36" x2="100" y2="20" stroke="#9c6806" stroke-width="4"/><circle cx="100" cy="18" r="5" fill="#6b3811"/>
+        <ellipse cx="86" cy="46" rx="22" ry="14" fill="url(#gYellow)" stroke="#9c6806" stroke-width="2"/>
+        <ellipse cx="70" cy="50" rx="11" ry="8" fill="url(#gCream)"/>
+        <g fill="#8c4814" opacity="0.85">
+          <circle cx="90" cy="72" r="6"/><circle cx="88" cy="96" r="7"/><circle cx="106" cy="120" r="8"/>
+          <circle cx="126" cy="126" r="7"/><circle cx="94" cy="134" r="6"/>
+        </g>
+        <g class="blink-eye"><circle cx="84" cy="43" r="4.5" fill="#1a120b"/><circle cx="82.5" cy="41.5" r="1.6" fill="#fff"/></g>
+      </g>`,
+
+    // 17. Beetle (жук)
+    beetle: () => `
+      <g>
+        <g stroke="#261810" stroke-width="5" stroke-linecap="round" fill="none">
+          <path d="M62 84 Q34 72 28 92"/><path d="M56 112 Q28 112 24 134"/><path d="M64 140 Q38 152 38 172"/>
+          <path d="M138 84 Q166 72 172 92"/><path d="M144 112 Q172 112 176 134"/><path d="M136 140 Q162 152 162 172"/>
+          <path d="M88 54 Q76 32 62 32"/><path d="M112 54 Q124 32 138 32"/>
+        </g>
+        <ellipse cx="100" cy="64" rx="26" ry="20" fill="url(#gDarkGrey)"/>
+        <ellipse cx="100" cy="118" rx="46" ry="52" fill="url(#gRed)" stroke="#5c080c" stroke-width="2.5"/>
+        <line x1="100" y1="74" x2="100" y2="168" stroke="#240b0c" stroke-width="3.5"/>
+        <g fill="#1c1212">
+          <circle cx="76" cy="100" r="9"/><circle cx="124" cy="100" r="9"/>
+          <circle cx="74" cy="134" r="8"/><circle cx="126" cy="134" r="8"/>
+          <circle cx="86" cy="154" r="6"/><circle cx="114" cy="154" r="6"/>
+        </g>
+        <ellipse cx="78" cy="96" rx="10" ry="24" transform="rotate(-18 78 96)" fill="url(#gGloss)" opacity="0.55"/>
+        <g class="blink-eye"><circle cx="90" cy="58" r="4" fill="#fff"/><circle cx="90" cy="58" r="2" fill="#000"/></g>
+        <g class="blink-eye"><circle cx="110" cy="58" r="4" fill="#fff"/><circle cx="110" cy="58" r="2" fill="#000"/></g>
+      </g>`,
+
+    // 18. Hedgehog (їжак/ёжик)
+    hedgehog: () => `
+      <g>
+        <path d="M46 134 L34 112 L52 104 L42 82 L66 80 L66 56 L92 66 L106 46 L122 66 L146 58 L142 84 L166 88 L152 110 L170 124 L152 142 Z"
+              fill="url(#gBrown)" stroke="#3b1d0a" stroke-width="2"/>
+        <ellipse cx="106" cy="116" rx="52" ry="38" fill="url(#gBrown)"/>
+        <path d="M40 132 Q46 96 86 102 Q108 118 96 150 Q58 156 40 132 Z" fill="url(#gTan)" stroke="#7a4c22" stroke-width="2"/>
+        <circle cx="40" cy="130" r="7.5" fill="#1c120d"/>
+        <g class="blink-eye"><circle cx="64" cy="116" r="5.5" fill="#140d08"/><circle cx="62.5" cy="114.5" r="2" fill="#fff"/></g>
+        <ellipse cx="64" cy="154" rx="12" ry="7" fill="#6b401e"/>
+        <ellipse cx="122" cy="154" rx="12" ry="7" fill="#6b401e"/>
+        <circle cx="118" cy="74" r="14" fill="url(#gRed)" stroke="#6e0a10" stroke-width="1.5"/>
+        <ellipse cx="124" cy="60" rx="8" ry="4" transform="rotate(-20 124 60)" fill="url(#gGreen)"/>
+      </g>`,
+
+    // 19. Zebra (зебра)
+    zebra: () => `
+      <g>
+        <rect x="64" y="134" width="13" height="42" rx="5" fill="url(#gCream)" stroke="#444" stroke-width="1.5"/>
+        <rect x="84" y="138" width="13" height="38" rx="5" fill="#dcdcdc" stroke="#444" stroke-width="1.5"/>
+        <rect x="122" y="134" width="13" height="42" rx="5" fill="url(#gCream)" stroke="#444" stroke-width="1.5"/>
+        <rect x="138" y="138" width="13" height="38" rx="5" fill="#dcdcdc" stroke="#444" stroke-width="1.5"/>
+        <ellipse cx="106" cy="120" rx="46" ry="26" fill="url(#gCream)" stroke="#444" stroke-width="2"/>
+        <path d="M62 114 L54 58 L84 56 L92 112 Z" fill="url(#gCream)" stroke="#444" stroke-width="2"/>
+        <path d="M80 48 L92 58 L86 72 L96 84 L88 98" fill="none" stroke="#1f2326" stroke-width="9" stroke-linecap="round"/>
+        <ellipse cx="56" cy="62" rx="26" ry="16" transform="rotate(-14 56 62)" fill="url(#gCream)" stroke="#444" stroke-width="2"/>
+        <ellipse cx="36" cy="68" rx="10" ry="12" fill="#2c3136"/>
+        <g stroke="#1c2024" stroke-width="6.5" stroke-linecap="round">
+          <line x1="88" y1="98" x2="94" y2="140"/><line x1="108" y1="95" x2="112" y2="142"/><line x1="128" y1="98" x2="128" y2="138"/>
+          <line x1="62" y1="74" x2="80" y2="78"/><line x1="64" y1="92" x2="84" y2="96"/>
+        </g>
+        <g class="blink-eye"><circle cx="58" cy="56" r="4.5" fill="#111"/><circle cx="56.5" cy="54.5" r="1.6" fill="#fff"/></g>
+      </g>`,
+
+    // 20. Castle (замок)
+    castle: () => `
+      <g>
+        <rect x="52" y="88" width="96" height="86" fill="url(#gCream)" stroke="#8a7a64" stroke-width="2"/>
+        <rect x="30" y="64" width="34" height="110" fill="url(#gTan)" stroke="#7a5b38" stroke-width="2"/>
+        <rect x="136" y="64" width="34" height="110" fill="url(#gTan)" stroke="#7a5b38" stroke-width="2"/>
+        <rect x="78" y="48" width="44" height="54" fill="url(#gCream)" stroke="#8a7a64" stroke-width="2"/>
+        <polygon points="24,66 47,26 70,66" fill="url(#gBlue)" stroke="#0e3d78" stroke-width="2"/>
+        <polygon points="130,66 153,26 176,66" fill="url(#gBlue)" stroke="#0e3d78" stroke-width="2"/>
+        <polygon points="72,50 100,14 128,50" fill="url(#gRed)" stroke="#750d10" stroke-width="2"/>
+        <path d="M82 174 L82 134 A18 18 0 0 1 118 134 L118 174 Z" fill="url(#gBrown)" stroke="#4a240b" stroke-width="2.5"/>
+        <rect x="42" y="86" width="10" height="18" rx="5" fill="#2e3d4f"/>
+        <rect x="148" y="86" width="10" height="18" rx="5" fill="#2e3d4f"/>
+        <rect x="94" y="66" width="12" height="20" rx="6" fill="#2e3d4f"/>
+      </g>`,
+
+    // 21. Vase (ваза)
+    vase: () => `
+      <g>
+        <path d="M72 44 C78 68 54 96 58 134 C62 162 80 174 100 174 C120 174 138 162 142 134 C146 96 122 68 128 44 Z"
+              fill="url(#gBlue)" stroke="#0e3d78" stroke-width="2.5"/>
+        <ellipse cx="100" cy="44" rx="30" ry="9" fill="#8fd6ff" stroke="#0e3d78" stroke-width="2.5"/>
+        <path d="M62 118 Q100 132 138 118" fill="none" stroke="url(#gGold)" stroke-width="7"/>
+        <path d="M60 132 Q100 146 140 132" fill="none" stroke="#ffe885" stroke-width="3" stroke-dasharray="6 6"/>
+        <ellipse cx="78" cy="110" rx="8" ry="26" transform="rotate(10 78 110)" fill="url(#gGloss)" opacity="0.65"/>
+      </g>`,
+
+    // 22. Cat (кіт/кот)
+    cat: () => `
+      <g>
+        <path d="M140 144 Q176 128 166 86" fill="none" stroke="url(#gOrange)" stroke-width="12" stroke-linecap="round"/>
+        <ellipse cx="102" cy="134" rx="40" ry="38" fill="url(#gOrange)" stroke="#8c3b07" stroke-width="2"/>
+        <ellipse cx="102" cy="144" rx="22" ry="24" fill="url(#gCream)"/>
+        <polygon points="64,74 58,34 92,58" fill="url(#gOrange)" stroke="#8c3b07" stroke-width="2"/>
+        <polygon points="68,66 64,44 84,58" fill="#ffb3c6"/>
+        <polygon points="136,74 142,34 108,58" fill="url(#gOrange)" stroke="#8c3b07" stroke-width="2"/>
+        <polygon points="132,66 136,44 116,58" fill="#ffb3c6"/>
+        <ellipse cx="100" cy="84" rx="40" ry="34" fill="url(#gOrange)" stroke="#8c3b07" stroke-width="2"/>
+        <path d="M92 52 L100 66 L108 52" fill="#a84108"/>
+        <g class="blink-eye">
+          <ellipse cx="82" cy="80" rx="7.5" ry="9" fill="#52c93a"/><ellipse cx="82" cy="80" rx="3.5" ry="6.5" fill="#111"/><circle cx="79.5" cy="77" r="2.2" fill="#fff"/>
+        </g>
+        <g class="blink-eye">
+          <ellipse cx="118" cy="80" rx="7.5" ry="9" fill="#52c93a"/><ellipse cx="118" cy="80" rx="3.5" ry="6.5" fill="#111"/><circle cx="115.5" cy="77" r="2.2" fill="#fff"/>
+        </g>
+        <polygon points="94,92 106,92 100,99" fill="#f06292"/>
+        <path d="M90 104 Q100 110 100 99 Q100 110 110 104" fill="none" stroke="#5e2405" stroke-width="2.2" stroke-linecap="round"/>
+        <g stroke="#fff" stroke-width="1.8" opacity="0.8">
+          <line x1="50" y1="92" x2="76" y2="95"/><line x1="50" y1="100" x2="76" y2="100"/>
+          <line x1="150" y1="92" x2="124" y2="95"/><line x1="150" y1="100" x2="124" y2="100"/>
+        </g>
+      </g>`,
+
+    // 23. Book (книга)
+    book: () => `
+      <g>
+        <path d="M22 66 Q60 54 100 72 Q140 54 178 66 L172 154 Q136 142 100 160 Q64 142 28 154 Z"
+              fill="url(#gRed)" stroke="#6e0e10" stroke-width="3"/>
+        <path d="M30 56 Q65 44 100 64 L100 150 Q65 132 34 144 Z" fill="url(#gCream)" stroke="#b8a284" stroke-width="2"/>
+        <path d="M170 56 Q135 44 100 64 L100 150 Q135 132 166 144 Z" fill="#fffdf5" stroke="#b8a284" stroke-width="2"/>
+        <g stroke="#8a96a3" stroke-width="2.5" stroke-linecap="round" opacity="0.65">
+          <line x1="44" y1="74" x2="86" y2="82"/><line x1="44" y1="92" x2="86" y2="100"/><line x1="44" y1="110" x2="86" y2="118"/>
+          <line x1="114" y1="82" x2="156" y2="74"/><line x1="114" y1="100" x2="156" y2="92"/><line x1="114" y1="118" x2="156" y2="110"/>
+        </g>
+        <circle cx="134" cy="126" r="10" fill="url(#gYellow)"/>
+        <path d="M96 64 L104 64 L102 164 L98 158 Z" fill="url(#gGold)"/>
+      </g>`,
+
+    // 24. Dog (собака)
+    dog: () => `
+      <g>
+        <path d="M138 138 Q168 124 166 96" fill="none" stroke="url(#gTan)" stroke-width="10" stroke-linecap="round"/>
+        <ellipse cx="102" cy="134" rx="40" ry="36" fill="url(#gCream)" stroke="#8c6d4f" stroke-width="2"/>
+        <circle cx="122" cy="132" r="14" fill="url(#gBrown)"/>
+        <rect x="74" y="150" width="16" height="26" rx="7" fill="url(#gCream)" stroke="#8c6d4f" stroke-width="1.8"/>
+        <rect x="112" y="150" width="16" height="26" rx="7" fill="url(#gCream)" stroke="#8c6d4f" stroke-width="1.8"/>
+        <path d="M64 106 Q100 120 136 106" fill="none" stroke="url(#gRed)" stroke-width="9" stroke-linecap="round"/>
+        <circle cx="100" cy="116" r="6" fill="url(#gGold)"/>
+        <ellipse cx="56" cy="78" rx="16" ry="30" transform="rotate(24 56 78)" fill="url(#gBrown)" stroke="#4a240b" stroke-width="2"/>
+        <ellipse cx="144" cy="78" rx="16" ry="30" transform="rotate(-24 144 78)" fill="url(#gBrown)" stroke="#4a240b" stroke-width="2"/>
+        <ellipse cx="100" cy="76" rx="38" ry="34" fill="url(#gCream)" stroke="#8c6d4f" stroke-width="2"/>
+        <circle cx="82" cy="72" r="16" fill="url(#gBrown)"/>
+        <g class="blink-eye"><circle cx="82" cy="72" r="6" fill="#1a120b"/><circle cx="80" cy="70" r="2" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="118" cy="72" r="6" fill="#1a120b"/><circle cx="116" cy="70" r="2" fill="#fff"/></g>
+        <ellipse cx="100" cy="88" rx="10" ry="7" fill="#211610"/>
+        <path d="M93 98 Q100 112 107 98 Z" fill="#ff6b8b"/>
+      </g>`,
+
+    // 25. Lion (лев)
+    lion: () => `
+      <g>
+        <path d="M138 144 Q172 146 168 112" fill="none" stroke="url(#gYellow)" stroke-width="8" stroke-linecap="round"/>
+        <circle cx="168" cy="108" r="9" fill="url(#gBrown)"/>
+        <ellipse cx="100" cy="138" rx="38" ry="34" fill="url(#gYellow)" stroke="#a36d0a" stroke-width="2"/>
+        <circle cx="100" cy="82" r="52" fill="url(#gBrown)" stroke="#4a2208" stroke-width="3" stroke-dasharray="14 6"/>
+        <circle cx="100" cy="82" r="46" fill="url(#gOrange)"/>
+        <circle cx="66" cy="52" r="12" fill="url(#gYellow)" stroke="#8c4b08" stroke-width="2"/>
+        <circle cx="134" cy="52" r="12" fill="url(#gYellow)" stroke="#8c4b08" stroke-width="2"/>
+        <circle cx="100" cy="82" r="34" fill="url(#gYellow)" stroke="#a36d0a" stroke-width="2"/>
+        <ellipse cx="100" cy="96" rx="18" ry="12" fill="url(#gCream)"/>
+        <polygon points="92,88 108,88 100,97" fill="#4a2208"/>
+        <g class="blink-eye"><circle cx="86" cy="76" r="5.5" fill="#1a1008"/><circle cx="84.5" cy="74.5" r="2" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="114" cy="76" r="5.5" fill="#1a1008"/><circle cx="112.5" cy="74.5" r="2" fill="#fff"/></g>
+      </g>`,
+
+    // 26. Lemon (лимон)
+    lemon: () => `
+      <g>
+        <path d="M40 112 Q30 100 44 92 Q70 52 126 56 Q162 60 166 88 Q174 100 160 108 Q134 148 76 144 Q46 140 40 112 Z"
+              fill="url(#gYellow)" stroke="#a88007" stroke-width="2.5"/>
+        <ellipse cx="136" cy="54" rx="22" ry="10" transform="rotate(-24 136 54)" fill="url(#gGreen)" stroke="#1b5919" stroke-width="1.5"/>
+        <ellipse cx="88" cy="82" rx="26" ry="10" transform="rotate(-16 88 82)" fill="url(#gGloss)" opacity="0.72"/>
+      </g>`,
+
+    // 27. Elephant (слон)
+    elephant: () => `
+      <g>
+        <ellipse cx="52" cy="84" rx="34" ry="44" fill="url(#gGrey)" stroke="#404a54" stroke-width="2"/>
+        <ellipse cx="56" cy="86" rx="20" ry="28" fill="#ebb0c0" opacity="0.65"/>
+        <ellipse cx="148" cy="84" rx="34" ry="44" fill="url(#gGrey)" stroke="#404a54" stroke-width="2"/>
+        <ellipse cx="144" cy="86" rx="20" ry="28" fill="#ebb0c0" opacity="0.65"/>
+        <rect x="64" y="136" width="22" height="40" rx="8" fill="url(#gGrey)" stroke="#404a54" stroke-width="2"/>
+        <rect x="114" y="136" width="22" height="40" rx="8" fill="url(#gGrey)" stroke="#404a54" stroke-width="2"/>
+        <ellipse cx="100" cy="126" rx="44" ry="38" fill="url(#gGrey)" stroke="#404a54" stroke-width="2"/>
+        <circle cx="100" cy="82" r="38" fill="url(#gGrey)" stroke="#404a54" stroke-width="2"/>
+        <path d="M90 96 Q88 142 114 144 Q124 144 122 132 Q108 134 108 96 Z" fill="url(#gGrey)" stroke="#404a54" stroke-width="2"/>
+        <path d="M76 102 Q70 116 82 118 Z M124 102 Q130 116 118 118 Z" fill="#fffdf5"/>
+        <g class="blink-eye"><circle cx="84" cy="76" r="5.5" fill="#14181c"/><circle cx="82.5" cy="74.5" r="2" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="116" cy="76" r="5.5" fill="#14181c"/><circle cx="114.5" cy="74.5" r="2" fill="#fff"/></g>
+      </g>`,
+
+    // 28. Car (машина)
+    car: () => `
+      <g>
+        <path d="M44 98 L64 60 L132 60 L156 98 Z" fill="url(#gRed)" stroke="#700e10" stroke-width="2.5"/>
+        <path d="M54 96 L68 68 L98 68 L98 96 Z" fill="url(#gBlue)"/>
+        <path d="M106 96 L106 68 L128 68 L146 96 Z" fill="url(#gBlue)"/>
+        <rect x="20" y="96" width="160" height="46" rx="16" fill="url(#gRed)" stroke="#700e10" stroke-width="2.5"/>
+        <rect x="162" y="106" width="16" height="12" rx="4" fill="#fff59d"/>
+        <circle cx="58" cy="144" r="22" fill="url(#gDarkGrey)" stroke="#111" stroke-width="2"/>
+        <circle cx="58" cy="144" r="10" fill="url(#gMetal)"/>
+        <circle cx="142" cy="144" r="22" fill="url(#gDarkGrey)" stroke="#111" stroke-width="2"/>
+        <circle cx="142" cy="144" r="10" fill="url(#gMetal)"/>
+      </g>`,
+
+    // 29. Raspberry (малина)
+    raspberry: () => `
+      <g>
+        <path d="M100 54 Q70 28 52 44 Q78 52 92 64 Z M100 54 Q130 28 148 44 Q122 52 108 64 Z M100 56 L100 26"
+              fill="url(#gGreen)" stroke="#1b5919" stroke-width="2.5" stroke-linecap="round"/>
+        <g fill="url(#gPink)" stroke="#8c1545" stroke-width="1.5">
+          <circle cx="76" cy="78" r="17"/><circle cx="100" cy="74" r="17"/><circle cx="124" cy="78" r="17"/>
+          <circle cx="68" cy="102" r="17"/><circle cx="90" cy="102" r="17"/><circle cx="112" cy="102" r="17"/><circle cx="132" cy="102" r="17"/>
+          <circle cx="78" cy="128" r="17"/><circle cx="100" cy="128" r="17"/><circle cx="122" cy="128" r="17"/>
+          <circle cx="90" cy="150" r="16"/><circle cx="110" cy="150" r="16"/><circle cx="100" cy="164" r="14"/>
+        </g>
+      </g>`,
+
+    // 30. House (дім/дом)
+    house: () => `
+      <g>
+        <rect x="130" y="38" width="22" height="44" rx="3" fill="url(#gBrown)" stroke="#4a240b" stroke-width="2"/>
+        <rect x="38" y="88" width="124" height="86" rx="4" fill="url(#gCream)" stroke="#8c6d4f" stroke-width="2.5"/>
+        <polygon points="22,94 100,26 178,94" fill="url(#gRed)" stroke="#6e0d10" stroke-width="3" stroke-linejoin="round"/>
+        <rect x="82" y="120" width="36" height="54" rx="4" fill="url(#gBrown)" stroke="#4a240b" stroke-width="2.5"/>
+        <circle cx="110" cy="148" r="3.5" fill="url(#gGold)"/>
+        <rect x="48" y="108" width="26" height="26" rx="3" fill="#ffe985" stroke="#6b3814" stroke-width="2.5"/>
+        <rect x="126" y="108" width="26" height="26" rx="3" fill="#ffe985" stroke="#6b3814" stroke-width="2.5"/>
+        <line x1="61" y1="108" x2="61" y2="134" stroke="#6b3814" stroke-width="2"/>
+        <line x1="139" y1="108" x2="139" y2="134" stroke="#6b3814" stroke-width="2"/>
+      </g>`,
+
+    // 31. Scissors (ножиці/ножницы)
+    scissors: () => `
+      <g>
+        <path d="M96 98 L40 32 Q32 42 46 60 L92 108 Z" fill="url(#gMetal)" stroke="#45505c" stroke-width="2"/>
+        <path d="M104 98 L160 32 Q168 42 154 60 L108 108 Z" fill="url(#gMetal)" stroke="#45505c" stroke-width="2"/>
+        <circle cx="100" cy="100" r="6" fill="url(#gGold)" stroke="#45505c" stroke-width="1.5"/>
+        <path d="M92 108 L64 138" stroke="url(#gRed)" stroke-width="10" stroke-linecap="round"/>
+        <path d="M108 108 L136 138" stroke="url(#gRed)" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="58" cy="148" r="24" fill="none" stroke="url(#gRed)" stroke-width="11"/>
+        <circle cx="142" cy="148" r="24" fill="none" stroke="url(#gRed)" stroke-width="11"/>
+      </g>`,
+
+    // 32. Rhino (носоріг/носорог)
+    rhino: () => `
+      <g>
+        <rect x="54" y="136" width="20" height="38" rx="7" fill="url(#gGrey)" stroke="#3c4652" stroke-width="2"/>
+        <rect x="122" y="136" width="20" height="38" rx="7" fill="url(#gGrey)" stroke="#3c4652" stroke-width="2"/>
+        <ellipse cx="110" cy="116" rx="54" ry="38" fill="url(#gGrey)" stroke="#3c4652" stroke-width="2.5"/>
+        <ellipse cx="64" cy="100" rx="34" ry="28" fill="url(#gGrey)" stroke="#3c4652" stroke-width="2.5"/>
+        <path d="M36 96 Q24 64 42 54 Q46 78 52 92 Z" fill="url(#gCream)" stroke="#7a7060" stroke-width="2"/>
+        <path d="M52 86 Q50 70 60 66 Q60 78 64 84 Z" fill="url(#gCream)" stroke="#7a7060" stroke-width="1.5"/>
+        <ellipse cx="78" cy="70" rx="8" ry="12" fill="url(#gGrey)" stroke="#3c4652" stroke-width="2"/>
+        <g class="blink-eye"><circle cx="62" cy="94" r="5" fill="#14181c"/><circle cx="60.5" cy="92.5" r="1.8" fill="#fff"/></g>
+      </g>`,
+
+    // 33. Cucumber (огірок/огурец)
+    cucumber: () => `
+      <g>
+        <path d="M36 138 Q92 162 164 88 Q174 68 156 56 Q138 48 118 66 Q66 112 38 110 Q24 114 36 138 Z"
+              fill="url(#gGreen)" stroke="#144d15" stroke-width="2.5"/>
+        <path d="M48 122 Q98 134 150 76" fill="none" stroke="#9ef266" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+        <g fill="#1d6b1e">
+          <circle cx="64" cy="126" r="3"/><circle cx="88" cy="118" r="3.5"/><circle cx="112" cy="100" r="3.5"/>
+          <circle cx="134" cy="84" r="3"/><circle cx="96" cy="134" r="3"/><circle cx="122" cy="114" r="3"/>
+        </g>
+      </g>`,
+
+    // 34. Deer (олень)
+    deer: () => `
+      <g>
+        <g stroke="#5e3214" stroke-width="5.5" stroke-linecap="round" fill="none">
+          <path d="M84 56 Q64 34 62 16 M68 38 L52 34 M74 28 L82 18"/>
+          <path d="M116 56 Q136 34 138 16 M132 38 L148 34 M126 28 L118 18"/>
+        </g>
+        <rect x="74" y="138" width="12" height="40" rx="5" fill="url(#gTan)" stroke="#6e3f16" stroke-width="1.5"/>
+        <rect x="114" y="138" width="12" height="40" rx="5" fill="url(#gTan)" stroke="#6e3f16" stroke-width="1.5"/>
+        <ellipse cx="100" cy="130" rx="36" ry="26" fill="url(#gTan)" stroke="#6e3f16" stroke-width="2"/>
+        <circle cx="86" cy="124" r="4.5" fill="#fff5e0"/><circle cx="106" cy="120" r="4.5" fill="#fff5e0"/><circle cx="118" cy="132" r="4" fill="#fff5e0"/>
+        <ellipse cx="64" cy="70" rx="16" ry="8" transform="rotate(-24 64 70)" fill="url(#gTan)" stroke="#6e3f16" stroke-width="1.5"/>
+        <ellipse cx="136" cy="70" rx="16" ry="8" transform="rotate(24 136 70)" fill="url(#gTan)" stroke="#6e3f16" stroke-width="1.5"/>
+        <ellipse cx="100" cy="84" rx="28" ry="30" fill="url(#gTan)" stroke="#6e3f16" stroke-width="2"/>
+        <ellipse cx="100" cy="100" rx="16" ry="12" fill="url(#gCream)"/>
+        <ellipse cx="100" cy="96" rx="7.5" ry="5.5" fill="#2b170b"/>
+        <g class="blink-eye"><circle cx="86" cy="80" r="5" fill="#1a1008"/><circle cx="84.5" cy="78.5" r="1.8" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="114" cy="80" r="5" fill="#1a1008"/><circle cx="112.5" cy="78.5" r="1.8" fill="#fff"/></g>
+      </g>`,
+
+    // 35. Cake (торт)
+    cake: () => `
+      <g>
+        <ellipse cx="100" cy="166" rx="72" ry="16" fill="url(#gCream)" stroke="#b39c7d" stroke-width="2"/>
+        <rect x="44" y="106" width="112" height="58" rx="10" fill="url(#gTan)" stroke="#7d4a1e" stroke-width="2"/>
+        <rect x="44" y="130" width="112" height="12" fill="url(#gPink)"/>
+        <path d="M42 108 Q54 128 66 108 Q80 132 94 108 Q108 130 122 108 Q138 128 158 108 L158 96 Q100 84 42 96 Z"
+              fill="url(#gPink)" stroke="#9e1c52" stroke-width="2"/>
+        <rect x="74" y="54" width="10" height="42" rx="3" fill="url(#gBlue)"/>
+        <rect x="95" y="48" width="10" height="48" rx="3" fill="url(#gYellow)"/>
+        <rect x="116" y="54" width="10" height="42" rx="3" fill="url(#gGreen)"/>
+        <path d="M79 34 Q86 46 79 52 Q72 46 79 34 Z M100 28 Q107 40 100 46 Q93 40 100 28 Z M121 34 Q128 46 121 52 Q114 46 121 34 Z"
+              fill="url(#gOrange)"/>
+      </g>`,
+
+    // 36. Panda (панда)
+    panda: () => `
+      <g>
+        <ellipse cx="100" cy="134" rx="46" ry="40" fill="url(#gCream)" stroke="#444" stroke-width="2"/>
+        <ellipse cx="64" cy="158" rx="18" ry="14" fill="url(#gDarkGrey)"/>
+        <ellipse cx="136" cy="158" rx="18" ry="14" fill="url(#gDarkGrey)"/>
+        <ellipse cx="60" cy="118" rx="14" ry="22" transform="rotate(24 60 118)" fill="url(#gDarkGrey)"/>
+        <ellipse cx="140" cy="118" rx="14" ry="22" transform="rotate(-24 140 118)" fill="url(#gDarkGrey)"/>
+        <circle cx="64" cy="50" r="16" fill="url(#gDarkGrey)"/>
+        <circle cx="136" cy="50" r="16" fill="url(#gDarkGrey)"/>
+        <ellipse cx="100" cy="82" rx="44" ry="38" fill="url(#gCream)" stroke="#444" stroke-width="2"/>
+        <ellipse cx="80" cy="80" rx="14" ry="17" transform="rotate(-18 80 80)" fill="url(#gDarkGrey)"/>
+        <ellipse cx="120" cy="80" rx="14" ry="17" transform="rotate(18 120 80)" fill="url(#gDarkGrey)"/>
+        <g class="blink-eye"><circle cx="82" cy="78" r="5" fill="#fff"/><circle cx="82" cy="78" r="2.8" fill="#000"/></g>
+        <g class="blink-eye"><circle cx="118" cy="78" r="5" fill="#fff"/><circle cx="118" cy="78" r="2.8" fill="#000"/></g>
+        <ellipse cx="100" cy="94" rx="8" ry="5.5" fill="#1c2024"/>
+      </g>`,
+
+    // 37. Tomato (помідор/помидор)
+    tomato: () => `
+      <g>
+        <ellipse cx="100" cy="118" rx="60" ry="52" fill="url(#gRed)" stroke="#750a0e" stroke-width="2.5"/>
+        <path d="M100 68 L74 52 L90 74 L62 78 L92 84 L82 102 L100 84 L118 102 L108 84 L138 78 L110 74 L126 52 Z"
+              fill="url(#gGreen)" stroke="#164d16" stroke-width="1.5"/>
+        <path d="M100 66 Q104 46 112 42" fill="none" stroke="#226e20" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="72" cy="100" rx="16" ry="9" transform="rotate(-28 72 100)" fill="url(#gGloss)" opacity="0.72"/>
+      </g>`,
+
+    // 38. Turtle (черепаха)
+    turtle: () => `
+      <g>
+        <ellipse cx="66" cy="148" rx="16" ry="10" fill="url(#gGreen)" stroke="#1a541a" stroke-width="2"/>
+        <ellipse cx="132" cy="148" rx="16" ry="10" fill="url(#gGreen)" stroke="#1a541a" stroke-width="2"/>
+        <path d="M148 134 L172 138 L152 146 Z" fill="url(#gGreen)"/>
+        <path d="M52 128 Q32 114 38 92 Q50 74 70 86 Q76 104 68 124 Z" fill="url(#gGreen)" stroke="#1a541a" stroke-width="2"/>
+        <g class="blink-eye"><circle cx="48" cy="94" r="5" fill="#141a10"/><circle cx="46.5" cy="92.5" r="1.8" fill="#fff"/></g>
+        <path d="M54 136 C56 64 156 64 158 136 Z" fill="url(#gDarkGreen)" stroke="#133d14" stroke-width="2.5"/>
+        <ellipse cx="106" cy="136" rx="54" ry="12" fill="url(#gTan)" stroke="#6e4417" stroke-width="2"/>
+        <polygon points="88,92 124,92 134,116 78,116" fill="none" stroke="#85d455" stroke-width="3" opacity="0.7"/>
+      </g>`,
+
+    // 39. Crayfish (рак)
+    crayfish: () => `
+      <g>
+        <path d="M84 62 Q58 34 38 30 M116 62 Q142 34 162 30" fill="none" stroke="#a81812" stroke-width="3" stroke-linecap="round"/>
+        <path d="M74 84 Q42 74 44 48 Q60 54 62 66 Q72 52 78 68 Z" fill="url(#gRed)" stroke="#6e0a0e" stroke-width="2"/>
+        <path d="M126 84 Q158 74 156 48 Q140 54 138 66 Q128 52 122 68 Z" fill="url(#gRed)" stroke="#6e0a0e" stroke-width="2"/>
+        <g stroke="#a81812" stroke-width="4.5" stroke-linecap="round">
+          <line x1="76" y1="102" x2="46" y2="112"/><line x1="76" y1="118" x2="46" y2="132"/><line x1="80" y1="134" x2="54" y2="152"/>
+          <line x1="124" y1="102" x2="154" y2="112"/><line x1="124" y1="118" x2="154" y2="132"/><line x1="120" y1="134" x2="146" y2="152"/>
+        </g>
+        <ellipse cx="100" cy="108" rx="28" ry="44" fill="url(#gRed)" stroke="#6e0a0e" stroke-width="2.5"/>
+        <path d="M80 146 L72 174 L100 164 L128 174 L120 146 Z" fill="url(#gRed)" stroke="#6e0a0e" stroke-width="2"/>
+        <g class="blink-eye"><circle cx="88" cy="74" r="5" fill="#111"/><circle cx="86.5" cy="72.5" r="1.8" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="112" cy="74" r="5" fill="#111"/><circle cx="110.5" cy="72.5" r="1.8" fill="#fff"/></g>
+      </g>`,
+
+    // 40. Cheese (сир/сыр)
+    cheese: () => `
+      <g>
+        <polygon points="28,108 136,52 172,96 172,152 28,152" fill="url(#gYellow)" stroke="#a36e06" stroke-width="2.5" stroke-linejoin="round"/>
+        <polygon points="28,108 136,52 172,96 28,108" fill="#fff294" stroke="#a36e06" stroke-width="2"/>
+        <circle cx="64" cy="132" r="11" fill="#d9950b"/>
+        <circle cx="112" cy="124" r="14" fill="#d9950b"/>
+        <circle cx="146" cy="136" r="8" fill="#d9950b"/>
+        <circle cx="94" cy="144" r="6" fill="#d9950b"/>
+        <ellipse cx="110" cy="84" rx="12" ry="6" fill="#e6a817"/>
+      </g>`,
+
+    // 41. Sun (сонце/солнце)
+    sun: () => `
+      <g>
+        <g fill="url(#gOrange)">
+          <polygon points="100,14 112,44 88,44"/><polygon points="100,186 112,156 88,156"/>
+          <polygon points="14,100 44,88 44,112"/><polygon points="186,100 156,88 156,112"/>
+          <polygon points="38,38 66,52 52,66"/><polygon points="162,38 148,66 134,52"/>
+          <polygon points="38,162 52,134 66,148"/><polygon points="162,162 134,148 148,134"/>
+        </g>
+        <circle cx="100" cy="100" r="54" fill="url(#gYellow)" stroke="#d97f07" stroke-width="3"/>
+        <ellipse cx="84" cy="78" rx="18" ry="10" transform="rotate(-24 84 78)" fill="url(#gGloss)" opacity="0.7"/>
+        <g class="blink-eye"><circle cx="82" cy="96" r="6" fill="#4a2204"/><circle cx="80" cy="94" r="2" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="118" cy="96" r="6" fill="#4a2204"/><circle cx="116" cy="94" r="2" fill="#fff"/></g>
+        <path d="M84 114 Q100 128 116 114" fill="none" stroke="#8c3b04" stroke-width="3.5" stroke-linecap="round"/>
+      </g>`,
+
+    // 42. Cactus (кактус)
+    cactus: () => `
+      <g>
+        <path d="M62 132 L72 174 L128 174 L138 132 Z" fill="url(#gOrange)" stroke="#7a3208" stroke-width="2.5"/>
+        <rect x="56" y="122" width="88" height="14" rx="5" fill="#d9621e" stroke="#7a3208" stroke-width="2"/>
+        <path d="M80 122 L80 54 A20 20 0 0 1 120 54 L120 122 Z" fill="url(#gGreen)" stroke="#164d16" stroke-width="2.5"/>
+        <path d="M80 100 L56 100 Q46 100 46 86 L46 72 A10 10 0 0 1 66 72 L66 84 L80 84 Z" fill="url(#gGreen)" stroke="#164d16" stroke-width="2"/>
+        <path d="M120 92 L144 92 Q154 92 154 78 L154 64 A10 10 0 0 0 134 64 L134 76 L120 76 Z" fill="url(#gGreen)" stroke="#164d16" stroke-width="2"/>
+        <circle cx="100" cy="34" r="10" fill="url(#gPink)"/>
+        <circle cx="100" cy="34" r="4" fill="#ffe14d"/>
+      </g>`,
+
+    // 43. Flamingo (фламінго/фламинго)
+    flamingo: () => `
+      <g>
+        <line x1="98" y1="126" x2="98" y2="176" stroke="#d94e7a" stroke-width="5" stroke-linecap="round"/>
+        <path d="M104 126 L116 150 L98 156" fill="none" stroke="#d94e7a" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <ellipse cx="108" cy="108" rx="44" ry="26" fill="url(#gPink)" stroke="#9e1c52" stroke-width="2"/>
+        <path d="M74 106 Q54 72 78 44 Q94 32 96 48" fill="none" stroke="url(#gPink)" stroke-width="14" stroke-linecap="round"/>
+        <circle cx="96" cy="48" r="15" fill="url(#gPink)" stroke="#9e1c52" stroke-width="1.8"/>
+        <path d="M108 46 Q126 50 120 66 Q110 62 106 54 Z" fill="#2b2b2b"/>
+        <g class="blink-eye"><circle cx="98" cy="46" r="4" fill="#111"/><circle cx="97" cy="45" r="1.4" fill="#fff"/></g>
+      </g>`,
+
+    // 44. Flute (флейта)
+    flute: () => `
+      <g>
+        <g transform="rotate(-32 100 100)">
+          <rect x="16" y="88" width="168" height="22" rx="11" fill="url(#gGold)" stroke="#7a4c06" stroke-width="2.5"/>
+          <rect x="30" y="91" width="140" height="6" rx="3" fill="#ffffff" opacity="0.45"/>
+          <ellipse cx="44" cy="99" rx="6" ry="4" fill="#3d2204"/>
+          <circle cx="80" cy="99" r="4.5" fill="#3d2204"/><circle cx="96" cy="99" r="4.5" fill="#3d2204"/>
+          <circle cx="112" cy="99" r="4.5" fill="#3d2204"/><circle cx="128" cy="99" r="4.5" fill="#3d2204"/>
+          <circle cx="144" cy="99" r="4.5" fill="#3d2204"/>
+        </g>
+      </g>`,
+
+    // 45. Scarf (шарф)
+    scarf: () => `
+      <g>
+        <path d="M104 94 L138 164 L110 172 L86 106 Z" fill="url(#gRed)" stroke="#6e0e10" stroke-width="2.2"/>
+        <path d="M52 68 Q100 50 148 68 Q158 92 142 106 Q100 116 58 106 Q42 92 52 68 Z"
+              fill="url(#gRed)" stroke="#6e0e10" stroke-width="2.5"/>
+        <path d="M60 96 L52 162 L82 166 L90 104 Z" fill="url(#gRed)" stroke="#6e0e10" stroke-width="2.2"/>
+        <g stroke="url(#gYellow)" stroke-width="6">
+          <line x1="68" y1="62" x2="68" y2="108"/><line x1="132" y1="62" x2="132" y2="108"/>
+          <line x1="56" y1="142" x2="84" y2="146"/><line x1="104" y1="144" x2="130" y2="138"/>
+        </g>
+      </g>`,
+
+    // 46. Bread (хліб/хлеб)
+    bread: () => `
+      <g>
+        <path d="M28 136 Q26 76 100 72 Q174 76 172 136 Q172 158 100 158 Q28 158 28 136 Z"
+              fill="url(#gTan)" stroke="#7a4414" stroke-width="3"/>
+        <path d="M36 124 Q38 78 100 74 Q162 78 164 124 Q100 114 36 124 Z" fill="url(#gOrange)" opacity="0.65"/>
+        <g stroke="#6b340a" stroke-width="4" stroke-linecap="round" opacity="0.72">
+          <path d="M62 90 Q74 102 68 114"/><path d="M96 86 Q108 98 102 112"/><path d="M130 90 Q142 102 136 114"/>
+        </g>
+      </g>`,
+
+    // 47. Hamster (хом'як/хомяк)
+    hamster: () => `
+      <g>
+        <ellipse cx="100" cy="128" rx="48" ry="44" fill="url(#gTan)" stroke="#7d4a1e" stroke-width="2"/>
+        <ellipse cx="100" cy="138" rx="30" ry="30" fill="url(#gCream)"/>
+        <circle cx="64" cy="54" r="14" fill="url(#gTan)" stroke="#7d4a1e" stroke-width="2"/>
+        <circle cx="64" cy="54" r="7" fill="#ffb3c6"/>
+        <circle cx="136" cy="54" r="14" fill="url(#gTan)" stroke="#7d4a1e" stroke-width="2"/>
+        <circle cx="136" cy="54" r="7" fill="#ffb3c6"/>
+        <ellipse cx="100" cy="84" rx="44" ry="36" fill="url(#gTan)" stroke="#7d4a1e" stroke-width="2"/>
+        <circle cx="68" cy="96" r="18" fill="url(#gCream)"/>
+        <circle cx="132" cy="96" r="18" fill="url(#gCream)"/>
+        <circle cx="66" cy="96" r="7" fill="#ff94b3" opacity="0.5"/>
+        <circle cx="134" cy="96" r="7" fill="#ff94b3" opacity="0.5"/>
+        <g class="blink-eye"><circle cx="82" cy="78" r="6" fill="#1a120b"/><circle cx="80" cy="76" r="2" fill="#fff"/></g>
+        <g class="blink-eye"><circle cx="118" cy="78" r="6" fill="#1a120b"/><circle cx="116" cy="76" r="2" fill="#fff"/></g>
+        <ellipse cx="100" cy="90" rx="6" ry="4.5" fill="#f06292"/>
+      </g>`,
+
+    // 48. Teapot (чайник)
+    teapot: () => `
+      <g>
+        <path d="M52 118 Q22 104 26 76 Q34 72 42 84 Q42 98 58 102 Z" fill="url(#gBlue)" stroke="#0d3d78" stroke-width="2.5"/>
+        <path d="M144 88 Q178 88 176 118 Q174 144 142 142" fill="none" stroke="url(#gBlue)" stroke-width="11" stroke-linecap="round"/>
+        <ellipse cx="100" cy="118" rx="54" ry="46" fill="url(#gBlue)" stroke="#0d3d78" stroke-width="2.5"/>
+        <ellipse cx="100" cy="74" rx="34" ry="12" fill="url(#gYellow)" stroke="#8c5b07" stroke-width="2"/>
+        <circle cx="100" cy="58" r="9" fill="url(#gYellow)" stroke="#8c5b07" stroke-width="2"/>
+        <circle cx="100" cy="118" r="16" fill="#ff85b3"/>
+        <circle cx="100" cy="118" r="6" fill="#ffe14d"/>
+        <ellipse cx="78" cy="100" rx="10" ry="18" transform="rotate(-22 78 100)" fill="url(#gGloss)" opacity="0.6"/>
+      </g>`,
+
+    // 49. Ball (м'яч/мяч)
+    ball: () => `
+      <g>
+        <circle cx="100" cy="104" r="64" fill="url(#gRed)" stroke="#6e0e10" stroke-width="2.5"/>
+        <path d="M100 40 A64 64 0 0 1 164 104 Q128 118 100 104 Q88 70 100 40 Z" fill="url(#gYellow)"/>
+        <path d="M36 104 A64 64 0 0 0 100 168 Q112 134 100 104 Q68 92 36 104 Z" fill="url(#gBlue)"/>
+        <circle cx="100" cy="104" r="14" fill="#ffffff" opacity="0.9"/>
+        <ellipse cx="76" cy="74" rx="20" ry="12" transform="rotate(-32 76 74)" fill="url(#gGloss)" opacity="0.75"/>
+      </g>`,
+
+    // 50. Pinecone (шишка)
+    pinecone: () => `
+      <g>
+        <path d="M100 32 L100 18" stroke="#4a240b" stroke-width="6" stroke-linecap="round"/>
+        <g fill="url(#gBrown)" stroke="#3b1b08" stroke-width="2">
+          <ellipse cx="100" cy="48" rx="22" ry="14"/>
+          <ellipse cx="80" cy="70" rx="22" ry="14"/><ellipse cx="120" cy="70" rx="22" ry="14"/><ellipse cx="100" cy="74" rx="24" ry="15"/>
+          <ellipse cx="72" cy="98" rx="24" ry="15"/><ellipse cx="128" cy="98" rx="24" ry="15"/><ellipse cx="100" cy="102" rx="26" ry="16"/>
+          <ellipse cx="76" cy="128" rx="22" ry="15"/><ellipse cx="124" cy="128" rx="22" ry="15"/><ellipse cx="100" cy="132" rx="24" ry="16"/>
+          <ellipse cx="88" cy="154" rx="18" ry="13"/><ellipse cx="112" cy="154" rx="18" ry="13"/><ellipse cx="100" cy="160" rx="18" ry="13"/>
+        </g>
+      </g>`,
+
+    // 51. Apple (яблуко/яблоко)
+    apple: () => `
+      <g>
+        <path d="M100 58 Q104 30 116 24" fill="none" stroke="#5e3312" stroke-width="6" stroke-linecap="round"/>
+        <ellipse cx="128" cy="42" rx="24" ry="11" transform="rotate(-22 128 42)" fill="url(#gGreen)" stroke="#1b5919" stroke-width="1.8"/>
+        <path d="M100 62 C70 44 36 68 42 114 C48 158 76 176 100 164 C124 176 152 158 158 114 C164 68 130 44 100 62 Z"
+              fill="url(#gRed)" stroke="#700a0e" stroke-width="2.5"/>
+        <ellipse cx="72" cy="92" rx="14" ry="24" transform="rotate(18 72 92)" fill="url(#gGloss)" opacity="0.68"/>
+      </g>`,
+
+    // 52. Anchor (якір/якорь)
+    anchor: () => `
+      <g>
+        <circle cx="100" cy="36" r="14" fill="none" stroke="url(#gMetal)" stroke-width="8"/>
+        <line x1="100" y1="48" x2="100" y2="162" stroke="url(#gMetal)" stroke-width="12" stroke-linecap="round"/>
+        <line x1="64" y1="74" x2="136" y2="74" stroke="url(#gMetal)" stroke-width="10" stroke-linecap="round"/>
+        <path d="M40 120 Q46 168 100 168 Q154 168 160 120" fill="none" stroke="url(#gMetal)" stroke-width="12" stroke-linecap="round"/>
+        <polygon points="28,128 42,102 56,126" fill="url(#gMetal)"/>
+        <polygon points="144,126 158,102 172,128" fill="url(#gMetal)"/>
+      </g>`,
+
+    // 53. Onion (цибуля)
+    onion: () => `
+      <g>
+        <path d="M96 62 Q82 22 72 18 M100 62 L100 14 M104 62 Q118 22 128 18"
+              fill="none" stroke="url(#gGreen)" stroke-width="8" stroke-linecap="round"/>
+        <path d="M100 54 C138 68 158 108 148 144 C138 172 62 172 52 144 C42 108 62 68 100 54 Z"
+              fill="url(#gOrange)" stroke="#854107" stroke-width="2.5"/>
+        <path d="M84 64 Q66 116 84 164 M116 64 Q134 116 116 164 M100 58 L100 166"
+              fill="none" stroke="#9e4d08" stroke-width="2" opacity="0.45"/>
+        <ellipse cx="76" cy="112" rx="10" ry="24" transform="rotate(14 76 112)" fill="url(#gGloss)" opacity="0.55"/>
+      </g>`,
+
+    // 54. Candy (цукерка)
+    candy: () => `
+      <g transform="rotate(-24 100 104)">
+        <polygon points="18,80 56,104 18,128" fill="url(#gPink)" stroke="#8c1545" stroke-width="2"/>
+        <polygon points="182,80 144,104 182,128" fill="url(#gPink)" stroke="#8c1545" stroke-width="2"/>
+        <ellipse cx="100" cy="104" rx="48" ry="34" fill="url(#gPink)" stroke="#8c1545" stroke-width="2.5"/>
+        <path d="M76 74 Q88 104 76 134 M100 70 Q112 104 100 138 M124 74 Q136 104 124 134"
+              fill="none" stroke="#fff085" stroke-width="7" opacity="0.88"/>
+        <ellipse cx="88" cy="88" rx="22" ry="8" fill="url(#gGloss)" opacity="0.72"/>
+      </g>`,
+
+    // 55. Duck (утка)
+    duck: () => `
+      <g>
+        <path d="M82 152 L76 172 M116 152 L122 172" stroke="#e67e17" stroke-width="6" stroke-linecap="round"/>
+        <ellipse cx="104" cy="126" rx="52" ry="34" fill="url(#gYellow)" stroke="#a36e06" stroke-width="2"/>
+        <path d="M138 112 Q166 96 158 124 Z" fill="url(#gYellow)" stroke="#a36e06" stroke-width="2"/>
+        <ellipse cx="108" cy="124" rx="28" ry="15" fill="#f5b818" stroke="#a36e06" stroke-width="1.5"/>
+        <circle cx="68" cy="76" r="28" fill="url(#gYellow)" stroke="#a36e06" stroke-width="2"/>
+        <ellipse cx="40" cy="82" rx="18" ry="9" fill="url(#gOrange)" stroke="#8f3b06" stroke-width="2"/>
+        <g class="blink-eye"><circle cx="62" cy="70" r="5.5" fill="#1a120b"/><circle cx="60.5" cy="68.5" r="2" fill="#fff"/></g>
+      </g>`,
+
+    // 56. Snail (улитка)
+    snail: () => `
+      <g>
+        <path d="M52 104 L42 74 M66 100 L68 70" stroke="#9e6d43" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="42" cy="72" r="5" fill="#1a120b"/><circle cx="68" cy="68" r="5" fill="#1a120b"/>
+        <path d="M32 146 Q40 104 72 114 Q112 132 170 148 Q166 164 114 164 L42 164 Q28 164 32 146 Z"
+              fill="url(#gTan)" stroke="#7d4a1e" stroke-width="2.2"/>
+        <circle cx="114" cy="112" r="44" fill="url(#gOrange)" stroke="#7a3208" stroke-width="2.5"/>
+        <path d="M114 112 m0 -28 a28 28 0 1 1 -24 14 a18 18 0 1 1 18 20 a9 9 0 1 1 6 -14"
+              fill="none" stroke="#6b2b06" stroke-width="4.5" stroke-linecap="round"/>
+      </g>`
+  };
+
+  /* =========================================================================
+     4. PHONETICALLY ACCURATE 22-LETTER DECKS (УКР & РУС)
+     ========================================================================= */
+  const SHARED_21 = [
+    { letter: 'А', starts: ['pineapple', 'bus'], odd: 'cow' },
+    { letter: 'Б', starts: ['banana', 'drum'], odd: 'fish' },
+    { letter: 'В', starts: ['cherry', 'bicycle'], odd: 'owl' },
+    { letter: 'Г', starts: ['pear', 'mushroom'], odd: 'tiger' },
+    { letter: 'Д', starts: ['tree', 'dinosaur'], odd: 'bucket' },
+    { letter: 'Ж', starts: ['giraffe', 'beetle'], odd: 'hedgehog' },
+    { letter: 'З', starts: ['zebra', 'castle'], odd: 'vase' },
+    { letter: 'К', starts: ['cat', 'book'], odd: 'dog' },
+    { letter: 'Л', starts: ['lion', 'lemon'], odd: 'elephant' },
+    { letter: 'М', starts: ['car', 'raspberry'], odd: 'house' },
+    { letter: 'Н', starts: ['scissors', 'rhino'], odd: 'banana' },
+    { letter: 'О', starts: ['cucumber', 'deer'], odd: 'cake' },
+    { letter: 'П', starts: ['panda', 'tomato'], odd: 'turtle' },
+    { letter: 'Р', starts: ['fish', 'crayfish'], odd: 'cheese' },
+    { letter: 'С', starts: ['sun', 'elephant'], odd: 'cactus' },
+    { letter: 'Т', starts: ['tiger', 'cake'], odd: 'cat' },
+    { letter: 'Ф', starts: ['flamingo', 'flute'], odd: 'scarf' },
+    { letter: 'Х', starts: ['bread', 'hamster'], odd: 'turtle' },
+    { letter: 'Ч', starts: ['turtle', 'teapot'], odd: 'ball' },
+    { letter: 'Ш', starts: ['scarf', 'pinecone'], odd: 'pear' },
+    { letter: 'Я', starts: ['apple', 'anchor'], odd: 'cherry' }
+  ];
+
+  const DECKS = {
+    uk: [...SHARED_21, { letter: 'Ц', starts: ['onion', 'candy'], odd: 'sun' }],
+    ru: [...SHARED_21, { letter: 'У', starts: ['duck', 'snail'], odd: 'pear' }]
+  };
+
+  /* =========================================================================
+     5. CELEBRATION FX ENGINE (FIREWORKS, PETALS, BUTTERFLIES, SPARKLES)
+     ========================================================================= */
+  const fxCanvas = document.getElementById('fx-canvas');
+  const fxCtx = fxCanvas.getContext('2d');
+  let particles = [];
+
+  function resizeFx() {
+    fxCanvas.width = window.innerWidth;
+    fxCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeFx);
+  resizeFx();
+
+  function spawnCelebrationFX(originX, originY, variant) {
+    const colors = ['#ffe14d', '#ff6b9e', '#5ce65c', '#4dc3ff', '#ff9436', '#d178ff', '#ffffff'];
+    // Golden spark fireworks
+    for (let i = 0; i < 42; i++) {
+      const angle = (Math.PI * 2 * i) / 42 + (Math.random() - 0.5) * 0.25;
+      const speed = 3 + Math.random() * 8.5;
+      particles.push({
+        type: variant % 3 === 1 ? 'petal' : 'spark',
+        x: originX,
+        y: originY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 3.2,
+        size: 5 + Math.random() * 8,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.22,
+        alpha: 1,
+        decay: 0.011 + Math.random() * 0.008
+      });
+    }
+    // Bursting Celebration Butterflies
+    for (let i = 0; i < 6; i++) {
+      const angle = -Math.PI * 0.15 - Math.random() * Math.PI * 0.7;
+      particles.push({
+        type: 'butterfly',
+        x: originX + (Math.random() - 0.5) * 60,
+        y: originY + (Math.random() - 0.5) * 30,
+        vx: Math.cos(angle) * (2.5 + Math.random() * 3.5),
+        vy: Math.sin(angle) * (2.5 + Math.random() * 3.5) - 1,
+        size: 10 + Math.random() * 6,
+        color: colors[i % 5],
+        phase: Math.random() * 10,
+        alpha: 1,
+        decay: 0.0085
+      });
+    }
+    // Expanding Golden Ring
+    particles.push({
+      type: 'ring',
+      x: originX,
+      y: originY,
+      radius: 18,
+      maxRadius: 190,
+      color: '#ffe866',
+      alpha: 0.95,
+      decay: 0.025
+    });
+  }
+
+  function updateAndDrawFX() {
+    fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.alpha -= p.decay;
+      if (p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      fxCtx.save();
+      fxCtx.globalAlpha = Math.max(0, p.alpha);
+
+      if (p.type === 'ring') {
+        p.radius += (p.maxRadius - p.radius) * 0.12;
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        fxCtx.strokeStyle = p.color;
+        fxCtx.lineWidth = 6 * p.alpha;
+        fxCtx.stroke();
+      } else if (p.type === 'spark') {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.16;
+        p.vx *= 0.985;
+        p.rot += p.vrot;
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.rot);
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        for (let s = 0; s < 5; s++) {
+          const a = (s * Math.PI * 2) / 5;
+          const r1 = p.size;
+          const r2 = p.size * 0.42;
+          fxCtx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+          fxCtx.lineTo(Math.cos(a + Math.PI / 5) * r2, Math.sin(a + Math.PI / 5) * r2);
+        }
+        fxCtx.closePath();
+        fxCtx.fill();
+      } else if (p.type === 'petal') {
+        p.x += p.vx + Math.sin(p.rot * 2) * 0.8;
+        p.y += p.vy;
+        p.vy += 0.08;
+        p.vx *= 0.98;
+        p.rot += p.vrot;
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(p.rot);
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        fxCtx.ellipse(0, 0, p.size, p.size * 0.52, 0, 0, Math.PI * 2);
+        fxCtx.fill();
+      } else if (p.type === 'butterfly') {
+        p.phase += 0.35;
+        p.x += p.vx + Math.sin(p.phase * 0.5) * 1.4;
+        p.y += p.vy + Math.cos(p.phase * 0.4) * 0.9;
+        const flap = 0.35 + Math.abs(Math.sin(p.phase)) * 0.75;
+        fxCtx.translate(p.x, p.y);
+        fxCtx.rotate(Math.atan2(p.vy, p.vx) + Math.PI / 2);
+        fxCtx.fillStyle = p.color;
+        fxCtx.beginPath();
+        fxCtx.ellipse(-p.size * 0.6 * flap, -2, p.size * 0.65 * flap, p.size * 0.48, -0.3, 0, Math.PI * 2);
+        fxCtx.ellipse(p.size * 0.6 * flap, -2, p.size * 0.65 * flap, p.size * 0.48, 0.3, 0, Math.PI * 2);
+        fxCtx.fill();
+      }
+      fxCtx.restore();
+    }
+  }
+
+  /* =========================================================================
+     6. AMBIENT LIVING BUTTERFLIES IN BACKGROUND SVG
+     ========================================================================= */
+  const ambientGroup = document.getElementById('ambient-butterflies');
+  const ambientButterflies = [
+    { x: 260, y: 310, phase: 0, speed: 0.012, rx: 140, ry: 65, color: '#ff94c2' },
+    { x: 1180, y: 260, phase: 2.2, speed: 0.01, rx: 165, ry: 75, color: '#ffe14d' },
+    { x: 760, y: 490, phase: 4.1, speed: 0.014, rx: 190, ry: 55, color: '#7ad7ff' }
+  ];
+
+  ambientButterflies.forEach((b) => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.innerHTML = `
+      <ellipse class="wL" cx="-9" cy="0" rx="10" ry="7" fill="${b.color}" opacity="0.9"/>
+      <ellipse class="wR" cx="9" cy="0" rx="10" ry="7" fill="${b.color}" opacity="0.9"/>
+      <ellipse cx="0" cy="0" rx="2.2" ry="7" fill="#3a2310"/>
+    `;
+    ambientGroup.appendChild(g);
+    b.el = g;
+    b.wL = g.querySelector('.wL');
+    b.wR = g.querySelector('.wR');
+  });
+
+  function updateAmbientButterflies(t) {
+    ambientButterflies.forEach((b) => {
+      const a = t * b.speed + b.phase;
+      const cx = b.x + Math.cos(a) * b.rx;
+      const cy = b.y + Math.sin(a * 1.6) * b.ry;
+      const dx = -Math.sin(a) * b.rx;
+      const flap = 0.28 + Math.abs(Math.sin(t * 0.26 + b.phase)) * 0.72;
+      b.el.setAttribute('transform', `translate(${cx.toFixed(1)}, ${cy.toFixed(1)}) rotate(${dx > 0 ? 12 : -12})`);
+      b.wL.setAttribute('rx', (10 * flap).toFixed(1));
+      b.wR.setAttribute('rx', (10 * flap).toFixed(1));
+    });
+  }
+
+  /* =========================================================================
+     7. CHAIN & SIGN PENDULUM / SPRING DROP PHYSICS
+     ========================================================================= */
+  const signRig = document.getElementById('sign-rig');
+  const signPhysics = {
+    y: -260,
+    vy: 0,
+    targetY: 0,
+    angle: 0,
+    vAngle: 0
+  };
+
+  function dropSign() {
+    signPhysics.y = -270;
+    signPhysics.vy = 4;
+    signPhysics.targetY = 0;
+    signPhysics.angle = (Math.random() > 0.5 ? 1 : -1) * 7.5;
+    signPhysics.vAngle = 0;
+    sound.playChainDrop();
+  }
+
+  function liftSign() {
+    signPhysics.targetY = -280;
+    sound.playChainLift();
+  }
+
+  function updateSignPhysics(t) {
+    // Vertical spring with realistic damped bounce
+    const forceY = (signPhysics.targetY - signPhysics.y) * 0.115;
+    signPhysics.vy = (signPhysics.vy + forceY) * 0.78;
+    signPhysics.y += signPhysics.vy;
+
+    // Pendulum sway + subtle forest breeze
+    const breeze = Math.sin(t * 0.022) * 0.75;
+    const forceA = (breeze - signPhysics.angle) * 0.045;
+    signPhysics.vAngle = (signPhysics.vAngle + forceA) * 0.91;
+    signPhysics.angle += signPhysics.vAngle;
+
+    signRig.style.transform = `translate3d(0, ${signPhysics.y.toFixed(2)}px, 0) rotate(${signPhysics.angle.toFixed(2)}deg)`;
+  }
+
+  /* =========================================================================
+     8. CORE GAME STATE & INFINITE SHUFFLE GENERATOR
+     ========================================================================= */
+  let currentLang = 'uk';
+  let deckQueue = [];
+  let lastLetter = null;
+  let currentRound = null;
+  let isTransitioning = false;
+  let celebrationCount = 0;
+
+  const letterShadow = document.getElementById('sign-letter-shadow');
+  const letterExtrude = document.getElementById('sign-letter-extrude');
+  const letterMain = document.getElementById('sign-letter-main');
+  const langLabel = document.getElementById('lang-label');
+  const nextLabel = document.getElementById('next-label');
+  const slots = Array.from(document.querySelectorAll('.pedestal-slot'));
+
+  function shuffleArray(arr) {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  function nextFromDeck() {
+    if (deckQueue.length === 0) {
+      deckQueue = shuffleArray(DECKS[currentLang]);
+      // Prevent immediate repeat across deck boundary
+      if (lastLetter && deckQueue[0].letter === lastLetter && deckQueue.length > 1) {
+        const swapIdx = 1 + Math.floor(Math.random() * (deckQueue.length - 1));
+        [deckQueue[0], deckQueue[swapIdx]] = [deckQueue[swapIdx], deckQueue[0]];
+      }
+    }
+    const entry = deckQueue.shift();
+    lastLetter = entry.letter;
+    return entry;
+  }
+
+  function renderLetter(ch) {
+    letterShadow.textContent = ch;
+    letterExtrude.textContent = ch;
+    letterMain.textContent = ch;
+  }
+
+  function loadRound(immediate = false) {
+    isTransitioning = false;
+    const entry = nextFromDeck();
+    renderLetter(entry.letter);
+
+    // Build randomized 3-slot layout
+    const items = shuffleArray([
+      { id: entry.starts[0], isOdd: false },
+      { id: entry.starts[1], isOdd: false },
+      { id: entry.odd, isOdd: true }
+    ]);
+    currentRound = { entry, items };
+
+    slots.forEach((slot, idx) => {
+      slot.classList.remove('correct-jump', 'correct-glow', 'wrong-wobble');
+      const container = document.getElementById(`item-${idx}`);
+      container.classList.remove('item-exit', 'item-enter');
+      void container.offsetWidth; // trigger reflow for clean animation
+      const artFn = ART[items[idx].id];
+      container.innerHTML = `<svg viewBox="0 0 200 200">${artFn ? artFn() : ''}</svg>`;
+      container.classList.add('item-enter');
+    });
+
+    if (immediate) {
+      signPhysics.y = -240;
+      signPhysics.targetY = 0;
+      signPhysics.angle = 5;
+    } else {
+      dropSign();
+    }
+  }
+
+  function transitionToNextRound() {
+    if (isTransitioning) return;
+    isTransitioning = true;
+    liftSign();
+    slots.forEach((_, idx) => {
+      const container = document.getElementById(`item-${idx}`);
+      container.classList.remove('item-enter');
+      container.classList.add('item-exit');
+    });
+    setTimeout(() => {
+      loadRound(false);
+    }, 340);
+  }
+
+  // Handle Pedestal Click / Tap
+  slots.forEach((slot, idx) => {
+    slot.addEventListener('click', () => {
+      if (isTransitioning || !currentRound) return;
+      sound.init();
+      const chosen = currentRound.items[idx];
+
+      if (chosen.isOdd) {
+        // CORRECT ANSWER: Rich, varied non-verbal celebration!
+        isTransitioning = true;
+        celebrationCount++;
+        slot.classList.add('correct-jump', 'correct-glow');
+
+        const rect = slot.getBoundingClientRect();
+        spawnCelebrationFX(rect.left + rect.width / 2, rect.top + rect.height * 0.42, celebrationCount);
+        sound.playCelebration(celebrationCount);
+
+        setTimeout(() => {
+          liftSign();
+          slots.forEach((_, sIdx) => {
+            const c = document.getElementById(`item-${sIdx}`);
+            c.classList.remove('item-enter');
+            c.classList.add('item-exit');
+          });
+          setTimeout(() => {
+            loadRound(false);
+          }, 360);
+        }, 1280);
+      } else {
+        // WRONG ANSWER: Playful gentle wobble + soft comical boing
+        slot.classList.remove('wrong-wobble');
+        void slot.offsetWidth;
+        slot.classList.add('wrong-wobble');
+        sound.playBoing();
+      }
+    });
+  });
+
+  // Top-Right Language Toggle ("УКР" / "РУС")
+  document.getElementById('lang-btn').addEventListener('click', () => {
+    sound.playWoodClick();
+    currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+    langLabel.textContent = currentLang === 'uk' ? 'УКР' : 'РУС';
+    nextLabel.textContent = currentLang === 'uk' ? 'Далі' : 'Далее';
+    deckQueue = [];
+    lastLetter = null;
+    if (!isTransitioning) {
+      transitionToNextRound();
+    } else {
+      isTransitioning = false;
+      loadRound(false);
+    }
+  });
+
+  // Bottom-Right Minimalist Next Button ("Далі" / "Далее")
+  document.getElementById('next-btn').addEventListener('click', () => {
+    sound.playWoodClick();
+    if (isTransitioning) {
+      isTransitioning = false;
+      loadRound(false);
+    } else {
+      transitionToNextRound();
+    }
+  });
+
+  /* =========================================================================
+     9. MAIN 60FPS ANIMATION LOOP
+     ========================================================================= */
+  let tick = 0;
+  function animate() {
+    tick++;
+    updateSignPhysics(tick);
+    updateAmbientButterflies(tick);
+    updateAndDrawFX();
+    requestAnimationFrame(animate);
+  }
+
+  window.onload = () => {
+    loadRound(true);
+    animate();
+  };
+})();
+</script>
+</body>
+</html>
