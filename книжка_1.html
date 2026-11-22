@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Інтерактивна книжка</title>
+  <style>
+    /* ==========================================================================
+       ОСНОВНІ СТИЛІ ТА СЮЖЕТНИЙ ФОН ДЕРЕВ'ЯНОГО СТОЛУ
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, 'Trebuchet MS', sans-serif;
+      /* Теплий текстурований дерев'яний стіл без білих прямокутників */
+      background:
+        radial-gradient(ellipse at 50% 45%, rgba(255, 224, 163, 0.25) 0%, rgba(56, 30, 14, 0.72) 100%),
+        repeating-linear-gradient(
+          92deg,
+          #6b3e26 0px,
+          #75452b 18px,
+          #5e341f 22px,
+          #6f4128 54px,
+          #59311d 58px
+        );
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Головний контейнер гри */
+    .stage {
+      position: relative;
+      width: min(96vw, 1180px);
+      height: min(94vh, 760px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Контейнер розгорнутої книжки */
+    .book-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      filter: drop-shadow(0 24px 32px rgba(25, 10, 2, 0.65));
+      transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* Анімація перегортання сторінки */
+    .book-wrapper.turning {
+      transform: scale(0.97) rotateY(4deg);
+    }
+
+    /* Головне SVG-полотно книжки */
+    #book-svg {
+      width: 100%;
+      height: 100%;
+      max-height: 100%;
+      overflow: visible;
+    }
+
+    /* ==========================================================================
+       ІНТЕРАКТИВНІ ЕЛЕМЕНТИ (РОЗДІЛЕНІ ШАРИ — НІЩО НЕ ТІКАЄ ВІД КУРСОРА!)
+       Зовнішній <g class="clickable"> тримає позицію,
+       внутрішній <g class="hover-fx"> відповідає лише за масштаб та тремтіння.
+       ========================================================================== */
+    .clickable {
+      cursor: pointer;
+    }
+
+    .clickable .hover-fx {
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    .clickable:hover .hover-fx {
+      filter: brightness(1.08) drop-shadow(0 5px 7px rgba(0, 0, 0, 0.25));
+      transform: scale(1.07);
+    }
+
+    .clickable:active .hover-fx {
+      transform: scale(0.94);
+    }
+
+    /* Плавне переміщення предметів (кошик, рюкзак, торт, лійка, мухи) */
+    .movable {
+      transition: transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.45s ease;
+    }
+
+    /* Тремтіння при виборі зайвого предмета (на внутрішньому шарі!) */
+    @keyframes wobbleWrong {
+      0%, 100% { transform: rotate(0deg); }
+      20% { transform: rotate(-11deg) scale(1.06); }
+      45% { transform: rotate(11deg) scale(1.06); }
+      70% { transform: rotate(-6deg); }
+      85% { transform: rotate(4deg); }
+    }
+
+    .wobble .hover-fx {
+      animation: wobbleWrong 0.48s ease-in-out;
+    }
+
+    /* Живі фонові анімації (на окремому внутрішньому шарі) */
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-7px); }
+    }
+
+    @keyframes swayGentle {
+      0%, 100% { transform: rotate(-3deg); }
+      50% { transform: rotate(3.5deg); }
+    }
+
+    @keyframes flyBuzz {
+      0%   { transform: translate(0px, 0px) rotate(0deg); }
+      25%  { transform: translate(10px, -9px) rotate(6deg); }
+      50%  { transform: translate(-8px, -14px) rotate(-5deg); }
+      75%  { transform: translate(-12px, 5px) rotate(8deg); }
+      100% { transform: translate(0px, 0px) rotate(0deg); }
+    }
+
+    @keyframes wingFlap {
+      0%, 100% { transform: scaleY(1); }
+      50% { transform: scaleY(0.35); }
+    }
+
+    @keyframes waveDrift {
+      0%, 100% { transform: translateX(0px); }
+      50% { transform: translateX(10px); }
+    }
+
+    @keyframes duckBob {
+      0%, 100% { transform: translateY(0px) rotate(-1.5deg); }
+      50% { transform: translateY(-4px) rotate(2deg); }
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 6px #ffd54f); transform: scale(1); }
+      50% { filter: drop-shadow(0 0 18px #ffeb3b); transform: scale(1.1); }
+    }
+
+    .anim-float { animation: floatSlow 4.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .anim-sway  { animation: swayGentle 3.6s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom center; }
+    .anim-buzz  { animation: flyBuzz 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .anim-wing  { animation: wingFlap 0.14s linear infinite; transform-box: fill-box; transform-origin: center; }
+    .anim-wave  { animation: waveDrift 3.8s ease-in-out infinite; }
+    .anim-duck  { animation: duckBob 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+
+    /* ==========================================================================
+       МІНІМАЛІСТИЧНІ КНОПКИ НАВІГАЦІЇ (НАЗАД / ДАЛІ)
+       ========================================================================== */
+    .nav-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 62px;
+      height: 62px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      z-index: 30;
+      padding: 0;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      transform: translateY(-50%) scale(1.12);
+      filter: brightness(1.1);
+    }
+
+    .nav-btn:active {
+      transform: translateY(-50%) scale(0.94);
+    }
+
+    #btn-prev { left: -12px; }
+    #btn-next { right: -12px; }
+
+    /* Підсвітка кнопки "Далі", коли завдання виконано */
+    #btn-next.ready-pulse svg {
+      animation: pulseGlow 1.3s ease-in-out infinite;
+    }
+
+    /* ==========================================================================
+       ЖИВИЙ ПЕРСОНАЖ — ЛИСЕНЯ (РОЗТАШОВАНЕ БІЛЯ КНИЖКИ)
+       ========================================================================== */
+    .fox-container {
+      position: absolute;
+      bottom: -8px;
+      left: 14px;
+      width: clamp(120px, 15vw, 175px);
+      height: clamp(120px, 15vw, 175px);
+      z-index: 25;
+      pointer-events: auto;
+      cursor: pointer;
+      filter: drop-shadow(0 10px 14px rgba(30, 12, 0, 0.45));
+    }
+
+    @keyframes tailWag {
+      0%, 100% { transform: rotate(-6deg); }
+      50% { transform: rotate(9deg); }
+    }
+
+    @keyframes foxBreathe {
+      0%, 100% { transform: scaleY(1); }
+      50% { transform: scaleY(1.03); }
+    }
+
+    @keyframes foxJump {
+      0%, 100% { transform: translateY(0) scale(1); }
+      30% { transform: translateY(-26px) scale(1.07, 0.95); }
+      55% { transform: translateY(0) scale(0.96, 1.05); }
+      75% { transform: translateY(-14px) scale(1.03); }
+    }
+
+    @keyframes foxHeadTilt {
+      0%, 100% { transform: rotate(0deg); }
+      30%, 70% { transform: rotate(-14deg); }
+    }
+
+    @keyframes earTwitch {
+      0%, 92%, 100% { transform: rotate(0deg); }
+      96% { transform: rotate(10deg); }
+    }
+
+    .fox-tail { animation: tailWag 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: right bottom; }
+    .fox-body-anim { animation: foxBreathe 3s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom center; }
+    .fox-ear-r { animation: earTwitch 4.5s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom center; }
+
+    .fox-container.happy { animation: foxJump 0.85s ease-in-out 2; }
+    .fox-container.confused #fox-head { animation: foxHeadTilt 0.9s ease-in-out; transform-box: fill-box; transform-origin: bottom center; }
+
+    /* ==========================================================================
+       ШАР ЧАСТИНОК ДЛЯ ЯСКРАВОГО ФІДБЕКУ (ЗІРОЧКИ, КРАПЛІ, СЕРДЕЧКА)
+       ========================================================================== */
+    #fx-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 40;
+      overflow: hidden;
+    }
+
+    @media (max-width: 760px) {
+      #btn-prev { left: 2px; width: 48px; height: 48px; }
+      #btn-next { right: 2px; width: 48px; height: 48px; }
+      .fox-container { width: 105px; height: 105px; left: 4px; bottom: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="stage">
+    <!-- Кнопка НАЗАД (попередня сторінка) -->
+    <button id="btn-prev" class="nav-btn" aria-label="Попередня сторінка">
+      <svg viewBox="0 0 70 70">
+        <defs>
+          <radialGradient id="btnGradL" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#ffd97d"/>
+            <stop offset="60%" stop-color="#e09f3e"/>
+            <stop offset="100%" stop-color="#9e5b16"/>
+          </radialGradient>
+        </defs>
+        <circle cx="35" cy="35" r="31" fill="url(#btnGradL)" stroke="#5c3309" stroke-width="3.5"/>
+        <circle cx="35" cy="35" r="24" fill="none" stroke="#fff3c4" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.7"/>
+        <path d="M41 21 L24 35 L41 49" fill="none" stroke="#4a2505" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <!-- РОЗГОРНУТА ІНТЕРАКТИВНА КНИЖКА -->
+    <div class="book-wrapper" id="book-wrapper">
+      <svg id="book-svg" viewBox="0 0 1100 720" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- Градієнти обкладинки та пергаменту книжки -->
+          <linearGradient id="coverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#8b2f2f"/>
+            <stop offset="50%" stop-color="#691f1f"/>
+            <stop offset="100%" stop-color="#451212"/>
+          </linearGradient>
+
+          <linearGradient id="pageGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f8ebd2"/>
+            <stop offset="46%" stop-color="#fff6e3"/>
+            <stop offset="50%" stop-color="#d7c29e"/>
+            <stop offset="54%" stop-color="#fff6e3"/>
+            <stop offset="100%" stop-color="#f3e1bf"/>
+          </linearGradient>
+
+          <!-- Стрічка-сувій для великого тексту завдання -->
+          <linearGradient id="bannerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#fff2c2"/>
+            <stop offset="50%" stop-color="#ffe194"/>
+            <stop offset="100%" stop-color="#f4c462"/>
+          </linearGradient>
+
+          <!-- Візерунки скатертини та шпалер -->
+          <pattern id="ginghamPattern" width="28" height="28" patternUnits="userSpaceOnUse">
+            <rect width="28" height="28" fill="#ffe9d6"/>
+            <rect width="14" height="28" fill="#f7b29c" opacity="0.45"/>
+            <rect width="28" height="14" fill="#f7b29c" opacity="0.45"/>
+          </pattern>
+
+          <pattern id="wallStripes" width="36" height="36" patternUnits="userSpaceOnUse">
+            <rect width="36" height="36" fill="#d7c4e8"/>
+            <rect width="18" height="36" fill="#cbb3e0"/>
+          </pattern>
+
+          <!-- Маска для внутрішньої ілюстрації сторінки -->
+          <clipPath id="sceneClip">
+            <rect x="64" y="152" width="972" height="508" rx="18"/>
+          </clipPath>
+
+          <!-- Тінь для об'ємності -->
+          <filter id="softShadow" x="-15%" y="-15%" width="130%" height="130%">
+            <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#2b1404" flood-opacity="0.28"/>
+          </filter>
+        </defs>
+
+        <!-- Тверда обкладинка книжки із золотим тисненням -->
+        <rect x="26" y="20" width="1048" height="676" rx="28" fill="url(#coverGrad)" stroke="#330d0d" stroke-width="5"/>
+        <rect x="36" y="30" width="1028" height="656" rx="22" fill="none" stroke="#d9a441" stroke-width="2.5" stroke-dasharray="10 6" opacity="0.7"/>
+
+        <!-- Багатошарові краї паперових сторінок -->
+        <rect x="44" y="38" width="1012" height="640" rx="18" fill="#d9c39e"/>
+        <rect x="49" y="36" width="1002" height="638" rx="16" fill="#ead6b3"/>
+        <rect x="54" y="34" width="992" height="636" rx="16" fill="url(#pageGrad)" stroke="#c7ae82" stroke-width="2"/>
+
+        <!-- Червона шовкова закладка знизу -->
+        <path d="M535 668 L565 668 L565 716 L550 701 L535 716 Z" fill="#c92a2a" stroke="#7d1515" stroke-width="2"/>
+
+        <!-- КОНТЕЙНЕР ДЛЯ АКТИВНОЇ СЦЕНИ (заповнюється з JavaScript) -->
+        <g id="scene-root" clip-path="url(#sceneClip)"></g>
+
+        <!-- Легка тінь згину книжки посередині поверх сцени -->
+        <rect x="534" y="152" width="32" height="508" fill="url(#pageGrad)" opacity="0.16" pointer-events="none"/>
+        <line x1="550" y1="36" x2="550" y2="670" stroke="#70522b" stroke-width="2" opacity="0.22" pointer-events="none"/>
+
+        <!-- ЗБІЛЬШЕНА ДЕКОРАТИВНА СТРІЧКА-СУВІЙ ДЛЯ КРУПНОГО ТЕКСТУ ЗАВДАННЯ -->
+        <g id="task-banner" filter="url(#softShadow)">
+          <!-- Хвостики стрічки -->
+          <path d="M84 48 L48 64 L66 94 L48 124 L92 124 Z" fill="#d99b38" stroke="#804d0c" stroke-width="2.5"/>
+          <path d="M1016 48 L1052 64 L1034 94 L1052 124 L1008 124 Z" fill="#d99b38" stroke="#804d0c" stroke-width="2.5"/>
+          <!-- Основна декоративна плашка -->
+          <rect x="78" y="34" width="944" height="108" rx="24" fill="url(#bannerGrad)" stroke="#8c5311" stroke-width="3.5"/>
+          <rect x="88" y="42" width="924" height="92" rx="18" fill="none" stroke="#fff7dc" stroke-width="2.2" stroke-dasharray="7 5" opacity="0.88"/>
+          <!-- Кутові заклепки -->
+          <circle cx="104" cy="88" r="5.5" fill="#b86b14"/>
+          <circle cx="996" cy="88" r="5.5" fill="#b86b14"/>
+          <!-- Крупний текст завдання (підтримує 1 або 2 рядки) -->
+          <text id="task-text" x="550" y="96" text-anchor="middle" fill="#3b1a04" font-family="Arial, sans-serif" font-size="42" font-weight="800" letter-spacing="0.4"></text>
+        </g>
+
+        <!-- Святкове золоте сяйво по контуру сторінки при перемозі -->
+        <rect id="win-glow" x="64" y="152" width="972" height="508" rx="18" fill="none" stroke="#ffd43b" stroke-width="10" opacity="0" pointer-events="none"/>
+      </svg>
+
+      <!-- ЖИВИЙ ПЕРСОНАЖ — ЛИСЕНЯ (взаємодіє рухами та емоціями) -->
+      <div class="fox-container" id="fox-character">
+        <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <!-- Пухнастий хвіст -->
+          <g class="fox-tail">
+            <path d="M58 168 C16 168, 8 118, 34 102 C54 90, 74 114, 72 146 Z" fill="#e86a24" stroke="#7a2c08" stroke-width="3.5"/>
+            <path d="M34 102 C22 108, 18 124, 26 132 C38 122, 46 112, 49 104 C44 100, 38 100, 34 102 Z" fill="#fff4e6"/>
+          </g>
+
+          <!-- Тіло та лапки -->
+          <g class="fox-body-anim">
+            <ellipse cx="106" cy="158" rx="44" ry="34" fill="#f07829" stroke="#7a2c08" stroke-width="3.5"/>
+            <ellipse cx="108" cy="162" rx="24" ry="22" fill="#fff3e0"/>
+            <ellipse cx="82" cy="182" rx="13" ry="9" fill="#592209"/>
+            <ellipse cx="132" cy="182" rx="13" ry="9" fill="#592209"/>
+          </g>
+
+          <!-- Голова Лисеняти -->
+          <g id="fox-head">
+            <path d="M68 84 L54 34 L94 64 Z" fill="#e86a24" stroke="#7a2c08" stroke-width="3.5" stroke-linejoin="round"/>
+            <path d="M70 76 L62 46 L86 64 Z" fill="#ffd2b3"/>
+            <g class="fox-ear-r">
+              <path d="M144 84 L158 34 L118 64 Z" fill="#e86a24" stroke="#7a2c08" stroke-width="3.5" stroke-linejoin="round"/>
+              <path d="M142 76 L150 46 L126 64 Z" fill="#ffd2b3"/>
+            </g>
+
+            <path d="M56 96 C56 62, 156 62, 156 96 C156 126, 128 142, 106 142 C84 142, 56 126, 56 96 Z" fill="#f58231" stroke="#7a2c08" stroke-width="3.5"/>
+            <path d="M58 102 C68 96, 86 106, 94 122 C98 130, 102 138, 106 140 C82 140, 58 124, 58 102 Z" fill="#fff4e6"/>
+            <path d="M154 102 C144 96, 126 106, 118 122 C114 130, 110 138, 106 140 C130 140, 154 124, 154 102 Z" fill="#fff4e6"/>
+
+            <ellipse cx="75" cy="116" rx="8" ry="4.5" fill="#ff8a80" opacity="0.55"/>
+            <ellipse cx="137" cy="116" rx="8" ry="4.5" fill="#ff8a80" opacity="0.55"/>
+
+            <!-- Звичайний живий погляд -->
+            <g id="fox-eyes-normal">
+              <circle cx="88" cy="98" r="7.5" fill="#2b1204"/>
+              <circle cx="124" cy="98" r="7.5" fill="#2b1204"/>
+              <circle cx="85.5" cy="95.5" r="2.6" fill="#ffffff"/>
+              <circle cx="121.5" cy="95.5" r="2.6" fill="#ffffff"/>
+            </g>
+
+            <!-- Щасливі примружені оченята -->
+            <g id="fox-eyes-happy" style="display:none">
+              <path d="M78 100 Q88 88 98 100" fill="none" stroke="#2b1204" stroke-width="4.5" stroke-linecap="round"/>
+              <path d="M114 100 Q124 88 134 100" fill="none" stroke="#2b1204" stroke-width="4.5" stroke-linecap="round"/>
+            </g>
+
+            <!-- Здивований погляд (коли натиснуто зайве) -->
+            <g id="fox-eyes-confused" style="display:none">
+              <circle cx="88" cy="98" r="8.5" fill="#fff"/>
+              <circle cx="124" cy="98" r="8.5" fill="#fff"/>
+              <circle cx="89" cy="98" r="4.5" fill="#2b1204"/>
+              <circle cx="123" cy="98" r="4.5" fill="#2b1204"/>
+              <path d="M78 84 L96 88" stroke="#592209" stroke-width="3.2" stroke-linecap="round"/>
+              <path d="M116 88 L134 81" stroke="#592209" stroke-width="3.2" stroke-linecap="round"/>
+            </g>
+
+            <ellipse cx="106" cy="116" rx="8" ry="5.5" fill="#2b1204"/>
+            <ellipse cx="104" cy="114.5" rx="2.5" ry="1.5" fill="#ffffff" opacity="0.6"/>
+            <path id="fox-mouth" d="M97 126 Q106 134 115 126" fill="none" stroke="#592209" stroke-width="3.2" stroke-linecap="round"/>
+          </g>
+        </svg>
+      </div>
+
+      <!-- Шар для вибухів зірочок, крапельок і сердечок -->
+      <svg id="fx-layer" viewBox="0 0 1100 720"></svg>
+    </div>
+
+    <!-- Кнопка ДАЛІ (наступна сторінка без очікування) -->
+    <button id="btn-next" class="nav-btn" aria-label="Наступна сторінка">
+      <svg viewBox="0 0 70 70">
+        <defs>
+          <radialGradient id="btnGradR" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#ffd97d"/>
+            <stop offset="60%" stop-color="#e09f3e"/>
+            <stop offset="100%" stop-color="#9e5b16"/>
+          </radialGradient>
+        </defs>
+        <circle cx="35" cy="35" r="31" fill="url(#btnGradR)" stroke="#5c3309" stroke-width="3.5"/>
+        <circle cx="35" cy="35" r="24" fill="none" stroke="#fff3c4" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.7"/>
+        <path d="M29 21 L46 35 L29 49" fill="none" stroke="#4a2505" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. ЗВУКОВИЙ РУШІЙ (WEB AUDIO API — БЕЗ ЗОВНІШНІХ ФАЙЛІВ І БЕЗ СЛІВ)
+       ========================================================================== */
+    const SoundFX = (() => {
+      let ctx = null;
+
+      function init() {
+        if (!ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          ctx = new AudioCtx();
+        }
+        if (ctx.state === 'suspended') ctx.resume();
+      }
+
+      function tone(freq, type, startTime, duration, vol = 0.2, freqEnd = null) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, startTime);
+        if (freqEnd) {
+          osc.frequency.exponentialRampToValueAtTime(freqEnd, startTime + duration);
+        }
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.linearRampToValueAtTime(vol, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + duration + 0.02);
+      }
+
+      return {
+        pageTurn() {
+          init();
+          const bufferSize = ctx.sampleRate * 0.22;
+          const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+          }
+          const noise = ctx.createBufferSource();
+          noise.buffer = buffer;
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(900, ctx.currentTime);
+          filter.frequency.exponentialRampToValueAtTime(2200, ctx.currentTime + 0.2);
+          const gain = ctx.createGain();
+          gain.gain.setValueAtTime(0.18, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          noise.start();
+        },
+
+        pop() {
+          init();
+          tone(340, 'sine', ctx.currentTime, 0.14, 0.24, 720);
+        },
+
+        unpop() {
+          init();
+          tone(540, 'sine', ctx.currentTime, 0.14, 0.18, 250);
+        },
+
+        buzzAway() {
+          init();
+          const t = ctx.currentTime;
+          tone(210, 'sawtooth', t, 0.26, 0.12, 480);
+          tone(215, 'triangle', t, 0.26, 0.1, 510);
+        },
+
+        slice() {
+          init();
+          const t = ctx.currentTime;
+          tone(680, 'triangle', t, 0.11, 0.16, 420);
+          tone(880, 'sine', t + 0.05, 0.16, 0.15, 1180);
+        },
+
+        water() {
+          init();
+          const t = ctx.currentTime;
+          [520, 660, 780, 960].forEach((f, idx) => {
+            tone(f, 'sine', t + idx * 0.055, 0.12, 0.15, f * 1.25);
+          });
+        },
+
+        quack() {
+          init();
+          const t = ctx.currentTime;
+          tone(420, 'sawtooth', t, 0.11, 0.13, 310);
+          tone(460, 'sawtooth', t + 0.13, 0.12, 0.13, 330);
+        },
+
+        ribbit() {
+          init();
+          const t = ctx.currentTime;
+          tone(160, 'square', t, 0.1, 0.12, 390);
+          tone(180, 'square', t + 0.14, 0.13, 0.12, 460);
+        },
+
+        clickSwitch() {
+          init();
+          tone(620, 'triangle', ctx.currentTime, 0.06, 0.2, 260);
+        },
+
+        purr() {
+          init();
+          const t = ctx.currentTime;
+          tone(140, 'sine', t, 0.35, 0.16, 165);
+          tone(280, 'triangle', t + 0.05, 0.3, 0.08, 330);
+        },
+
+        oops() {
+          init();
+          const t = ctx.currentTime;
+          tone(320, 'triangle', t, 0.14, 0.2, 220);
+          tone(240, 'triangle', t + 0.12, 0.18, 0.18, 175);
+        },
+
+        victory() {
+          init();
+          const t = ctx.currentTime;
+          const notes = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+          const times = [0, 0.11, 0.22, 0.34, 0.48, 0.6];
+          notes.forEach((n, i) => {
+            tone(n, 'triangle', t + times[i], 0.28, 0.22);
+            tone(n * 2, 'sine', t + times[i], 0.18, 0.08);
+          });
+        },
+
+        foxGiggle() {
+          init();
+          const t = ctx.currentTime;
+          tone(580, 'sine', t, 0.09, 0.15, 780);
+          tone(720, 'sine', t + 0.1, 0.11, 0.15, 960);
+        }
+      };
+    })();
+
+    /* ==========================================================================
+       2. КЕРУВАННЯ ЕМОЦІЯМИ ЖИВОГО ПЕРСОНАЖА (ЛИСЕНЯ)
+       ========================================================================== */
+    const Fox = (() => {
+      const el = document.getElementById('fox-character');
+      const eyesNormal = document.getElementById('fox-eyes-normal');
+      const eyesHappy = document.getElementById('fox-eyes-happy');
+      const eyesConfused = document.getElementById('fox-eyes-confused');
+      const mouth = document.getElementById('fox-mouth');
+      let timer = null;
+
+      function setEmotion(type, duration = 1200) {
+        clearTimeout(timer);
+        el.classList.remove('happy', 'confused');
+        eyesNormal.style.display = 'none';
+        eyesHappy.style.display = 'none';
+        eyesConfused.style.display = 'none';
+
+        if (type === 'happy') {
+          eyesHappy.style.display = 'block';
+          mouth.setAttribute('d', 'M94 124 Q106 139 118 124');
+          void el.offsetWidth;
+          el.classList.add('happy');
+        } else if (type === 'confused') {
+          eyesConfused.style.display = 'block';
+          mouth.setAttribute('d', 'M99 130 Q106 125 113 130');
+          void el.offsetWidth;
+          el.classList.add('confused');
+        } else {
+          eyesNormal.style.display = 'block';
+          mouth.setAttribute('d', 'M97 126 Q106 134 115 126');
+          return;
+        }
+
+        if (duration > 0) {
+          timer = setTimeout(() => setEmotion('normal', 0), duration);
+        }
+      }
+
+      el.addEventListener('click', () => {
+        SoundFX.foxGiggle();
+        setEmotion('happy', 1000);
+        spawnParticles(140, 610, 'hearts', 7);
+      });
+
+      return { setEmotion };
+    })();
+
+    /* ==========================================================================
+       3. СИСТЕМА ЯСКРАВИХ ЧАСТИНОК (ЗІРОЧКИ, КРАПЛІ, СЕРДЕЧКА, КРИХТИ)
+       ========================================================================== */
+    const fxLayer = document.getElementById('fx-layer');
+
+    function spawnParticles(x, y, style = 'stars', count = 12) {
+      const colors = {
+        stars: ['#ffd43b', '#ff922b', '#ff6b6b', '#51cf66', '#339af0', '#cc5de8'],
+        water: ['#74c0fc', '#339af0', '#a5d8ff', '#4dabf7'],
+        hearts: ['#ff6b6b', '#ff8787', '#f06595', '#faa2c1'],
+        crumbs: ['#ffd8a8', '#f08c00', '#ffe066', '#e8590c']
+      }[style] || ['#ffd43b', '#ff6b6b', '#51cf66'];
+
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+        const speed = 35 + Math.random() * 85;
+        const dx = Math.cos(angle) * speed;
+        const dy = Math.sin(angle) * speed - (style === 'water' ? -25 : 20);
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const size = 6 + Math.random() * 9;
+
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        if (style === 'water') {
+          el.setAttribute('d', 'M0,-8 C5,-2 6,4 0,7 C-6,4 -5,-2 0,-8 Z');
+        } else if (style === 'hearts') {
+          el.setAttribute('d', 'M0,5 C-7,0 -9,-6 -4,-8 C-1,-9 0,-6 0,-4 C0,-6 1,-9 4,-8 C9,-6 7,0 0,5 Z');
+        } else {
+          el.setAttribute('d', 'M0,-9 L2.5,-3 L9,-3 L3.8,1 L5.8,8 L0,4 L-5.8,8 L-3.8,1 L-9,-3 L-2.5,-3 Z');
+        }
+
+        el.setAttribute('fill', color);
+        el.setAttribute('transform', `translate(${x}, ${y}) scale(${size / 10})`);
+        fxLayer.appendChild(el);
+
+        const duration = 550 + Math.random() * 400;
+        const start = performance.now();
+
+        function animate(now) {
+          const p = Math.min((now - start) / duration, 1);
+          const ease = 1 - Math.pow(1 - p, 3);
+          const cx = x + dx * ease;
+          const cy = y + dy * ease + p * p * 45;
+          const sc = (size / 10) * (1 - p * 0.65);
+          const rot = p * 220 * (i % 2 === 0 ? 1 : -1);
+          el.setAttribute('transform', `translate(${cx}, ${cy}) rotate(${rot}) scale(${sc})`);
+          el.setAttribute('opacity', (1 - p).toFixed(2));
+          if (p < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            el.remove();
+          }
+        }
+        requestAnimationFrame(animate);
+      }
+    }
+
+    function celebrateWin() {
+      SoundFX.victory();
+      Fox.setEmotion('happy', 2200);
+      document.getElementById('btn-next').classList.add('ready-pulse');
+
+      const glow = document.getElementById('win-glow');
+      glow.setAttribute('opacity', '0.9');
+      setTimeout(() => glow.setAttribute('opacity', '0'), 1800);
+
+      const points = [
+        [240, 270], [550, 230], [860, 270],
+        [360, 450], [740, 450], [550, 370]
+      ];
+      points.forEach((pt, idx) => {
+        setTimeout(() => spawnParticles(pt[0], pt[1], 'stars', 16), idx * 140);
+      });
+    }
+
+    function triggerDistractor(el, x, y) {
+      SoundFX.oops();
+      Fox.setEmotion('confused', 1100);
+      el.classList.remove('wobble');
+      void el.offsetWidth;
+      el.classList.add('wobble');
+      spawnParticles(x, y, 'crumbs', 5);
+    }
+
+    /* ==========================================================================
+       4. СТОРІНКИ КНИЖКИ (6 РІЗНОМАНІТНИХ ЗАВДАНЬ ДЛЯ 1 КЛАСУ)
+       Символ \n у реченні розбиває текст на 2 великі зручні рядки.
+       ========================================================================== */
+    const PAGES = [
+      /* ------------------------------------------------------------------------
+         СТОРІНКА 1: СВЯТКОВИЙ ТОРТ І МУХИ
+         Умова: Прогнати всіх 3 мух І відрізати рівно 2 шматки торта.
+         Зайві предмети: метелик, чайник, чашка, лимон.
+         ------------------------------------------------------------------------ */
+      {
+        sentence: 'Прожени мух від торта\nі відріж два шматки.',
+        init(root, onWin) {
+          let fliesLeft = 3;
+          let cutSlices = new Set();
+          let won = false;
+
+          root.innerHTML = `
+            <!-- Фон святкового столу зі скатертиною у клітинку -->
+            <rect x="64" y="152" width="972" height="508" fill="#ffe3b8"/>
+            <rect x="64" y="345" width="972" height="315" fill="url(#ginghamPattern)"/>
+            <!-- Святкові прапорці зверху -->
+            <path d="M64 166 Q310 226 550 176 Q790 226 1036 166" fill="none" stroke="#8c5a2b" stroke-width="3"/>
+            <polygon points="120,178 156,186 134,224" fill="#ff6b6b"/>
+            <polygon points="210,192 248,196 226,234" fill="#ffd43b"/>
+            <polygon points="310,197 348,195 329,236" fill="#4dabf7"/>
+            <polygon points="415,190 452,184 436,226" fill="#51cf66"/>
+            <polygon points="620,187 658,192 636,230" fill="#cc5de8"/>
+            <polygon points="725,196 764,195 743,234" fill="#ff922b"/>
+            <polygon points="835,190 872,182 856,222" fill="#ff6b6b"/>
+            <polygon points="935,176 972,168 958,208" fill="#4dabf7"/>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Чайник -->
+            <g id="p1-teapot" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M145 430 C115 425, 110 385, 145 388" fill="none" stroke="#339af0" stroke-width="11" stroke-linecap="round"/>
+                <path d="M238 405 C266 392, 274 366, 286 374 C290 384, 266 418, 240 426 Z" fill="#339af0" stroke="#1864ab" stroke-width="3"/>
+                <ellipse cx="192" cy="418" rx="54" ry="44" fill="#4dabf7" stroke="#1864ab" stroke-width="3.5"/>
+                <path d="M150 416 Q192 436 234 416" fill="none" stroke="#fff3bf" stroke-width="5" stroke-dasharray="7 6"/>
+                <ellipse cx="192" cy="376" rx="28" ry="10" fill="#339af0" stroke="#1864ab" stroke-width="3"/>
+                <circle cx="192" cy="364" r="8" fill="#ffd43b" stroke="#1864ab" stroke-width="2.5"/>
+              </g>
+            </g>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Чашка з чаєм -->
+            <g id="p1-cup" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <ellipse cx="890" cy="472" rx="54" ry="14" fill="#fff4e6" stroke="#d9480f" stroke-width="3"/>
+                <path d="M926 426 C950 426, 950 454, 924 454" fill="none" stroke="#ff922b" stroke-width="8" stroke-linecap="round"/>
+                <path d="M852 412 L928 412 C926 462, 912 470, 890 470 C868 470, 854 462, 852 412 Z" fill="#ff922b" stroke="#d9480f" stroke-width="3"/>
+                <ellipse cx="890" cy="412" rx="38" ry="9" fill="#9c4221" stroke="#d9480f" stroke-width="2.5"/>
+                <path d="M876 396 Q884 380 876 368" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.7" class="anim-float"/>
+                <path d="M898 394 Q906 376 898 364" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.7" class="anim-float"/>
+              </g>
+            </g>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Скибка лимона -->
+            <g id="p1-lemon" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <circle cx="810" cy="560" r="34" fill="#ffd43b" stroke="#e67700" stroke-width="3.5"/>
+                <circle cx="810" cy="560" r="27" fill="#fff9db"/>
+                <path d="M810 536 L810 584 M786 560 L834 560 M793 543 L827 577 M827 543 L793 577" stroke="#ffd43b" stroke-width="4"/>
+              </g>
+            </g>
+
+            <!-- ПІДСТАВКА ДЛЯ ТОРТА -->
+            <g filter="url(#softShadow)">
+              <rect x="525" y="545" width="50" height="44" rx="8" fill="#e9ecef" stroke="#868e96" stroke-width="3"/>
+              <ellipse cx="550" cy="590" rx="86" ry="18" fill="#dee2e6" stroke="#868e96" stroke-width="3"/>
+              <ellipse cx="550" cy="534" rx="188" ry="52" fill="#f8f9fa" stroke="#adb5bd" stroke-width="3.5"/>
+            </g>
+
+            <!-- ТОРТ, ПОДІЛЕНИЙ НА 4 КЛІКАБЕЛЬНІ ШМАТКИ -->
+            <g id="cake-slices">
+              <g class="cake-slice clickable movable" data-id="1" data-dx="-52" data-dy="-34" style="transform: translate(0px, 0px)">
+                <g class="hover-fx">
+                  <path d="M548 452 L416 452 C416 400, 476 370, 548 370 Z" fill="#ffdeeb" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M416 452 L416 492 C416 518, 476 534, 548 534 L548 452 Z" fill="#f7b267" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M416 472 Q482 486 548 472" fill="none" stroke="#e64980" stroke-width="7"/>
+                  <circle cx="482" cy="414" r="11" fill="#e03131" stroke="#861919" stroke-width="2"/>
+                  <circle cx="478" cy="410" r="3" fill="#fff" opacity="0.7"/>
+                  <circle cx="518" cy="396" r="8" fill="#5c7cfa"/>
+                </g>
+              </g>
+
+              <g class="cake-slice clickable movable" data-id="2" data-dx="52" data-dy="-34" style="transform: translate(0px, 0px)">
+                <g class="hover-fx">
+                  <path d="M552 452 L552 370 C624 370, 684 400, 684 452 Z" fill="#ffdeeb" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M552 452 L552 534 C624 534, 684 518, 684 492 L684 452 Z" fill="#f7b267" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M552 472 Q618 486 684 472" fill="none" stroke="#e64980" stroke-width="7"/>
+                  <circle cx="614" cy="414" r="11" fill="#e03131" stroke="#861919" stroke-width="2"/>
+                  <circle cx="610" cy="410" r="3" fill="#fff" opacity="0.7"/>
+                  <circle cx="582" cy="396" r="8" fill="#5c7cfa"/>
+                </g>
+              </g>
+
+              <g class="cake-slice clickable movable" data-id="3" data-dx="-56" data-dy="38" style="transform: translate(0px, 0px)">
+                <g class="hover-fx">
+                  <path d="M548 456 L416 456 C416 508, 476 534, 548 534 Z" fill="#fcc2d7" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M416 456 L416 504 C416 538, 476 562, 548 562 L548 534 C476 534, 416 508, 416 456 Z" fill="#f7b267" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M418 486 Q476 516 548 518" fill="none" stroke="#fff3bf" stroke-width="7"/>
+                  <circle cx="486" cy="492" r="11" fill="#e03131" stroke="#861919" stroke-width="2"/>
+                  <circle cx="482" cy="488" r="3" fill="#fff" opacity="0.7"/>
+                  <circle cx="522" cy="508" r="8" fill="#51cf66"/>
+                </g>
+              </g>
+
+              <g class="cake-slice clickable movable" data-id="4" data-dx="56" data-dy="38" style="transform: translate(0px, 0px)">
+                <g class="hover-fx">
+                  <path d="M552 456 L684 456 C684 508, 624 534, 552 534 Z" fill="#fcc2d7" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M684 456 L684 504 C684 538, 624 562, 552 562 L552 534 C624 534, 684 508, 684 456 Z" fill="#f7b267" stroke="#a61e4d" stroke-width="3"/>
+                  <path d="M552 518 Q624 516 682 486" fill="none" stroke="#fff3bf" stroke-width="7"/>
+                  <circle cx="614" cy="492" r="11" fill="#e03131" stroke="#861919" stroke-width="2"/>
+                  <circle cx="610" cy="488" r="3" fill="#fff" opacity="0.7"/>
+                  <circle cx="578" cy="508" r="8" fill="#51cf66"/>
+                </g>
+              </g>
+            </g>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Яскравий метелик (це НЕ муха!) -->
+            <g id="p1-butterfly" class="clickable" style="transform: translate(310px, 280px)">
+              <g class="hover-fx">
+                <g class="anim-float">
+                  <g class="anim-wing">
+                    <ellipse cx="-16" cy="-10" rx="22" ry="15" fill="#da77f2" stroke="#862e9c" stroke-width="2.5" transform="rotate(-22)"/>
+                    <ellipse cx="16" cy="-10" rx="22" ry="15" fill="#da77f2" stroke="#862e9c" stroke-width="2.5" transform="rotate(22)"/>
+                    <ellipse cx="-12" cy="12" rx="14" ry="11" fill="#ffd43b" stroke="#862e9c" stroke-width="2"/>
+                    <ellipse cx="12" cy="12" rx="14" ry="11" fill="#ffd43b" stroke="#862e9c" stroke-width="2"/>
+                  </g>
+                  <ellipse cx="0" cy="0" rx="4.5" ry="18" fill="#4a1d59"/>
+                  <path d="M-2 -16 Q-10 -28 -16 -24 M2 -16 Q10 -28 16 -24" fill="none" stroke="#4a1d59" stroke-width="2" stroke-linecap="round"/>
+                </g>
+              </g>
+            </g>
+
+            <!-- 3 НАСТИРЛИВІ МУХИ БІЛЯ ТОРТА -->
+            <g class="fly clickable movable" data-x="465" data-y="320" style="transform: translate(465px, 320px)">
+              <g class="hover-fx">
+                <g class="anim-buzz">
+                  <ellipse cx="-10" cy="-10" rx="13" ry="7" fill="#e7f5ff" stroke="#748ffc" stroke-width="1.5" opacity="0.85" class="anim-wing"/>
+                  <ellipse cx="10" cy="-10" rx="13" ry="7" fill="#e7f5ff" stroke="#748ffc" stroke-width="1.5" opacity="0.85" class="anim-wing"/>
+                  <ellipse cx="0" cy="4" rx="12" ry="9" fill="#343a40" stroke="#111" stroke-width="2"/>
+                  <circle cx="-11" cy="2" r="5" fill="#c92a2a"/>
+                  <circle cx="-12" cy="1" r="1.6" fill="#fff"/>
+                </g>
+              </g>
+            </g>
+
+            <g class="fly clickable movable" data-x="650" data-y="330" style="transform: translate(650px, 330px)">
+              <g class="hover-fx">
+                <g class="anim-buzz" style="animation-delay:-0.7s">
+                  <ellipse cx="-10" cy="-10" rx="13" ry="7" fill="#e7f5ff" stroke="#748ffc" stroke-width="1.5" opacity="0.85" class="anim-wing"/>
+                  <ellipse cx="10" cy="-10" rx="13" ry="7" fill="#e7f5ff" stroke="#748ffc" stroke-width="1.5" opacity="0.85" class="anim-wing"/>
+                  <ellipse cx="0" cy="4" rx="12" ry="9" fill="#343a40" stroke="#111" stroke-width="2"/>
+                  <circle cx="-11" cy="2" r="5" fill="#c92a2a"/>
+                  <circle cx="-12" cy="1" r="1.6" fill="#fff"/>
+                </g>
+              </g>
+            </g>
+
+            <g class="fly clickable movable" data-x="560" data-y="282" style="transform: translate(560px, 282px)">
+              <g class="hover-fx">
+                <g class="anim-buzz" style="animation-delay:-1.3s">
+                  <ellipse cx="-10" cy="-10" rx="13" ry="7" fill="#e7f5ff" stroke="#748ffc" stroke-width="1.5" opacity="0.85" class="anim-wing"/>
+                  <ellipse cx="10" cy="-10" rx="13" ry="7" fill="#e7f5ff" stroke="#748ffc" stroke-width="1.5" opacity="0.85" class="anim-wing"/>
+                  <ellipse cx="0" cy="4" rx="12" ry="9" fill="#343a40" stroke="#111" stroke-width="2"/>
+                  <circle cx="11" cy="2" r="5" fill="#c92a2a"/>
+                  <circle cx="12" cy="1" r="1.6" fill="#fff"/>
+                </g>
+              </g>
+            </g>
+          `;
+
+          function checkWin() {
+            if (!won && fliesLeft === 0 && cutSlices.size === 2) {
+              won = true;
+              onWin();
+            }
+          }
+
+          root.querySelectorAll('.fly').forEach(fly => {
+            fly.addEventListener('click', () => {
+              if (fly.dataset.gone) return;
+              fly.dataset.gone = '1';
+              fliesLeft--;
+              SoundFX.buzzAway();
+              Fox.setEmotion('happy', 700);
+              spawnParticles(Number(fly.dataset.x), Number(fly.dataset.y), 'stars', 9);
+              fly.style.transform = `translate(${Math.random() > 0.5 ? 1180 : -80}px, 80px) scale(0.3)`;
+              fly.style.opacity = '0';
+              fly.style.pointerEvents = 'none';
+              checkWin();
+            });
+          });
+
+          root.querySelectorAll('.cake-slice').forEach(slice => {
+            slice.addEventListener('click', () => {
+              const id = slice.dataset.id;
+              const dx = slice.dataset.dx;
+              const dy = slice.dataset.dy;
+              if (cutSlices.has(id)) {
+                cutSlices.delete(id);
+                slice.style.transform = 'translate(0px, 0px)';
+                SoundFX.unpop();
+              } else {
+                cutSlices.add(id);
+                slice.style.transform = `translate(${dx}px, ${dy}px)`;
+                SoundFX.slice();
+                spawnParticles(550 + Number(dx) * 1.4, 460 + Number(dy) * 1.4, 'crumbs', 8);
+              }
+              if (cutSlices.size > 2) Fox.setEmotion('confused', 900);
+              checkWin();
+            });
+          });
+
+          [['p1-teapot', 192, 410], ['p1-cup', 890, 440], ['p1-lemon', 810, 560], ['p1-butterfly', 310, 280]]
+            .forEach(([id, x, y]) => {
+              const el = root.querySelector('#' + id);
+              el.addEventListener('click', () => triggerDistractor(el, x, y));
+            });
+        }
+      },
+
+      /* ------------------------------------------------------------------------
+         СТОРІНКА 2: ОСІННІЙ САД І КОШИК
+         Умова: У кошику рівно 3 червоні яблука, 1 груша і 0 зайвих предметів.
+         Зайві предмети: зелені яблука, сливи, гриб-мухомор.
+         ------------------------------------------------------------------------ */
+      {
+        sentence: 'Поклади в кошик три червоні\nяблука і одну грушу.',
+        init(root, onWin) {
+          const inBasket = new Map();
+          let won = false;
+
+          const basketSlots = [
+            { x: 488, y: 472 }, { x: 545, y: 465 }, { x: 604, y: 472 },
+            { x: 518, y: 444 }, { x: 576, y: 444 }, { x: 548, y: 422 }
+          ];
+
+          const drawApple = (id, x, y, color, stroke, type) => `
+            <g class="fruit clickable movable" data-id="${id}" data-type="${type}" data-ox="${x}" data-oy="${y}" style="transform: translate(${x}px, ${y}px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M0,-26 Q4,-40 12,-42" fill="none" stroke="#5c3317" stroke-width="4" stroke-linecap="round"/>
+                <path d="M4,-34 Q22,-46 24,-28 Q12,-22 4,-34 Z" fill="#51cf66" stroke="#2b8a3e" stroke-width="2"/>
+                <path d="M0,-24 C-22,-32 -36,-10 -30,14 C-24,32 -6,34 0,26 C6,34 24,32 30,14 C36,-10 22,-32 0,-24 Z" fill="${color}" stroke="${stroke}" stroke-width="3"/>
+                <ellipse cx="-11" cy="-8" rx="6" ry="11" fill="#ffffff" opacity="0.32" transform="rotate(-18 -11 -8)"/>
+              </g>
+            </g>`;
+
+          const drawPear = (id, x, y) => `
+            <g class="fruit clickable movable" data-id="${id}" data-type="pear" data-ox="${x}" data-oy="${y}" style="transform: translate(${x}px, ${y}px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M0,-36 Q3,-48 10,-50" fill="none" stroke="#5c3317" stroke-width="4" stroke-linecap="round"/>
+                <path d="M0,-34 C-14,-34 -16,-14 -24,2 C-32,20 -20,38 0,38 C20,38 32,20 24,2 C16,-14 14,-34 0,-34 Z" fill="#ffd43b" stroke="#d97706" stroke-width="3"/>
+                <ellipse cx="-9" cy="10" rx="6" ry="12" fill="#fff9db" opacity="0.45" transform="rotate(-10 -9 10)"/>
+              </g>
+            </g>`;
+
+          const drawPlum = (id, x, y) => `
+            <g class="fruit clickable movable" data-id="${id}" data-type="plum" data-ox="${x}" data-oy="${y}" style="transform: translate(${x}px, ${y}px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M0,-24 L4,-36" stroke="#5c3317" stroke-width="3.5" stroke-linecap="round"/>
+                <ellipse cx="0" cy="4" rx="22" ry="27" fill="#845ef7" stroke="#4c1d95" stroke-width="3"/>
+                <path d="M0,-20 Q-8,4 0,28" fill="none" stroke="#5f3dc4" stroke-width="2.5"/>
+                <ellipse cx="-8" cy="-4" rx="4" ry="8" fill="#e5dbff" opacity="0.45"/>
+              </g>
+            </g>`;
+
+          root.innerHTML = `
+            <rect x="64" y="152" width="972" height="270" fill="#a5d8ff"/>
+            <circle cx="930" cy="215" r="44" fill="#ffd43b" opacity="0.9"/>
+            <circle cx="930" cy="215" r="60" fill="#ffd43b" opacity="0.25" class="anim-float"/>
+            <g class="anim-wave" opacity="0.92">
+              <path d="M160 228 C160 206 188 198 202 212 C214 192 252 196 258 220 C276 220 280 244 258 246 L172 246 C154 246 152 230 160 228 Z" fill="#fff9db"/>
+              <path d="M620 212 C620 193 646 187 658 199 C668 183 700 187 705 207 C720 207 724 227 704 229 L630 229 C614 229 612 215 620 212 Z" fill="#fff9db"/>
+            </g>
+            <path d="M64 380 Q320 310 560 370 Q810 420 1036 350 L1036 660 L64 660 Z" fill="#74c655"/>
+            <path d="M64 435 Q360 390 660 445 Q860 480 1036 425 L1036 660 L64 660 Z" fill="#52b748"/>
+
+            <rect x="118" y="295" width="46" height="170" rx="12" fill="#8d5524" stroke="#5c3317" stroke-width="3"/>
+            <circle cx="140" cy="260" r="84" fill="#40a03a" stroke="#236b21" stroke-width="3"/>
+            <circle cx="96" cy="290" r="54" fill="#51b848"/>
+            <circle cx="190" cy="285" r="56" fill="#379132"/>
+
+            <path d="M270 590 Q262 556 276 544 Q278 570 288 588 Q294 554 308 548 Q304 576 310 592 Z" fill="#2f9e44" class="anim-sway"/>
+            <path d="M840 520 Q832 486 846 474 Q848 500 858 518 Q864 484 878 478 Q874 506 880 522 Z" fill="#2f9e44" class="anim-sway"/>
+
+            <!-- ЗАДНЯ СТІНКА КОШИКА -->
+            <g id="basket-back">
+              <path d="M446 490 C446 372, 654 372, 654 490" fill="none" stroke="#9c5a19" stroke-width="14" stroke-linecap="round"/>
+              <ellipse cx="550" cy="492" rx="112" ry="26" fill="#7c4310" stroke="#542c08" stroke-width="3"/>
+            </g>
+
+            <!-- ШАР ДЛЯ ФРУКТІВ -->
+            <g id="fruits-layer">
+              ${drawApple('r1', 210, 520, '#fa5252', '#a61e22', 'red_apple')}
+              ${drawApple('r2', 310, 440, '#ff4d4f', '#a61e22', 'red_apple')}
+              ${drawApple('r3', 800, 455, '#fa5252', '#a61e22', 'red_apple')}
+              ${drawApple('r4', 920, 565, '#f03e3e', '#a61e22', 'red_apple')}
+
+              ${drawApple('g1', 260, 360, '#8ce99a', '#2b8a3e', 'green_apple')}
+              ${drawApple('g2', 735, 575, '#94d82d', '#2b8a3e', 'green_apple')}
+
+              ${drawPear('p1', 375, 560)}
+              ${drawPear('p2', 880, 420)}
+
+              ${drawPlum('pl1', 705, 435)}
+              ${drawPlum('pl2', 175, 435)}
+
+              <!-- Зайвий гриб-мухомор -->
+              <g class="fruit clickable movable" data-id="mush" data-type="mushroom" data-ox="945" data-oy="485" style="transform: translate(945px, 485px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <rect x="-11" y="4" width="22" height="32" rx="8" fill="#fff4e6" stroke="#c2a385" stroke-width="2.5"/>
+                  <path d="M-32,8 C-32,-22 32,-22 32,8 Z" fill="#e03131" stroke="#861919" stroke-width="3"/>
+                  <circle cx="-12" cy="-5" r="4.5" fill="#fff"/>
+                  <circle cx="8" cy="-9" r="5" fill="#fff"/>
+                  <circle cx="17" cy="1" r="3.5" fill="#fff"/>
+                </g>
+              </g>
+            </g>
+
+            <!-- ПЕРЕДНЯ СТІНКА ПЛЕТЕНОГО КОШИКА -->
+            <g id="basket-front" pointer-events="none" filter="url(#softShadow)">
+              <path d="M438 492 L468 608 C474 624, 626 624, 632 608 L662 492 Z" fill="#d98a36" stroke="#6e3c0b" stroke-width="3.5"/>
+              <path d="M447 526 L653 526 M456 560 L644 560 M464 592 L636 592" stroke="#8f4e10" stroke-width="3.5"/>
+              <path d="M492 492 L502 618 M550 492 L550 620 M608 492 L598 618" stroke="#8f4e10" stroke-width="3.5"/>
+              <rect x="432" y="484" width="236" height="18" rx="9" fill="#e8a14d" stroke="#6e3c0b" stroke-width="3"/>
+            </g>
+          `;
+
+          function checkWin() {
+            let redApples = 0, pears = 0, extras = 0;
+            inBasket.forEach(type => {
+              if (type === 'red_apple') redApples++;
+              else if (type === 'pear') pears++;
+              else extras++;
+            });
+
+            if (extras > 0 || redApples > 3 || pears > 1) {
+              Fox.setEmotion('confused', 950);
+            }
+
+            if (!won && redApples === 3 && pears === 1 && extras === 0) {
+              won = true;
+              onWin();
+            }
+          }
+
+          root.querySelectorAll('.fruit').forEach(fruit => {
+            fruit.addEventListener('click', () => {
+              const id = fruit.dataset.id;
+              const type = fruit.dataset.type;
+              const ox = Number(fruit.dataset.ox);
+              const oy = Number(fruit.dataset.oy);
+
+              if (inBasket.has(id)) {
+                inBasket.delete(id);
+                fruit.style.transform = `translate(${ox}px, ${oy}px) scale(1)`;
+                SoundFX.unpop();
+              } else {
+                if (inBasket.size >= basketSlots.length) {
+                  SoundFX.oops();
+                  Fox.setEmotion('confused', 900);
+                  return;
+                }
+                const slot = basketSlots[inBasket.size];
+                inBasket.set(id, type);
+                fruit.style.transform = `translate(${slot.x}px, ${slot.y}px) scale(0.84)`;
+                if (type === 'red_apple' || type === 'pear') {
+                  SoundFX.pop();
+                  spawnParticles(slot.x, slot.y - 10, 'stars', 7);
+                } else {
+                  SoundFX.oops();
+                  Fox.setEmotion('confused', 1000);
+                }
+              }
+              checkWin();
+            });
+          });
+        }
+      },
+
+      /* ------------------------------------------------------------------------
+         СТОРІНКА 3: ВЕЧІРНЯ КІМНАТА КОТИКА
+         Умова: Вимкнути лампу, закрити вікно і вкрити котика.
+         Зайві предмети: м'ячик, клубок ниток, миска з молоком, картина.
+         ------------------------------------------------------------------------ */
+      {
+        sentence: 'Вимкни лампу, закрий вікно\nі вкрий котика.',
+        init(root, onWin) {
+          let lampOff = false;
+          let windowClosed = false;
+          let catCovered = false;
+          let won = false;
+
+          root.innerHTML = `
+            <rect x="64" y="152" width="972" height="340" fill="url(#wallStripes)"/>
+            <rect x="64" y="485" width="972" height="175" fill="#d9a066"/>
+            <line x1="64" y1="485" x2="1036" y2="485" stroke="#8d5524" stroke-width="6"/>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Картина -->
+            <g id="p3-painting" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <rect x="130" y="218" width="130" height="96" rx="8" fill="#8d5524" stroke="#5c3317" stroke-width="4"/>
+                <rect x="142" y="230" width="106" height="72" fill="#a5d8ff"/>
+                <polygon points="142,302 185,252 220,302" fill="#51cf66"/>
+                <polygon points="190,302 225,264 248,302" fill="#37b24d"/>
+                <circle cx="222" cy="250" r="11" fill="#ffd43b"/>
+              </g>
+            </g>
+
+            <!-- ВІКНО З НІЧНИМ НЕБОМ ТА СТУЛКАМИ -->
+            <g id="p3-window" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <rect x="435" y="186" width="230" height="186" rx="10" fill="#1c2541" stroke="#6e3c0b" stroke-width="8"/>
+                <path d="M510 222 A24 24 0 1 0 538 260 A19 19 0 1 1 510 222 Z" fill="#ffe066"/>
+                <circle cx="590" cy="226" r="4" fill="#fff3bf"/>
+                <circle cx="622" cy="260" r="3" fill="#fff3bf"/>
+                <circle cx="476" cy="294" r="3.5" fill="#fff3bf"/>
+                <g id="window-open">
+                  <path d="M435 186 L382 204 L382 358 L435 372 Z" fill="#c7925b" stroke="#6e3c0b" stroke-width="4"/>
+                  <path d="M665 186 L718 204 L718 358 L665 372 Z" fill="#c7925b" stroke="#6e3c0b" stroke-width="4"/>
+                  <path d="M490 304 Q540 288 590 310" fill="none" stroke="#a5d8ff" stroke-width="4" stroke-linecap="round" opacity="0.65" class="anim-wave"/>
+                  <path d="M515 334 Q560 322 610 338" fill="none" stroke="#a5d8ff" stroke-width="3.5" stroke-linecap="round" opacity="0.55" class="anim-wave"/>
+                </g>
+                <g id="window-closed" style="display:none">
+                  <rect x="439" y="190" width="111" height="178" fill="#e7f5ff" fill-opacity="0.24" stroke="#6e3c0b" stroke-width="5"/>
+                  <rect x="550" y="190" width="111" height="178" fill="#e7f5ff" fill-opacity="0.24" stroke="#6e3c0b" stroke-width="5"/>
+                  <circle cx="538" cy="280" r="5" fill="#ffd43b"/>
+                  <circle cx="562" cy="280" r="5" fill="#ffd43b"/>
+                </g>
+              </g>
+            </g>
+
+            <!-- ТУМБОЧКА ТА НАСТІЛЬНА ЛАМПА -->
+            <g filter="url(#softShadow)">
+              <rect x="780" y="395" width="150" height="115" rx="10" fill="#a66332" stroke="#5c3317" stroke-width="3.5"/>
+              <rect x="798" y="414" width="114" height="36" rx="5" fill="#bf7943" stroke="#5c3317" stroke-width="2.5"/>
+              <circle cx="855" cy="432" r="5" fill="#ffd43b"/>
+            </g>
+
+            <g id="p3-lamp" class="clickable">
+              <g class="hover-fx">
+                <polygon id="lamp-glow" points="818,325 892,325 968,490 742,490" fill="#ffe066" opacity="0.42"/>
+                <rect x="849" y="325" width="12" height="58" fill="#495057"/>
+                <ellipse cx="855" cy="388" rx="34" ry="10" fill="#343a40"/>
+                <path id="lamp-shade" d="M810 326 L830 264 L880 264 L900 326 Z" fill="#ffd43b" stroke="#b35900" stroke-width="3.5"/>
+                <line x1="876" y1="326" x2="876" y2="354" stroke="#495057" stroke-width="2.5"/>
+                <circle cx="876" cy="356" r="5.5" fill="#ff6b6b"/>
+              </g>
+            </g>
+
+            <!-- ОВАЛЬНИЙ КИЛИМОК -->
+            <ellipse cx="520" cy="565" rx="225" ry="62" fill="#f783ac" stroke="#a61e4d" stroke-width="4"/>
+            <ellipse cx="520" cy="565" rx="190" ry="46" fill="none" stroke="#fff0f6" stroke-width="3" stroke-dasharray="10 8"/>
+
+            <!-- ЗАЙВІ ПРЕДМЕТИ НА ПІДЛОЗІ -->
+            <g id="p3-yarn" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <circle cx="240" cy="560" r="28" fill="#4dabf7" stroke="#1864ab" stroke-width="3"/>
+                <path d="M218 548 Q242 560 262 544 M215 568 Q242 552 264 570 M228 536 Q246 562 232 586" fill="none" stroke="#1971c2" stroke-width="2.5"/>
+                <path d="M266 570 Q296 584 316 572" fill="none" stroke="#4dabf7" stroke-width="4" stroke-linecap="round"/>
+              </g>
+            </g>
+
+            <g id="p3-bowl" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M770 572 L784 606 L866 606 L880 572 Z" fill="#ff6b6b" stroke="#a61e22" stroke-width="3"/>
+                <ellipse cx="825" cy="572" rx="55" ry="12" fill="#fff9db" stroke="#a61e22" stroke-width="3"/>
+              </g>
+            </g>
+
+            <g id="p3-ball" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <circle cx="940" cy="555" r="30" fill="#51cf66" stroke="#2b8a3e" stroke-width="3"/>
+                <path d="M914 542 Q940 558 966 542 M918 574 Q940 558 962 574" fill="none" stroke="#ffd43b" stroke-width="6"/>
+              </g>
+            </g>
+
+            <!-- КОТИК НА КИЛИМКУ -->
+            <g id="p3-cat" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M602 552 C652 552, 666 516, 636 508" fill="none" stroke="#adb5bd" stroke-width="14" stroke-linecap="round"/>
+                <ellipse cx="534" cy="550" rx="76" ry="38" fill="#ced4da" stroke="#495057" stroke-width="3.5"/>
+                <path d="M510 516 Q518 534 510 544 M536 513 Q544 532 536 544 M560 518 Q568 534 560 544" fill="none" stroke="#868e96" stroke-width="5" stroke-linecap="round"/>
+                <circle cx="452" cy="534" r="38" fill="#ced4da" stroke="#495057" stroke-width="3.5"/>
+                <polygon points="424,508 422,478 448,498" fill="#ced4da" stroke="#495057" stroke-width="3" stroke-linejoin="round"/>
+                <polygon points="462,498 484,478 484,510" fill="#ced4da" stroke="#495057" stroke-width="3" stroke-linejoin="round"/>
+                <g id="cat-eyes-open">
+                  <circle cx="438" cy="532" r="5" fill="#212529"/>
+                  <circle cx="464" cy="532" r="5" fill="#212529"/>
+                </g>
+                <g id="cat-eyes-sleep" style="display:none">
+                  <path d="M431 534 Q438 541 445 534" fill="none" stroke="#212529" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M457 534 Q464 541 471 534" fill="none" stroke="#212529" stroke-width="3" stroke-linecap="round"/>
+                </g>
+                <polygon points="447,540 455,540 451,545" fill="#ff8787"/>
+              </g>
+            </g>
+
+            <!-- КЛАПТИКОВА КОВДРА -->
+            <g id="p3-blanket" class="clickable movable" style="transform: translate(305px, 458px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <rect x="0" y="0" width="96" height="62" rx="14" fill="#339af0" stroke="#1864ab" stroke-width="3.5"/>
+                <rect x="0" y="0" width="48" height="31" rx="8" fill="#ffd43b" stroke="#1864ab" stroke-width="2"/>
+                <rect x="48" y="31" width="48" height="31" rx="8" fill="#ff6b6b" stroke="#1864ab" stroke-width="2"/>
+                <circle cx="24" cy="46" r="6" fill="#fff"/>
+                <circle cx="72" cy="16" r="6" fill="#fff"/>
+              </g>
+            </g>
+
+            <!-- Напівпрозорий вечірній сутінок -->
+            <rect id="room-dim" x="64" y="152" width="972" height="508" fill="#182040" opacity="0" pointer-events="none" style="transition: opacity 0.4s ease"/>
+          `;
+
+          function checkWin() {
+            if (!won && lampOff && windowClosed && catCovered) {
+              won = true;
+              onWin();
+            }
+          }
+
+          root.querySelector('#p3-lamp').addEventListener('click', () => {
+            lampOff = !lampOff;
+            SoundFX.clickSwitch();
+            root.querySelector('#lamp-glow').style.display = lampOff ? 'none' : 'block';
+            root.querySelector('#lamp-shade').setAttribute('fill', lampOff ? '#adb5bd' : '#ffd43b');
+            root.querySelector('#room-dim').setAttribute('opacity', lampOff ? '0.28' : '0');
+            if (lampOff) spawnParticles(855, 310, 'stars', 8);
+            checkWin();
+          });
+
+          root.querySelector('#p3-window').addEventListener('click', () => {
+            windowClosed = !windowClosed;
+            SoundFX.clickSwitch();
+            root.querySelector('#window-open').style.display = windowClosed ? 'none' : 'block';
+            root.querySelector('#window-closed').style.display = windowClosed ? 'block' : 'none';
+            if (windowClosed) spawnParticles(550, 275, 'stars', 8);
+            checkWin();
+          });
+
+          function toggleBlanket() {
+            catCovered = !catCovered;
+            const blanket = root.querySelector('#p3-blanket');
+            if (catCovered) {
+              blanket.style.transform = 'translate(476px, 514px) scale(1.38, 1.15)';
+              SoundFX.purr();
+              spawnParticles(525, 530, 'hearts', 9);
+            } else {
+              blanket.style.transform = 'translate(305px, 458px) scale(1)';
+              SoundFX.unpop();
+            }
+            root.querySelector('#cat-eyes-open').style.display = catCovered ? 'none' : 'block';
+            root.querySelector('#cat-eyes-sleep').style.display = catCovered ? 'block' : 'none';
+            checkWin();
+          }
+
+          root.querySelector('#p3-blanket').addEventListener('click', toggleBlanket);
+          root.querySelector('#p3-cat').addEventListener('click', toggleBlanket);
+
+          [['p3-painting', 195, 260], ['p3-yarn', 240, 560], ['p3-bowl', 825, 580], ['p3-ball', 940, 555]]
+            .forEach(([id, x, y]) => {
+              const el = root.querySelector('#' + id);
+              el.addEventListener('click', () => triggerDistractor(el, x, y));
+            });
+        }
+      },
+
+      /* ------------------------------------------------------------------------
+         СТОРІНКА 4: БЕРЕГ СТАВКА (КАЧЕНЯТА І ЖАБКА)
+         Умова: Нагодувати всіх 3 жовтих каченят І знайти жабку.
+         Зайві предмети: 2 білі качечки, рибка, бабка.
+         ------------------------------------------------------------------------ */
+      {
+        sentence: 'Нагодуй жовтих каченят\nі знайди жабку.',
+        init(root, onWin) {
+          let fedYellow = new Set();
+          let frogFound = false;
+          let won = false;
+
+          const drawDuck = (id, x, y, color, stroke, isYellow, flip = 1) => `
+            <g class="duck clickable" data-id="${id}" data-yellow="${isYellow}" data-x="${x}" data-y="${y}" style="transform: translate(${x}px, ${y}px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <g transform="scale(${flip}, 1)">
+                  <g class="anim-duck">
+                    <ellipse cx="0" cy="14" rx="40" ry="22" fill="${color}" stroke="${stroke}" stroke-width="3"/>
+                    <path d="M-12 10 Q8 4 20 18 Q4 26 -12 10 Z" fill="${isYellow ? '#fcc419' : '#e9ecef'}" stroke="${stroke}" stroke-width="2"/>
+                    <circle cx="24" cy="-12" r="20" fill="${color}" stroke="${stroke}" stroke-width="3"/>
+                    <path d="M40 -14 L56 -8 L40 -2 Z" fill="#ff922b" stroke="#b35900" stroke-width="2.5" stroke-linejoin="round"/>
+                    <circle cx="30" cy="-16" r="4" fill="#212529"/>
+                    <circle cx="31" cy="-17.5" r="1.4" fill="#fff"/>
+                    <g class="fed-mark" style="display:none">
+                      <circle cx="58" cy="-4" r="6" fill="#f08c00" stroke="#7c2d12" stroke-width="1.5"/>
+                      <path d="M24 -44 C18 -50 12 -42 24 -32 C36 -42 30 -50 24 -44 Z" fill="#ff6b6b"/>
+                    </g>
+                  </g>
+                </g>
+              </g>
+            </g>`;
+
+          root.innerHTML = `
+            <rect x="64" y="152" width="972" height="130" fill="#b2f2bb"/>
+            <rect x="64" y="262" width="972" height="398" fill="#4dabf7"/>
+            <path d="M64 262 Q280 288 540 258 Q800 230 1036 270 L1036 225 L64 225 Z" fill="#69db7c"/>
+
+            <g stroke="#a5d8ff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.7" class="anim-wave">
+              <path d="M160 360 Q190 350 220 360"/>
+              <path d="M460 440 Q495 430 530 440"/>
+              <path d="M740 340 Q775 330 810 340"/>
+              <path d="M300 570 Q335 560 370 570"/>
+            </g>
+
+            <g class="anim-sway">
+              <line x1="125" y1="305" x2="112" y2="180" stroke="#2f9e44" stroke-width="5"/>
+              <ellipse cx="112" cy="192" rx="8" ry="22" fill="#7c4310"/>
+              <line x1="150" y1="312" x2="156" y2="195" stroke="#2f9e44" stroke-width="5"/>
+              <ellipse cx="156" cy="207" rx="8" ry="22" fill="#7c4310"/>
+            </g>
+
+            <path d="M845 480 A65 36 0 1 1 830 455 L860 480 Z" fill="#40c057" stroke="#2b8a3e" stroke-width="3"/>
+            <path d="M200 540 A54 28 0 1 1 186 520 L212 540 Z" fill="#40c057" stroke="#2b8a3e" stroke-width="3"/>
+            <g transform="translate(215, 532)">
+              <ellipse cx="0" cy="-10" rx="8" ry="16" fill="#ffdeeb" stroke="#e64980" stroke-width="2"/>
+              <ellipse cx="-12" cy="-2" rx="14" ry="8" fill="#fcc2d7" stroke="#e64980" stroke-width="2"/>
+              <ellipse cx="12" cy="-2" rx="14" ry="8" fill="#fcc2d7" stroke="#e64980" stroke-width="2"/>
+              <circle cx="0" cy="-2" r="6" fill="#ffd43b"/>
+            </g>
+
+            <!-- ЖАБКА -->
+            <g id="p4-frog" class="clickable movable" style="transform: translate(868px, 466px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <ellipse cx="0" cy="10" rx="28" ry="20" fill="#51cf66" stroke="#2b8a3e" stroke-width="3"/>
+                <ellipse cx="0" cy="15" rx="18" ry="11" fill="#d8f5a2"/>
+                <circle cx="-14" cy="-8" r="10" fill="#51cf66" stroke="#2b8a3e" stroke-width="2.5"/>
+                <circle cx="14" cy="-8" r="10" fill="#51cf66" stroke="#2b8a3e" stroke-width="2.5"/>
+                <circle cx="-14" cy="-8" r="5.5" fill="#fff"/>
+                <circle cx="14" cy="-8" r="5.5" fill="#fff"/>
+                <circle cx="-13" cy="-8" r="3" fill="#111"/>
+                <circle cx="13" cy="-8" r="3" fill="#111"/>
+                <path d="M-12 6 Q0 15 12 6" fill="none" stroke="#2b8a3e" stroke-width="2.8" stroke-linecap="round"/>
+                <ellipse cx="-24" cy="22" rx="12" ry="6" fill="#37b24d"/>
+                <ellipse cx="24" cy="22" rx="12" ry="6" fill="#37b24d"/>
+              </g>
+            </g>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Червона рибка -->
+            <g id="p4-fish" class="clickable" style="transform: translate(660px, 565px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <g class="anim-wave">
+                  <polygon points="-32,0 -54,-18 -54,18" fill="#ff6b6b" stroke="#a61e22" stroke-width="2.5"/>
+                  <ellipse cx="0" cy="0" rx="34" ry="19" fill="#ff8787" stroke="#a61e22" stroke-width="3"/>
+                  <circle cx="16" cy="-4" r="4" fill="#111"/>
+                  <circle cx="17" cy="-5" r="1.4" fill="#fff"/>
+                </g>
+              </g>
+            </g>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Бабка -->
+            <g id="p4-dragonfly" class="clickable" style="transform: translate(765px, 224px)">
+              <g class="hover-fx">
+                <g class="anim-float">
+                  <g class="anim-wing">
+                    <ellipse cx="-18" cy="-6" rx="22" ry="6" fill="#e7f5ff" stroke="#339af0" stroke-width="1.8" transform="rotate(-12)"/>
+                    <ellipse cx="18" cy="-6" rx="22" ry="6" fill="#e7f5ff" stroke="#339af0" stroke-width="1.8" transform="rotate(12)"/>
+                  </g>
+                  <rect x="-4" y="-12" width="8" height="44" rx="4" fill="#15aabf" stroke="#0b7285" stroke-width="2"/>
+                  <circle cx="0" cy="-15" r="7" fill="#15aabf" stroke="#0b7285" stroke-width="2"/>
+                </g>
+              </g>
+            </g>
+
+            ${drawDuck('y1', 260, 390, '#ffd43b', '#d97706', true, 1)}
+            ${drawDuck('y2', 520, 355, '#ffd43b', '#d97706', true, -1)}
+            ${drawDuck('y3', 440, 520, '#ffd43b', '#d97706', true, 1)}
+
+            ${drawDuck('w1', 680, 420, '#f8f9fa', '#868e96', false, -1)}
+            ${drawDuck('w2', 320, 485, '#f8f9fa', '#868e96', false, 1)}
+          `;
+
+          function checkWin() {
+            if (!won && fedYellow.size === 3 && frogFound) {
+              won = true;
+              onWin();
+            }
+          }
+
+          root.querySelectorAll('.duck').forEach(duck => {
+            duck.addEventListener('click', () => {
+              const isYellow = duck.dataset.yellow === 'true';
+              const x = Number(duck.dataset.x);
+              const y = Number(duck.dataset.y);
+              if (!isYellow) {
+                triggerDistractor(duck, x, y);
+                return;
+              }
+              const id = duck.dataset.id;
+              if (!fedYellow.has(id)) {
+                fedYellow.add(id);
+                duck.querySelector('.fed-mark').style.display = 'block';
+                SoundFX.quack();
+                Fox.setEmotion('happy', 700);
+                spawnParticles(x, y - 20, 'crumbs', 10);
+                checkWin();
+              } else {
+                SoundFX.quack();
+              }
+            });
+          });
+
+          const frog = root.querySelector('#p4-frog');
+          frog.addEventListener('click', () => {
+            SoundFX.ribbit();
+            spawnParticles(868, 450, 'water', 10);
+            frog.style.transform = 'translate(868px, 434px) scale(1.15)';
+            setTimeout(() => { frog.style.transform = 'translate(868px, 466px) scale(1)'; }, 280);
+            if (!frogFound) {
+              frogFound = true;
+              Fox.setEmotion('happy', 800);
+              checkWin();
+            }
+          });
+
+          [['p4-fish', 660, 565], ['p4-dragonfly', 765, 224]].forEach(([id, x, y]) => {
+            const el = root.querySelector('#' + id);
+            el.addEventListener('click', () => triggerDistractor(el, x, y));
+          });
+        }
+      },
+
+      /* ------------------------------------------------------------------------
+         СТОРІНКА 5: СОНЯЧНА КЛУМБА ТА ЛІЙКА
+         Умова: Полити всі 3 сині квіти І сховати лійку під лавку.
+         Зайві предмети: червоні тюльпани, жовті ромашки, відерце.
+         ------------------------------------------------------------------------ */
+      {
+        sentence: 'Полий сині квіти\nі сховай лійку під лавку.',
+        init(root, onWin) {
+          let wateredBlue = new Set();
+          let canHidden = false;
+          let won = false;
+
+          const drawFlower = (id, x, y, color, stroke, isBlue) => `
+            <g class="flower clickable" data-id="${id}" data-blue="${isBlue}" data-x="${x}" data-y="${y}" style="transform: translate(${x}px, ${y}px)">
+              <g class="hover-fx">
+                <path class="stem" d="M0 0 Q-12 -32 ${isBlue ? '14' : '0'} ${isBlue ? '-54' : '-76'}" fill="none" stroke="#2f9e44" stroke-width="6" stroke-linecap="round"/>
+                <ellipse cx="-14" cy="-24" rx="14" ry="7" fill="#51cf66" transform="rotate(-24 -14 -24)"/>
+                <ellipse cx="14" cy="-30" rx="14" ry="7" fill="#51cf66" transform="rotate(24 14 -30)"/>
+                <g class="bloom" transform="translate(${isBlue ? '14, -56' : '0, -78'}) scale(${isBlue ? '0.78' : '1'})">
+                  <circle cx="0" cy="-16" r="13" fill="${color}" stroke="${stroke}" stroke-width="2.5"/>
+                  <circle cx="15" cy="-4" r="13" fill="${color}" stroke="${stroke}" stroke-width="2.5"/>
+                  <circle cx="9" cy="13" r="13" fill="${color}" stroke="${stroke}" stroke-width="2.5"/>
+                  <circle cx="-9" cy="13" r="13" fill="${color}" stroke="${stroke}" stroke-width="2.5"/>
+                  <circle cx="-15" cy="-4" r="13" fill="${color}" stroke="${stroke}" stroke-width="2.5"/>
+                  <circle cx="0" cy="0" r="10" fill="#ffd43b" stroke="#e67700" stroke-width="2"/>
+                </g>
+              </g>
+            </g>`;
+
+          root.innerHTML = `
+            <rect x="64" y="152" width="972" height="220" fill="#c5f6fa"/>
+            <g fill="#f3d9a4" stroke="#b07d44" stroke-width="3">
+              ${Array.from({ length: 14 }, (_, i) => `<path d="M${80 + i * 68} 365 L${80 + i * 68} 255 L${108 + i * 68} 230 L${136 + i * 68} 255 L${136 + i * 68} 365 Z"/>`).join('')}
+              <rect x="64" y="280" width="972" height="14"/>
+              <rect x="64" y="330" width="972" height="14"/>
+            </g>
+            <rect x="64" y="355" width="972" height="305" fill="#69db7c"/>
+            <ellipse cx="380" cy="545" rx="280" ry="72" fill="#8d5524" stroke="#5c3317" stroke-width="4"/>
+
+            <!-- ПАРКОВА ЛАВКА -->
+            <g id="bench-area" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <ellipse cx="835" cy="492" rx="145" ry="26" fill="#2b6e35" opacity="0.45"/>
+                <rect x="720" y="405" width="16" height="86" rx="4" fill="#495057"/>
+                <rect x="935" y="405" width="16" height="86" rx="4" fill="#495057"/>
+                <rect x="700" y="336" width="272" height="28" rx="6" fill="#d97706" stroke="#78350f" stroke-width="3"/>
+                <rect x="700" y="372" width="272" height="26" rx="6" fill="#d97706" stroke="#78350f" stroke-width="3"/>
+                <rect x="692" y="406" width="288" height="24" rx="7" fill="#f59e0b" stroke="#78350f" stroke-width="3.5"/>
+              </g>
+            </g>
+
+            <!-- ЗАЙВИЙ ПРЕДМЕТ: Відерце -->
+            <g id="p5-bucket" class="clickable" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M745 555 L758 615 L814 615 L827 555 Z" fill="#ff922b" stroke="#b35900" stroke-width="3"/>
+                <ellipse cx="786" cy="555" rx="41" ry="10" fill="#ffd8a8" stroke="#b35900" stroke-width="3"/>
+                <path d="M748 555 C756 520, 816 520, 824 555" fill="none" stroke="#495057" stroke-width="4"/>
+              </g>
+            </g>
+
+            ${drawFlower('b1', 210, 545, '#339af0', '#1864ab', true)}
+            ${drawFlower('b2', 390, 520, '#339af0', '#1864ab', true)}
+            ${drawFlower('b3', 555, 555, '#339af0', '#1864ab', true)}
+
+            ${drawFlower('r1', 300, 575, '#ff6b6b', '#a61e22', false)}
+            ${drawFlower('r2', 485, 515, '#ff6b6b', '#a61e22', false)}
+            ${drawFlower('y1', 275, 505, '#ffe066', '#d97706', false)}
+            ${drawFlower('y2', 465, 582, '#ffe066', '#d97706', false)}
+
+            <!-- САДОВА ЛІЙКА -->
+            <g id="p5-can" class="clickable movable" style="transform: translate(885px, 565px)" filter="url(#softShadow)">
+              <g class="hover-fx">
+                <path d="M22 -12 C48 -24, 54 16, 22 18" fill="none" stroke="#20c997" stroke-width="9" stroke-linecap="round"/>
+                <path d="M-26 6 L-58 -22 L-50 -30 L-18 -6 Z" fill="#20c997" stroke="#087f5b" stroke-width="3"/>
+                <ellipse cx="-56" cy="-28" rx="7" ry="13" fill="#ffd43b" stroke="#087f5b" stroke-width="2.5" transform="rotate(-40 -56 -28)"/>
+                <rect x="-28" y="-20" width="54" height="46" rx="10" fill="#38d9a9" stroke="#087f5b" stroke-width="3.5"/>
+                <ellipse cx="-1" cy="-20" rx="22" ry="7" fill="#0ca678" stroke="#087f5b" stroke-width="2.5"/>
+              </g>
+            </g>
+          `;
+
+          function checkWin() {
+            if (!won && wateredBlue.size === 3 && canHidden) {
+              won = true;
+              onWin();
+            }
+          }
+
+          root.querySelectorAll('.flower').forEach(fl => {
+            fl.addEventListener('click', () => {
+              const x = Number(fl.dataset.x);
+              const y = Number(fl.dataset.y);
+              if (canHidden) {
+                triggerDistractor(root.querySelector('#p5-can'), 835, 470);
+                return;
+              }
+              if (fl.dataset.blue !== 'true') {
+                triggerDistractor(fl, x, y - 55);
+                return;
+              }
+              const id = fl.dataset.id;
+              SoundFX.water();
+              spawnParticles(x, y - 70, 'water', 14);
+              if (!wateredBlue.has(id)) {
+                wateredBlue.add(id);
+                fl.querySelector('.stem').setAttribute('d', 'M0 0 Q-4 -38 0 -82');
+                fl.querySelector('.bloom').setAttribute('transform', 'translate(0, -86) scale(1.12)');
+                Fox.setEmotion('happy', 750);
+                checkWin();
+              }
+            });
+          });
+
+          function toggleCan() {
+            canHidden = !canHidden;
+            const can = root.querySelector('#p5-can');
+            if (canHidden) {
+              can.style.transform = 'translate(838px, 466px) scale(0.76)';
+              SoundFX.pop();
+              spawnParticles(838, 460, 'stars', 8);
+            } else {
+              can.style.transform = 'translate(885px, 565px) scale(1)';
+              SoundFX.unpop();
+            }
+            checkWin();
+          }
+
+          root.querySelector('#p5-can').addEventListener('click', toggleCan);
+          root.querySelector('#bench-area').addEventListener('click', toggleCan);
+
+          const bucket = root.querySelector('#p5-bucket');
+          bucket.addEventListener('click', () => triggerDistractor(bucket, 786, 580));
+        }
+      },
+
+      /* ------------------------------------------------------------------------
+         СТОРІНКА 6: ПІКНІК У ЛІСІ (ЗБИРАЄМО РЮКЗАК)
+         Умова: У рюкзаку рівно сир, хліб і термос (без зайвих предметів!).
+         Зайві предмети: 2 шишки, гумовий чобіт, компас.
+         ------------------------------------------------------------------------ */
+      {
+        sentence: 'Збери в рюкзак сир,\nхліб і термос.',
+        init(root, onWin) {
+          const inBag = new Map();
+          let won = false;
+
+          const bagSlots = [
+            { x: 808, y: 412 }, { x: 862, y: 405 }, { x: 912, y: 414 },
+            { x: 835, y: 382 }, { x: 888, y: 382 }
+          ];
+
+          root.innerHTML = `
+            <rect x="64" y="152" width="972" height="220" fill="#d0ebff"/>
+            <g fill="#2b8a3e">
+              <polygon points="150,350 215,180 280,350"/>
+              <polygon points="270,355 325,205 380,355"/>
+              <polygon points="690,355 755,175 820,355"/>
+              <polygon points="840,355 915,195 990,355"/>
+            </g>
+            <path d="M64 345 Q380 315 680 355 Q880 375 1036 335 L1036 660 L64 660 Z" fill="#51cf66"/>
+
+            <g filter="url(#softShadow)">
+              <rect x="195" y="455" width="245" height="90" rx="18" fill="#8d5524" stroke="#5c3317" stroke-width="3.5"/>
+              <ellipse cx="317" cy="455" rx="122" ry="34" fill="#e6be8a" stroke="#5c3317" stroke-width="3.5"/>
+              <ellipse cx="317" cy="455" rx="90" ry="22" fill="none" stroke="#c7925b" stroke-width="2.5"/>
+            </g>
+
+            <!-- ЗАДНЯ ЧАСТИНА РЮКЗАКА -->
+            <g filter="url(#softShadow)">
+              <path d="M774 420 C774 340, 946 340, 946 420 Z" fill="#1864ab" stroke="#0b3d6b" stroke-width="4"/>
+            </g>
+
+            <!-- ШАР ПРЕДМЕТІВ -->
+            <g id="picnic-items">
+              <g class="bag-item clickable movable" data-id="cheese" data-need="1" data-ox="255" data-oy="435" style="transform: translate(255px, 435px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <polygon points="-38,16 38,16 26,-26 -38,16" fill="#ffd43b" stroke="#d97706" stroke-width="3" stroke-linejoin="round"/>
+                  <rect x="-38" y="16" width="76" height="18" rx="4" fill="#fcc419" stroke="#d97706" stroke-width="3"/>
+                  <circle cx="-6" cy="6" r="6" fill="#f08c00"/>
+                  <circle cx="14" cy="-2" r="5" fill="#f08c00"/>
+                  <circle cx="12" cy="24" r="4" fill="#d97706"/>
+                </g>
+              </g>
+
+              <g class="bag-item clickable movable" data-id="bread" data-need="1" data-ox="378" data-oy="442" style="transform: translate(378px, 442px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <path d="M-44 14 C-46 -22, 46 -22, 44 14 C44 28, -44 28, -44 14 Z" fill="#d97706" stroke="#78350f" stroke-width="3.5"/>
+                  <path d="M-20 -10 L-8 8 M2 -12 L14 8 M22 -8 L30 6" stroke="#ffec99" stroke-width="4" stroke-linecap="round"/>
+                </g>
+              </g>
+
+              <g class="bag-item clickable movable" data-id="thermos" data-need="1" data-ox="560" data-oy="455" style="transform: translate(560px, 455px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <rect x="-22" y="-36" width="44" height="78" rx="12" fill="#e03131" stroke="#7d1515" stroke-width="3"/>
+                  <rect x="-22" y="-12" width="44" height="22" fill="#ffd43b"/>
+                  <rect x="-17" y="-52" width="34" height="20" rx="6" fill="#adb5bd" stroke="#495057" stroke-width="3"/>
+                </g>
+              </g>
+
+              <g class="bag-item clickable movable" data-id="cone1" data-need="0" data-ox="480" data-oy="570" style="transform: translate(480px, 570px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <ellipse cx="0" cy="0" rx="22" ry="30" fill="#8d5524" stroke="#4a2505" stroke-width="3"/>
+                  <path d="M-16 -12 L16 12 M-18 4 L14 -14 M-10 20 L14 4" stroke="#5c3317" stroke-width="3"/>
+                </g>
+              </g>
+
+              <g class="bag-item clickable movable" data-id="cone2" data-need="0" data-ox="630" data-oy="560" style="transform: translate(630px, 560px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <ellipse cx="0" cy="0" rx="20" ry="27" fill="#9c5a19" stroke="#4a2505" stroke-width="3"/>
+                  <path d="M-14 -10 L14 10 M-15 4 L12 -12" stroke="#5c3317" stroke-width="3"/>
+                </g>
+              </g>
+
+              <g class="bag-item clickable movable" data-id="boot" data-need="0" data-ox="185" data-oy="585" style="transform: translate(185px, 585px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <path d="M-16 -36 L14 -36 L14 8 L36 12 C42 14, 42 28, 34 28 L-16 28 Z" fill="#38d9a9" stroke="#087f5b" stroke-width="3.5" stroke-linejoin="round"/>
+                  <rect x="-16" y="22" width="54" height="8" rx="3" fill="#ffd43b"/>
+                </g>
+              </g>
+
+              <g class="bag-item clickable movable" data-id="compass" data-need="0" data-ox="660" data-oy="430" style="transform: translate(660px, 430px)" filter="url(#softShadow)">
+                <g class="hover-fx">
+                  <circle cx="0" cy="0" r="26" fill="#ffd43b" stroke="#8c5311" stroke-width="3.5"/>
+                  <circle cx="0" cy="0" r="20" fill="#fff9db"/>
+                  <polygon points="0,-16 6,0 -6,0" fill="#e03131"/>
+                  <polygon points="0,16 6,0 -6,0" fill="#339af0"/>
+                  <circle cx="0" cy="0" r="3" fill="#212529"/>
+                </g>
+              </g>
+            </g>
+
+            <!-- ПЕРЕДНЯ ЧАСТИНА РЮКЗАКА -->
+            <g pointer-events="none" filter="url(#softShadow)">
+              <rect x="765" y="422" width="190" height="175" rx="34" fill="#228be6" stroke="#0b3d6b" stroke-width="4"/>
+              <rect x="795" y="495" width="130" height="76" rx="18" fill="#4dabf7" stroke="#0b3d6b" stroke-width="3"/>
+              <line x1="806" y1="518" x2="914" y2="518" stroke="#ffd43b" stroke-width="5" stroke-linecap="round"/>
+              <circle cx="860" cy="518" r="7" fill="#ffd43b" stroke="#0b3d6b" stroke-width="2"/>
+            </g>
+          `;
+
+          function checkWin() {
+            let needed = 0, extras = 0;
+            inBag.forEach(need => need ? needed++ : extras++);
+            if (extras > 0) Fox.setEmotion('confused', 950);
+            if (!won && needed === 3 && extras === 0) {
+              won = true;
+              onWin();
+            }
+          }
+
+          root.querySelectorAll('.bag-item').forEach(item => {
+            item.addEventListener('click', () => {
+              const id = item.dataset.id;
+              const need = item.dataset.need === '1';
+              const ox = Number(item.dataset.ox);
+              const oy = Number(item.dataset.oy);
+
+              if (inBag.has(id)) {
+                inBag.delete(id);
+                item.style.transform = `translate(${ox}px, ${oy}px) scale(1)`;
+                SoundFX.unpop();
+              } else {
+                if (inBag.size >= bagSlots.length) {
+                  SoundFX.oops();
+                  Fox.setEmotion('confused', 900);
+                  return;
+                }
+                const slot = bagSlots[inBag.size];
+                inBag.set(id, need);
+                item.style.transform = `translate(${slot.x}px, ${slot.y}px) scale(0.76)`;
+                if (need) {
+                  SoundFX.pop();
+                  spawnParticles(slot.x, slot.y - 12, 'stars', 8);
+                } else {
+                  SoundFX.oops();
+                  Fox.setEmotion('confused', 1000);
+                }
+              }
+              checkWin();
+            });
+          });
+        }
+      }
+    ];
+
+    /* ==========================================================================
+       5. КЕРУВАННЯ СТОРІНКАМИ, РЕНДЕР КРУПНОГО ТЕКСТУ ТА НАВІГАЦІЯ
+       ========================================================================== */
+    let currentPage = 0;
+    const sceneRoot = document.getElementById('scene-root');
+    const taskText = document.getElementById('task-text');
+    const bookWrapper = document.getElementById('book-wrapper');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+
+    // Вивід крупного тексту в 1 або 2 рядки на стрічці
+    function renderBannerText(sentence) {
+      const lines = sentence.split('\n');
+      taskText.innerHTML = '';
+      if (lines.length === 1) {
+        taskText.setAttribute('y', '102');
+        taskText.setAttribute('font-size', '42');
+        taskText.textContent = lines[0];
+      } else {
+        taskText.setAttribute('y', '78');
+        taskText.setAttribute('font-size', '40');
+        lines.forEach((line, idx) => {
+          const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+          tspan.setAttribute('x', '550');
+          tspan.setAttribute('dy', idx === 0 ? '0' : '44');
+          tspan.textContent = line;
+          taskText.appendChild(tspan);
+        });
+      }
+    }
+
+    function loadPage(index, withSound = true) {
+      currentPage = (index + PAGES.length) % PAGES.length;
+      btnNext.classList.remove('ready-pulse');
+      Fox.setEmotion('normal', 0);
+
+      if (withSound) {
+        SoundFX.pageTurn();
+        bookWrapper.classList.add('turning');
+        setTimeout(() => bookWrapper.classList.remove('turning'), 240);
+      }
+
+      const page = PAGES[currentPage];
+      renderBannerText(page.sentence);
+      sceneRoot.innerHTML = '';
+      page.init(sceneRoot, celebrateWin);
+    }
+
+    btnPrev.addEventListener('click', () => loadPage(currentPage - 1, true));
+    btnNext.addEventListener('click', () => loadPage(currentPage + 1, true));
+
+    // Запуск першої сторінки
+    loadPage(0, false);
+  </script>
+</body>
+</html>
