@@ -1,0 +1,3111 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0a3c5c;
+    font-family: 'Trebuchet MS', 'Segoe UI', 'Nunito', system-ui, sans-serif;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    touch-action: none;
+    cursor: default;
+  }
+  .hud-btn {
+    position: fixed;
+    top: 18px;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px;
+    border-radius: 999px;
+    border: 2.5px solid rgba(247, 205, 114, 0.85);
+    background: linear-gradient(160deg, rgba(16, 59, 92, 0.92), rgba(9, 36, 58, 0.94));
+    color: #fff3d1;
+    box-shadow:
+      0 6px 18px rgba(4, 22, 38, 0.42),
+      inset 0 2px 3px rgba(255, 240, 190, 0.28);
+    cursor: pointer;
+    transition: transform 0.16s cubic-bezier(.22, 1.3, .36, 1), box-shadow 0.16s ease, filter 0.16s ease;
+    outline: none;
+  }
+  .hud-btn:hover {
+    transform: translateY(-2px) scale(1.05);
+    filter: brightness(1.12);
+    box-shadow:
+      0 9px 22px rgba(4, 22, 38, 0.5),
+      inset 0 2px 4px rgba(255, 245, 210, 0.36);
+  }
+  .hud-btn:active {
+    transform: translateY(1px) scale(0.95);
+  }
+  #langBtn {
+    left: 22px;
+    min-width: 74px;
+    padding: 0 18px;
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+  }
+  #nextBtn {
+    right: 22px;
+    width: 56px;
+    padding: 0;
+  }
+  #nextBtn svg {
+    width: 24px;
+    height: 24px;
+    stroke: #ffe9b3;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+    transition: transform 0.18s ease;
+  }
+  #nextBtn:hover svg {
+    transform: translateX(3px);
+  }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<button id="langBtn" class="hud-btn" type="button">укр</button>
+<button id="nextBtn" class="hud-btn" type="button" aria-label="далі">
+  <svg viewBox="0 0 24 24">
+    <polyline points="5 5 12 12 5 19"></polyline>
+    <polyline points="13 5 20 12 13 19"></polyline>
+  </svg>
+</button>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. WORD BANKS (28 Ukrainian: і/и, 28 Russian: и/ы — ZERO animals)
+  // =========================================================================
+  const BANKS = {
+    uk: {
+      pair: ['і', 'и'],
+      words: [
+        // 14 words with 'і'
+        { w: 'сніг',   idx: 2, ans: 'і', icon: 'snow' },
+        { w: 'хліб',   idx: 2, ans: 'і', icon: 'bread' },
+        { w: 'міст',   idx: 1, ans: 'і', icon: 'bridge' },
+        { w: 'вікно',  idx: 1, ans: 'і', icon: 'window' },
+        { w: 'квітка', idx: 2, ans: 'і', icon: 'flower' },
+        { w: 'ліхтар', idx: 1, ans: 'і', icon: 'lantern' },
+        { w: 'сіль',   idx: 1, ans: 'і', icon: 'salt' },
+        { w: 'стіл',   idx: 2, ans: 'і', icon: 'table' },
+        { w: 'ліжко',  idx: 1, ans: 'і', icon: 'bed' },
+        { w: 'річка',  idx: 1, ans: 'і', icon: 'river' },
+        { w: 'олівець',idx: 2, ans: 'і', icon: 'pencil' },
+        { w: 'літак',  idx: 1, ans: 'і', icon: 'plane' },
+        { w: 'горіх',  idx: 3, ans: 'і', icon: 'nut' },
+        { w: 'сік',    idx: 1, ans: 'і', icon: 'juice' },
+        // 14 words with 'и'
+        { w: 'сир',    idx: 1, ans: 'и', icon: 'cheese' },
+        { w: 'гриб',   idx: 2, ans: 'и', icon: 'mushroom' },
+        { w: 'лимон',  idx: 1, ans: 'и', icon: 'lemon' },
+        { w: 'книга',  idx: 2, ans: 'и', icon: 'book' },
+        { w: 'слива',  idx: 2, ans: 'и', icon: 'plum' },
+        { w: 'вишня',  idx: 1, ans: 'и', icon: 'cherry' },
+        { w: 'диня',   idx: 1, ans: 'и', icon: 'melon' },
+        { w: 'лист',   idx: 1, ans: 'и', icon: 'leaf' },
+        { w: 'мило',   idx: 1, ans: 'и', icon: 'soap' },
+        { w: 'диван',  idx: 1, ans: 'и', icon: 'sofa' },
+        { w: 'шина',   idx: 1, ans: 'и', icon: 'tire' },
+        { w: 'пила',   idx: 1, ans: 'и', icon: 'saw' },
+        { w: 'вилка',  idx: 1, ans: 'и', icon: 'fork' },
+        { w: 'машина', idx: 3, ans: 'и', icon: 'car' }
+      ]
+    },
+    ru: {
+      pair: ['и', 'ы'],
+      words: [
+        // 14 words with 'и'
+        { w: 'лимон',    idx: 1, ans: 'и', icon: 'lemon' },
+        { w: 'гриб',     idx: 2, ans: 'и', icon: 'mushroom' },
+        { w: 'книга',    idx: 2, ans: 'и', icon: 'book' },
+        { w: 'слива',    idx: 2, ans: 'и', icon: 'plum' },
+        { w: 'вишня',    idx: 1, ans: 'и', icon: 'cherry' },
+        { w: 'лист',     idx: 1, ans: 'и', icon: 'leaf' },
+        { w: 'диван',    idx: 1, ans: 'и', icon: 'sofa' },
+        { w: 'пила',     idx: 1, ans: 'и', icon: 'saw' },
+        { w: 'вилка',    idx: 1, ans: 'и', icon: 'fork' },
+        { w: 'кисть',    idx: 1, ans: 'и', icon: 'brush' },
+        { w: 'гитара',   idx: 1, ans: 'и', icon: 'guitar' },
+        { w: 'пицца',    idx: 1, ans: 'и', icon: 'pizza' },
+        { w: 'виноград', idx: 1, ans: 'и', icon: 'grapes' },
+        { w: 'миска',    idx: 1, ans: 'и', icon: 'bowl' },
+        // 14 words with 'ы'
+        { w: 'сыр',      idx: 1, ans: 'ы', icon: 'cheese' },
+        { w: 'мыло',     idx: 1, ans: 'ы', icon: 'soap' },
+        { w: 'дыня',     idx: 1, ans: 'ы', icon: 'melon' },
+        { w: 'тыква',    idx: 1, ans: 'ы', icon: 'pumpkin' },
+        { w: 'дым',      idx: 1, ans: 'ы', icon: 'smoke' },
+        { w: 'крыша',    idx: 2, ans: 'ы', icon: 'roof' },
+        { w: 'крышка',   idx: 2, ans: 'ы', icon: 'lid' },
+        { w: 'открытка', idx: 4, ans: 'ы', icon: 'postcard' },
+        { w: 'часы',     idx: 3, ans: 'ы', icon: 'clock' },
+        { w: 'бусы',     idx: 3, ans: 'ы', icon: 'beads' },
+        { w: 'весы',     idx: 3, ans: 'ы', icon: 'scales' },
+        { w: 'шорты',    idx: 4, ans: 'ы', icon: 'shorts' },
+        { w: 'кеды',     idx: 3, ans: 'ы', icon: 'sneakers' },
+        { w: 'ноты',     idx: 3, ans: 'ы', icon: 'notes' }
+      ]
+    }
+  };
+
+  // Vibrant maritime medallion palettes (no white rectangles!)
+  const BUOY_PALETTES = [
+    { main: '#e85d3f', dark: '#a6341c', accent: '#ffb74d', stripe: '#ff8a65' },
+    { main: '#16988a', dark: '#0c5e56', accent: '#6ff0da', stripe: '#26c6b5' },
+    { main: '#3969c7', dark: '#1e3e82', accent: '#80bfff', stripe: '#5c8ef0' },
+    { main: '#9b43a8', dark: '#5e1f69', accent: '#e79cf2', stripe: '#bf65cc' },
+    { main: '#d98a1c', dark: '#8f5507', accent: '#ffe082', stripe: '#f5b041' },
+    { main: '#c93b6b', dark: '#7d1b3c', accent: '#ff9ec0', stripe: '#eb6592' }
+  ];
+
+  const PORTHOLE_BGS = [
+    ['#1c4f7a', '#2b86a8'],
+    ['#592e6b', '#9c4e8a'],
+    ['#1d5e58', '#2f9c88'],
+    ['#6e3b23', '#b86839'],
+    ['#2b3e78', '#4f6eb8']
+  ];
+
+  // =========================================================================
+  // 2. PROCEDURAL WEB AUDIO ENGINE (Rich, musical, comic, zero speech)
+  // =========================================================================
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+      this.master = null;
+    }
+    unlock() {
+      try {
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          this.ctx = new AC();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = 0.42;
+          this.master.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+      } catch (e) {}
+    }
+    tone(freq, start, dur, type = 'sine', vol = 0.25, slideTo = null) {
+      if (!this.ctx) return;
+      const t0 = this.ctx.currentTime + start;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(vol, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain);
+      gain.connect(this.master);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.03);
+    }
+    noise(start, dur, filterFreq = 800, vol = 0.22, q = 1.2) {
+      if (!this.ctx) return;
+      const t0 = this.ctx.currentTime + start;
+      const len = Math.floor(this.ctx.sampleRate * dur);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1);
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(filterFreq, t0);
+      filter.Q.value = q;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.master);
+      src.start(t0);
+      src.stop(t0 + dur + 0.02);
+    }
+    playHover() {
+      this.unlock();
+      this.tone(520, 0, 0.06, 'triangle', 0.1, 660);
+    }
+    playGrab() {
+      this.unlock();
+      this.tone(360, 0, 0.09, 'triangle', 0.18, 540);
+      this.tone(720, 0.03, 0.06, 'sine', 0.08);
+    }
+    playSnap() {
+      this.unlock();
+      this.tone(440, 0, 0.08, 'triangle', 0.24, 880);
+      this.tone(1100, 0.03, 0.12, 'sine', 0.18);
+    }
+    playNext() {
+      this.unlock();
+      this.tone(392, 0, 0.09, 'triangle', 0.16);
+      this.tone(523.25, 0.06, 0.11, 'triangle', 0.18);
+    }
+    playLighthouseChime() {
+      this.unlock();
+      this.tone(659.25, 0, 0.35, 'sine', 0.14);
+      this.tone(987.77, 0.08, 0.45, 'sine', 0.12);
+    }
+    playSuccess(variant) {
+      this.unlock();
+      if (variant === 0) {
+        // Ship foghorn + fireworks sparkle
+        this.tone(146.8, 0, 0.55, 'sawtooth', 0.14);
+        this.tone(220, 0, 0.55, 'triangle', 0.16);
+        this.tone(293.6, 0.04, 0.5, 'sine', 0.14);
+        [523, 659, 784, 1046].forEach((f, i) => {
+          this.tone(f, 0.28 + i * 0.09, 0.25, 'triangle', 0.22);
+          this.noise(0.32 + i * 0.14, 0.16, 1800 + i * 400, 0.12, 0.8);
+        });
+      } else if (variant === 1) {
+        // Marimba water fountain melody
+        const notes = [523.25, 587.33, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+        notes.forEach((f, i) => this.tone(f, i * 0.085, 0.22, 'sine', 0.26));
+        this.noise(0.05, 0.7, 1400, 0.11, 1.5);
+      } else if (variant === 2) {
+        // Cheerful brass & balloon pops
+        const chord = [392, 493.88, 587.33, 783.99];
+        chord.forEach((f, i) => this.tone(f, i * 0.07, 0.35, 'triangle', 0.22));
+        this.tone(1046.5, 0.34, 0.4, 'sine', 0.24);
+        this.tone(300, 0.45, 0.06, 'sine', 0.15, 900);
+        this.tone(350, 0.62, 0.06, 'sine', 0.15, 1100);
+      } else if (variant === 3) {
+        // Shimmering bubble harp glissando
+        const scale = [523, 587, 659, 740, 784, 880, 987, 1046, 1175, 1318];
+        scale.forEach((f, i) => this.tone(f, i * 0.055, 0.3, 'sine', 0.18));
+      } else if (variant === 4) {
+        // Funky harbor synth groove
+        const bass = [261.6, 329.6, 392, 523.2, 440, 523.2];
+        bass.forEach((f, i) => {
+          this.tone(f, i * 0.1, 0.14, 'square', 0.09);
+          this.tone(f * 2, i * 0.1, 0.16, 'triangle', 0.15);
+        });
+      } else {
+        // Ship's brass bell + golden chime
+        for (let i = 0; i < 3; i++) {
+          this.tone(880, i * 0.18, 0.45, 'sine', 0.24);
+          this.tone(1760, i * 0.18, 0.25, 'sine', 0.12);
+          this.tone(2637, i * 0.18, 0.18, 'sine', 0.07);
+        }
+        this.tone(1318.5, 0.56, 0.45, 'triangle', 0.22);
+      }
+    }
+    playWrong(variant) {
+      this.unlock();
+      if (variant === 0) {
+        // Splash into sea!
+        this.tone(420, 0, 0.22, 'sine', 0.2, 140);
+        this.noise(0.16, 0.36, 950, 0.28, 0.9);
+        this.tone(260, 0.24, 0.12, 'sine', 0.15, 520);
+        this.tone(320, 0.34, 0.1, 'sine', 0.13, 620);
+      } else if (variant === 1) {
+        // Comical rubber spring boing!
+        this.tone(180, 0, 0.14, 'sawtooth', 0.14, 480);
+        this.tone(460, 0.12, 0.16, 'triangle', 0.2, 210);
+        this.tone(220, 0.26, 0.18, 'triangle', 0.16, 390);
+      } else if (variant === 2) {
+        // Funny funnel hiccup puff!
+        this.noise(0, 0.18, 520, 0.22, 1.4);
+        this.tone(230, 0.04, 0.18, 'triangle', 0.2, 150);
+        this.tone(190, 0.24, 0.18, 'triangle', 0.18, 125);
+      } else {
+        // Wobbly slide whistle!
+        this.tone(620, 0, 0.22, 'sine', 0.2, 270);
+        this.tone(270, 0.22, 0.2, 'sine', 0.18, 430);
+        this.tone(430, 0.4, 0.15, 'sine', 0.14, 310);
+      }
+    }
+  }
+
+  // =========================================================================
+  // 3. CANVAS SETUP & VIRTUAL 1600x900 WIDESCREEN COORDINATE SYSTEM
+  // =========================================================================
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const langBtn = document.getElementById('langBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const sound = new SoundEngine();
+
+  const VW = 1600, VH = 900;
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let stageScale = 1, stageX = 0, stageY = 0;
+
+  function resize() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    stageScale = Math.min(viewW / VW, viewH / VH);
+    stageX = (viewW - VW * stageScale) * 0.5;
+    stageY = (viewH - VH * stageScale) * 0.5;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function screenToWorld(cx, cy) {
+    return {
+      x: (cx - stageX) / stageScale,
+      y: (cy - stageY) / stageScale
+    };
+  }
+
+  // =========================================================================
+  // 4. GAME STATE & INFINITE SHUFFLE-BAG GENERATOR
+  // =========================================================================
+  let lang = 'uk';
+  let bag = { uk: [], ru: [] };
+  let lastWord = { uk: '', ru: '' };
+  let currentTask = null;
+  let taskPortholePalette = PORTHOLE_BGS[0];
+
+  // State machine: 'idle' | 'dragging' | 'flying' | 'celebrating' | 'wrong' | 'transitioning'
+  let gameState = 'idle';
+  let stateTimer = 0;
+  let celebrationType = 0;
+  let lastCelebration = -1;
+  let wrongType = 0;
+  let lastWrong = -1;
+
+  // Buoy objects
+  let buoys = [];
+  let hoveredBuoy = null;
+  let activeBuoy = null;
+  let pointer = { x: 800, y: 450, down: false, startX: 0, startY: 0, dragged: false };
+
+  // Crane & Ship physics
+  let craneX = 800;
+  let craneTargetX = 800;
+  let shipRock = 0;
+  let shipRockVel = 0;
+  let crateSlide = 0; // 0 = centered, >0 = sliding out right, <0 = sliding in from left
+  let crateBounce = 0;
+  let slotPulse = 0;
+  let filledLetter = null;
+  let filledPalette = null;
+
+  // Captain animation state
+  let captain = {
+    blinkTimer: 2.5,
+    blinkProg: 0,
+    mood: 'idle', // 'idle' | 'excited' | 'happy' | 'oops'
+    moodTimer: 0,
+    hatY: 0,
+    hatRot: 0,
+    jumpY: 0,
+    wet: 0
+  };
+
+  // Ambient world objects
+  const clouds = [
+    { x: 180, y: 120, s: 1.05, v: 12 },
+    { x: 640, y: 85,  s: 0.85, v: 9 },
+    { x: 1090, y: 135, s: 1.15, v: 14 },
+    { x: 1480, y: 95, s: 0.9,  v: 11 },
+    { x: -120, y: 155, s: 0.78, v: 8 }
+  ];
+  const sailboats = [
+    { x: 240, y: 468, v: 14, dir: 1, color: '#ff7043', scale: 0.9 },
+    { x: 1180, y: 472, v: -11, dir: -1, color: '#26c6da', scale: 0.75 }
+  ];
+  let particles = [];
+  let steamPuffs = [];
+  let waterJets = [];
+  let balloons = [];
+  let lighthouseFlash = 0;
+
+  function refillBag(l) {
+    const arr = BANKS[l].words.map((_, i) => i);
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    if (arr.length > 1 && BANKS[l].words[arr[arr.length - 1]].w === lastWord[l]) {
+      [arr[0], arr[arr.length - 1]] = [arr[arr.length - 1], arr[0]];
+    }
+    bag[l] = arr;
+  }
+
+  function pickNextWord() {
+    if (bag[lang].length === 0) refillBag(lang);
+    const idx = bag[lang].pop();
+    const item = BANKS[lang].words[idx];
+    lastWord[lang] = item.w;
+    return item;
+  }
+
+  function pickTwoPalettes() {
+    const a = Math.floor(Math.random() * BUOY_PALETTES.length);
+    let b = (a + 1 + Math.floor(Math.random() * (BUOY_PALETTES.length - 1))) % BUOY_PALETTES.length;
+    return [BUOY_PALETTES[a], BUOY_PALETTES[b]];
+  }
+
+  function setupTask(animateIn = true) {
+    currentTask = pickNextWord();
+    taskPortholePalette = PORTHOLE_BGS[Math.floor(Math.random() * PORTHOLE_BGS.length)];
+    const pair = [...BANKS[lang].pair];
+    // Randomly swap left/right positions so child reads the letter, not position
+    if (Math.random() < 0.5) pair.reverse();
+    const pals = pickTwoPalettes();
+
+    buoys = [
+      {
+        id: 0,
+        letter: pair[0],
+        homeX: 540,
+        homeY: 228,
+        x: 540,
+        y: 228,
+        vx: 0,
+        vy: 0,
+        r: 72,
+        palette: pals[0],
+        scale: 1,
+        rot: 0,
+        visible: true,
+        flyStartX: 540,
+        flyStartY: 228,
+        flyProg: 0
+      },
+      {
+        id: 1,
+        letter: pair[1],
+        homeX: 1060,
+        homeY: 228,
+        x: 1060,
+        y: 228,
+        vx: 0,
+        vy: 0,
+        r: 72,
+        palette: pals[1],
+        scale: 1,
+        rot: 0,
+        visible: true,
+        flyStartX: 1060,
+        flyStartY: 228,
+        flyProg: 0
+      }
+    ];
+
+    filledLetter = null;
+    filledPalette = null;
+    activeBuoy = null;
+    hoveredBuoy = null;
+    gameState = 'idle';
+    stateTimer = 0;
+    captain.mood = 'idle';
+    captain.moodTimer = 0;
+    captain.hatY = 0;
+    captain.hatRot = 0;
+    captain.jumpY = 0;
+    captain.wet = 0;
+    waterJets = [];
+
+    if (animateIn) {
+      crateSlide = -1.0;
+      crateBounce = 0;
+    } else {
+      crateSlide = 0;
+      crateBounce = 1;
+    }
+  }
+
+  function getSlotPos() {
+    // Compute exact world position of the missing letter slot on the cargo plaque
+    const w = currentTask.w;
+    const plaqueCX = 890 + crateSlide * 950;
+    const plaqueCY = 716 + Math.sin(shipRock) * 8;
+    const charStep = w.length > 6 ? 68 : (w.length > 5 ? 76 : 84);
+    const totalW = (w.length - 1) * charStep;
+    const startX = plaqueCX - totalW * 0.5;
+    return {
+      x: startX + currentTask.idx * charStep,
+      y: plaqueCY,
+      charStep,
+      plaqueCX,
+      plaqueCY
+    };
+  }
+
+  // =========================================================================
+  // 5. FEEDBACK & CELEBRATION SYSTEMS (6 Celebrations + 4 Comic Errors)
+  // =========================================================================
+  function spawnConfetti(x, y, count = 70) {
+    const colors = ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#ff924c', '#e066ff', '#4ce0d2'];
+    for (let i = 0; i < count; i++) {
+      const ang = -Math.PI * 0.5 + (Math.random() - 0.5) * 2.4;
+      const spd = 220 + Math.random() * 540;
+      particles.push({
+        kind: 'confetti',
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 140,
+        size: 7 + Math.random() * 9,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 12,
+        color: colors[i % colors.length],
+        life: 1.6 + Math.random() * 0.9,
+        maxLife: 2.5
+      });
+    }
+  }
+
+  function spawnFirework(x, y) {
+    const hues = [12, 42, 165, 198, 290, 338];
+    const hue = hues[Math.floor(Math.random() * hues.length)];
+    for (let i = 0; i < 36; i++) {
+      const ang = (Math.PI * 2 * i) / 36 + Math.random() * 0.1;
+      const spd = 110 + Math.random() * 240;
+      particles.push({
+        kind: 'spark',
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        size: 4 + Math.random() * 4,
+        color: `hsl(${hue + Math.random() * 25}, 96%, 64%)`,
+        life: 0.9 + Math.random() * 0.5,
+        maxLife: 1.4
+      });
+    }
+  }
+
+  function spawnBubbles(count = 34) {
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        kind: 'bubble',
+        x: 320 + Math.random() * 960,
+        y: 660 + Math.random() * 140,
+        vx: (Math.random() - 0.5) * 90,
+        vy: -130 - Math.random() * 190,
+        size: 12 + Math.random() * 26,
+        phase: Math.random() * Math.PI * 2,
+        life: 1.7 + Math.random() * 1.0,
+        maxLife: 2.7
+      });
+    }
+  }
+
+  function spawnStars(x, y, count = 28) {
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 120 + Math.random() * 360;
+      particles.push({
+        kind: 'star',
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 90,
+        size: 10 + Math.random() * 14,
+        rot: Math.random() * Math.PI,
+        vrot: (Math.random() - 0.5) * 8,
+        color: i % 2 === 0 ? '#ffd54f' : '#fff0a6',
+        life: 1.2 + Math.random() * 0.7,
+        maxLife: 1.9
+      });
+    }
+  }
+
+  function spawnSplash(x, y, count = 32) {
+    for (let i = 0; i < count; i++) {
+      const ang = -Math.PI * 0.5 + (Math.random() - 0.5) * 1.5;
+      const spd = 160 + Math.random() * 340;
+      particles.push({
+        kind: 'drop',
+        x: x + (Math.random() - 0.5) * 40,
+        y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        size: 6 + Math.random() * 10,
+        color: i % 3 === 0 ? '#d8f6ff' : '#4ec3e8',
+        life: 0.8 + Math.random() * 0.45,
+        maxLife: 1.25
+      });
+    }
+  }
+
+  function spawnBalloons(count = 14) {
+    const cols = ['#ff595e', '#ffca3a', '#2ec4b6', '#ff9f1c', '#b565d8', '#3a86ff'];
+    for (let i = 0; i < count; i++) {
+      balloons.push({
+        x: 520 + Math.random() * 720,
+        y: 740 + Math.random() * 100,
+        vy: -170 - Math.random() * 120,
+        sway: Math.random() * Math.PI * 2,
+        r: 24 + Math.random() * 14,
+        color: cols[i % cols.length],
+        life: 2.6
+      });
+    }
+  }
+
+  function triggerCorrect(buoy) {
+    gameState = 'celebrating';
+    stateTimer = 0;
+    filledLetter = buoy.letter;
+    filledPalette = buoy.palette;
+    buoy.visible = false;
+    slotPulse = 1;
+    shipRockVel += 0.12;
+
+    let v;
+    do { v = Math.floor(Math.random() * 6); } while (v === lastCelebration);
+    celebrationType = v;
+    lastCelebration = v;
+
+    sound.playSnap();
+    sound.playSuccess(v);
+
+    captain.mood = 'happy';
+    captain.moodTimer = 2.0;
+
+    const slot = getSlotPos();
+    spawnStars(slot.x, slot.y, 18);
+
+    if (v === 0) {
+      // Fireworks + confetti + steam burst
+      spawnConfetti(slot.plaqueCX, slot.plaqueCY - 40, 75);
+      spawnFirework(420, 220);
+      spawnFirework(1180, 200);
+      spawnFirework(800, 150);
+      for (let i = 0; i < 6; i++) {
+        steamPuffs.push({ x: 382, y: 405, r: 16 + i * 3, vy: -90 - i * 18, vx: 20 + i * 10, a: 0.9 });
+      }
+    } else if (v === 1) {
+      // Rainbow harbor water fountain jets!
+      waterJets = [
+        { x: 160, dir: 1, life: 1.8 },
+        { x: 1440, dir: -1, life: 1.8 }
+      ];
+      spawnConfetti(800, 420, 45);
+    } else if (v === 2) {
+      // Festive striped balloons + lighthouse flash
+      spawnBalloons(16);
+      lighthouseFlash = 1.6;
+      spawnStars(890, 520, 24);
+    } else if (v === 3) {
+      // Shimmering iridescent bubbles + sparkles
+      spawnBubbles(42);
+      spawnStars(slot.plaqueCX, 540, 20);
+    } else if (v === 4) {
+      // Musical light show + confetti fountains
+      lighthouseFlash = 1.8;
+      spawnConfetti(350, 560, 40);
+      spawnConfetti(1250, 560, 40);
+    } else {
+      // Golden starburst & bell triumph
+      spawnStars(890, 540, 45);
+      spawnConfetti(890, 500, 55);
+      spawnFirework(620, 190);
+      spawnFirework(1020, 190);
+    }
+  }
+
+  function triggerWrong(buoy) {
+    gameState = 'wrong';
+    stateTimer = 0;
+
+    let v;
+    do { v = Math.floor(Math.random() * 4); } while (v === lastWrong);
+    wrongType = v;
+    lastWrong = v;
+
+    sound.playWrong(v);
+    captain.mood = 'oops';
+    captain.moodTimer = 1.05;
+
+    const slot = getSlotPos();
+    if (v === 0) {
+      // Splash into the ocean + captain gets splashed!
+      buoy.vx = (buoy.x < 800 ? -240 : 240);
+      buoy.vy = 260;
+      spawnSplash(buoy.x < 800 ? 460 : 1220, 745, 34);
+      captain.wet = 1.2;
+      shipRockVel += (buoy.x < 800 ? -0.16 : 0.16);
+    } else if (v === 1) {
+      // Springy rubber boing right off the slot!
+      buoy.vx = (buoy.homeX - slot.x) * 2.1;
+      buoy.vy = -560;
+      shipRockVel -= 0.14;
+      spawnStars(slot.x, slot.y, 8);
+    } else if (v === 2) {
+      // Comical dark-gray funnel hiccup puffs!
+      for (let i = 0; i < 7; i++) {
+        steamPuffs.push({
+          x: 382 + (Math.random() - 0.5) * 14,
+          y: 405,
+          r: 18 + Math.random() * 14,
+          vy: -75 - Math.random() * 50,
+          vx: (Math.random() - 0.5) * 70,
+          a: 0.85,
+          dark: true
+        });
+      }
+      buoy.vx = (buoy.homeX - buoy.x) * 1.4;
+      buoy.vy = -260;
+    } else {
+      // Wobbly ship tilt!
+      shipRockVel += (buoy.id === 0 ? -0.24 : 0.24);
+      buoy.vx = (buoy.homeX - buoy.x) * 1.5;
+      buoy.vy = -340;
+    }
+  }
+
+  function evaluateBuoy(buoy) {
+    if (buoy.letter === currentTask.ans) {
+      triggerCorrect(buoy);
+    } else {
+      triggerWrong(buoy);
+    }
+  }
+
+  function skipToNext() {
+    sound.playNext();
+    gameState = 'transitioning';
+    stateTimer = 0;
+    activeBuoy = null;
+  }
+
+  // =========================================================================
+  // 6. INPUT HANDLING (Click/Tap + Drag-and-Drop + Keyboard + World Fun)
+  // =========================================================================
+  function hitBuoy(wx, wy) {
+    for (let i = buoys.length - 1; i >= 0; i--) {
+      const b = buoys[i];
+      if (!b.visible) continue;
+      const dx = wx - b.x, dy = wy - b.y;
+      if (dx * dx + dy * dy <= (b.r + 14) * (b.r + 14)) return b;
+    }
+    return null;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    sound.unlock();
+    const pt = screenToWorld(e.clientX, e.clientY);
+    pointer.x = pt.x;
+    pointer.y = pt.y;
+    pointer.down = true;
+    pointer.startX = pt.x;
+    pointer.startY = pt.y;
+    pointer.dragged = false;
+
+    // Playful lighthouse tap!
+    if (pt.x > 1320 && pt.x < 1465 && pt.y > 240 && pt.y < 475) {
+      lighthouseFlash = 1.3;
+      sound.playLighthouseChime();
+      spawnStars(1390, 278, 10);
+      return;
+    }
+
+    if (gameState !== 'idle') return;
+    const hit = hitBuoy(pt.x, pt.y);
+    if (hit) {
+      canvas.setPointerCapture(e.pointerId);
+      activeBuoy = hit;
+      gameState = 'dragging';
+      craneTargetX = hit.x;
+      captain.mood = 'excited';
+      sound.playGrab();
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const pt = screenToWorld(e.clientX, e.clientY);
+    pointer.x = pt.x;
+    pointer.y = pt.y;
+
+    if (gameState === 'dragging' && activeBuoy) {
+      const dist = Math.hypot(pt.x - pointer.startX, pt.y - pointer.startY);
+      if (dist > 12) pointer.dragged = true;
+      activeBuoy.x = Math.max(120, Math.min(1480, pt.x));
+      activeBuoy.y = Math.max(130, Math.min(790, pt.y));
+      craneTargetX = activeBuoy.x;
+      canvas.style.cursor = 'grabbing';
+    } else if (gameState === 'idle') {
+      const hit = hitBuoy(pt.x, pt.y);
+      if (hit !== hoveredBuoy) {
+        hoveredBuoy = hit;
+        if (hit) {
+          sound.playHover();
+          craneTargetX = hit.homeX;
+        }
+      }
+      canvas.style.cursor = hit ? 'grab' : 'default';
+    } else {
+      canvas.style.cursor = 'default';
+    }
+  });
+
+  function finishPointer() {
+    if (!pointer.down) return;
+    pointer.down = false;
+
+    if (gameState === 'dragging' && activeBuoy) {
+      const b = activeBuoy;
+      const slot = getSlotPos();
+
+      if (!pointer.dragged) {
+        // Quick click / tap -> fly smoothly into the word slot!
+        gameState = 'flying';
+        b.flyStartX = b.x;
+        b.flyStartY = b.y;
+        b.flyProg = 0;
+        craneTargetX = slot.x;
+      } else {
+        // Dragged: check if dropped near the crate / word banner
+        const nearBanner = (
+          b.x > 460 && b.x < 1320 &&
+          b.y > 410 && b.y < 825
+        );
+        if (nearBanner) {
+          b.x = slot.x;
+          b.y = slot.y;
+          evaluateBuoy(b);
+        } else {
+          // Spring back gently to home hook
+          gameState = 'idle';
+          captain.mood = 'idle';
+          activeBuoy = null;
+        }
+      }
+    }
+  }
+
+  canvas.addEventListener('pointerup', finishPointer);
+  canvas.addEventListener('pointercancel', finishPointer);
+
+  langBtn.addEventListener('click', () => {
+    sound.unlock();
+    sound.playNext();
+    lang = lang === 'uk' ? 'ru' : 'uk';
+    langBtn.textContent = lang === 'uk' ? 'укр' : 'рус';
+    setupTask(true);
+  });
+
+  nextBtn.addEventListener('click', () => {
+    sound.unlock();
+    skipToNext();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+      if (gameState === 'idle') {
+        sound.unlock();
+        if (e.key === ' ') { e.preventDefault(); skipToNext(); }
+      }
+    }
+    if (gameState === 'idle' && (e.key === '1' || e.key === '2')) {
+      sound.unlock();
+      const idx = e.key === '1' ? 0 : 1;
+      activeBuoy = buoys[idx];
+      activeBuoy.flyStartX = activeBuoy.x;
+      activeBuoy.flyStartY = activeBuoy.y;
+      activeBuoy.flyProg = 0;
+      gameState = 'flying';
+      craneTargetX = getSlotPos().x;
+      sound.playGrab();
+    }
+  });
+
+  // =========================================================================
+  // 7. UPDATE LOOP (60fps Physics & Smooth Animations)
+  // =========================================================================
+  let time = 0;
+  let lastTS = performance.now();
+
+  function update(dt) {
+    time += dt;
+
+    // Clouds & distant sailboats
+    for (const c of clouds) {
+      c.x += c.v * dt;
+      if (c.x > VW + 260) c.x = -260;
+    }
+    for (const s of sailboats) {
+      s.x += s.v * dt;
+      if (s.dir > 0 && s.x > VW + 120) s.x = -120;
+      if (s.dir < 0 && s.x < -120) s.x = VW + 120;
+    }
+
+    // Periodic ambient ship funnel steam
+    if (Math.random() < dt * 2.1) {
+      steamPuffs.push({
+        x: 382 + (Math.random() - 0.5) * 8,
+        y: 406,
+        r: 10 + Math.random() * 7,
+        vy: -42 - Math.random() * 20,
+        vx: 18 + Math.random() * 14,
+        a: 0.45,
+        dark: false
+      });
+    }
+    for (let i = steamPuffs.length - 1; i >= 0; i--) {
+      const p = steamPuffs[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.r += 16 * dt;
+      p.a -= 0.34 * dt;
+      if (p.a <= 0) steamPuffs.splice(i, 1);
+    }
+
+    // Lighthouse flash decay
+    if (lighthouseFlash > 0) lighthouseFlash = Math.max(0, lighthouseFlash - dt);
+    if (slotPulse > 0) slotPulse = Math.max(0, slotPulse - dt * 1.4);
+
+    // Ship realistic buoyancy spring
+    const targetRock = Math.sin(time * 1.65) * 0.022;
+    shipRockVel += (targetRock - shipRock) * 14 * dt;
+    shipRockVel *= Math.pow(0.08, dt);
+    shipRock += shipRockVel;
+
+    // Crane trolley smooth glide
+    craneX += (craneTargetX - craneX) * Math.min(1, dt * 8);
+
+    // Crate slide-in spring
+    if (gameState !== 'transitioning') {
+      crateSlide += (0 - crateSlide) * Math.min(1, dt * 10);
+      if (Math.abs(crateSlide) < 0.002) crateSlide = 0;
+      crateBounce += (1 - crateBounce) * Math.min(1, dt * 10);
+    }
+
+    // Captain blink & mood animations
+    captain.blinkTimer -= dt;
+    if (captain.blinkTimer <= 0) {
+      captain.blinkProg += dt * 9;
+      if (captain.blinkProg >= 1) {
+        captain.blinkProg = 0;
+        captain.blinkTimer = 2.2 + Math.random() * 3.0;
+      }
+    }
+    if (captain.wet > 0) captain.wet = Math.max(0, captain.wet - dt);
+
+    if (captain.mood === 'happy') {
+      const t = stateTimer;
+      if (celebrationType === 0) {
+        // Hat toss & catch!
+        captain.hatY = Math.sin(Math.min(1, t * 1.15) * Math.PI) * -95;
+        captain.hatRot = Math.sin(t * 9) * 0.45;
+        captain.jumpY = Math.abs(Math.sin(t * 7)) * -22;
+      } else if (celebrationType === 1 || celebrationType === 3) {
+        captain.jumpY = Math.abs(Math.sin(t * 8.5)) * -34;
+        captain.hatY = captain.jumpY * 0.25;
+        captain.hatRot = Math.sin(t * 8.5) * 0.14;
+      } else {
+        captain.jumpY = Math.abs(Math.sin(t * 6.5)) * -18;
+        captain.hatY = 0;
+        captain.hatRot = Math.sin(t * 11) * 0.18;
+      }
+    } else if (captain.mood === 'oops') {
+      captain.jumpY = 0;
+      captain.hatY = Math.sin(stateTimer * 18) * -6;
+      captain.hatRot = Math.sin(stateTimer * 22) * 0.22;
+    } else {
+      captain.jumpY *= Math.pow(0.01, dt);
+      captain.hatY *= Math.pow(0.01, dt);
+      captain.hatRot *= Math.pow(0.01, dt);
+    }
+
+    // State machine
+    stateTimer += dt;
+
+    if (gameState === 'idle') {
+      for (const b of buoys) {
+        if (!b.visible) continue;
+        const swayX = Math.sin(time * 1.9 + b.id * 2.1) * 11;
+        const swayY = Math.cos(time * 2.4 + b.id * 1.7) * 7 + (hoveredBuoy === b ? -10 : 0);
+        b.x += (b.homeX + swayX - b.x) * Math.min(1, dt * 10);
+        b.y += (b.homeY + swayY - b.y) * Math.min(1, dt * 10);
+        const targetScale = hoveredBuoy === b ? 1.11 : 1.0;
+        b.scale += (targetScale - b.scale) * Math.min(1, dt * 12);
+        b.rot = Math.sin(time * 1.9 + b.id * 2.1) * 0.06;
+      }
+    } else if (gameState === 'dragging') {
+      for (const b of buoys) {
+        if (b === activeBuoy) {
+          b.scale += (1.14 - b.scale) * Math.min(1, dt * 14);
+          b.rot *= Math.pow(0.05, dt);
+        } else {
+          const swayX = Math.sin(time * 1.9 + b.id * 2.1) * 9;
+          b.x += (b.homeX + swayX - b.x) * Math.min(1, dt * 8);
+          b.y += (b.homeY - b.y) * Math.min(1, dt * 8);
+          b.scale += (0.94 - b.scale) * Math.min(1, dt * 10);
+        }
+      }
+    } else if (gameState === 'flying' && activeBuoy) {
+      const b = activeBuoy;
+      const slot = getSlotPos();
+      b.flyProg = Math.min(1, b.flyProg + dt * 3.8);
+      const ease = 1 - Math.pow(1 - b.flyProg, 3);
+      b.x = b.flyStartX + (slot.x - b.flyStartX) * ease;
+      b.y = b.flyStartY + (slot.y - b.flyStartY) * ease - Math.sin(ease * Math.PI) * 70;
+      b.scale = 1.1 - ease * 0.25;
+      b.rot = Math.sin(ease * Math.PI) * 0.25;
+      if (b.flyProg >= 1) {
+        evaluateBuoy(b);
+      }
+    } else if (gameState === 'wrong' && activeBuoy) {
+      const b = activeBuoy;
+      if (stateTimer < 0.55) {
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.vy += 1100 * dt;
+        b.rot += 11 * dt;
+      } else {
+        // Smoothly zip back to its hanging hook
+        b.x += (b.homeX - b.x) * Math.min(1, dt * 11);
+        b.y += (b.homeY - b.y) * Math.min(1, dt * 11);
+        b.rot *= Math.pow(0.01, dt);
+        b.scale += (1 - b.scale) * Math.min(1, dt * 10);
+      }
+      if (stateTimer >= 1.05) {
+        activeBuoy = null;
+        gameState = 'idle';
+        captain.mood = 'idle';
+      }
+    } else if (gameState === 'celebrating') {
+      // Water jets spawn drops continuously during fountain celebration
+      for (const j of waterJets) {
+        j.life -= dt;
+        if (j.life > 0.2 && Math.random() < dt * 55) {
+          particles.push({
+            kind: 'jet',
+            x: j.x,
+            y: 790,
+            vx: j.dir * (250 + Math.random() * 140),
+            vy: -560 - Math.random() * 160,
+            size: 7 + Math.random() * 8,
+            hue: (time * 240 + Math.random() * 50) % 360,
+            life: 1.25,
+            maxLife: 1.25
+          });
+        }
+      }
+      if (stateTimer >= 2.05) {
+        gameState = 'transitioning';
+        stateTimer = 0;
+      }
+    } else if (gameState === 'transitioning') {
+      crateSlide += dt * 3.1;
+      for (const b of buoys) {
+        b.y -= 420 * dt;
+      }
+      if (crateSlide >= 1.15) {
+        setupTask(true);
+      }
+    }
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      if (p.kind === 'confetti') {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 460 * dt;
+        p.vx *= Math.pow(0.45, dt);
+        p.rot += p.vrot * dt;
+      } else if (p.kind === 'spark') {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 220 * dt;
+        p.vx *= Math.pow(0.25, dt);
+      } else if (p.kind === 'bubble') {
+        p.x += (p.vx + Math.sin(time * 4 + p.phase) * 45) * dt;
+        p.y += p.vy * dt;
+      } else if (p.kind === 'star') {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 320 * dt;
+        p.rot += p.vrot * dt;
+      } else if (p.kind === 'drop' || p.kind === 'jet') {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 760 * dt;
+      }
+    }
+
+    // Update balloons
+    for (let i = balloons.length - 1; i >= 0; i--) {
+      const bl = balloons[i];
+      bl.life -= dt;
+      bl.y += bl.vy * dt;
+      bl.x += Math.sin(time * 3.5 + bl.sway) * 40 * dt;
+      if (bl.life <= 0 || bl.y < -120) balloons.splice(i, 1);
+    }
+  }
+
+  // =========================================================================
+  // 8. CUSTOM CANVAS VECTOR ILLUSTRATIONS (44 Crisp Non-Animal Objects!)
+  // =========================================================================
+  function drawIllustration(icon, cx, cy, r) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    const s = r / 85;
+    ctx.scale(s, s);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    switch (icon) {
+      case 'snow': {
+        // Snowdrift base
+        ctx.fillStyle = '#d6f1ff';
+        ctx.beginPath();
+        ctx.ellipse(0, 56, 68, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#eefaff';
+        ctx.beginPath();
+        ctx.ellipse(-10, 52, 48, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Ornate 6-point snowflake
+        ctx.save();
+        ctx.translate(0, -10);
+        ctx.strokeStyle = '#c8f0ff';
+        ctx.lineWidth = 7;
+        for (let i = 0; i < 6; i++) {
+          ctx.rotate(Math.PI / 3);
+          ctx.beginPath();
+          ctx.moveTo(0, 0); ctx.lineTo(0, -52);
+          ctx.moveTo(0, -24); ctx.lineTo(-14, -36);
+          ctx.moveTo(0, -24); ctx.lineTo(14, -36);
+          ctx.moveTo(0, -39); ctx.lineTo(-9, -47);
+          ctx.moveTo(0, -39); ctx.lineTo(9, -47);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case 'bread': {
+        ctx.fillStyle = '#8d4c1c';
+        ctx.beginPath();
+        ctx.ellipse(0, 18, 64, 34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        const g = ctx.createLinearGradient(0, -40, 0, 35);
+        g.addColorStop(0, '#f7c165');
+        g.addColorStop(0.65, '#d6822d');
+        g.addColorStop(1, '#9c5218');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(-62, 16);
+        ctx.bezierCurveTo(-66, -42, 66, -42, 62, 16);
+        ctx.quadraticCurveTo(0, 36, -62, 16);
+        ctx.fill();
+        ctx.strokeStyle = '#ffdf9e';
+        ctx.lineWidth = 6;
+        for (let x = -32; x <= 32; x += 22) {
+          ctx.beginPath();
+          ctx.moveTo(x - 8, -18);
+          ctx.quadraticCurveTo(x + 2, -6, x + 10, 4);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'bridge': {
+        // Water below
+        ctx.fillStyle = '#29b6f6';
+        ctx.beginPath();
+        ctx.roundRect(-70, 26, 140, 34, 14);
+        ctx.fill();
+        // Stone/coral arch bridge
+        ctx.fillStyle = '#d96b43';
+        ctx.beginPath();
+        ctx.moveTo(-68, 28);
+        ctx.lineTo(-68, -12);
+        ctx.quadraticCurveTo(0, -48, 68, -12);
+        ctx.lineTo(68, 28);
+        ctx.lineTo(42, 28);
+        ctx.arc(0, 28, 42, 0, Math.PI, true);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#ffdfb0';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-68, -10);
+        ctx.quadraticCurveTo(0, -44, 68, -10);
+        ctx.stroke();
+        // Rail posts
+        ctx.strokeStyle = '#ffdfb0';
+        ctx.lineWidth = 4;
+        for (let x = -52; x <= 52; x += 26) {
+          ctx.beginPath();
+          ctx.moveTo(x, -26 + Math.abs(x) * 0.25);
+          ctx.lineTo(x, -6 + Math.abs(x) * 0.25);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'window': {
+        // Wooden frame
+        ctx.fillStyle = '#7a4522';
+        ctx.beginPath(); ctx.roundRect(-54, -54, 108, 108, 12); ctx.fill();
+        // Sky panes
+        const g = ctx.createLinearGradient(0, -44, 0, 44);
+        g.addColorStop(0, '#5cd1ff'); g.addColorStop(1, '#c8f4ff');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.roundRect(-44, -44, 88, 88, 6); ctx.fill();
+        // Tiny sun in glass
+        ctx.fillStyle = '#ffdf59';
+        ctx.beginPath(); ctx.arc(20, -22, 12, 0, Math.PI * 2); ctx.fill();
+        // Cross bars
+        ctx.fillStyle = '#9e5d31';
+        ctx.fillRect(-5, -48, 10, 96);
+        ctx.fillRect(-48, -5, 96, 10);
+        // Sill
+        ctx.fillStyle = '#ba7441';
+        ctx.beginPath(); ctx.roundRect(-62, 46, 124, 14, 6); ctx.fill();
+        break;
+      }
+      case 'flower': {
+        ctx.strokeStyle = '#48b853';
+        ctx.lineWidth = 9;
+        ctx.beginPath(); ctx.moveTo(0, 6); ctx.quadraticCurveTo(8, 36, 0, 62); ctx.stroke();
+        ctx.fillStyle = '#56cc62';
+        ctx.beginPath(); ctx.ellipse(-20, 40, 18, 9, -0.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(20, 44, 18, 9, 0.5, 0, Math.PI * 2); ctx.fill();
+        // Petals
+        for (let i = 0; i < 8; i++) {
+          ctx.save();
+          ctx.translate(0, -14);
+          ctx.rotate((Math.PI * 2 * i) / 8);
+          ctx.fillStyle = i % 2 === 0 ? '#ff6f91' : '#ff8fab';
+          ctx.beginPath(); ctx.ellipse(0, -30, 14, 24, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+        ctx.fillStyle = '#ffd23f';
+        ctx.beginPath(); ctx.arc(0, -14, 19, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#f0a500';
+        ctx.beginPath(); ctx.arc(0, -14, 11, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'lantern': {
+        // Warm glow
+        const gl = ctx.createRadialGradient(0, 6, 8, 0, 6, 68);
+        gl.addColorStop(0, 'rgba(255, 224, 102, 0.72)');
+        gl.addColorStop(1, 'rgba(255, 224, 102, 0)');
+        ctx.fillStyle = gl;
+        ctx.beginPath(); ctx.arc(0, 6, 68, 0, Math.PI * 2); ctx.fill();
+        // Handle
+        ctx.strokeStyle = '#263238';
+        ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(0, -48, 14, Math.PI, 0); ctx.stroke();
+        // Glass body
+        ctx.fillStyle = '#ffe57f';
+        ctx.beginPath();
+        ctx.moveTo(-24, -28); ctx.lineTo(24, -28);
+        ctx.lineTo(30, 38); ctx.lineTo(-30, 38); ctx.closePath();
+        ctx.fill();
+        // Cap & base
+        ctx.fillStyle = '#2c3e50';
+        ctx.beginPath(); ctx.moveTo(-36, -24); ctx.lineTo(0, -48); ctx.lineTo(36, -24); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(-36, 36, 72, 16, 6); ctx.fill();
+        ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-24, -26); ctx.lineTo(-30, 38);
+        ctx.moveTo(24, -26); ctx.lineTo(30, 38);
+        ctx.moveTo(0, -26); ctx.lineTo(0, 38);
+        ctx.stroke();
+        break;
+      }
+      case 'salt': {
+        // Glass shaker
+        ctx.fillStyle = '#d9f2ff';
+        ctx.beginPath();
+        ctx.moveTo(-24, -26); ctx.lineTo(24, -26);
+        ctx.lineTo(34, 48); ctx.quadraticCurveTo(0, 58, -34, 48); ctx.closePath();
+        ctx.fill();
+        // White salt inside
+        ctx.fillStyle = '#f5f8fa';
+        ctx.beginPath();
+        ctx.moveTo(-26, 2); ctx.quadraticCurveTo(0, -6, 26, 2);
+        ctx.lineTo(32, 46); ctx.quadraticCurveTo(0, 54, -32, 46); ctx.closePath();
+        ctx.fill();
+        // Metallic cap
+        ctx.fillStyle = '#90a4ae';
+        ctx.beginPath(); ctx.arc(0, -26, 24, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#cfd8dc';
+        ctx.beginPath(); ctx.roundRect(-27, -28, 54, 11, 4); ctx.fill();
+        // Holes
+        ctx.fillStyle = '#37474f';
+        for (let x = -10; x <= 10; x += 10) {
+          ctx.beginPath(); ctx.arc(x, -40, 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+        // Sparkling grains outside
+        ctx.fillStyle = '#ffffff';
+        [[-46, 46], [-40, 54], [44, 48], [50, 56], [38, 56]].forEach(([x, y]) => {
+          ctx.fillRect(x, y, 5, 5);
+        });
+        break;
+      }
+      case 'table': {
+        // Legs
+        ctx.fillStyle = '#7c451f';
+        ctx.fillRect(-48, -4, 12, 58);
+        ctx.fillRect(36, -4, 12, 58);
+        ctx.fillStyle = '#5c3114';
+        ctx.fillRect(-30, 4, 10, 42);
+        ctx.fillRect(20, 4, 10, 42);
+        // Tabletop in perspective
+        ctx.fillStyle = '#c97b38';
+        ctx.beginPath();
+        ctx.moveTo(-64, -10); ctx.lineTo(-42, -38);
+        ctx.lineTo(42, -38); ctx.lineTo(64, -10); ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#9e5922';
+        ctx.fillRect(-64, -10, 128, 12);
+        break;
+      }
+      case 'bed': {
+        // Headboard & footboard
+        ctx.fillStyle = '#8c4c24';
+        ctx.beginPath(); ctx.roundRect(-64, -42, 16, 92, 6); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(50, -6, 14, 56, 6); ctx.fill();
+        // Mattress
+        ctx.fillStyle = '#fff1d6';
+        ctx.beginPath(); ctx.roundRect(-50, 2, 102, 26, 6); ctx.fill();
+        // Pillow
+        ctx.fillStyle = '#b3e5fc';
+        ctx.beginPath(); ctx.ellipse(-30, -6, 20, 12, -0.1, 0, Math.PI * 2); ctx.fill();
+        // Striped cozy blanket
+        ctx.fillStyle = '#ef5350';
+        ctx.beginPath(); ctx.roundRect(-14, -4, 68, 34, 10); ctx.fill();
+        ctx.fillStyle = '#ffd54f';
+        ctx.fillRect(4, -4, 12, 34);
+        ctx.fillRect(30, -4, 12, 34);
+        // Bed base
+        ctx.fillStyle = '#703a19';
+        ctx.fillRect(-52, 24, 106, 14);
+        break;
+      }
+      case 'river': {
+        // Green banks
+        ctx.fillStyle = '#4caf50';
+        ctx.beginPath(); ctx.arc(0, 0, 68, 0, Math.PI * 2); ctx.fill();
+        // Winding blue river
+        ctx.strokeStyle = '#29b6f6';
+        ctx.lineWidth = 34;
+        ctx.beginPath();
+        ctx.moveTo(-26, -64);
+        ctx.bezierCurveTo(42, -26, -42, 14, 22, 66);
+        ctx.stroke();
+        ctx.strokeStyle = '#81e2ff';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(-24, -56);
+        ctx.bezierCurveTo(36, -24, -36, 14, 18, 56);
+        ctx.stroke();
+        break;
+      }
+      case 'pencil': {
+        ctx.save();
+        ctx.rotate(-0.68);
+        // Body
+        ctx.fillStyle = '#ffca28';
+        ctx.fillRect(-46, -15, 78, 30);
+        ctx.fillStyle = '#f5a623';
+        ctx.fillRect(-46, 5, 78, 10);
+        // Eraser & ferrule
+        ctx.fillStyle = '#f48fb1';
+        ctx.beginPath(); ctx.roundRect(-64, -15, 20, 30, [8, 0, 0, 8]); ctx.fill();
+        ctx.fillStyle = '#cfd8dc';
+        ctx.fillRect(-48, -15, 11, 30);
+        // Wood cone & tip
+        ctx.fillStyle = '#f2cfa0';
+        ctx.beginPath(); ctx.moveTo(32, -15); ctx.lineTo(66, 0); ctx.lineTo(32, 15); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#37474f';
+        ctx.beginPath(); ctx.moveTo(52, -6); ctx.lineTo(66, 0); ctx.lineTo(52, 6); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case 'plane': {
+        ctx.save();
+        ctx.rotate(-0.22);
+        // Back wing
+        ctx.fillStyle = '#c62828';
+        ctx.beginPath(); ctx.moveTo(-8, -8); ctx.lineTo(-26, -44); ctx.lineTo(8, -10); ctx.closePath(); ctx.fill();
+        // Tail fin
+        ctx.beginPath(); ctx.moveTo(-54, -4); ctx.lineTo(-66, -34); ctx.lineTo(-34, -6); ctx.closePath(); ctx.fill();
+        // Fuselage
+        ctx.fillStyle = '#fff3e0';
+        ctx.beginPath(); ctx.ellipse(2, 0, 62, 18, 0, 0, Math.PI * 2); ctx.fill();
+        // Stripe
+        ctx.fillStyle = '#ef5350';
+        ctx.fillRect(-52, 2, 106, 6);
+        // Windows
+        ctx.fillStyle = '#29b6f6';
+        for (let x = -24; x <= 32; x += 14) {
+          ctx.beginPath(); ctx.arc(x, -4, 4.5, 0, Math.PI * 2); ctx.fill();
+        }
+        // Front wing
+        ctx.fillStyle = '#ef5350';
+        ctx.beginPath(); ctx.moveTo(14, 6); ctx.lineTo(-20, 44); ctx.lineTo(-4, 6); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case 'nut': {
+        // Walnut
+        const g = ctx.createRadialGradient(-14, -14, 8, 0, 0, 56);
+        g.addColorStop(0, '#d99a5b'); g.addColorStop(1, '#7c4318');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(0, 4, 46, 52, 0, 0, Math.PI * 2); ctx.fill();
+        // Center ridge
+        ctx.strokeStyle = '#5c2e0e';
+        ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(0, -48); ctx.lineTo(0, 56); ctx.stroke();
+        // Texture wavy lines
+        ctx.strokeStyle = 'rgba(72, 34, 10, 0.55)';
+        ctx.lineWidth = 4;
+        for (const sgn of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(sgn * 14, -28);
+          ctx.quadraticCurveTo(sgn * 34, -8, sgn * 16, 12);
+          ctx.quadraticCurveTo(sgn * 32, 28, sgn * 14, 42);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'juice': {
+        // Straw
+        ctx.strokeStyle = '#ff5252';
+        ctx.lineWidth = 9;
+        ctx.beginPath(); ctx.moveTo(12, 20); ctx.lineTo(24, -56); ctx.lineTo(44, -64); ctx.stroke();
+        // Orange slice on rim
+        ctx.fillStyle = '#ff9800';
+        ctx.beginPath(); ctx.arc(-28, -32, 20, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffe082';
+        ctx.beginPath(); ctx.arc(-28, -32, 15, 0, Math.PI * 2); ctx.fill();
+        // Glass
+        ctx.fillStyle = 'rgba(220, 245, 255, 0.35)';
+        ctx.beginPath();
+        ctx.moveTo(-34, -32); ctx.lineTo(34, -32); ctx.lineTo(26, 56); ctx.lineTo(-26, 56); ctx.closePath();
+        ctx.fill();
+        // Orange juice
+        const g = ctx.createLinearGradient(0, -14, 0, 54);
+        g.addColorStop(0, '#ffb74d'); g.addColorStop(1, '#f57c00');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(-31, -14); ctx.lineTo(31, -14); ctx.lineTo(24, 52); ctx.lineTo(-24, 52); ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-34, -32); ctx.lineTo(-26, 56); ctx.lineTo(26, 56); ctx.lineTo(34, -32);
+        ctx.stroke();
+        break;
+      }
+      case 'cheese': {
+        ctx.fillStyle = '#ffb300';
+        ctx.beginPath();
+        ctx.moveTo(-58, 12); ctx.lineTo(44, -44); ctx.lineTo(58, 4); ctx.lineTo(-58, 12); ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#ffd54f';
+        ctx.beginPath();
+        ctx.moveTo(-58, 12); ctx.lineTo(58, 4); ctx.lineTo(58, 44); ctx.lineTo(-58, 48); ctx.closePath();
+        ctx.fill();
+        // Holes
+        ctx.fillStyle = '#e08e00';
+        [[-26, 26, 11], [14, 24, 13], [38, 32, 7], [-4, 38, 6], [6, -12, 9]].forEach(([x, y, rad]) => {
+          ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+        });
+        break;
+      }
+      case 'mushroom': {
+        // Stem
+        ctx.fillStyle = '#f5e6cc';
+        ctx.beginPath();
+        ctx.moveTo(-18, -2); ctx.quadraticCurveTo(-24, 48, -14, 54);
+        ctx.lineTo(14, 54); ctx.quadraticCurveTo(24, 48, 18, -2); ctx.closePath();
+        ctx.fill();
+        // Cap underside
+        ctx.fillStyle = '#e3c79b';
+        ctx.beginPath(); ctx.ellipse(0, -2, 54, 14, 0, 0, Math.PI * 2); ctx.fill();
+        // Cap dome
+        const g = ctx.createRadialGradient(-16, -34, 8, 0, -14, 62);
+        g.addColorStop(0, '#d96b38'); g.addColorStop(1, '#7d2f14');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(-56, -2);
+        ctx.bezierCurveTo(-56, -68, 56, -68, 56, -2);
+        ctx.quadraticCurveTo(0, 12, -56, -2);
+        ctx.fill();
+        // Specular sheen
+        ctx.fillStyle = 'rgba(255,240,210,0.32)';
+        ctx.beginPath(); ctx.ellipse(-18, -32, 16, 8, -0.4, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'lemon': {
+        // Leaves
+        ctx.fillStyle = '#43a047';
+        ctx.beginPath(); ctx.ellipse(26, -36, 20, 10, -0.5, 0, Math.PI * 2); ctx.fill();
+        // Lemon body
+        const g = ctx.createRadialGradient(-14, -14, 10, 0, 4, 58);
+        g.addColorStop(0, '#fff176'); g.addColorStop(0.7, '#fdd835'); g.addColorStop(1, '#f9a825');
+        ctx.fillStyle = g;
+        ctx.save();
+        ctx.rotate(-0.28);
+        ctx.beginPath();
+        ctx.moveTo(-58, 0);
+        ctx.bezierCurveTo(-48, -46, 48, -46, 58, 0);
+        ctx.bezierCurveTo(48, 46, -48, 46, -58, 0);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.beginPath(); ctx.ellipse(-12, -16, 20, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case 'book': {
+        // Cover back
+        ctx.fillStyle = '#1976d2';
+        ctx.beginPath(); ctx.roundRect(-48, -50, 96, 104, 10); ctx.fill();
+        // Pages edge
+        ctx.fillStyle = '#fff5dc';
+        ctx.beginPath(); ctx.roundRect(-40, 32, 82, 18, 6); ctx.fill();
+        // Front cover
+        ctx.fillStyle = '#29b6f6';
+        ctx.beginPath(); ctx.roundRect(-48, -50, 96, 86, [10, 10, 4, 10]); ctx.fill();
+        // Spine
+        ctx.fillStyle = '#0d47a1';
+        ctx.beginPath(); ctx.roundRect(-48, -50, 18, 104, [10, 0, 0, 10]); ctx.fill();
+        // Gold emblem on cover
+        ctx.fillStyle = '#ffd54f';
+        ctx.beginPath(); ctx.roundRect(-16, -26, 46, 36, 6); ctx.fill();
+        // Ribbon bookmark
+        ctx.fillStyle = '#ff5252';
+        ctx.beginPath(); ctx.moveTo(10, 42); ctx.lineTo(24, 42); ctx.lineTo(24, 64); ctx.lineTo(17, 56); ctx.lineTo(10, 64); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case 'plum': {
+        ctx.strokeStyle = '#6d4c41'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(0, -34); ctx.quadraticCurveTo(4, -54, 14, -58); ctx.stroke();
+        ctx.fillStyle = '#4caf50';
+        ctx.beginPath(); ctx.ellipse(24, -44, 18, 9, -0.35, 0, Math.PI * 2); ctx.fill();
+        const g = ctx.createRadialGradient(-16, -12, 8, 0, 8, 54);
+        g.addColorStop(0, '#ba68c8'); g.addColorStop(0.55, '#6a1b9a'); g.addColorStop(1, '#38006b');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(0, 10, 44, 48, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(56,0,107,0.45)'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(4, -36); ctx.quadraticCurveTo(22, 10, 4, 56); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.beginPath(); ctx.ellipse(-18, -8, 10, 18, -0.3, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'cherry': {
+        ctx.strokeStyle = '#43a047'; ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-26, 20); ctx.quadraticCurveTo(-18, -32, 6, -54);
+        ctx.moveTo(28, 28); ctx.quadraticCurveTo(22, -24, 6, -54);
+        ctx.stroke();
+        ctx.fillStyle = '#66bb6a';
+        ctx.beginPath(); ctx.ellipse(26, -44, 20, 9, 0.3, 0, Math.PI * 2); ctx.fill();
+        for (const [cx0, cy0] of [[-26, 26], [28, 32]]) {
+          const g = ctx.createRadialGradient(cx0 - 8, cy0 - 8, 4, cx0, cy0, 26);
+          g.addColorStop(0, '#ff6b6b'); g.addColorStop(0.6, '#d32f2f'); g.addColorStop(1, '#7f0000');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(cx0, cy0, 24, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.beginPath(); ctx.ellipse(cx0 - 8, cy0 - 8, 6, 4, -0.5, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case 'melon': {
+        // Whole golden melon
+        const g = ctx.createRadialGradient(-18, -14, 10, 0, 0, 62);
+        g.addColorStop(0, '#fff176'); g.addColorStop(0.65, '#f6b93b'); g.addColorStop(1, '#cc8e14');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(0, 0, 60, 42, -0.15, 0, Math.PI * 2); ctx.fill();
+        // Netting ridges
+        ctx.strokeStyle = 'rgba(184, 115, 16, 0.45)'; ctx.lineWidth = 3;
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 60, Math.abs(i) * 14 + 6, -0.15, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        // Stem
+        ctx.strokeStyle = '#6d4c41'; ctx.lineWidth = 7;
+        ctx.beginPath(); ctx.moveTo(54, -10); ctx.lineTo(66, -16); ctx.stroke();
+        break;
+      }
+      case 'leaf': {
+        ctx.save();
+        ctx.rotate(-0.35);
+        ctx.fillStyle = '#43a047';
+        ctx.beginPath();
+        ctx.moveTo(-54, 4);
+        ctx.bezierCurveTo(-24, -48, 36, -44, 62, 0);
+        ctx.bezierCurveTo(36, 44, -24, 48, -54, 4);
+        ctx.fill();
+        ctx.fillStyle = '#66bb6a';
+        ctx.beginPath();
+        ctx.moveTo(-54, 4);
+        ctx.bezierCurveTo(-24, -46, 36, -42, 62, 0);
+        ctx.lineTo(-54, 4);
+        ctx.fill();
+        ctx.strokeStyle = '#c8e6c9'; ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-66, 8); ctx.lineTo(44, 0);
+        ctx.moveTo(-18, 2); ctx.lineTo(0, -18);
+        ctx.moveTo(10, 1); ctx.lineTo(26, -15);
+        ctx.moveTo(-14, 3); ctx.lineTo(4, 20);
+        ctx.moveTo(12, 2); ctx.lineTo(28, 16);
+        ctx.stroke();
+        ctx.restore();
+        break;
+      }
+      case 'soap': {
+        ctx.save();
+        ctx.rotate(-0.2);
+        ctx.fillStyle = '#f06292';
+        ctx.beginPath(); ctx.roundRect(-52, -24, 104, 54, 24); ctx.fill();
+        ctx.fillStyle = '#f8bbd0';
+        ctx.beginPath(); ctx.roundRect(-48, -30, 96, 46, 22); ctx.fill();
+        ctx.strokeStyle = '#ec407a'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.roundRect(-34, -18, 68, 22, 11); ctx.stroke();
+        ctx.restore();
+        // Floating bubbles
+        for (const [bx, by, br] of [[-44, -40, 11], [-22, -52, 8], [40, -38, 13], [52, -16, 7]]) {
+          ctx.fillStyle = 'rgba(180, 240, 255, 0.55)';
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+        break;
+      }
+      case 'sofa': {
+        // Legs
+        ctx.fillStyle = '#6d4c41';
+        ctx.fillRect(-54, 36, 10, 16);
+        ctx.fillRect(44, 36, 10, 16);
+        // Backrest
+        ctx.fillStyle = '#00897b';
+        ctx.beginPath(); ctx.roundRect(-54, -36, 108, 48, 16); ctx.fill();
+        // Cushions
+        ctx.fillStyle = '#26a69a';
+        ctx.beginPath(); ctx.roundRect(-48, 0, 48, 26, 8); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(0, 0, 48, 26, 8); ctx.fill();
+        // Armrests
+        ctx.fillStyle = '#00695c';
+        ctx.beginPath(); ctx.roundRect(-66, -12, 22, 50, 10); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(44, -12, 22, 50, 10); ctx.fill();
+        // Base
+        ctx.fillStyle = '#00796b';
+        ctx.fillRect(-52, 24, 104, 14);
+        break;
+      }
+      case 'tire': {
+        ctx.fillStyle = '#263238';
+        ctx.beginPath(); ctx.arc(0, 0, 56, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#37474f'; ctx.lineWidth = 6;
+        ctx.setLineDash([10, 8]);
+        ctx.beginPath(); ctx.arc(0, 0, 48, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#b0bec5';
+        ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#455a64';
+        for (let i = 0; i < 5; i++) {
+          const a = (Math.PI * 2 * i) / 5;
+          ctx.beginPath(); ctx.arc(Math.cos(a) * 16, Math.sin(a) * 16, 6, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = '#eceff1';
+        ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'saw': {
+        ctx.save();
+        ctx.rotate(-0.28);
+        // Steel blade with teeth
+        ctx.fillStyle = '#cfd8dc';
+        ctx.beginPath();
+        ctx.moveTo(-26, -16); ctx.lineTo(62, -6); ctx.lineTo(62, 12);
+        for (let x = 58; x >= -24; x -= 10) {
+          ctx.lineTo(x - 5, 22);
+          ctx.lineTo(x - 10, 12);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Wooden handle
+        ctx.fillStyle = '#bf6c2c';
+        ctx.beginPath(); ctx.roundRect(-64, -22, 42, 46, 10); ctx.fill();
+        ctx.fillStyle = '#37474f';
+        ctx.beginPath(); ctx.roundRect(-54, -10, 18, 22, 6); ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case 'fork': {
+        ctx.save();
+        ctx.rotate(-0.45);
+        ctx.fillStyle = '#cfd8dc';
+        // Tines
+        for (const y of [-15, -5, 5, 15]) {
+          ctx.beginPath(); ctx.roundRect(22, y - 2.5, 42, 5, 2.5); ctx.fill();
+        }
+        ctx.beginPath(); ctx.roundRect(10, -17, 16, 34, 8); ctx.fill();
+        ctx.fillRect(-14, -5, 28, 10);
+        // Colored handle
+        ctx.fillStyle = '#ff7043';
+        ctx.beginPath(); ctx.roundRect(-64, -10, 54, 20, 10); ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case 'car': {
+        // Car cabin
+        ctx.fillStyle = '#ff5252';
+        ctx.beginPath();
+        ctx.moveTo(-42, 2); ctx.lineTo(-26, -30); ctx.lineTo(22, -30); ctx.lineTo(40, 2);
+        ctx.closePath(); ctx.fill();
+        // Windows
+        ctx.fillStyle = '#81d4fa';
+        ctx.beginPath(); ctx.moveTo(-32, 0); ctx.lineTo(-20, -22); ctx.lineTo(-2, -22); ctx.lineTo(-2, 0); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(4, -22); ctx.lineTo(18, -22); ctx.lineTo(32, 0); ctx.closePath(); ctx.fill();
+        // Body
+        ctx.fillStyle = '#ef5350';
+        ctx.beginPath(); ctx.roundRect(-64, 0, 128, 32, 12); ctx.fill();
+        // Headlight
+        ctx.fillStyle = '#fff176';
+        ctx.beginPath(); ctx.roundRect(54, 8, 10, 10, 4); ctx.fill();
+        // Wheels
+        for (const wx of [-36, 36]) {
+          ctx.fillStyle = '#263238';
+          ctx.beginPath(); ctx.arc(wx, 32, 18, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#cfd8dc';
+          ctx.beginPath(); ctx.arc(wx, 32, 8, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case 'brush': {
+        ctx.save();
+        ctx.rotate(-0.62);
+        // Wooden handle
+        ctx.fillStyle = '#d9822b';
+        ctx.beginPath();
+        ctx.moveTo(-64, -4); ctx.lineTo(8, -11); ctx.lineTo(8, 11); ctx.lineTo(-64, 4); ctx.closePath();
+        ctx.fill();
+        // Ferrule
+        ctx.fillStyle = '#cfd8dc';
+        ctx.fillRect(8, -12, 18, 24);
+        // Bristles with bright turquoise paint tip
+        ctx.fillStyle = '#f5deb3';
+        ctx.beginPath();
+        ctx.moveTo(26, -12); ctx.quadraticCurveTo(54, -14, 68, 0);
+        ctx.quadraticCurveTo(54, 14, 26, 12); ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#26c6da';
+        ctx.beginPath();
+        ctx.moveTo(44, -11); ctx.quadraticCurveTo(58, -10, 68, 0);
+        ctx.quadraticCurveTo(58, 10, 44, 11); ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case 'guitar': {
+        ctx.save();
+        ctx.rotate(-0.65);
+        // Body
+        ctx.fillStyle = '#e08e36';
+        ctx.beginPath(); ctx.arc(-22, 0, 32, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(10, 0, 23, 0, Math.PI * 2); ctx.fill();
+        // Soundhole
+        ctx.fillStyle = '#4e2a0c';
+        ctx.beginPath(); ctx.arc(-6, 0, 12, 0, Math.PI * 2); ctx.fill();
+        // Bridge
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(-36, -10, 7, 20);
+        // Neck & head
+        ctx.fillStyle = '#6d4c41';
+        ctx.fillRect(22, -7, 46, 14);
+        ctx.beginPath(); ctx.roundRect(62, -11, 14, 22, 4); ctx.fill();
+        // Strings
+        ctx.strokeStyle = '#fff3d1'; ctx.lineWidth = 1.6;
+        for (const y of [-3, 0, 3]) {
+          ctx.beginPath(); ctx.moveTo(-32, y); ctx.lineTo(66, y); ctx.stroke();
+        }
+        ctx.restore();
+        break;
+      }
+      case 'pizza': {
+        // Crust
+        ctx.fillStyle = '#d9862b';
+        ctx.beginPath();
+        ctx.arc(0, 50, 96, -Math.PI * 0.72, -Math.PI * 0.28);
+        ctx.lineTo(0, 50); ctx.closePath();
+        ctx.fill();
+        // Cheese triangle
+        ctx.fillStyle = '#ffd54f';
+        ctx.beginPath();
+        ctx.arc(0, 50, 82, -Math.PI * 0.71, -Math.PI * 0.29);
+        ctx.lineTo(0, 50); ctx.closePath();
+        ctx.fill();
+        // Pepperoni
+        ctx.fillStyle = '#d32f2f';
+        [[-18, -14, 11], [16, -10, 11], [0, 14, 10], [-2, -26, 8]].forEach(([x, y, rad]) => {
+          ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+        });
+        // Basil leaves
+        ctx.fillStyle = '#43a047';
+        ctx.beginPath(); ctx.ellipse(-6, -2, 8, 4, 0.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(16, -24, 8, 4, -0.4, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'grapes': {
+        ctx.strokeStyle = '#558b2f'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(0, -34); ctx.lineTo(0, -56); ctx.stroke();
+        ctx.fillStyle = '#66bb6a';
+        ctx.beginPath(); ctx.ellipse(22, -46, 20, 10, -0.3, 0, Math.PI * 2); ctx.fill();
+        const pts = [
+          [-26, -22], [0, -24], [26, -22],
+          [-22, 0], [0, -2], [22, 0],
+          [-13, 22], [13, 22],
+          [0, 42]
+        ];
+        for (const [gx, gy] of pts) {
+          const g = ctx.createRadialGradient(gx - 5, gy - 5, 3, gx, gy, 17);
+          g.addColorStop(0, '#ce93d8'); g.addColorStop(0.6, '#7b1fa2'); g.addColorStop(1, '#4a148c');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(gx, gy, 16, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case 'bowl': {
+        // Interior
+        ctx.fillStyle = '#fff0c2';
+        ctx.beginPath(); ctx.ellipse(0, -14, 58, 16, 0, 0, Math.PI * 2); ctx.fill();
+        // Outer bowl
+        ctx.fillStyle = '#ef5350';
+        ctx.beginPath();
+        ctx.moveTo(-58, -14);
+        ctx.bezierCurveTo(-56, 52, 56, 52, 58, -14);
+        ctx.quadraticCurveTo(0, 6, -58, -14);
+        ctx.fill();
+        // Decorative stripe
+        ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(-46, 12); ctx.quadraticCurveTo(0, 26, 46, 12); ctx.stroke();
+        // Rim
+        ctx.strokeStyle = '#ff8a65'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.ellipse(0, -14, 58, 15, 0, 0, Math.PI * 2); ctx.stroke();
+        break;
+      }
+      case 'pumpkin': {
+        // Stem
+        ctx.fillStyle = '#4e7c2b';
+        ctx.beginPath(); ctx.roundRect(-8, -56, 16, 26, 6); ctx.fill();
+        // Ribs
+        const ribs = [[-32, 4, 28, 40, '#e65100'], [32, 4, 28, 40, '#e65100'], [-16, 6, 26, 44, '#f57c00'], [16, 6, 26, 44, '#f57c00'], [0, 8, 22, 46, '#ff9800']];
+        for (const [rx, ry, rw, rh, col] of ribs) {
+          ctx.fillStyle = col;
+          ctx.beginPath(); ctx.ellipse(rx, ry, rw, rh, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case 'smoke': {
+        // Red brick chimney
+        ctx.fillStyle = '#b8432e';
+        ctx.beginPath(); ctx.roundRect(-28, 16, 56, 44, 4); ctx.fill();
+        ctx.fillStyle = '#8e2d1c';
+        ctx.fillRect(-34, 10, 68, 12);
+        // Curling stylized smoke puffs
+        ctx.fillStyle = '#dce8f2';
+        for (const [sx, sy, sr] of [[0, -2, 16], [14, -22, 22], [-10, -40, 24], [18, -50, 18]]) {
+          ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = '#f2f7fc';
+        for (const [sx, sy, sr] of [[-2, -6, 10], [10, -26, 14], [-12, -44, 15]]) {
+          ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case 'roof': {
+        // House wall hint
+        ctx.fillStyle = '#ffe0b2';
+        ctx.fillRect(-46, 12, 92, 42);
+        // Chimney
+        ctx.fillStyle = '#8d3b26';
+        ctx.fillRect(22, -46, 18, 34);
+        // Terracotta tiled roof
+        ctx.fillStyle = '#d84315';
+        ctx.beginPath();
+        ctx.moveTo(-68, 18); ctx.lineTo(0, -48); ctx.lineTo(68, 18); ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#ff8a65'; ctx.lineWidth = 4;
+        for (const y of [-18, -2, 12]) {
+          const hw = (y + 46) * 0.9;
+          ctx.beginPath(); ctx.moveTo(-hw, y); ctx.lineTo(hw, y); ctx.stroke();
+        }
+        // Attic round window
+        ctx.fillStyle = '#4fc3f7';
+        ctx.strokeStyle = '#fff3e0'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(0, -6, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        break;
+      }
+      case 'lid': {
+        // Top handle arch
+        ctx.strokeStyle = '#ff7043'; ctx.lineWidth = 9;
+        ctx.beginPath(); ctx.arc(0, -18, 16, Math.PI, 0); ctx.stroke();
+        // Metallic dome
+        const g = ctx.createLinearGradient(-56, -10, 56, 30);
+        g.addColorStop(0, '#eceff1'); g.addColorStop(0.5, '#90a4ae'); g.addColorStop(1, '#546e7a');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(-60, 22);
+        ctx.bezierCurveTo(-52, -26, 52, -26, 60, 22);
+        ctx.closePath(); ctx.fill();
+        // Rim
+        ctx.fillStyle = '#cfd8dc';
+        ctx.beginPath(); ctx.ellipse(0, 24, 64, 12, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#455a64'; ctx.lineWidth = 3;
+        ctx.stroke();
+        break;
+      }
+      case 'postcard': {
+        ctx.save();
+        ctx.rotate(-0.1);
+        ctx.fillStyle = '#fff3d6';
+        ctx.beginPath(); ctx.roundRect(-58, -40, 116, 80, 8); ctx.fill();
+        ctx.strokeStyle = '#ef5350'; ctx.lineWidth = 5;
+        ctx.setLineDash([12, 8]);
+        ctx.strokeRect(-54, -36, 108, 72);
+        ctx.setLineDash([]);
+        // Stamp
+        ctx.fillStyle = '#29b6f6';
+        ctx.fillRect(22, -26, 22, 24);
+        ctx.fillStyle = '#ffd54f';
+        ctx.beginPath(); ctx.arc(33, -14, 6, 0, Math.PI * 2); ctx.fill();
+        // Mini scenic art on left
+        ctx.fillStyle = '#66bb6a';
+        ctx.beginPath(); ctx.moveTo(-44, 24); ctx.lineTo(-22, -8); ctx.lineTo(2, 24); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffca28';
+        ctx.beginPath(); ctx.arc(-34, -16, 9, 0, Math.PI * 2); ctx.fill();
+        // Address lines
+        ctx.strokeStyle = '#90a4ae'; ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(10, 10); ctx.lineTo(44, 10);
+        ctx.moveTo(10, 22); ctx.lineTo(40, 22);
+        ctx.stroke();
+        ctx.restore();
+        break;
+      }
+      case 'clock': {
+        // Alarm bells
+        ctx.fillStyle = '#ffb300';
+        ctx.beginPath(); ctx.arc(-36, -38, 16, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(36, -38, 16, 0, Math.PI * 2); ctx.fill();
+        // Case
+        ctx.fillStyle = '#e53935';
+        ctx.beginPath(); ctx.arc(0, 6, 48, 0, Math.PI * 2); ctx.fill();
+        // Dial
+        ctx.fillStyle = '#fff8e1';
+        ctx.beginPath(); ctx.arc(0, 6, 38, 0, Math.PI * 2); ctx.fill();
+        // Ticks
+        ctx.fillStyle = '#37474f';
+        for (let i = 0; i < 12; i++) {
+          const a = (Math.PI * 2 * i) / 12;
+          ctx.beginPath(); ctx.arc(Math.cos(a) * 30, 6 + Math.sin(a) * 30, i % 3 === 0 ? 3.5 : 2, 0, Math.PI * 2); ctx.fill();
+        }
+        // Hands
+        ctx.strokeStyle = '#263238'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, -18); ctx.moveTo(0, 6); ctx.lineTo(18, 12); ctx.stroke();
+        ctx.fillStyle = '#e53935';
+        ctx.beginPath(); ctx.arc(0, 6, 5, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case 'beads': {
+        ctx.strokeStyle = '#ffe082'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(0, -10, 44, 0.15, Math.PI - 0.15); ctx.stroke();
+        const cols = ['#ff5252', '#ffca28', '#26c6da', '#ab47bc', '#66bb6a', '#ff7043', '#29b6f6', '#ec407a', '#ffca28'];
+        for (let i = 0; i < 9; i++) {
+          const a = 0.25 + (i / 8) * (Math.PI - 0.5);
+          const bx = Math.cos(a) * 44;
+          const by = -10 + Math.sin(a) * 44;
+          const rad = i === 4 ? 14 : 11;
+          ctx.fillStyle = cols[i];
+          ctx.beginPath(); ctx.arc(bx, by, rad, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.beginPath(); ctx.arc(bx - 3, by - 3, rad * 0.35, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case 'scales': {
+        // Pillar & base
+        ctx.fillStyle = '#ffb300';
+        ctx.beginPath(); ctx.roundRect(-34, 42, 68, 14, 6); ctx.fill();
+        ctx.fillRect(-5, -40, 10, 84);
+        // Crossbar
+        ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(-52, -26); ctx.lineTo(52, -26); ctx.stroke();
+        // Hanging pans
+        for (const px of [-48, 48]) {
+          ctx.strokeStyle = '#ffe082'; ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(px, -24); ctx.lineTo(px - 18, 12);
+          ctx.moveTo(px, -24); ctx.lineTo(px + 18, 12);
+          ctx.stroke();
+          ctx.fillStyle = '#f57c00';
+          ctx.beginPath(); ctx.arc(px, 12, 20, 0, Math.PI); ctx.fill();
+        }
+        break;
+      }
+      case 'shorts': {
+        ctx.fillStyle = '#1e88e5';
+        ctx.beginPath();
+        ctx.moveTo(-44, -36); ctx.lineTo(44, -36);
+        ctx.lineTo(54, 42); ctx.lineTo(8, 42);
+        ctx.lineTo(0, 6); ctx.lineTo(-8, 42);
+        ctx.lineTo(-54, 42); ctx.closePath();
+        ctx.fill();
+        // Waistband
+        ctx.fillStyle = '#1565c0';
+        ctx.fillRect(-45, -36, 90, 14);
+        // Drawstring
+        ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(-10, -8); ctx.moveTo(0, -28); ctx.lineTo(10, -8); ctx.stroke();
+        // Side stripes
+        ctx.strokeStyle = '#90caf9'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(-44, -20); ctx.lineTo(-50, 36); ctx.moveTo(44, -20); ctx.lineTo(50, 36); ctx.stroke();
+        break;
+      }
+      case 'sneakers': {
+        // Red canvas sneaker
+        ctx.fillStyle = '#e53935';
+        ctx.beginPath();
+        ctx.moveTo(-52, 26); ctx.lineTo(-46, -34); ctx.lineTo(-10, -34);
+        ctx.lineTo(14, 0); ctx.quadraticCurveTo(54, 0, 60, 26); ctx.closePath();
+        ctx.fill();
+        // White rubber toe & sole
+        ctx.fillStyle = '#fff5e6';
+        ctx.beginPath(); ctx.arc(46, 24, 16, Math.PI, 0); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(-56, 22, 118, 16, 7); ctx.fill();
+        ctx.strokeStyle = '#263238'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-52, 30); ctx.lineTo(58, 30); ctx.stroke();
+        // Laces
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-14, -22); ctx.lineTo(2, -16);
+        ctx.moveTo(-8, -10); ctx.lineTo(8, -4);
+        ctx.moveTo(0, 2); ctx.lineTo(16, 8);
+        ctx.stroke();
+        break;
+      }
+      case 'notes': {
+        // Subtle wavy staff lines
+        ctx.strokeStyle = 'rgba(255, 240, 200, 0.4)'; ctx.lineWidth = 3;
+        for (const y of [-22, -4, 14, 32]) {
+          ctx.beginPath(); ctx.moveTo(-58, y); ctx.quadraticCurveTo(0, y - 10, 58, y); ctx.stroke();
+        }
+        // Bold golden-coral beamed eighth notes
+        ctx.fillStyle = '#ffd54f';
+        ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(-18, 28); ctx.lineTo(-18, -32);
+        ctx.lineTo(36, -44); ctx.lineTo(36, 16);
+        ctx.stroke();
+        ctx.lineWidth = 12;
+        ctx.beginPath(); ctx.moveTo(-18, -28); ctx.lineTo(36, -40); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(-30, 30, 17, 13, -0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(24, 18, 17, 13, -0.3, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 9. LIVING HARBOR RENDERER (Background, Lighthouse, Ship, Captain, Crane)
+  // =========================================================================
+  function drawSkyAndCoast() {
+    // Full-bleed sky gradient across entire viewport
+    const skyG = ctx.createLinearGradient(0, -stageY / stageScale, 0, 500);
+    skyG.addColorStop(0, '#1462ad');
+    skyG.addColorStop(0.45, '#42a5db');
+    skyG.addColorStop(0.82, '#96def5');
+    skyG.addColorStop(1, '#ffe5b8');
+    ctx.fillStyle = skyG;
+    ctx.fillRect(-stageX / stageScale - 40, -stageY / stageScale - 40, viewW / stageScale + 80, 580);
+
+    // Sun & gently rotating light rays
+    const sunX = 1265, sunY = 148;
+    ctx.save();
+    ctx.translate(sunX, sunY);
+    ctx.rotate(time * 0.08);
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(Math.PI / 6);
+      ctx.fillStyle = 'rgba(255, 240, 175, 0.11)';
+      ctx.beginPath();
+      ctx.moveTo(-12, 0); ctx.lineTo(12, 0); ctx.lineTo(32, -260); ctx.lineTo(-32, -260);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    const sunGlow = ctx.createRadialGradient(sunX, sunY, 16, sunX, sunY, 130);
+    sunGlow.addColorStop(0, '#fff7cc');
+    sunGlow.addColorStop(0.35, 'rgba(255, 224, 120, 0.85)');
+    sunGlow.addColorStop(1, 'rgba(255, 224, 120, 0)');
+    ctx.fillStyle = sunGlow;
+    ctx.beginPath(); ctx.arc(sunX, sunY, 130, 0, Math.PI * 2); ctx.fill();
+
+    // Soft volumetric clouds
+    for (const c of clouds) {
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.scale(c.s, c.s);
+      ctx.fillStyle = 'rgba(255, 250, 240, 0.88)';
+      ctx.beginPath();
+      ctx.arc(-44, 8, 28, 0, Math.PI * 2);
+      ctx.arc(-12, -8, 38, 0, Math.PI * 2);
+      ctx.arc(30, -2, 32, 0, Math.PI * 2);
+      ctx.arc(58, 12, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(180, 220, 242, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(6, 22, 72, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Distant coastal hills
+    ctx.fillStyle = '#5394b0';
+    ctx.beginPath();
+    ctx.moveTo(-300, 490);
+    ctx.quadraticCurveTo(180, 315, 580, 455);
+    ctx.quadraticCurveTo(960, 355, 1340, 440);
+    ctx.quadraticCurveTo(1640, 340, 1950, 490);
+    ctx.closePath(); ctx.fill();
+
+    // Closer warm green coastal town slope (left)
+    ctx.fillStyle = '#3b8c7c';
+    ctx.beginPath();
+    ctx.moveTo(-250, 495);
+    ctx.quadraticCurveTo(110, 345, 420, 495);
+    ctx.closePath(); ctx.fill();
+
+    // Colorful Mediterranean coastal houses on left hill
+    const houses = [
+      { x: 46, y: 392, w: 46, h: 48, wall: '#f7c888', roof: '#d45435' },
+      { x: 102, y: 374, w: 52, h: 64, wall: '#f29e74', roof: '#b83c2a' },
+      { x: 164, y: 400, w: 48, h: 44, wall: '#8cd3d6', roof: '#d45435' },
+      { x: 222, y: 416, w: 44, h: 38, wall: '#f5dc93', roof: '#c44b2b' }
+    ];
+    for (const h of houses) {
+      ctx.fillStyle = h.wall;
+      ctx.fillRect(h.x, h.y, h.w, h.h);
+      ctx.fillStyle = h.roof;
+      ctx.beginPath();
+      ctx.moveTo(h.x - 5, h.y);
+      ctx.lineTo(h.x + h.w * 0.5, h.y - 18);
+      ctx.lineTo(h.x + h.w + 5, h.y);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#265373';
+      ctx.fillRect(h.x + 10, h.y + 12, 9, 12);
+      ctx.fillRect(h.x + h.w - 19, h.y + 12, 9, 12);
+    }
+
+    // Swaying cypress trees
+    const sway = Math.sin(time * 2.1) * 4;
+    for (const [tx, ty, th] of [[24, 420, 44], [90, 408, 38], [278, 444, 34], [1295, 448, 36]]) {
+      ctx.fillStyle = '#205c4e';
+      ctx.beginPath();
+      ctx.moveTo(tx - 9, ty);
+      ctx.quadraticCurveTo(tx - 6 + sway * 0.5, ty - th * 0.6, tx + sway, ty - th);
+      ctx.quadraticCurveTo(tx + 6 + sway * 0.5, ty - th * 0.6, tx + 9, ty);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // Right rocky cape & Lighthouse!
+    ctx.fillStyle = '#526575';
+    ctx.beginPath();
+    ctx.moveTo(1230, 495);
+    ctx.quadraticCurveTo(1385, 422, 1590, 468);
+    ctx.lineTo(1900, 495);
+    ctx.closePath(); ctx.fill();
+
+    // Lighthouse tower
+    const lx = 1390, ly = 445;
+    // Rotating light beam
+    const beamAlpha = 0.16 + Math.min(0.45, lighthouseFlash * 0.35);
+    ctx.save();
+    ctx.translate(lx, ly - 164);
+    const beamAng = Math.sin(time * 1.1) * 0.45;
+    for (const dir of [-1, 1]) {
+      const bg = ctx.createLinearGradient(0, 0, dir * 320, 0);
+      bg.addColorStop(0, `rgba(255, 240, 150, ${beamAlpha})`);
+      bg.addColorStop(1, 'rgba(255, 240, 150, 0)');
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(dir * 320, -45 + beamAng * 55);
+      ctx.lineTo(dir * 320, 45 + beamAng * 55);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    // Striped body
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(lx - 26, ly); ctx.lineTo(lx - 17, ly - 148);
+    ctx.lineTo(lx + 17, ly - 148); ctx.lineTo(lx + 26, ly);
+    ctx.closePath();
+    ctx.clip();
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#f7f1e3' : '#e04f3d';
+      ctx.fillRect(lx - 30, ly - (i + 1) * 30, 60, 31);
+    }
+    ctx.restore();
+
+    // Lantern room & red cupola
+    ctx.fillStyle = '#243c52';
+    ctx.fillRect(lx - 23, ly - 152, 46, 7);
+    ctx.fillStyle = lighthouseFlash > 0 ? '#fff59d' : '#ffe082';
+    ctx.fillRect(lx - 15, ly - 175, 30, 24);
+    ctx.fillStyle = '#d43f2f';
+    ctx.beginPath();
+    ctx.arc(lx, ly - 175, 17, Math.PI, 0);
+    ctx.fill();
+    ctx.fillRect(lx - 2, ly - 202, 4, 12);
+
+    // Distant sailboats
+    for (const s of sailboats) {
+      ctx.save();
+      ctx.translate(s.x, s.y + Math.sin(time * 2.3 + s.x) * 2.5);
+      ctx.scale(s.dir * s.scale, s.scale);
+      ctx.fillStyle = '#27496d';
+      ctx.beginPath(); ctx.moveTo(-22, 0); ctx.lineTo(22, 0); ctx.lineTo(14, 9); ctx.lineTo(-16, 9); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff6e6';
+      ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(-2, -38); ctx.lineTo(18, -2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = s.color;
+      ctx.beginPath(); ctx.moveTo(-5, -2); ctx.lineTo(-5, -30); ctx.lineTo(-20, -2); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawSeaBack() {
+    const x0 = -stageX / stageScale - 40;
+    const w0 = viewW / stageScale + 80;
+    const h0 = (viewH - stageY) / stageScale + 40;
+
+    const seaG = ctx.createLinearGradient(0, 475, 0, 900);
+    seaG.addColorStop(0, '#1484b5');
+    seaG.addColorStop(0.42, '#0d608c');
+    seaG.addColorStop(1, '#073554');
+    ctx.fillStyle = seaG;
+    ctx.fillRect(x0, 475, w0, h0 - 475);
+
+    // Shimmering sun reflections on water
+    for (let i = 0; i < 16; i++) {
+      const ry = 492 + i * 18;
+      const rw = 42 + Math.sin(time * 3 + i * 1.4) * 22 + i * 4;
+      const rx = 1245 + Math.sin(time * 1.8 + i) * 35;
+      ctx.fillStyle = `rgba(255, 240, 180, ${0.24 - i * 0.011})`;
+      ctx.beginPath(); ctx.roundRect(rx - rw * 0.5, ry, rw, 5, 3); ctx.fill();
+    }
+
+    // Back wave band
+    drawWaveLayer(565, 11, 0.008, 1.5, '#0f6f9e', x0, w0);
+  }
+
+  function drawWaveLayer(baseY, amp, freq, speed, color, x0, w0) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x0, 1050);
+    for (let x = x0; x <= x0 + w0 + 40; x += 36) {
+      const y = baseY + Math.sin(x * freq + time * speed) * amp + Math.cos(x * freq * 1.8 - time * speed * 0.7) * (amp * 0.4);
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(x0 + w0 + 40, 1050);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawFestivalPennants() {
+    // Festive harbor pennant strings swaying on upper left & right flanks
+    const flagCols = ['#ff6b6b', '#ffd166', '#2ec4b6', '#ff9f1c', '#9b5de5'];
+    const drawStrand = (x1, y1, x2, y2, sag) => {
+      ctx.strokeStyle = 'rgba(255, 240, 200, 0.55)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo((x1 + x2) * 0.5, (y1 + y2) * 0.5 + sag, x2, y2);
+      ctx.stroke();
+
+      const count = 9;
+      for (let i = 1; i < count; i++) {
+        const t = i / count;
+        const px = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * ((x1 + x2) * 0.5) + t * t * x2;
+        const py = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * ((y1 + y2) * 0.5 + sag) + t * t * y2;
+        const flutter = Math.sin(time * 5 + i * 0.9) * 5;
+        const lit = (gameState === 'celebrating' && celebrationType === 4) && Math.floor(time * 10 + i) % 2 === 0;
+        ctx.fillStyle = lit ? '#fff6a9' : flagCols[i % flagCols.length];
+        ctx.beginPath();
+        ctx.moveTo(px - 10, py);
+        ctx.lineTo(px + 10, py);
+        ctx.lineTo(px + flutter, py + 24);
+        ctx.closePath();
+        ctx.fill();
+      }
+    };
+    drawStrand(-20, 115, 360, 76, 36);
+    drawStrand(1240, 76, 1620, 115, 36);
+  }
+
+  function drawOverheadCrane() {
+    const x0 = -stageX / stageScale - 40;
+    const w0 = viewW / stageScale + 80;
+    const beamY = 46;
+
+    // Steel truss gantry beam
+    ctx.fillStyle = '#d98a1c';
+    ctx.fillRect(x0, beamY, w0, 10);
+    ctx.fillRect(x0, beamY + 34, w0, 12);
+
+    // Diagonal yellow lattice girders
+    ctx.strokeStyle = '#f5b833';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    for (let x = Math.floor(x0 / 48) * 48; x < x0 + w0 + 48; x += 48) {
+      ctx.moveTo(x, beamY + 40);
+      ctx.lineTo(x + 24, beamY + 5);
+      ctx.lineTo(x + 48, beamY + 40);
+    }
+    ctx.stroke();
+
+    // Coral accent rail stripe
+    ctx.fillStyle = '#e0573d';
+    ctx.fillRect(x0, beamY + 42, w0, 6);
+
+    // Mobile Crane Trolley
+    ctx.save();
+    ctx.translate(craneX, beamY + 46);
+    ctx.fillStyle = '#1f4569';
+    ctx.beginPath(); ctx.roundRect(-44, -14, 88, 32, 8); ctx.fill();
+    ctx.strokeStyle = '#f5c767'; ctx.lineWidth = 3;
+    ctx.stroke();
+    // Wheels
+    ctx.fillStyle = '#cfd8dc';
+    ctx.beginPath(); ctx.arc(-26, -12, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(26, -12, 8, 0, Math.PI * 2); ctx.fill();
+    // Glowing status lamp on trolley
+    ctx.fillStyle = gameState === 'celebrating' ? '#69f0ae' : '#ffd54f';
+    ctx.beginPath(); ctx.arc(0, 2, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawShipAndCaptain() {
+    ctx.save();
+    // Ship pivot at center waterline
+    const bobY = Math.sin(time * 2.0) * 6;
+    ctx.translate(800, 742 + bobY);
+    ctx.rotate(shipRock);
+    ctx.translate(-800, -742);
+
+    // --- Wheelhouse / Cabin (Left side of ship) ---
+    // Striped Funnel
+    ctx.fillStyle = '#243c52';
+    ctx.beginPath(); ctx.roundRect(356, 404, 52, 92, [8, 8, 0, 0]); ctx.fill();
+    ctx.fillStyle = '#e85a3c';
+    ctx.fillRect(356, 424, 52, 24);
+    ctx.fillStyle = '#ffd166';
+    ctx.fillRect(356, 448, 52, 8);
+
+    // Cabin structure
+    ctx.fillStyle = '#f2e3c6';
+    ctx.beginPath(); ctx.roundRect(222, 480, 210, 178, [18, 18, 0, 0]); ctx.fill();
+    // Cabin roof overhang
+    ctx.fillStyle = '#1d4c73';
+    ctx.beginPath(); ctx.roundRect(210, 468, 234, 22, 10); ctx.fill();
+    // Bridge glass windows
+    const wg = ctx.createLinearGradient(0, 500, 0, 555);
+    wg.addColorStop(0, '#5ec8f2'); wg.addColorStop(1, '#1b6d9c');
+    ctx.fillStyle = wg;
+    ctx.beginPath(); ctx.roundRect(242, 502, 54, 48, 8); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(306, 502, 54, 48, 8); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(370, 502, 44, 48, 8); ctx.fill();
+    // Window glare
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(252, 538); ctx.lineTo(272, 512); ctx.moveTo(316, 538); ctx.lineTo(336, 512); ctx.stroke();
+
+    // --- EXPRESSIVE HARBOR CAPTAIN (Standing on front deck) ---
+    drawCaptain(336, 650);
+
+    // --- CARGO CRATE + ILLUSTRATION + WORD BANNER ---
+    drawCargoCrate();
+
+    // --- SHIP HULL ---
+    // Wooden deck rail behind hull rim
+    ctx.fillStyle = '#9c5a2b';
+    ctx.fillRect(188, 646, 1220, 14);
+    ctx.strokeStyle = '#d99a5b'; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(196, 622); ctx.lineTo(445, 622);
+    ctx.moveTo(1310, 622); ctx.lineTo(1408, 622);
+    ctx.stroke();
+
+    // Main curved hull (Deep marine navy & coral stripe)
+    const hullG = ctx.createLinearGradient(0, 652, 0, 825);
+    hullG.addColorStop(0, '#18446b');
+    hullG.addColorStop(0.55, '#10304f');
+    hullG.addColorStop(1, '#b83c2c');
+    ctx.fillStyle = hullG;
+    ctx.beginPath();
+    ctx.moveTo(154, 654);
+    ctx.lineTo(1446, 654);
+    ctx.quadraticCurveTo(1420, 775, 1340, 818);
+    ctx.lineTo(260, 818);
+    ctx.quadraticCurveTo(182, 775, 154, 654);
+    ctx.closePath();
+    ctx.fill();
+
+    // Golden-yellow trim band along hull
+    ctx.fillStyle = '#f2b844';
+    ctx.fillRect(166, 658, 1268, 11);
+
+    // Red waterline band
+    ctx.fillStyle = '#c9412e';
+    ctx.beginPath();
+    ctx.moveTo(212, 768); ctx.lineTo(1388, 768);
+    ctx.lineTo(1340, 818); ctx.lineTo(260, 818);
+    ctx.closePath(); ctx.fill();
+
+    // Brass portholes along hull
+    for (const px of [285, 385, 1215, 1315]) {
+      ctx.fillStyle = '#d49a3a';
+      ctx.beginPath(); ctx.arc(px, 718, 22, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1b5e85';
+      ctx.beginPath(); ctx.arc(px, 718, 15, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255, 240, 190, 0.5)';
+      ctx.beginPath(); ctx.arc(px - 5, 713, 5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Ship anchor hanging on right bow
+    ctx.save();
+    ctx.translate(1378, 725);
+    ctx.strokeStyle = '#cfd8dc'; ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, -18); ctx.lineTo(0, 22);
+    ctx.moveTo(-12, -8); ctx.lineTo(12, -8);
+    ctx.arc(0, 8, 16, 0.25, Math.PI - 0.25);
+    ctx.stroke();
+    ctx.restore();
+
+    // Decorative deck lights when celebrating!
+    if (gameState === 'celebrating') {
+      const cols = ['#ff595e', '#ffca3a', '#4ce0d2', '#a8ff60', '#ff924c'];
+      for (let i = 0; i < 15; i++) {
+        const lx = 215 + i * 84;
+        const glow = Math.sin(time * 14 + i) > 0;
+        ctx.fillStyle = glow ? cols[i % cols.length] : 'rgba(255,255,255,0.25)';
+        ctx.beginPath(); ctx.arc(lx, 663, glow ? 7 : 4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawCaptain(x, y) {
+    ctx.save();
+    const breath = Math.sin(time * 3.1) * 2.5;
+    ctx.translate(x, y + captain.jumpY);
+
+    // Legs & boots
+    ctx.fillStyle = '#14293d';
+    ctx.beginPath(); ctx.roundRect(-24, -40, 18, 42, 7); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(6, -40, 18, 42, 7); ctx.fill();
+
+    // Torso (Navy peacoat with gold buttons)
+    ctx.fillStyle = '#1b3b5c';
+    ctx.beginPath();
+    ctx.roundRect(-34, -108 + breath, 68, 74, 18);
+    ctx.fill();
+    // Gold buttons & lapel
+    ctx.fillStyle = '#ffd166';
+    for (const by of [-82, -62]) {
+      ctx.beginPath(); ctx.arc(-10, by + breath, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(10, by + breath, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // Red fluttering maritime scarf
+    ctx.fillStyle = '#e84a3c';
+    ctx.beginPath(); ctx.roundRect(-26, -112 + breath, 52, 16, 8); ctx.fill();
+    const scarfWave = Math.sin(time * 5.2) * 8;
+    ctx.beginPath();
+    ctx.moveTo(16, -106 + breath);
+    ctx.quadraticCurveTo(38, -102 + breath + scarfWave, 46, -86 + breath + scarfWave);
+    ctx.lineTo(32, -82 + breath + scarfWave * 0.7);
+    ctx.quadraticCurveTo(22, -94 + breath, 12, -96 + breath);
+    ctx.closePath(); ctx.fill();
+
+    // Articulated Arms
+    let lArmAng = -0.35 + Math.sin(time * 2.2) * 0.08;
+    let rArmAng = 0.4 + Math.cos(time * 2.2) * 0.08;
+    if (captain.mood === 'excited') {
+      lArmAng = -1.15 + Math.sin(time * 10) * 0.15;
+      rArmAng = 1.25 + Math.cos(time * 10) * 0.15;
+    } else if (captain.mood === 'happy') {
+      lArmAng = -2.4 + Math.sin(time * 14) * 0.35;
+      rArmAng = 2.4 - Math.sin(time * 14) * 0.35;
+    } else if (captain.mood === 'oops') {
+      lArmAng = -1.6 + Math.sin(time * 18) * 0.4;
+      rArmAng = 1.6 + Math.sin(time * 18) * 0.4;
+    }
+
+    const drawArm = (sx, sy, ang, flip) => {
+      ctx.save();
+      ctx.translate(sx, sy + breath);
+      ctx.rotate(ang);
+      ctx.strokeStyle = '#1b3b5c'; ctx.lineWidth = 15; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(flip * 24, 34); ctx.stroke();
+      // Gold cuff
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(flip * 18, 26); ctx.lineTo(flip * 23, 32); ctx.stroke();
+      // Hand
+      ctx.fillStyle = '#f7c59f';
+      ctx.beginPath(); ctx.arc(flip * 27, 38, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    };
+    drawArm(-30, -94, lArmAng, -1);
+    drawArm(30, -94, rArmAng, 1);
+
+    // Head
+    ctx.save();
+    ctx.translate(0, -138 + breath);
+    const headTilt = captain.mood === 'happy' ? Math.sin(time * 9) * 0.12 : (captain.mood === 'oops' ? Math.sin(time * 18) * 0.14 : Math.sin(time * 1.5) * 0.04);
+    ctx.rotate(headTilt);
+
+    // Ears & face
+    ctx.fillStyle = '#e8b087';
+    ctx.beginPath(); ctx.arc(-28, 2, 7, 0, Math.PI * 2); ctx.arc(28, 2, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f7c59f';
+    ctx.beginPath(); ctx.arc(0, 0, 29, 0, Math.PI * 2); ctx.fill();
+
+    // Rosy cheeks
+    ctx.fillStyle = 'rgba(235, 110, 95, 0.35)';
+    ctx.beginPath(); ctx.ellipse(-15, 9, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(15, 9, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Eyes tracking the pointer or active buoy!
+    const lookTargetX = activeBuoy ? activeBuoy.x : pointer.x;
+    const lookTargetY = activeBuoy ? activeBuoy.y : pointer.y;
+    const lookAng = Math.atan2(lookTargetY - (y - 138), lookTargetX - x);
+    const px = Math.cos(lookAng) * 2.8;
+    const py = Math.sin(lookAng) * 2.2;
+
+    const blink = captain.blinkProg > 0 && captain.blinkProg < 0.85;
+    for (const ex of [-11, 11]) {
+      if (blink) {
+        ctx.strokeStyle = '#263238'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(ex - 5, -2); ctx.lineTo(ex + 5, -2); ctx.stroke();
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.ellipse(ex, -2, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1b2b38';
+        ctx.beginPath(); ctx.arc(ex + px, -2 + py, 3.4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(ex + px - 1.2, -3.5 + py, 1.3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // Expressive eyebrows
+    ctx.strokeStyle = '#5c3a21'; ctx.lineWidth = 3.2;
+    if (captain.mood === 'oops') {
+      ctx.beginPath(); ctx.moveTo(-17, -11); ctx.lineTo(-6, -15); ctx.moveTo(6, -15); ctx.lineTo(17, -11); ctx.stroke();
+    } else {
+      const lift = captain.mood === 'excited' || captain.mood === 'happy' ? -3 : 0;
+      ctx.beginPath(); ctx.moveTo(-17, -12 + lift); ctx.quadraticCurveTo(-11, -15 + lift, -5, -12 + lift); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5, -12 + lift); ctx.quadraticCurveTo(11, -15 + lift, 17, -12 + lift); ctx.stroke();
+    }
+
+    // Mouth
+    ctx.strokeStyle = '#7a3328'; ctx.lineWidth = 3;
+    if (captain.mood === 'happy') {
+      ctx.fillStyle = '#a82c2c';
+      ctx.beginPath(); ctx.arc(0, 10, 10, 0, Math.PI); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-7, 10, 14, 3);
+    } else if (captain.mood === 'oops') {
+      ctx.fillStyle = '#7a3328';
+      ctx.beginPath(); ctx.ellipse(0, 14, 6, 8, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (captain.mood === 'excited') {
+      ctx.beginPath(); ctx.arc(0, 9, 8, 0.15, Math.PI - 0.15); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(0, 8, 7, 0.25, Math.PI - 0.25); ctx.stroke();
+    }
+
+    // Captain's Cap (independently tossable!)
+    ctx.save();
+    ctx.translate(0, -24 + captain.hatY);
+    ctx.rotate(captain.hatRot);
+    // Visor
+    ctx.fillStyle = '#12263a';
+    ctx.beginPath(); ctx.ellipse(0, 6, 31, 8, 0, 0, Math.PI * 2); ctx.fill();
+    // White crown
+    ctx.fillStyle = '#f5f0e1';
+    ctx.beginPath();
+    ctx.moveTo(-26, 2); ctx.lineTo(-32, -14); ctx.quadraticCurveTo(0, -26, 32, -14); ctx.lineTo(26, 2);
+    ctx.closePath(); ctx.fill();
+    // Navy band + gold anchor emblem
+    ctx.fillStyle = '#1a3a5c';
+    ctx.fillRect(-26, -3, 52, 9);
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath(); ctx.arc(0, -10, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Comical splash droplets on captain if wet!
+    if (captain.wet > 0) {
+      ctx.fillStyle = '#7ce2ff';
+      for (let i = 0; i < 5; i++) {
+        const dy = ((1.2 - captain.wet) * 45 + i * 11) % 35;
+        ctx.beginPath(); ctx.arc(-20 + i * 10, -14 + dy, 3.2, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function drawCargoCrate() {
+    if (!currentTask) return;
+    ctx.save();
+    const ox = 890 + crateSlide * 950;
+    const oy = 576;
+    const bounceScale = 0.92 + crateBounce * 0.08;
+    ctx.translate(ox, oy);
+    ctx.scale(bounceScale, bounceScale);
+
+    // --- Decorative Wooden & Teal Shipping Crate behind the porthole ---
+    // Warm teak wooden body
+    const woodG = ctx.createLinearGradient(-290, -195, 290, 95);
+    woodG.addColorStop(0, '#c77f3a');
+    woodG.addColorStop(0.5, '#a86327');
+    woodG.addColorStop(1, '#824818');
+    ctx.fillStyle = woodG;
+    ctx.beginPath(); ctx.roundRect(-275, -182, 550, 260, 22); ctx.fill();
+
+    // Subtle horizontal wooden plank lines
+    ctx.strokeStyle = 'rgba(74, 38, 10, 0.32)'; ctx.lineWidth = 3;
+    for (let y = -132; y <= 40; y += 44) {
+      ctx.beginPath(); ctx.moveTo(-268, y); ctx.lineTo(268, y); ctx.stroke();
+    }
+
+    // Diagonal maritime corner braces & brass rivets
+    ctx.strokeStyle = '#6b3812'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.roundRect(-275, -182, 550, 260, 22); ctx.stroke();
+
+    ctx.fillStyle = '#e8b349';
+    for (const [rx, ry] of [[-254, -162], [254, -162], [-254, 58], [254, 58]]) {
+      ctx.beginPath(); ctx.arc(rx, ry, 7, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Decorative teal painted side panels with subtle wave pattern (NO white boxes!)
+    for (const sgn of [-1, 1]) {
+      ctx.fillStyle = 'rgba(18, 92, 114, 0.72)';
+      ctx.beginPath(); ctx.roundRect(sgn < 0 ? -252 : 124, -142, 128, 178, 14); ctx.fill();
+      ctx.strokeStyle = 'rgba(130, 224, 232, 0.32)'; ctx.lineWidth = 3;
+      for (let wy = -105; wy <= 5; wy += 36) {
+        const sx = sgn < 0 ? -236 : 140;
+        ctx.beginPath();
+        ctx.moveTo(sx, wy);
+        ctx.quadraticCurveTo(sx + 24, wy - 12, sx + 48, wy);
+        ctx.quadraticCurveTo(sx + 72, wy + 12, sx + 96, wy);
+        ctx.stroke();
+      }
+    }
+
+    // --- Center Circular Nautical Brass Porthole with Custom Illustration ---
+    const pr = 112;
+    const py = -54;
+    // Outer brass bezel
+    const bezelG = ctx.createLinearGradient(-pr, py - pr, pr, py + pr);
+    bezelG.addColorStop(0, '#ffe082');
+    bezelG.addColorStop(0.5, '#cf8e29');
+    bezelG.addColorStop(1, '#7a4b0b');
+    ctx.fillStyle = bezelG;
+    ctx.beginPath(); ctx.arc(0, py, pr + 15, 0, Math.PI * 2); ctx.fill();
+
+    // Porthole rivets
+    ctx.fillStyle = '#fff0b3';
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8 + 0.39;
+      ctx.beginPath(); ctx.arc(Math.cos(a) * (pr + 7.5), py + Math.sin(a) * (pr + 7.5), 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Colored textured porthole backdrop (NO white!)
+    const pbg = ctx.createRadialGradient(-25, py - 25, 14, 0, py, pr);
+    pbg.addColorStop(0, taskPortholePalette[1]);
+    pbg.addColorStop(1, taskPortholePalette[0]);
+    ctx.fillStyle = pbg;
+    ctx.beginPath(); ctx.arc(0, py, pr, 0, Math.PI * 2); ctx.fill();
+
+    // Soft celebratory golden halo behind illustration when solved
+    if (gameState === 'celebrating') {
+      const pulse = 0.35 + Math.sin(time * 12) * 0.15;
+      ctx.fillStyle = `rgba(255, 232, 128, ${pulse})`;
+      ctx.beginPath(); ctx.arc(0, py, pr - 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Clip and render the bespoke illustration
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, py, pr - 3, 0, Math.PI * 2); ctx.clip();
+    const iconBounce = gameState === 'celebrating' ? Math.sin(time * 10) * 7 : Math.sin(time * 2.2) * 2;
+    drawIllustration(currentTask.icon, 0, py + iconBounce, pr * 0.84);
+    ctx.restore();
+
+    // Subtle curved glass highlight
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(0, py, pr - 10, -Math.PI * 0.78, -Math.PI * 0.32); ctx.stroke();
+
+    // --- STYLIZED MARITIME WORD BANNER (Mounted cleanly on lower crate / hull) ---
+    const w = currentTask.w;
+    const charStep = w.length > 6 ? 68 : (w.length > 5 ? 76 : 84);
+    const bannerW = Math.max(430, w.length * charStep + 96);
+    const bannerH = 122;
+    const by = 140;
+
+    // Deep nautical patterned enamel plaque (ZERO white rectangles!)
+    const plG = ctx.createLinearGradient(0, by - bannerH * 0.5, 0, by + bannerH * 0.5);
+    plG.addColorStop(0, '#134e6f');
+    plG.addColorStop(0.5, '#0c3650');
+    plG.addColorStop(1, '#082538');
+    ctx.fillStyle = plG;
+    ctx.beginPath(); ctx.roundRect(-bannerW * 0.5, by - bannerH * 0.5, bannerW, bannerH, 28); ctx.fill();
+
+    // Diagonal subtle enamel sheen stripes inside plaque
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(-bannerW * 0.5, by - bannerH * 0.5, bannerW, bannerH, 28); ctx.clip();
+    ctx.fillStyle = 'rgba(110, 215, 240, 0.07)';
+    for (let sx = -bannerW; sx < bannerW; sx += 54) {
+      ctx.beginPath();
+      ctx.moveTo(sx, by - 70); ctx.lineTo(sx + 24, by - 70);
+      ctx.lineTo(sx - 20, by + 70); ctx.lineTo(sx - 44, by + 70);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    // Ornate brass border
+    ctx.strokeStyle = gameState === 'celebrating' ? '#7df5b6' : '#f2c25c';
+    ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.roundRect(-bannerW * 0.5, by - bannerH * 0.5, bannerW, bannerH, 28); ctx.stroke();
+
+    // Corner brass bolts
+    ctx.fillStyle = '#ffe299';
+    for (const [bx, bby] of [
+      [-bannerW * 0.5 + 18, by - bannerH * 0.5 + 18],
+      [ bannerW * 0.5 - 18, by - bannerH * 0.5 + 18],
+      [-bannerW * 0.5 + 18, by + bannerH * 0.5 - 18],
+      [ bannerW * 0.5 - 18, by + bannerH * 0.5 - 18]
+    ]) {
+      ctx.beginPath(); ctx.arc(bx, bby, 5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Draw each letter of the word + glowing brass socket at missing index
+    const totalW = (w.length - 1) * charStep;
+    const startX = -totalW * 0.5;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let i = 0; i < w.length; i++) {
+      const lx = startX + i * charStep;
+      if (i === currentTask.idx) {
+        // Glowing recessed socket
+        const sockR = 40;
+        const glowPulse = 0.5 + Math.sin(time * 4.5) * 0.28;
+
+        if (filledLetter) {
+          // Completed medallion locked into socket!
+          const p = filledPalette || BUOY_PALETTES[0];
+          const popScale = 1 + Math.sin(slotPulse * Math.PI) * 0.25;
+          ctx.save();
+          ctx.translate(lx, by);
+          ctx.scale(popScale, popScale);
+          ctx.fillStyle = p.main;
+          ctx.beginPath(); ctx.arc(0, 0, sockR + 3, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#ffe58f'; ctx.lineWidth = 4;
+          ctx.stroke();
+          ctx.font = '900 66px "Trebuchet MS", "Segoe UI", system-ui, sans-serif';
+          ctx.fillStyle = '#fff9e6';
+          ctx.fillText(filledLetter, 0, 2);
+          ctx.restore();
+        } else {
+          // Empty pulsing amber-brass target socket
+          const sg = ctx.createRadialGradient(lx, by, 6, lx, by, sockR + 8);
+          sg.addColorStop(0, `rgba(255, 213, 79, ${0.42 + glowPulse * 0.3})`);
+          sg.addColorStop(0.75, 'rgba(20, 75, 108, 0.85)');
+          sg.addColorStop(1, 'rgba(10, 40, 60, 0.95)');
+          ctx.fillStyle = sg;
+          ctx.beginPath(); ctx.arc(lx, by, sockR, 0, Math.PI * 2); ctx.fill();
+
+          // Rotating dashed brass guide ring
+          ctx.save();
+          ctx.translate(lx, by);
+          ctx.rotate(time * 0.9);
+          ctx.strokeStyle = gameState === 'dragging' ? '#7efce0' : '#ffd54f';
+          ctx.lineWidth = gameState === 'dragging' ? 4.5 : 3.5;
+          ctx.setLineDash([10, 8]);
+          ctx.beginPath(); ctx.arc(0, 0, sockR - 4, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+      } else {
+        ctx.font = '900 66px "Trebuchet MS", "Segoe UI", system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(4, 18, 30, 0.55)';
+        ctx.fillText(w[i], lx + 2, by + 5);
+        ctx.fillStyle = '#fff5dc';
+        ctx.fillText(w[i], lx, by + 1);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawLetterBuoys() {
+    for (const b of buoys) {
+      if (!b.visible) continue;
+
+      // Braided steel crane cable connecting overhead beam/trolley to buoy ring
+      const anchorX = (b === activeBuoy) ? craneX : b.homeX;
+      const anchorY = 86;
+      ctx.save();
+      ctx.strokeStyle = '#334e68';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(anchorX, anchorY);
+      ctx.quadraticCurveTo((anchorX + b.x) * 0.5, (anchorY + b.y) * 0.5 + 14, b.x, b.y - b.r * b.scale - 6);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(220, 235, 245, 0.45)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(anchorX - 1, anchorY);
+      ctx.quadraticCurveTo((anchorX + b.x) * 0.5 - 1, (anchorY + b.y) * 0.5 + 14, b.x - 1, b.y - b.r * b.scale - 6);
+      ctx.stroke();
+
+      // Draw buoy medallion
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot);
+      ctx.scale(b.scale, b.scale);
+
+      // Soft ambient drop shadow
+      ctx.fillStyle = 'rgba(5, 28, 46, 0.34)';
+      ctx.beginPath(); ctx.arc(4, 10, b.r + 3, 0, Math.PI * 2); ctx.fill();
+
+      // Hover/drag golden aura
+      if (b === hoveredBuoy || b === activeBuoy) {
+        const ag = ctx.createRadialGradient(0, 0, b.r - 4, 0, 0, b.r + 22);
+        ag.addColorStop(0, 'rgba(255, 234, 138, 0.65)');
+        ag.addColorStop(1, 'rgba(255, 234, 138, 0)');
+        ctx.fillStyle = ag;
+        ctx.beginPath(); ctx.arc(0, 0, b.r + 22, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Top brass shackle ring
+      ctx.strokeStyle = '#f2c25c'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(0, -b.r - 4, 11, 0, Math.PI * 2); ctx.stroke();
+
+      // Main colored maritime enamel disc
+      const mg = ctx.createRadialGradient(-20, -24, 10, 0, 0, b.r);
+      mg.addColorStop(0, b.palette.stripe);
+      mg.addColorStop(0.65, b.palette.main);
+      mg.addColorStop(1, b.palette.dark);
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.arc(0, 0, b.r, 0, Math.PI * 2); ctx.fill();
+
+      // Decorative curved maritime buoy stripes clipped inside disc
+      ctx.save();
+      ctx.beginPath(); ctx.arc(0, 0, b.r - 6, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+      for (let i = 0; i < 4; i++) {
+        ctx.save();
+        ctx.rotate((Math.PI * i) / 2 + 0.4);
+        ctx.fillRect(-12, -b.r - 4, 24, 24);
+        ctx.restore();
+      }
+      // Specular glossy top arc
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.beginPath(); ctx.ellipse(-10, -b.r * 0.46, b.r * 0.62, b.r * 0.24, -0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      // Brushed brass outer bezel & rivets
+      ctx.strokeStyle = '#f7cf72';
+      ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.arc(0, 0, b.r - 2, 0, Math.PI * 2); ctx.stroke();
+
+      ctx.fillStyle = '#fff2c2';
+      for (let i = 0; i < 8; i++) {
+        const a = (Math.PI * 2 * i) / 8;
+        ctx.beginPath(); ctx.arc(Math.cos(a) * (b.r - 2), Math.sin(a) * (b.r - 2), 3.2, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Crisp, unmistakable lowercase letter ('і', 'и', 'ы')
+      ctx.font = '900 84px "Trebuchet MS", "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(10, 20, 35, 0.38)';
+      ctx.fillText(b.letter, 3, 6);
+      ctx.fillStyle = '#fff9eb';
+      ctx.fillText(b.letter, 0, 2);
+
+      ctx.restore();
+    }
+  }
+
+  function drawSeaFront() {
+    const x0 = -stageX / stageScale - 40;
+    const w0 = viewW / stageScale + 80;
+
+    // Two bobbing harbor navigation buoys on the flanks
+    for (const [bx, col] of [[118, '#e85d3f'], [1482, '#2ec4b6']]) {
+      const by = 788 + Math.sin(time * 2.5 + bx) * 8;
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(Math.sin(time * 2.1 + bx) * 0.14);
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.moveTo(-22, 16); ctx.lineTo(-14, -22); ctx.lineTo(14, -22); ctx.lineTo(22, 16); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff3d1';
+      ctx.fillRect(-16, -6, 32, 9);
+      ctx.fillStyle = '#ffd54f';
+      ctx.beginPath(); ctx.arc(0, -28, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Layered foreground waves lapping against ship hull
+    drawWaveLayer(798, 12, 0.011, -2.2, 'rgba(12, 98, 140, 0.92)', x0, w0);
+    // White seafoam line
+    ctx.strokeStyle = 'rgba(210, 245, 255, 0.42)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (let x = x0; x <= x0 + w0 + 40; x += 32) {
+      const y = 800 + Math.sin(x * 0.011 - time * 2.2) * 12 + Math.cos(x * 0.02 + time * 1.5) * 5;
+      if (x === x0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    drawWaveLayer(842, 14, 0.009, 2.7, '#094366', x0, w0);
+  }
+
+  function drawFX() {
+    // Steam puffs
+    for (const p of steamPuffs) {
+      ctx.fillStyle = p.dark
+        ? `rgba(72, 86, 98, ${Math.max(0, p.a)})`
+        : `rgba(240, 250, 255, ${Math.max(0, p.a)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Balloons
+    for (const bl of balloons) {
+      ctx.save();
+      ctx.translate(bl.x, bl.y);
+      ctx.strokeStyle = 'rgba(255, 245, 210, 0.75)'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(0, bl.r); ctx.quadraticCurveTo(6, bl.r + 24, -4, bl.r + 48); ctx.stroke();
+      ctx.fillStyle = bl.color;
+      ctx.beginPath(); ctx.ellipse(0, 0, bl.r * 0.88, bl.r, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.38)';
+      ctx.beginPath(); ctx.ellipse(-bl.r * 0.28, -bl.r * 0.32, bl.r * 0.22, bl.r * 0.34, -0.35, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Particles
+    for (const p of particles) {
+      const alpha = Math.min(1, p.life / (p.maxLife * 0.45));
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, alpha);
+      if (p.kind === 'confetti') {
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size * 0.5, -p.size * 0.3, p.size, p.size * 0.6);
+      } else if (p.kind === 'spark') {
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.kind === 'bubble') {
+        const bg = ctx.createRadialGradient(p.x - p.size * 0.3, p.y - p.size * 0.3, 2, p.x, p.y, p.size);
+        bg.addColorStop(0, 'rgba(255,255,255,0.75)');
+        bg.addColorStop(0.5, 'rgba(130, 235, 255, 0.28)');
+        bg.addColorStop(1, 'rgba(220, 170, 255, 0.45)');
+        ctx.fillStyle = bg;
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      } else if (p.kind === 'star') {
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const rad = i % 2 === 0 ? p.size : p.size * 0.42;
+          const a = (Math.PI * i) / 5;
+          if (i === 0) ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+          else ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+        }
+        ctx.closePath(); ctx.fill();
+      } else if (p.kind === 'drop') {
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.kind === 'jet') {
+        ctx.fillStyle = `hsla(${p.hue}, 92%, 68%, 0.85)`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  function render() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, viewW, viewH);
+
+    ctx.save();
+    ctx.translate(stageX, stageY);
+    ctx.scale(stageScale, stageScale);
+
+    drawSkyAndCoast();
+    drawSeaBack();
+    drawFestivalPennants();
+    drawOverheadCrane();
+    drawShipAndCaptain();
+    drawSeaFront();
+    drawLetterBuoys();
+    drawFX();
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 10. BOOTSTRAP
+  // =========================================================================
+  setupTask(false);
+
+  function frame(ts) {
+    const dt = Math.min(0.05, (ts - lastTS) / 1000);
+    lastTS = ts;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
