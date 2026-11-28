@@ -1,0 +1,3251 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Пляжні склади П</title>
+  <style>
+    /* Full-screen locked 16:9 responsive viewport, zero scrollbars, crisp touch interaction */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #27a9e1;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      cursor: default;
+    }
+
+    /* Strictly 2 minimalist floating beach/nautical buttons — NO white boxes anywhere */
+    .beach-btn {
+      position: fixed;
+      top: 16px;
+      z-index: 20;
+      border: 4px solid #ffe49e;
+      border-radius: 999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: 900;
+      color: #fffef5;
+      text-shadow: 0 2px 3px rgba(60, 30, 5, 0.45);
+      box-shadow:
+        0 6px 0 rgba(105, 52, 12, 0.42),
+        0 10px 20px rgba(10, 55, 85, 0.25),
+        inset 0 3px 6px rgba(255, 255, 255, 0.42);
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease, box-shadow 0.14s ease;
+      outline: none;
+    }
+
+    .beach-btn:hover {
+      transform: translateY(-2px) scale(1.07);
+      filter: brightness(1.08);
+    }
+
+    .beach-btn:active {
+      transform: translateY(3px) scale(0.94);
+      box-shadow:
+        0 2px 0 rgba(105, 52, 12, 0.45),
+        0 4px 10px rgba(10, 55, 85, 0.2),
+        inset 0 2px 4px rgba(255, 255, 255, 0.3);
+    }
+
+    /* Warm wooden/nautical coral-amber badge for language toggle */
+    #langBtn {
+      left: 18px;
+      min-width: 82px;
+      height: 54px;
+      padding: 0 18px;
+      font-size: 22px;
+      letter-spacing: 1px;
+      background: linear-gradient(180deg, #ff8f3f 0%, #d9532f 100%);
+    }
+
+    /* Matching nautical turquoise-ocean round Next button */
+    #nextBtn {
+      right: 18px;
+      width: 58px;
+      height: 58px;
+      background: linear-gradient(180deg, #1ad1c5 0%, #0086b3 100%);
+    }
+
+    #nextBtn svg {
+      width: 28px;
+      height: 28px;
+      filter: drop-shadow(0 2px 2px rgba(0, 45, 70, 0.35));
+    }
+
+    @media (max-width: 640px) {
+      .beach-btn {
+        top: 10px;
+        border-width: 3px;
+      }
+      #langBtn {
+        left: 10px;
+        min-width: 68px;
+        height: 46px;
+        font-size: 18px;
+        padding: 0 14px;
+      }
+      #nextBtn {
+        right: 10px;
+        width: 48px;
+        height: 48px;
+      }
+      #nextBtn svg {
+        width: 22px;
+        height: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fullscreen procedural tropical beach canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Top-left: Single minimalist bilingual toggle ('укр' / 'рус') -->
+  <button id="langBtn" class="beach-btn" aria-label="Language toggle">укр</button>
+
+  <!-- Top-right: Single minimalist Next button -->
+  <button id="nextBtn" class="beach-btn" aria-label="Next">
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 16H24M24 16L16.5 8.5M24 16L16.5 23.5" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <script>
+    (function () {
+      'use strict';
+
+      /* =========================================================================
+       * 1. PROCEDURAL TROPICAL BEACH WEB AUDIO ENGINE (Zero external audio files)
+       *    Synthesizes marimba chimes, wooden pier footsteps, springboard twang,
+       *    jump whistles, realistic filtered-noise water splashes, bubbles,
+       *    playful wrong boings, and tropical wave-completion fanfare.
+       * ========================================================================= */
+      class BeachSoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.noiseBuffer = null;
+        }
+
+        unlock() {
+          try {
+            if (!this.ctx) {
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (AudioCtx) {
+                this.ctx = new AudioCtx();
+                this._buildNoiseBuffer();
+              }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+              this.ctx.resume();
+            }
+          } catch (e) {
+            // Gracefully continue without audio if blocked/unsupported
+          }
+        }
+
+        _ensure() {
+          if (!this.ctx) this.unlock();
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+          return this.ctx;
+        }
+
+        _buildNoiseBuffer() {
+          if (!this.ctx) return;
+          const length = Math.floor(this.ctx.sampleRate * 1.2);
+          const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < length; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          this.noiseBuffer = buffer;
+        }
+
+        // Warm wooden marimba / kalimba note helper
+        _marimbaNote(t, freq, dur = 0.28, vol = 0.14) {
+          const ctx = this.ctx;
+          if (!ctx) return;
+          const osc = ctx.createOscillator();
+          const over = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const overGain = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, t);
+
+          over.type = 'triangle';
+          over.frequency.setValueAtTime(freq * 3.98, t); // authentic marimba overtone
+
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(vol, t + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+          overGain.gain.setValueAtTime(0.001, t);
+          overGain.gain.linearRampToValueAtTime(vol * 0.22, t + 0.006);
+          overGain.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.35);
+
+          osc.connect(gain);
+          over.connect(overGain);
+          gain.connect(ctx.destination);
+          overGain.connect(ctx.destination);
+
+          osc.start(t);
+          over.start(t);
+          osc.stop(t + dur + 0.02);
+          over.stop(t + dur * 0.4);
+        }
+
+        // Joyful tropical chime for correct match
+        playCorrect() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const notes = [523.25, 659.25, 783.99, 1046.5];
+          notes.forEach((f, idx) => this._marimbaNote(now + idx * 0.07, f, 0.35, 0.14));
+        }
+
+        // Playful cartoonish bloop/boing for wrong click (gentle & funny)
+        playWrong() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const lfo = ctx.createOscillator();
+          const lfoGain = ctx.createGain();
+          const gain = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(300, now);
+          osc.frequency.exponentialRampToValueAtTime(175, now + 0.32);
+
+          lfo.type = 'sine';
+          lfo.frequency.setValueAtTime(22, now);
+          lfoGain.gain.setValueAtTime(30, now);
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.13, now + 0.018);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          lfo.start(now);
+          osc.stop(now + 0.36);
+          lfo.stop(now + 0.36);
+        }
+
+        // Hollow wooden plank footstep on pier
+        playWoodStep(pitch = 1) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(195 * pitch, now);
+          osc.frequency.exponentialRampToValueAtTime(95 * pitch, now + 0.055);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.085, now + 0.006);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.065);
+        }
+
+        // Springy diving board boing/twang
+        playSpringTwang(pitch = 1) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const lfo = ctx.createOscillator();
+          const lfoGain = ctx.createGain();
+          const gain = ctx.createGain();
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(140 * pitch, now);
+          osc.frequency.exponentialRampToValueAtTime(360 * pitch, now + 0.22);
+          osc.frequency.exponentialRampToValueAtTime(210 * pitch, now + 0.42);
+
+          lfo.type = 'sine';
+          lfo.frequency.setValueAtTime(28, now);
+          lfoGain.gain.setValueAtTime(24, now);
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.15, now + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          lfo.start(now);
+          osc.stop(now + 0.46);
+          lfo.stop(now + 0.46);
+        }
+
+        // Rising jump slide-whistle / whoosh
+        playJumpWhistle(high = false) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(high ? 380 : 280, now);
+          osc.frequency.exponentialRampToValueAtTime(high ? 1180 : 840, now + 0.34);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.095, now + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.4);
+        }
+
+        // Realistic water splash: filtered noise burst + low plop thump + bubble pops
+        playSplash(intensity = 1.0) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+
+          // 1. Low water displacement thump
+          const thump = ctx.createOscillator();
+          const thumpGain = ctx.createGain();
+          thump.type = 'sine';
+          thump.frequency.setValueAtTime(160, now);
+          thump.frequency.exponentialRampToValueAtTime(48, now + 0.22);
+          thumpGain.gain.setValueAtTime(0.22 * intensity, now);
+          thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          thump.connect(thumpGain);
+          thumpGain.connect(ctx.destination);
+          thump.start(now);
+          thump.stop(now + 0.26);
+
+          // 2. Bandpass-swept white noise spray
+          if (this.noiseBuffer) {
+            const src = ctx.createBufferSource();
+            src.buffer = this.noiseBuffer;
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(1800, now);
+            filter.frequency.exponentialRampToValueAtTime(520, now + 0.55 * intensity);
+            filter.Q.setValueAtTime(0.85, now);
+
+            const nGain = ctx.createGain();
+            nGain.gain.setValueAtTime(0.001, now);
+            nGain.gain.linearRampToValueAtTime(0.24 * Math.min(1.25, intensity), now + 0.02);
+            nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6 * intensity);
+
+            src.connect(filter);
+            filter.connect(nGain);
+            nGain.connect(ctx.destination);
+            src.start(now);
+            src.stop(now + 0.65 * intensity);
+          }
+
+          // 3. Trailing bubbly pops
+          this.playBubbles(now + 0.12, 4);
+        }
+
+        playBubbles(startTime = null, count = 3) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const base = startTime || ctx.currentTime;
+          for (let i = 0; i < count; i++) {
+            const t = base + i * 0.075 + Math.random() * 0.03;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const f0 = 320 + Math.random() * 260;
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(f0, t);
+            osc.frequency.exponentialRampToValueAtTime(f0 * 2.1, t + 0.075);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.075, t + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.085);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.09);
+          }
+        }
+
+        // Crisp pop for syllable signboard change or button click
+        playPop() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          this._marimbaNote(now, 587.33, 0.16, 0.11);
+          this._marimbaNote(now + 0.05, 880, 0.2, 0.11);
+        }
+
+        // Bright tropical marimba fanfare when all 5 characters finish diving!
+        playTropicalFanfare() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const melody = [
+            [0.0, 523.25], [0.1, 659.25], [0.2, 783.99], [0.3, 1046.5],
+            [0.45, 880.0], [0.56, 1046.5], [0.68, 1318.5], [0.84, 1567.98]
+          ];
+          melody.forEach(([off, freq]) => {
+            this._marimbaNote(now + off, freq, 0.42, 0.14);
+            this._marimbaNote(now + off, freq * 0.5, 0.38, 0.06);
+          });
+          this.playBubbles(now + 0.35, 5);
+        }
+      }
+
+      const sound = new BeachSoundEngine();
+
+      /* =========================================================================
+       * 2. CONFIGURATION, SYLLABLES & DIVING STYLES
+       * ========================================================================= */
+      const VIRTUAL_W = 1600;
+      const VIRTUAL_H = 900;
+
+      const CHARACTER_DEFS = {
+        pa: { id: 'pa', syllables: { uk: 'ПА', ru: 'ПА' }, kind: 'panda' },
+        po: { id: 'po', syllables: { uk: 'ПО', ru: 'ПО' }, kind: 'tomato' },
+        pu: { id: 'pu', syllables: { uk: 'ПУ', ru: 'ПУ' }, kind: 'poodle' },
+        py: { id: 'py', syllables: { uk: 'ПИ', ru: 'ПЫ' }, kind: 'vacuum' },
+        pe: { id: 'pe', syllables: { uk: 'ПЕ', ru: 'ПЕ' }, kind: 'cookie' }
+      };
+
+      const CHAR_KEYS = ['pa', 'po', 'pu', 'py', 'pe'];
+      const DIVE_STYLES = ['cannonball', 'doubleflip', 'starfish', 'helicopter', 'superbounce'];
+
+      // Spacious sandy-beach standing slots (clear of pier deck & surfboard sign)
+      const BEACH_SLOTS = [
+        { x: 155, y: 660 },
+        { x: 355, y: 630 },
+        { x: 235, y: 815 },
+        { x: 470, y: 785 },
+        { x: 695, y: 820 }
+      ];
+
+      // Pier & diving board geometry constants
+      const PIER_START_X = 465;
+      const PIER_END_X = 975;
+      const PIER_DECK_Y = 556;
+      const BOARD_BASE_X = 955;
+      const BOARD_TIP_X = 1095;
+      const BOARD_Y = 550;
+      const WATER_LAND_X = 1270;
+      const WATER_LAND_Y = 698;
+
+      function shuffleArray(arr) {
+        const copy = arr.slice();
+        for (let i = copy.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+      }
+
+      /* =========================================================================
+       * 3. CANVAS & HIGH-DPI RESPONSIVE STAGE MAPPING
+       * ========================================================================= */
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const langBtn = document.getElementById('langBtn');
+      const nextBtn = document.getElementById('nextBtn');
+
+      let viewW = window.innerWidth;
+      let viewH = window.innerHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let stageScale = 1;
+      let stageOffsetX = 0;
+      let stageOffsetY = 0;
+
+      function resizeCanvas() {
+        viewW = window.innerWidth;
+        viewH = window.innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(viewW * dpr);
+        canvas.height = Math.round(viewH * dpr);
+        canvas.style.width = viewW + 'px';
+        canvas.style.height = viewH + 'px';
+
+        stageScale = Math.min(viewW / VIRTUAL_W, viewH / VIRTUAL_H);
+        stageOffsetX = (viewW - VIRTUAL_W * stageScale) * 0.5;
+        stageOffsetY = (viewH - VIRTUAL_H * stageScale) * 0.5;
+      }
+
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      function screenToStage(clientX, clientY) {
+        return {
+          x: (clientX - stageOffsetX) / stageScale,
+          y: (clientY - stageOffsetY) / stageScale
+        };
+      }
+
+      /* =========================================================================
+       * 4. SCENIC BACKGROUND ENTITIES (Clouds, Seagulls, Sand Grains, Fish, Crab)
+       * ========================================================================= */
+      const clouds = [
+        { x: -120, y: 105, scale: 1.0, speed: 15 },
+        { x: 640, y: 78, scale: 0.78, speed: 10 },
+        { x: 1120, y: 118, scale: 1.12, speed: 13 },
+        { x: 1560, y: 84, scale: 0.85, speed: 18 }
+      ];
+
+      const seagulls = [
+        { x: 780, y: 170, speed: 52, phase: 0.2, scale: 0.95 },
+        { x: 1180, y: 205, speed: 44, phase: 2.3, scale: 0.78 },
+        { x: 240, y: 140, speed: 48, phase: 4.1, scale: 0.85 }
+      ];
+
+      // Subtle deterministic sand grain speckles for rich tactile beach texture
+      const sandGrains = [];
+      for (let i = 0; i < 110; i++) {
+        const rx = -200 + ((i * 73) % 1080);
+        const ry = 550 + ((i * 47) % 380);
+        sandGrains.push({
+          x: rx,
+          y: ry,
+          r: 1.5 + (i % 3) * 0.9,
+          color: i % 2 === 0 ? 'rgba(186, 134, 60, 0.35)' : 'rgba(255, 248, 220, 0.45)'
+        });
+      }
+
+      // Cute tiny jumping fish in the sea
+      const jumpingFish = {
+        active: false,
+        x: 1380,
+        y: 615,
+        t: 0,
+        cooldown: 3.5,
+        dir: -1
+      };
+
+      // Cute little beach crab peeking out & reacting to wrong clicks!
+      const beachCrab = {
+        x: 785,
+        y: 858,
+        peek: 0,
+        targetPeek: 0.25,
+        timer: 2.4,
+        reactTimer: 0
+      };
+
+      /* =========================================================================
+       * 5. PARTICLE, SPLASH & BEACH-BALL CELEBRATION SYSTEM
+       * ========================================================================= */
+      const particles = [];
+      const foamRings = [];
+      const beachBalls = [];
+
+      function spawnWaterSplash(x, y, power = 1.0) {
+        // Expanding white surface foam rings
+        for (let i = 0; i < 3; i++) {
+          foamRings.push({
+            x,
+            y: y + 4,
+            rx: 18 + i * 12,
+            ry: 7 + i * 4,
+            maxRx: (130 + i * 48) * power,
+            life: 0,
+            maxLife: 0.75 + i * 0.22
+          });
+        }
+
+        // Tall central water geyser plumes + arcing droplets
+        const dropCount = Math.round(34 * power);
+        for (let i = 0; i < dropCount; i++) {
+          const isGeyser = i < dropCount * 0.35;
+          const angle = isGeyser
+            ? -Math.PI * 0.5 + (Math.random() - 0.5) * 0.52
+            : -Math.PI * 0.5 + (Math.random() - 0.5) * 1.65;
+          const speed = (isGeyser ? 320 + Math.random() * 290 : 140 + Math.random() * 260) * power;
+          particles.push({
+            type: 'droplet',
+            x: x + (Math.random() - 0.5) * 44,
+            y: y + (Math.random() - 0.5) * 10,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            gravity: 780,
+            size: 5 + Math.random() * 9 * Math.min(1.3, power),
+            color: i % 3 === 0 ? '#ffffff' : (i % 2 === 0 ? '#b2f7ff' : '#4ce0f5'),
+            rot: 0,
+            vrot: 0,
+            life: 0,
+            maxLife: 0.65 + Math.random() * 0.45
+          });
+        }
+
+        // Rising underwater bubbles
+        for (let i = 0; i < 14; i++) {
+          particles.push({
+            type: 'bubble',
+            x: x + (Math.random() - 0.5) * 90,
+            y: y + 18 + Math.random() * 35,
+            vx: (Math.random() - 0.5) * 40,
+            vy: -70 - Math.random() * 95,
+            gravity: -20,
+            size: 5 + Math.random() * 10,
+            color: '#e0fbff',
+            rot: 0,
+            vrot: 0,
+            life: 0,
+            maxLife: 0.8 + Math.random() * 0.65
+          });
+        }
+      }
+
+      function spawnSparkle(x, y, color = '#ffe66d') {
+        particles.push({
+          type: 'star',
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 90,
+          vy: -40 - Math.random() * 90,
+          gravity: 160,
+          size: 8 + Math.random() * 10,
+          color,
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 9,
+          life: 0,
+          maxLife: 0.55 + Math.random() * 0.35
+        });
+      }
+
+      function spawnWaveCelebration() {
+        // Colorful bouncing beach balls!
+        beachBalls.length = 0;
+        const ballCoords = [260, 560, 860, 1160, 1410];
+        ballCoords.forEach((bx, idx) => {
+          beachBalls.push({
+            x: bx,
+            y: -60 - idx * 55,
+            vx: (idx % 2 === 0 ? 1 : -1) * (65 + idx * 14),
+            vy: 80,
+            r: 34 + (idx % 2) * 6,
+            rot: Math.random() * Math.PI * 2,
+            vrot: (idx % 2 === 0 ? 1 : -1) * 4.5,
+            groundY: bx < 760 ? 790 : 695
+          });
+        });
+
+        // Joyful water fountains from the sea!
+        spawnWaterSplash(1060, 690, 1.15);
+        spawnWaterSplash(1280, 710, 1.35);
+        spawnWaterSplash(1460, 680, 1.1);
+
+        // Starfish & seashell sparkles across the beach and sky
+        const colors = ['#ff6b81', '#ffd32a', '#48dbfb', '#ff9f43', '#2ed573', '#ff9ff3'];
+        for (let i = 0; i < 48; i++) {
+          particles.push({
+            type: i % 2 === 0 ? 'star' : 'bubble',
+            x: 120 + Math.random() * 1360,
+            y: 520 + Math.random() * 320,
+            vx: (Math.random() - 0.5) * 110,
+            vy: -190 - Math.random() * 240,
+            gravity: 60,
+            size: 11 + Math.random() * 15,
+            color: colors[i % colors.length],
+            rot: Math.random() * Math.PI * 2,
+            vrot: (Math.random() - 0.5) * 7,
+            life: 0,
+            maxLife: 1.6 + Math.random() * 0.9
+          });
+        }
+      }
+
+      function updateParticles(dt) {
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.life += dt;
+          if (p.life >= p.maxLife) {
+            particles.splice(i, 1);
+            continue;
+          }
+          p.vy += p.gravity * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.rot += p.vrot * dt;
+        }
+
+        for (let i = foamRings.length - 1; i >= 0; i--) {
+          const fr = foamRings[i];
+          fr.life += dt;
+          if (fr.life >= fr.maxLife) {
+            foamRings.splice(i, 1);
+          } else {
+            const k = fr.life / fr.maxLife;
+            fr.rx = 18 + (fr.maxRx - 18) * (1 - Math.pow(1 - k, 2.2));
+            fr.ry = fr.rx * 0.28;
+          }
+        }
+
+        for (let i = beachBalls.length - 1; i >= 0; i--) {
+          const b = beachBalls[i];
+          b.vy += 920 * dt;
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          b.rot += b.vrot * dt;
+          if (b.y > b.groundY - b.r) {
+            b.y = b.groundY - b.r;
+            b.vy = -Math.max(360, Math.abs(b.vy) * 0.82);
+            if (b.x > 800) spawnWaterSplash(b.x, b.groundY, 0.45);
+          }
+        }
+      }
+
+      function drawFoamRings(ctx) {
+        for (const fr of foamRings) {
+          const alpha = Math.max(0, 1 - fr.life / fr.maxLife);
+          ctx.save();
+          ctx.globalAlpha = alpha * 0.88;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 4 + alpha * 5;
+          ctx.beginPath();
+          ctx.ellipse(fr.x, fr.y, fr.rx, fr.ry, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      function drawParticles(ctx) {
+        for (const p of particles) {
+          const t = p.life / p.maxLife;
+          const alpha = t < 0.12 ? t / 0.12 : Math.max(0, 1 - (t - 0.12) / 0.88);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+
+          if (p.type === 'droplet') {
+            const ang = Math.atan2(p.vy, p.vx);
+            ctx.rotate(ang);
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.size * 1.15, p.size * 0.65, 0, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (p.type === 'bubble') {
+            ctx.fillStyle = 'rgba(220, 252, 255, 0.35)';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(-p.size * 0.3, -p.size * 0.3, p.size * 0.25, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (p.type === 'star') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            const spikes = 5;
+            const outR = p.size * 0.8;
+            const inR = outR * 0.44;
+            for (let s = 0; s < spikes * 2; s++) {
+              const r = s % 2 === 0 ? outR : inR;
+              const a = (s * Math.PI) / spikes - Math.PI / 2;
+              const sx = Math.cos(a) * r;
+              const sy = Math.sin(a) * r;
+              if (s === 0) ctx.moveTo(sx, sy);
+              else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      function drawBeachBalls(ctx) {
+        const segColors = ['#ff4757', '#ffffff', '#1e90ff', '#ffffff', '#ffd32a', '#ffffff'];
+        for (const b of beachBalls) {
+          ctx.save();
+          ctx.translate(b.x, b.y);
+          ctx.rotate(b.rot);
+
+          ctx.beginPath();
+          ctx.arc(0, 0, b.r, 0, Math.PI * 2);
+          ctx.clip();
+
+          for (let i = 0; i < 6; i++) {
+            ctx.fillStyle = segColors[i];
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, b.r + 2, (i * Math.PI) / 3, ((i + 1) * Math.PI) / 3);
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          // Center white button cap
+          ctx.fillStyle = '#ff6b81';
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(0, 0, b.r * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Glossy spherical highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+          ctx.beginPath();
+          ctx.ellipse(-b.r * 0.3, -b.r * 0.35, b.r * 0.32, b.r * 0.18, -0.6, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.restore();
+
+          // Crisp rim
+          ctx.strokeStyle = 'rgba(30, 50, 80, 0.35)';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      /* =========================================================================
+       * 6. GAME STATE & WAVE MANAGEMENT
+       * ========================================================================= */
+      const game = {
+        lang: 'uk', // 'uk' -> ПА,ПО,ПУ,ПИ,ПЕ | 'ru' -> ПА,ПО,ПУ,ПЫ,ПЕ
+        state: 'WAITING_INPUT', // WAITING_INPUT | RUN_TO_PIER | DIVING | SWIM_OFF | WAVE_CELEBRATION
+        time: 0,
+        pointer: { x: 800, y: 450, active: false },
+        hoveredId: null,
+
+        characters: [],
+        queue: [],
+        targetId: null,
+        signPop: 1,
+
+        // Flexible diving board physics
+        boardFlex: 0,
+        boardVel: 0,
+
+        // Active diver state
+        diver: {
+          char: null,
+          style: 'cannonball',
+          runT: 0,
+          diveT: 0,
+          swimT: 0,
+          startX: 0,
+          startY: 0,
+          stepTimer: 0,
+          sparkTimer: 0,
+          pose: {},
+          flags: {},
+          splashed: false,
+          hasFloatRing: false,
+          hasGoggles: false
+        },
+
+        celebrateTimer: 0
+      };
+
+      function getSyllableText(charId) {
+        return CHARACTER_DEFS[charId].syllables[game.lang];
+      }
+
+      function createWave() {
+        beachBalls.length = 0;
+        const shuffledIds = shuffleArray(CHAR_KEYS);
+        const shuffledSlots = shuffleArray(BEACH_SLOTS);
+        const shuffledDives = shuffleArray(DIVE_STYLES);
+
+        game.characters = shuffledIds.map((id, idx) => ({
+          id,
+          homeX: shuffledSlots[idx].x,
+          homeY: shuffledSlots[idx].y,
+          x: shuffledSlots[idx].x,
+          y: shuffledSlots[idx].y,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          idlePhase: Math.random() * Math.PI * 2,
+          blinkTimer: 1.4 + Math.random() * 3.4,
+          isBlinking: false,
+          wrongTimer: 0,
+          hoverBoost: 0,
+          diveStyle: shuffledDives[idx],
+          spawnPop: 0.05
+        }));
+
+        game.queue = shuffleArray(CHAR_KEYS);
+        game.targetId = game.queue[0];
+        game.state = 'WAITING_INPUT';
+        game.diver.char = null;
+        game.signPop = 0.25;
+      }
+
+      function startCharacterDive(ch) {
+        game.state = 'RUN_TO_PIER';
+        game.hoveredId = null;
+        canvas.style.cursor = 'default';
+
+        game.diver.char = ch;
+        game.diver.style = ch.diveStyle;
+        game.diver.runT = 0;
+        game.diver.diveT = 0;
+        game.diver.swimT = 0;
+        game.diver.startX = ch.homeX;
+        game.diver.startY = ch.homeY;
+        game.diver.stepTimer = 0;
+        game.diver.sparkTimer = 0;
+        game.diver.pose = {};
+        game.diver.flags = {};
+        game.diver.splashed = false;
+        game.diver.hasFloatRing = ch.diveStyle === 'superbounce';
+        game.diver.hasGoggles = ch.diveStyle !== 'superbounce';
+
+        sound.playCorrect();
+        for (let i = 0; i < 8; i++) {
+          spawnSparkle(ch.x + (Math.random() - 0.5) * 80, ch.y - 70 + (Math.random() - 0.5) * 60);
+        }
+      }
+
+      function finishCurrentDiver() {
+        const ch = game.diver.char;
+        if (ch) {
+          const doneId = ch.id;
+          game.characters = game.characters.filter((c) => c.id !== doneId);
+          game.queue = game.queue.filter((id) => id !== doneId);
+          game.diver.char = null;
+        }
+
+        if (game.queue.length > 0 && game.characters.length > 0) {
+          game.targetId = game.queue[0];
+          game.signPop = 0.25;
+          game.state = 'WAITING_INPUT';
+          sound.playPop();
+        } else {
+          // All 5 characters jumped off the pier! Trigger joyful beach celebration!
+          game.state = 'WAVE_CELEBRATION';
+          game.celebrateTimer = 2.4;
+          game.targetId = null;
+          sound.playTropicalFanfare();
+          spawnWaveCelebration();
+        }
+      }
+
+      function skipToNext() {
+        sound.unlock();
+        sound.playPop();
+
+        if (game.state === 'WAVE_CELEBRATION') {
+          createWave();
+          return;
+        }
+
+        if ((game.state === 'RUN_TO_PIER' || game.state === 'DIVING' || game.state === 'SWIM_OFF') && game.diver.char) {
+          const doneId = game.diver.char.id;
+          game.characters = game.characters.filter((c) => c.id !== doneId);
+          game.queue = game.queue.filter((id) => id !== doneId);
+          game.diver.char = null;
+        } else if (game.state === 'WAITING_INPUT') {
+          if (game.queue.length > 1) {
+            const current = game.queue.shift();
+            game.queue.push(current);
+          } else {
+            createWave();
+            return;
+          }
+        }
+
+        if (game.queue.length === 0 || game.characters.length === 0) {
+          createWave();
+          return;
+        }
+
+        // Cleanly reset remaining characters onto their beach spots
+        game.characters.forEach((c) => {
+          c.x = c.homeX;
+          c.y = c.homeY;
+          c.scaleX = 1;
+          c.scaleY = 1;
+          c.rotation = 0;
+          c.wrongTimer = 0;
+        });
+
+        game.boardFlex = 0;
+        game.boardVel = 0;
+        game.targetId = game.queue[0];
+        game.signPop = 0.25;
+        game.state = 'WAITING_INPUT';
+      }
+
+      /* =========================================================================
+       * 7. INPUT HANDLING (Mouse & Touch with Generous Child-Friendly Hitboxes)
+       * ========================================================================= */
+      function findCharacterAt(x, y) {
+        for (let i = game.characters.length - 1; i >= 0; i--) {
+          const c = game.characters[i];
+          if (c === game.diver.char) continue;
+          const dx = x - c.x;
+          const dy = y - (c.y - 72);
+          if (dx * dx + dy * dy <= 105 * 105) {
+            return c;
+          }
+        }
+        return null;
+      }
+
+      canvas.addEventListener('pointermove', (e) => {
+        const pt = screenToStage(e.clientX, e.clientY);
+        game.pointer.x = pt.x;
+        game.pointer.y = pt.y;
+        game.pointer.active = true;
+
+        if (game.state === 'WAITING_INPUT') {
+          const hit = findCharacterAt(pt.x, pt.y);
+          game.hoveredId = hit ? hit.id : null;
+          canvas.style.cursor = hit ? 'pointer' : 'default';
+        } else {
+          game.hoveredId = null;
+          canvas.style.cursor = 'default';
+        }
+      });
+
+      canvas.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        sound.unlock();
+        const pt = screenToStage(e.clientX, e.clientY);
+        game.pointer.x = pt.x;
+        game.pointer.y = pt.y;
+        game.pointer.active = true;
+
+        if (game.state !== 'WAITING_INPUT') return;
+        const hit = findCharacterAt(pt.x, pt.y);
+        if (!hit) return;
+
+        if (hit.id === game.targetId) {
+          startCharacterDive(hit);
+        } else {
+          hit.wrongTimer = 0.65;
+          beachCrab.reactTimer = 0.9; // Cute beach crab reacts playfully!
+          sound.playWrong();
+        }
+      });
+
+      langBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.unlock();
+        sound.playPop();
+        game.lang = game.lang === 'uk' ? 'ru' : 'uk';
+        langBtn.textContent = game.lang === 'uk' ? 'укр' : 'рус';
+        game.signPop = 0.45;
+      });
+
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        skipToNext();
+      });
+
+      /* =========================================================================
+       * 8. UPDATE LOOP & 5 HILARIOUS PIER-DIVING ANIMATIONS
+       * ========================================================================= */
+      function updateGame(dt) {
+        game.time += dt;
+
+        // Elastic spring for surfboard syllable sign
+        game.signPop += (1 - game.signPop) * Math.min(1, dt * 11);
+
+        // Diving board spring oscillation physics
+        const springK = 260;
+        const damp = 10;
+        const bAcc = -springK * game.boardFlex - damp * game.boardVel;
+        game.boardVel += bAcc * dt;
+        game.boardFlex += game.boardVel * dt;
+
+        // Drift clouds & glide seagulls
+        for (const cl of clouds) {
+          cl.x += cl.speed * dt;
+          if (cl.x > VIRTUAL_W + 420) cl.x = -420;
+        }
+        for (const g of seagulls) {
+          g.x += g.speed * dt;
+          if (g.x > VIRTUAL_W + 260) g.x = -260;
+        }
+
+        // Occasional tiny jumping fish in the sea
+        if (!jumpingFish.active) {
+          jumpingFish.cooldown -= dt;
+          if (jumpingFish.cooldown <= 0) {
+            jumpingFish.active = true;
+            jumpingFish.t = 0;
+            jumpingFish.x = 1120 + Math.random() * 340;
+            jumpingFish.y = 580 + Math.random() * 45;
+            jumpingFish.dir = Math.random() < 0.5 ? 1 : -1;
+          }
+        } else {
+          jumpingFish.t += dt / 0.85;
+          if (jumpingFish.t >= 1) {
+            jumpingFish.active = false;
+            jumpingFish.cooldown = 4.5 + Math.random() * 5.0;
+          }
+        }
+
+        // Cute little beach crab peeking out & reacting
+        if (beachCrab.reactTimer > 0) {
+          beachCrab.reactTimer = Math.max(0, beachCrab.reactTimer - dt);
+          beachCrab.targetPeek = 1;
+        } else {
+          beachCrab.timer -= dt;
+          if (beachCrab.timer <= 0) {
+            beachCrab.targetPeek = beachCrab.targetPeek > 0.5 ? 0.15 : 0.95;
+            beachCrab.timer = 2.5 + Math.random() * 3.5;
+          }
+        }
+        beachCrab.peek += (beachCrab.targetPeek - beachCrab.peek) * Math.min(1, dt * 8);
+
+        // Waiting characters idle, blink, hover & wrong reaction
+        for (const c of game.characters) {
+          c.spawnPop += (1 - c.spawnPop) * Math.min(1, dt * 9);
+          c.blinkTimer -= dt;
+          if (c.blinkTimer <= 0) {
+            if (!c.isBlinking) {
+              c.isBlinking = true;
+              c.blinkTimer = 0.13;
+            } else {
+              c.isBlinking = false;
+              c.blinkTimer = 1.9 + Math.random() * 3.3;
+            }
+          }
+          if (c.wrongTimer > 0) {
+            c.wrongTimer = Math.max(0, c.wrongTimer - dt);
+          }
+          const targetHover = game.hoveredId === c.id && game.state === 'WAITING_INPUT' ? 1 : 0;
+          c.hoverBoost += (targetHover - c.hoverBoost) * Math.min(1, dt * 12);
+        }
+
+        // State machine
+        if (game.state === 'RUN_TO_PIER') {
+          updateRunToPier(dt);
+        } else if (game.state === 'DIVING') {
+          updateDivingRoutine(dt);
+        } else if (game.state === 'SWIM_OFF') {
+          updateSwimOff(dt);
+        } else if (game.state === 'WAVE_CELEBRATION') {
+          game.celebrateTimer -= dt;
+          if (Math.random() < dt * 7) {
+            spawnSparkle(150 + Math.random() * 1300, 220 + Math.random() * 500);
+          }
+          if (game.celebrateTimer <= 0) {
+            createWave();
+          }
+        }
+
+        updateParticles(dt);
+      }
+
+      function updateRunToPier(dt) {
+        const d = game.diver;
+        const ch = d.char;
+        if (!ch) return;
+
+        // Two-part joyful run: 0..0.38 hop onto pier entrance, 0.38..1.0 sprint along wooden pier to diving board tip!
+        d.runT += dt / 0.92;
+        const t = Math.min(1, d.runT);
+        const pierEntryX = PIER_START_X + 40;
+        const pierEntryY = PIER_DECK_Y;
+        const targetTipX = BOARD_TIP_X - 24;
+        const targetTipY = BOARD_Y;
+
+        d.pose = {
+          armL: -0.9 + Math.sin(game.time * 18) * 0.7,
+          armR: 0.9 - Math.sin(game.time * 18) * 0.7,
+          legL: Math.sin(game.time * 18) * 0.55,
+          legR: -Math.sin(game.time * 18) * 0.55
+        };
+
+        if (t < 0.38) {
+          const p = t / 0.38;
+          ch.x = d.startX + (pierEntryX - d.startX) * p;
+          ch.y = d.startY + (pierEntryY - d.startY) * p - Math.sin(p * Math.PI) * 115;
+          ch.rotation = Math.sin(p * Math.PI) * 0.14;
+        } else {
+          const p = (t - 0.38) / 0.62;
+          ch.x = pierEntryX + (targetTipX - pierEntryX) * p;
+          ch.y = pierEntryY + (targetTipY - pierEntryY) * p - Math.abs(Math.sin(p * Math.PI * 5)) * 22;
+          ch.rotation = 0.08 + Math.sin(p * Math.PI * 10) * 0.08;
+
+          d.stepTimer -= dt;
+          if (d.stepTimer <= 0) {
+            sound.playWoodStep(0.92 + p * 0.25);
+            d.stepTimer = 0.11;
+          }
+          // Slightly flex board as character steps onto it
+          if (p > 0.85) {
+            game.boardFlex = (p - 0.85) * 90;
+          }
+        }
+
+        if (t >= 1) {
+          ch.x = targetTipX;
+          ch.y = targetTipY;
+          ch.rotation = 0;
+          d.diveT = 0;
+          game.state = 'DIVING';
+        }
+      }
+
+      function updateDivingRoutine(dt) {
+        const d = game.diver;
+        const ch = d.char;
+        if (!ch) return;
+
+        const dur =
+          d.style === 'doubleflip' ? 1.75 :
+          d.style === 'starfish' ? 1.65 :
+          d.style === 'helicopter' ? 1.65 :
+          d.style === 'superbounce' ? 1.65 : 1.3;
+
+        d.diveT += dt / dur;
+        const t = Math.min(1, d.diveT);
+        const sx = BOARD_TIP_X - 24;
+        const sy = BOARD_Y;
+        const lx = WATER_LAND_X;
+        const ly = WATER_LAND_Y;
+
+        d.pose = {};
+        d.sparkTimer -= dt;
+
+        if (d.style === 'cannonball') {
+          /* 1. CANNONBALL ("Бомбочка"): Leaps high, tucks into a tight spinning ball hugging knees, huge water geyser splash! */
+          if (!d.flags.jump) {
+            d.flags.jump = true;
+            game.boardVel = -520;
+            sound.playSpringTwang(0.95);
+            sound.playJumpWhistle(false);
+          }
+          ch.x = sx + (lx - sx) * Math.pow(t, 0.85);
+          // High parabolic arc dropping sharply at the end
+          const arc = Math.sin(t * Math.PI) * 320;
+          ch.y = sy + (ly - sy) * (t * t) - arc;
+
+          if (t > 0.2 && t < 0.92) {
+            // Tucked tight spinning ball!
+            ch.scaleX = 0.84;
+            ch.scaleY = 0.82;
+            ch.rotation = (t - 0.2) * Math.PI * 6.5;
+            d.pose.tuck = true;
+          } else {
+            ch.scaleX = 1;
+            ch.scaleY = 1;
+            ch.rotation = t * 1.2;
+          }
+
+          if (t >= 1) {
+            triggerSplashImpact(1.45); // Huge cannonball geyser!
+          }
+        } else if (d.style === 'doubleflip') {
+          /* 2. SPRINGBOARD DOUBLE FLIP ("Подвійне сальто"): Bounces twice on bending diving board with twangs, launches high doing 2 somersaults + sparkles! */
+          if (t < 0.42) {
+            // Two springy bounces on the tip of the diving board!
+            const bp = (t / 0.42) * 2;
+            const bounceIdx = Math.floor(bp);
+            const lt = bp - bounceIdx;
+            if (!d.flags['b' + bounceIdx]) {
+              d.flags['b' + bounceIdx] = true;
+              sound.playSpringTwang(0.9 + bounceIdx * 0.25);
+            }
+            const dip = Math.sin(lt * Math.PI * 2);
+            game.boardFlex = dip < 0 ? -dip * 28 : -dip * 14;
+            ch.x = sx;
+            ch.y = sy + (dip < 0 ? -dip * 28 : -dip * 82);
+            ch.scaleX = dip < 0 ? 1.18 : 0.88;
+            ch.scaleY = dip < 0 ? 0.82 : 1.14;
+            ch.rotation = 0;
+            d.pose.armL = -1.7;
+            d.pose.armR = 1.7;
+          } else {
+            if (!d.flags.launch) {
+              d.flags.launch = true;
+              game.boardVel = -650;
+              sound.playJumpWhistle(true);
+            }
+            const p = (t - 0.42) / 0.58;
+            ch.x = sx + (lx - sx) * p;
+            ch.y = sy + (ly - sy) * (p * p) - Math.sin(p * Math.PI) * 355;
+            ch.scaleX = 0.96;
+            ch.scaleY = 1.06;
+            // Two smooth 360° somersaults ending head-first!
+            ch.rotation = p * Math.PI * 4 + p * Math.PI * 0.85;
+            d.pose.armL = -2.4;
+            d.pose.armR = 2.4;
+
+            if (d.sparkTimer <= 0) {
+              spawnSparkle(ch.x, ch.y - 40, '#ffe66d');
+              d.sparkTimer = 0.055;
+            }
+          }
+
+          if (t >= 1) {
+            triggerSplashImpact(0.95);
+          }
+        } else if (d.style === 'starfish') {
+          /* 3. STARFISH HOVER & BELLY-FLOP ("Зірочка-планер"): Flaps arms like wings, pauses comically mid-air looking down with wide eyes, then drops flat! */
+          if (!d.flags.launch) {
+            d.flags.launch = true;
+            game.boardVel = -460;
+            sound.playSpringTwang(1.1);
+            sound.playJumpWhistle(false);
+          }
+
+          if (t < 0.34) {
+            // Leap out flapping arms excitedly
+            const p = t / 0.34;
+            ch.x = sx + (lx - sx) * p;
+            ch.y = sy - Math.sin(p * Math.PI * 0.5) * 235;
+            ch.rotation = Math.sin(game.time * 22) * 0.1;
+            const flap = Math.sin(game.time * 32) * 1.1;
+            d.pose.armL = -1.4 + flap;
+            d.pose.armR = 1.4 - flap;
+          } else if (t < 0.64) {
+            // Comical mid-air cartoon hang-time pause looking down with wide eyes!
+            const p = (t - 0.34) / 0.30;
+            ch.x = lx + Math.sin(p * Math.PI * 6) * 6;
+            ch.y = sy - 235 + Math.sin(p * Math.PI * 4) * 5;
+            ch.rotation = Math.sin(p * Math.PI * 6) * 0.06;
+            d.pose.wideEyes = true;
+            d.pose.armL = -1.6 + Math.sin(game.time * 36) * 0.7;
+            d.pose.armR = 1.6 - Math.sin(game.time * 36) * 0.7;
+            d.pose.split = 0.75;
+          } else {
+            // Sudden comical flat belly-flop drop!
+            if (!d.flags.drop) {
+              d.flags.drop = true;
+              sound.playWrong(); // Funny downward cartoon drop sound
+            }
+            const p = (t - 0.64) / 0.36;
+            ch.x = lx;
+            ch.y = (sy - 235) + (ly - (sy - 235)) * (p * p);
+            ch.rotation = Math.min(Math.PI * 0.5, p * Math.PI * 0.65);
+            ch.scaleX = 1.12;
+            ch.scaleY = 0.92;
+            d.pose.wideEyes = true;
+            d.pose.armL = -1.55;
+            d.pose.armR = 1.55;
+            d.pose.split = 0.9;
+          }
+
+          if (t >= 1) {
+            triggerSplashImpact(1.38); // Giant comical belly-flop splat!
+          }
+        } else if (d.style === 'helicopter') {
+          /* 4. HELICOPTER SPIN ("Вертоліт-штопор"): Stretches arms wide, spins rapidly rising slightly before spiraling down with bubbles! */
+          if (!d.flags.launch) {
+            d.flags.launch = true;
+            game.boardVel = -480;
+            sound.playSpringTwang(1.2);
+            sound.playJumpWhistle(true);
+          }
+
+          const rise = t < 0.42
+            ? Math.sin((t / 0.42) * Math.PI * 0.5) * 240
+            : 240 - Math.pow((t - 0.42) / 0.58, 1.8) * (240 + (ly - sy));
+
+          const spiralX = Math.sin(t * Math.PI * 6) * 48 * (1 - t * 0.3);
+          ch.x = sx + (lx - sx) * t + spiralX;
+          ch.y = sy - rise;
+
+          // Rapid 3D horizontal spin illusion via cosine scaleX!
+          const spin = Math.cos(t * Math.PI * 18);
+          ch.scaleX = (spin >= 0 ? 1 : -1) * (0.28 + Math.abs(spin) * 0.76);
+          ch.scaleY = 1.08;
+          ch.rotation = Math.sin(t * Math.PI * 5) * 0.14;
+          d.pose.armL = -1.55;
+          d.pose.armR = 1.55;
+
+          if (d.sparkTimer <= 0) {
+            particles.push({
+              type: 'bubble',
+              x: ch.x + (Math.random() - 0.5) * 50,
+              y: ch.y - 50,
+              vx: (Math.random() - 0.5) * 60,
+              vy: -30,
+              gravity: -15,
+              size: 6 + Math.random() * 8,
+              color: '#ffffff',
+              rot: 0,
+              vrot: 0,
+              life: 0,
+              maxLife: 0.65
+            });
+            d.sparkTimer = 0.05;
+          }
+
+          if (t >= 1) {
+            triggerSplashImpact(1.18);
+          }
+        } else {
+          /* 5. SUPER-BOUNCE ROCKET & INFLATABLE RING ("Супер-стрибок"): Launches super high with bubble trail, silly mid-air star/split pose, pops up in flamingo/duck ring! */
+          if (!d.flags.launch) {
+            d.flags.launch = true;
+            game.boardVel = -740;
+            sound.playSpringTwang(1.3);
+            sound.playJumpWhistle(true);
+          }
+          ch.x = sx + (lx - sx) * t;
+          const arc = Math.sin(t * Math.PI) * 410;
+          ch.y = sy + (ly - sy) * (t * t) - arc;
+          ch.scaleX = 1.04;
+          ch.scaleY = 1.04;
+          ch.rotation = Math.sin(t * Math.PI * 2) * 0.22;
+
+          // Silly star/split pose near the apex!
+          const apex = Math.sin(t * Math.PI);
+          d.pose.armL = -2.2 * apex;
+          d.pose.armR = 2.2 * apex;
+          d.pose.split = 0.95 * apex;
+
+          if (d.sparkTimer <= 0) {
+            particles.push({
+              type: 'bubble',
+              x: ch.x + (Math.random() - 0.5) * 35,
+              y: ch.y - 10,
+              vx: (Math.random() - 0.5) * 40,
+              vy: 20,
+              gravity: -25,
+              size: 7 + Math.random() * 9,
+              color: '#e0fbff',
+              rot: 0,
+              vrot: 0,
+              life: 0,
+              maxLife: 0.7
+            });
+            spawnSparkle(ch.x, ch.y - 60, '#ff9ff3');
+            d.sparkTimer = 0.06;
+          }
+
+          if (t >= 1) {
+            triggerSplashImpact(1.25);
+          }
+        }
+      }
+
+      function triggerSplashImpact(power) {
+        const d = game.diver;
+        const ch = d.char;
+        d.splashed = true;
+        spawnWaterSplash(WATER_LAND_X, WATER_LAND_Y, power);
+        sound.playSplash(power);
+
+        ch.x = WATER_LAND_X;
+        ch.y = WATER_LAND_Y + 75; // Submerge briefly before bobbing happily back up
+        ch.rotation = 0;
+        ch.scaleX = 1;
+        ch.scaleY = 1;
+        d.swimT = 0;
+        game.state = 'SWIM_OFF';
+      }
+
+      function updateSwimOff(dt) {
+        const d = game.diver;
+        const ch = d.char;
+        if (!ch) return;
+
+        d.swimT += dt / 1.55;
+        const t = Math.min(1, d.swimT);
+
+        // 0..0.28 pop happily up to surface, 0.28..0.62 bob & wave cheerfully, 0.62..1.0 swim smoothly off to the right
+        if (t < 0.28) {
+          const p = t / 0.28;
+          const ease = 1 - Math.pow(1 - p, 2.5);
+          ch.x = WATER_LAND_X;
+          ch.y = (WATER_LAND_Y + 75) - ease * 62;
+          d.pose = { armL: -1.8, armR: 1.8 };
+        } else if (t < 0.62) {
+          const p = (t - 0.28) / 0.34;
+          ch.x = WATER_LAND_X + p * 45;
+          ch.y = WATER_LAND_Y + 13 + Math.sin(game.time * 7) * 8;
+          // Cheerful waving!
+          d.pose = {
+            armL: -2.1 + Math.sin(game.time * 18) * 0.55,
+            armR: 2.1 - Math.sin(game.time * 18) * 0.55
+          };
+        } else {
+          const p = (t - 0.62) / 0.38;
+          const ease = p * p;
+          ch.x = WATER_LAND_X + 45 + ease * 450;
+          ch.y = WATER_LAND_Y + 13 + Math.sin(game.time * 8) * 9;
+          d.pose = {
+            armL: -1.9 + Math.sin(game.time * 15) * 0.5,
+            armR: 1.9 - Math.sin(game.time * 15) * 0.5
+          };
+          if (Math.random() < dt * 12) {
+            foamRings.push({
+              x: ch.x - 25,
+              y: WATER_LAND_Y + 10,
+              rx: 12,
+              ry: 4,
+              maxRx: 52,
+              life: 0,
+              maxLife: 0.45
+            });
+          }
+        }
+
+        if (t >= 1) {
+          finishCurrentDiver();
+        }
+      }
+
+      /* =========================================================================
+       * 9. PROCEDURAL SCENIC TROPICAL BEACH, ISLAND, SEA, PIER & SURFBOARD SIGN
+       * ========================================================================= */
+      function drawTropicalBackdrop(ctx) {
+        const minX = -stageOffsetX / stageScale - 40;
+        const maxX = (viewW - stageOffsetX) / stageScale + 40;
+        const minY = -stageOffsetY / stageScale - 40;
+        const maxY = (viewH - stageOffsetY) / stageScale + 40;
+        const fullW = maxX - minX;
+
+        // 1. Warm Tropical Sky Gradient
+        const skyGrad = ctx.createLinearGradient(0, minY, 0, 455);
+        skyGrad.addColorStop(0, '#1fa2f0');
+        skyGrad.addColorStop(0.55, '#6cd4ff');
+        skyGrad.addColorStop(1, '#d8f7ff');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(minX, minY, fullW, maxY - minY);
+
+        // 2. Glowing Tropical Sun with Rotating Soft Sunbeams (upper right-center)
+        drawSun(ctx, 1340, 128, game.time);
+
+        // 3. Fluffy Drifting Clouds
+        for (const cl of clouds) {
+          drawCloud(ctx, cl.x, cl.y, cl.scale);
+        }
+
+        // 4. Gliding Animated Seagulls
+        for (const g of seagulls) {
+          drawSeagull(ctx, g.x, g.y + Math.sin(game.time * 2.5 + g.phase) * 14, game.time * 6 + g.phase, g.scale);
+        }
+
+        // 5. Distant Turquoise Horizon Ocean
+        const seaGrad = ctx.createLinearGradient(0, 445, 0, maxY);
+        seaGrad.addColorStop(0, '#00b4d8');
+        seaGrad.addColorStop(0.28, '#00c6d7');
+        seaGrad.addColorStop(0.65, '#0096c7');
+        seaGrad.addColorStop(1, '#0077b6');
+        ctx.fillStyle = seaGrad;
+        ctx.fillRect(minX, 445, fullW, maxY - 445);
+
+        // Sparkling sun reflections across the turquoise horizon
+        ctx.fillStyle = 'rgba(255, 252, 200, 0.42)';
+        for (let i = 0; i < 16; i++) {
+          const ry = 458 + i * 15;
+          const rw = 42 + Math.sin(game.time * 3.5 + i * 1.3) * 24 + i * 3;
+          const rx = 1340 + Math.sin(game.time * 2 + i) * 18;
+          roundRect(ctx, rx - rw * 0.5, ry, rw, 5, 3);
+          ctx.fill();
+        }
+
+        // 6. Distant Tropical Island with Swaying Palms & Red-and-White Striped Lighthouse
+        drawDistantIsland(ctx, 985, 452);
+
+        // 7. Cute Bobbing Sailboat on the Sea
+        drawSailboat(ctx, 1425, 488, game.time);
+
+        // 8. Mid-distance Animated Ocean Waves
+        drawWaveLayer(ctx, minX, maxX, 530, 10, 0.011, 1.4, 'rgba(72, 219, 251, 0.42)', 'rgba(255,255,255,0.45)');
+        drawWaveLayer(ctx, minX, maxX, 605, 12, 0.009, -1.7, 'rgba(0, 180, 216, 0.52)', 'rgba(255,255,255,0.52)');
+
+        // Occasional tiny jumping fish
+        if (jumpingFish.active) {
+          drawJumpingFish(ctx);
+        }
+
+        // 9. Golden Sandy Beach (left & bottom-left curving shoreline with foam)
+        drawSandyBeach(ctx, minX, maxY);
+
+        // 10. Beach Props: Swaying Palm Tree with Coconuts, Striped Umbrella, Shells, Starfish, Cute Crab
+        drawBeachPalm(ctx, 48, 625, game.time);
+        drawBeachUmbrella(ctx, 122, 578);
+        drawSeashell(ctx, 560, 845, 1.0, '#ff9ff3');
+        drawSeashell(ctx, 110, 835, 0.85, '#ffeaa7');
+        drawPinkStarfish(ctx, 365, 855, 0.95);
+        drawBeachCrab(ctx);
+      }
+
+      function drawSun(ctx, x, y, t) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Soft rotating golden sunbeams
+        ctx.save();
+        ctx.rotate(t * 0.14);
+        for (let i = 0; i < 12; i++) {
+          ctx.rotate((Math.PI * 2) / 12);
+          const beamGrad = ctx.createLinearGradient(0, -52, 0, -175);
+          beamGrad.addColorStop(0, 'rgba(255, 245, 150, 0.35)');
+          beamGrad.addColorStop(1, 'rgba(255, 245, 150, 0)');
+          ctx.fillStyle = beamGrad;
+          ctx.beginPath();
+          ctx.moveTo(-14, -52);
+          ctx.lineTo(0, -175);
+          ctx.lineTo(14, -52);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Warm halo
+        const halo = ctx.createRadialGradient(0, 0, 32, 0, 0, 115);
+        halo.addColorStop(0, 'rgba(255, 245, 145, 0.72)');
+        halo.addColorStop(1, 'rgba(255, 245, 145, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(0, 0, 115, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Sun sphere
+        const sGrad = ctx.createRadialGradient(-10, -10, 6, 0, 0, 50);
+        sGrad.addColorStop(0, '#fffce0');
+        sGrad.addColorStop(0.65, '#ffe066');
+        sGrad.addColorStop(1, '#ffaf1a');
+        ctx.fillStyle = sGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 48, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawCloud(ctx, x, y, s) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+        ctx.beginPath();
+        ctx.arc(-44, 8, 28, 0, Math.PI * 2);
+        ctx.arc(-14, -10, 38, 0, Math.PI * 2);
+        ctx.arc(28, -4, 32, 0, Math.PI * 2);
+        ctx.arc(54, 12, 24, 0, Math.PI * 2);
+        ctx.arc(4, 16, 30, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawSeagull(ctx, x, y, flap, s) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        const w = Math.sin(flap) * 10;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-20, w);
+        ctx.quadraticCurveTo(-10, -10, 0, 0);
+        ctx.quadraticCurveTo(10, -10, 20, w);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#3b5b7a';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawDistantIsland(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Golden sandy island mound
+        const islGrad = ctx.createLinearGradient(0, -34, 0, 8);
+        islGrad.addColorStop(0, '#ffe082');
+        islGrad.addColorStop(1, '#e6b25c');
+        ctx.fillStyle = islGrad;
+        ctx.beginPath();
+        ctx.moveTo(-115, 4);
+        ctx.quadraticCurveTo(-40, -48, 30, -38);
+        ctx.quadraticCurveTo(88, -28, 122, 4);
+        ctx.closePath();
+        ctx.fill();
+
+        // Tiny swaying palm trees on left of island
+        const sway = Math.sin(game.time * 1.6) * 4;
+        ctx.strokeStyle = '#8d5524';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-48, -22);
+        ctx.quadraticCurveTo(-60, -52, -52 + sway, -74);
+        ctx.stroke();
+
+        ctx.fillStyle = '#2ecc71';
+        [-0.9, -0.35, 0.25, 0.8].forEach((a) => {
+          ctx.save();
+          ctx.translate(-52 + sway, -74);
+          ctx.rotate(a);
+          ctx.beginPath();
+          ctx.ellipse(16, 0, 18, 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Tiny Red-and-White Striped Lighthouse on right of island!
+        ctx.save();
+        ctx.translate(46, -24);
+        ctx.beginPath();
+        ctx.moveTo(-11, 4);
+        ctx.lineTo(-7, -46);
+        ctx.lineTo(7, -46);
+        ctx.lineTo(11, 4);
+        ctx.closePath();
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(-14, -12, 28, 10);
+        ctx.fillRect(-14, -32, 28, 10);
+        ctx.restore();
+        ctx.strokeStyle = '#7f2419';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Lantern room & glowing beacon
+        ctx.fillStyle = '#fff59d';
+        ctx.fillRect(-6, -55, 12, 9);
+        ctx.fillStyle = '#c0392b';
+        ctx.beginPath();
+        ctx.moveTo(-9, -55);
+        ctx.lineTo(0, -66);
+        ctx.lineTo(9, -55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Shoreline white foam
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(-120, 4);
+        ctx.quadraticCurveTo(0, 10, 126, 4);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawSailboat(ctx, x, y, t) {
+        const bob = Math.sin(t * 2.1) * 5;
+        const tilt = Math.sin(t * 1.7) * 0.06;
+        ctx.save();
+        ctx.translate(x + Math.sin(t * 0.4) * 18, y + bob);
+        ctx.rotate(tilt);
+
+        // Mast
+        ctx.strokeStyle = '#6e3b14';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -64);
+        ctx.stroke();
+
+        // Main striped sail
+        ctx.fillStyle = '#fff7e0';
+        ctx.beginPath();
+        ctx.moveTo(2, -62);
+        ctx.quadraticCurveTo(38, -32, 34, -8);
+        ctx.lineTo(2, -8);
+        ctx.closePath();
+        ctx.fill();
+
+        // Secondary coral jib sail
+        ctx.fillStyle = '#ff6b6b';
+        ctx.beginPath();
+        ctx.moveTo(-2, -54);
+        ctx.lineTo(-26, -8);
+        ctx.lineTo(-2, -8);
+        ctx.closePath();
+        ctx.fill();
+
+        // Boat hull
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#1e3799';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-36, -6);
+        ctx.lineTo(40, -6);
+        ctx.lineTo(28, 12);
+        ctx.lineTo(-26, 12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Red hull stripe
+        ctx.fillStyle = '#ff4757';
+        ctx.fillRect(-30, -2, 62, 5);
+
+        ctx.restore();
+      }
+
+      function drawWaveLayer(ctx, minX, maxX, yBase, amp, freq, speed, fill, foamColor) {
+        ctx.save();
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.moveTo(minX, yBase + 160);
+        for (let x = minX; x <= maxX + 40; x += 36) {
+          const y = yBase + Math.sin(x * freq + game.time * speed) * amp;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(maxX + 40, yBase + 160);
+        ctx.closePath();
+        ctx.fill();
+
+        // Shimmering wave crest foam
+        ctx.strokeStyle = foamColor;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        for (let x = minX; x <= maxX + 40; x += 36) {
+          const y = yBase + Math.sin(x * freq + game.time * speed) * amp;
+          if (x === minX) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawJumpingFish(ctx) {
+        const t = jumpingFish.t;
+        const fx = jumpingFish.x + jumpingFish.dir * t * 95;
+        const fy = jumpingFish.y - Math.sin(t * Math.PI) * 62;
+        const ang = Math.atan2(-Math.cos(t * Math.PI) * 62, jumpingFish.dir * 30);
+
+        ctx.save();
+        ctx.translate(fx, fy);
+        ctx.rotate(ang);
+        ctx.fillStyle = '#ff9f43';
+        ctx.strokeStyle = '#d35400';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 14, 7.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-12, 0);
+        ctx.lineTo(-22, -7);
+        ctx.lineTo(-22, 7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawSandyBeach(ctx, minX, maxY) {
+        // Gentle wet-sand shoreline foam rim
+        const foamShift = Math.sin(game.time * 2.2) * 8;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+        ctx.beginPath();
+        ctx.moveTo(minX, 515);
+        ctx.bezierCurveTo(220, 505, 520, 540, 620 + foamShift, 620);
+        ctx.bezierCurveTo(740 + foamShift, 710, 865 + foamShift, 780, 955 + foamShift, maxY + 20);
+        ctx.lineTo(minX, maxY + 20);
+        ctx.closePath();
+        ctx.fill();
+
+        // Warm golden sand dune gradient
+        const sandGrad = ctx.createLinearGradient(0, 520, 0, maxY);
+        sandGrad.addColorStop(0, '#ffe8a3');
+        sandGrad.addColorStop(0.45, '#f9d276');
+        sandGrad.addColorStop(1, '#e6b04c');
+        ctx.fillStyle = sandGrad;
+        ctx.beginPath();
+        ctx.moveTo(minX, 524);
+        ctx.bezierCurveTo(210, 516, 505, 550, 602, 626);
+        ctx.bezierCurveTo(720, 718, 845, 790, 932, maxY + 20);
+        ctx.lineTo(minX, maxY + 20);
+        ctx.closePath();
+        ctx.fill();
+
+        // Tactile sand grain speckles clipped to beach
+        ctx.clip();
+        for (const sg of sandGrains) {
+          ctx.fillStyle = sg.color;
+          ctx.beginPath();
+          ctx.arc(sg.x, sg.y, sg.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawBeachPalm(ctx, x, y, t) {
+        const sway = Math.sin(t * 1.4) * 0.045;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(sway);
+
+        // Curved segmented coconut palm trunk
+        ctx.strokeStyle = '#9c5a27';
+        ctx.lineWidth = 32;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-25, 20);
+        ctx.quadraticCurveTo(-5, -140, 48, -310);
+        ctx.stroke();
+
+        // Trunk bark rings
+        ctx.strokeStyle = '#6e3a12';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 8; i++) {
+          const p = i / 8;
+          const rx = -22 + p * 68;
+          const ry = -20 - p * 270;
+          ctx.beginPath();
+          ctx.moveTo(rx - 12, ry);
+          ctx.lineTo(rx + 14, ry + 5);
+          ctx.stroke();
+        }
+
+        // Lush sweeping palm fronds
+        ctx.translate(48, -310);
+        const fronds = [-2.5, -1.75, -0.95, -0.2, 0.45, 1.15];
+        fronds.forEach((ang, idx) => {
+          ctx.save();
+          ctx.rotate(ang + Math.sin(t * 2 + idx) * 0.05);
+          const fGrad = ctx.createLinearGradient(0, 0, 145, 0);
+          fGrad.addColorStop(0, '#1e9e49');
+          fGrad.addColorStop(1, '#55d96f');
+          ctx.fillStyle = fGrad;
+          ctx.strokeStyle = '#146e32';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.quadraticCurveTo(75, -34, 148, 12);
+          ctx.quadraticCurveTo(72, 10, 0, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+
+        // Cluster of 3 coconuts
+        [[-10, 10], [10, 12], [0, 22]].forEach(([cx, cy]) => {
+          ctx.fillStyle = '#6e3b14';
+          ctx.strokeStyle = '#422007';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        ctx.restore();
+      }
+
+      function drawBeachUmbrella(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Umbrella ground shadow
+        ctx.fillStyle = 'rgba(130, 86, 25, 0.22)';
+        ctx.beginPath();
+        ctx.ellipse(16, 12, 68, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Tilted wooden pole
+        ctx.rotate(-0.18);
+        ctx.strokeStyle = '#8d5524';
+        ctx.lineWidth = 8;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 12);
+        ctx.lineTo(0, -108);
+        ctx.stroke();
+
+        // Colorful striped umbrella canopy
+        const stripes = ['#ff4757', '#fff7dc', '#1e90ff', '#fff7dc', '#ff4757'];
+        const r = 82;
+        for (let i = 0; i < 5; i++) {
+          const a0 = Math.PI + (i * Math.PI) / 5;
+          const a1 = Math.PI + ((i + 1) * Math.PI) / 5;
+          ctx.fillStyle = stripes[i];
+          ctx.beginPath();
+          ctx.moveTo(0, -108);
+          ctx.arc(0, -68, r, a0, a1);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, -68, r, Math.PI, Math.PI * 2);
+        ctx.stroke();
+
+        // Top finial
+        ctx.fillStyle = '#ffd32a';
+        ctx.beginPath();
+        ctx.arc(0, -152, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawSeashell(ctx, x, y, s, color) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#b35b7c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, Math.PI, Math.PI * 2);
+        ctx.lineTo(8, 8);
+        ctx.lineTo(-8, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 6); ctx.lineTo(-8, -12);
+        ctx.moveTo(0, 6); ctx.lineTo(0, -15);
+        ctx.moveTo(0, 6); ctx.lineTo(8, -12);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawPinkStarfish(ctx, x, y, s) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s * 0.72);
+        ctx.rotate(0.25);
+        ctx.fillStyle = '#ff6b81';
+        ctx.strokeStyle = '#c44569';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const r = i % 2 === 0 ? 24 : 10;
+          const a = (i * Math.PI) / 5 - Math.PI / 2;
+          const sx = Math.cos(a) * r;
+          const sy = Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawBeachCrab(ctx) {
+        const p = beachCrab.peek;
+        if (p < 0.05) return;
+        const x = beachCrab.x;
+        const y = beachCrab.y + (1 - p) * 28;
+        const jump = beachCrab.reactTimer > 0 ? Math.abs(Math.sin(game.time * 24)) * 14 : 0;
+
+        ctx.save();
+        ctx.translate(x, y - jump);
+
+        // Little sand burrow rim
+        ctx.fillStyle = 'rgba(165, 112, 42, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(0, 12 + jump, 26, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Claws waving when reacting
+        const clawWave = beachCrab.reactTimer > 0 ? Math.sin(game.time * 28) * 0.45 : Math.sin(game.time * 4) * 0.12;
+        [-1, 1].forEach((dir) => {
+          ctx.save();
+          ctx.translate(dir * 16, -2);
+          ctx.rotate(dir * (-0.5 + clawWave));
+          ctx.strokeStyle = '#e74c3c';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(dir * 10, -10);
+          ctx.stroke();
+          ctx.fillStyle = '#ff5252';
+          ctx.beginPath();
+          ctx.arc(dir * 12, -13, 6.5, 0.2, Math.PI * 1.7);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Crab body
+        ctx.fillStyle = '#ff5252';
+        ctx.strokeStyle = '#b33939';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 18, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Eye stalks
+        ctx.strokeStyle = '#b33939';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-6, -6); ctx.lineTo(-8, -14);
+        ctx.moveTo(6, -6); ctx.lineTo(8, -14);
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-8, -15, 4, 0, Math.PI * 2);
+        ctx.arc(8, -15, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#1e272e';
+        ctx.beginPath();
+        ctx.arc(-8, -15, 2, 0, Math.PI * 2);
+        ctx.arc(8, -15, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      /* =========================================================================
+       * 10. DETAILED WOODEN PIER & FLEXIBLE SPRINGY DIVING BOARD
+       * ========================================================================= */
+      function drawWoodenPier(ctx) {
+        ctx.save();
+
+        // 1. Sturdy wooden support pilings standing in the turquoise sea with animated foam
+        const pilings = [520, 665, 810, 950];
+        pilings.forEach((px, idx) => {
+          const waterY = 640 + idx * 14;
+
+          // Piling reflection in water
+          ctx.fillStyle = 'rgba(70, 40, 15, 0.22)';
+          ctx.fillRect(px - 12, waterY, 24, 34);
+
+          // Main wooden post
+          const pGrad = ctx.createLinearGradient(px - 14, 0, px + 14, 0);
+          pGrad.addColorStop(0, '#6e3d18');
+          pGrad.addColorStop(0.45, '#9e6232');
+          pGrad.addColorStop(1, '#542c0f');
+          ctx.fillStyle = pGrad;
+          ctx.strokeStyle = '#3d1f0a';
+          ctx.lineWidth = 2.5;
+          roundRect(ctx, px - 13, PIER_DECK_Y + 4, 26, waterY - PIER_DECK_Y, 4);
+          ctx.fill();
+          ctx.stroke();
+
+          // Animated white water foam ring around piling base
+          const fScale = 1 + Math.sin(game.time * 3 + idx) * 0.12;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.ellipse(px, waterY, 22 * fScale, 6 * fScale, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+
+        // 2. Horizontal wooden support beam under deck
+        ctx.fillStyle = '#75431c';
+        ctx.strokeStyle = '#3d1f0a';
+        ctx.lineWidth = 2.5;
+        roundRect(ctx, PIER_START_X, PIER_DECK_Y + 12, PIER_END_X - PIER_START_X, 16, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // 3. Weathered wooden planks across the pier deck
+        const plankW = 28;
+        for (let x = PIER_START_X; x < PIER_END_X; x += plankW) {
+          const shade = ((x / plankW) % 2 === 0) ? '#c88c52' : '#bc7f47';
+          ctx.fillStyle = shade;
+          ctx.strokeStyle = '#5c3312';
+          ctx.lineWidth = 2;
+          roundRect(ctx, x, PIER_DECK_Y - 10, plankW - 2, 24, 4);
+          ctx.fill();
+          ctx.stroke();
+
+          // Plank nails
+          ctx.fillStyle = '#4a270c';
+          ctx.beginPath();
+          ctx.arc(x + 7, PIER_DECK_Y - 2, 2, 0, Math.PI * 2);
+          ctx.arc(x + 19, PIER_DECK_Y + 6, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 4. Wooden bollards with draped nautical rope along the back edge
+        const bollards = [510, 665, 820, 950];
+        // Draped rope segments
+        ctx.strokeStyle = '#e5c185';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        for (let i = 0; i < bollards.length - 1; i++) {
+          const x1 = bollards[i];
+          const x2 = bollards[i + 1];
+          ctx.beginPath();
+          ctx.moveTo(x1, PIER_DECK_Y - 34);
+          ctx.quadraticCurveTo((x1 + x2) * 0.5, PIER_DECK_Y - 8, x2, PIER_DECK_Y - 34);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#a87d43';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.strokeStyle = '#e5c185';
+          ctx.lineWidth = 7;
+        }
+
+        bollards.forEach((bx) => {
+          ctx.fillStyle = '#9c5a27';
+          ctx.strokeStyle = '#4a270c';
+          ctx.lineWidth = 2.5;
+          roundRect(ctx, bx - 9, PIER_DECK_Y - 46, 18, 42, 6);
+          ctx.fill();
+          ctx.stroke();
+
+          // Rope wrap on bollard
+          ctx.fillStyle = '#e5c185';
+          roundRect(ctx, bx - 11, PIER_DECK_Y - 38, 22, 8, 3);
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        // 5. Flexible Springy Diving Board at the right end of the pier!
+        const flex = game.boardFlex;
+        // Metal fulcrum bracket
+        ctx.fillStyle = '#7f8c8d';
+        ctx.strokeStyle = '#2c3e50';
+        ctx.lineWidth = 2.5;
+        roundRect(ctx, BOARD_BASE_X + 20, PIER_DECK_Y - 14, 24, 14, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // Flexible curved board plank (vibrant coral-white striped diving board)
+        ctx.save();
+        ctx.strokeStyle = '#2c3e50';
+        ctx.lineWidth = 15;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(BOARD_BASE_X, BOARD_Y);
+        ctx.quadraticCurveTo(BOARD_BASE_X + 75, BOARD_Y + flex * 0.35, BOARD_TIP_X, BOARD_Y + flex);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ff6b6b';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(BOARD_BASE_X, BOARD_Y);
+        ctx.quadraticCurveTo(BOARD_BASE_X + 75, BOARD_Y + flex * 0.35, BOARD_TIP_X, BOARD_Y + flex);
+        ctx.stroke();
+
+        // Grip pad highlight at tip
+        ctx.strokeStyle = '#ffe66d';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(BOARD_TIP_X - 36, BOARD_Y + flex * 0.65);
+        ctx.lineTo(BOARD_TIP_X - 2, BOARD_Y + flex);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      /* =========================================================================
+       * 11. PAINTED WOODEN SURFBOARD SYLLABLE SIGNBOARD (NO WHITE RECTANGLES!)
+       * ========================================================================= */
+      function drawSurfboardSign(ctx) {
+        if (!game.targetId) return;
+        const text = getSyllableText(game.targetId);
+
+        ctx.save();
+        ctx.translate(455, 228);
+
+        // Wooden beach post anchored into the sand
+        ctx.fillStyle = '#9c5a27';
+        ctx.strokeStyle = '#5c3312';
+        ctx.lineWidth = 4;
+        roundRect(ctx, -14, 85, 28, 260, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // Elastic pop + gentle beach breeze sway
+        const sway = Math.sin(game.time * 1.5) * 0.025;
+        ctx.rotate(-0.04 + sway);
+        ctx.scale(game.signPop, game.signPop);
+
+        // Drop shadow
+        ctx.fillStyle = 'rgba(15, 72, 110, 0.22)';
+        ctx.beginPath();
+        ctx.ellipse(6, 8, 178, 96, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Painted tropical wooden surfboard body (horizontal wide surfboard silhouette!)
+        const boardGrad = ctx.createLinearGradient(0, -96, 0, 96);
+        boardGrad.addColorStop(0, '#ff9f43');
+        boardGrad.addColorStop(0.5, '#ffd32a');
+        boardGrad.addColorStop(1, '#ff6b6b');
+        ctx.fillStyle = boardGrad;
+        ctx.strokeStyle = '#8c3b0e';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-186, 0);
+        ctx.bezierCurveTo(-155, -104, 155, -104, 186, 0);
+        ctx.bezierCurveTo(155, 104, -155, 104, -186, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Decorative turquoise racing stripe inside surfboard (clipped)
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = '#00d2d3';
+        ctx.fillRect(-195, -62, 390, 124);
+        ctx.fillStyle = '#fff3c4'; // Warm cream wood center strip (never stark white box!)
+        ctx.fillRect(-195, -48, 390, 96);
+        ctx.restore();
+
+        // Re-stroke surfboard outer rim cleanly
+        ctx.strokeStyle = '#8c3b0e';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-186, 0);
+        ctx.bezierCurveTo(-155, -104, 155, -104, 186, 0);
+        ctx.bezierCurveTo(155, 104, -155, 104, -186, 0);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Cute red-and-white lifebuoy mounted on bottom-left corner of surfboard
+        drawLifebuoy(ctx, -142, 54, 34);
+
+        // Tropical pink hibiscus flower on top-right corner of surfboard
+        drawHibiscus(ctx, 136, -54, 28);
+
+        // Giant ultra-clear uppercase syllable
+        ctx.font = '900 124px Arial, Helvetica, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.fillStyle = 'rgba(110, 45, 10, 0.25)';
+        ctx.fillText(text, 4, 8);
+
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, 0, 2);
+
+        ctx.fillStyle = '#1b2a4e';
+        ctx.fillText(text, 0, 2);
+
+        ctx.restore();
+      }
+
+      function drawLifebuoy(ctx, x, y, r) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.lineWidth = r * 0.42;
+        ctx.strokeStyle = '#fff8eb';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 4 red nautical bands
+        ctx.strokeStyle = '#ff4757';
+        for (let i = 0; i < 4; i++) {
+          const a = (i * Math.PI) / 2 + 0.35;
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.72, a, a + 0.48);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = '#5c2020';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.93, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.51, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawHibiscus(ctx, x, y, r) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.sin(game.time * 2) * 0.08);
+        for (let i = 0; i < 5; i++) {
+          ctx.save();
+          ctx.rotate((i * Math.PI * 2) / 5);
+          const pGrad = ctx.createRadialGradient(0, -r * 0.45, 2, 0, -r * 0.5, r * 0.65);
+          pGrad.addColorStop(0, '#ff3e7f');
+          pGrad.addColorStop(1, '#ff94b8');
+          ctx.fillStyle = pGrad;
+          ctx.strokeStyle = '#b32456';
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.ellipse(0, -r * 0.55, r * 0.44, r * 0.58, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+        // Golden stamen center
+        ctx.fillStyle = '#ffd32a';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.24, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      /* =========================================================================
+       * 12. FIVE HIGHLY RECOGNIZABLE REALISTIC-CARTOON CHARACTERS (Letter П)
+       *     Panda (ПА), Tomato (ПО), Poodle (ПУ), Vacuum (ПИ/ПЫ), Cookie (ПЕ)
+       * ========================================================================= */
+      function drawCharacter(ctx, ch, isDiver = false, swimming = false) {
+        const kind = CHARACTER_DEFS[ch.id].kind;
+        const t = game.time;
+        const ph = ch.idlePhase;
+
+        ctx.save();
+
+        // Ground shadow on beach or pier (not when swimming in water)
+        if (!swimming) {
+          const groundY = isDiver && game.state === 'DIVING' ? WATER_LAND_Y : ch.homeY;
+          const lift = Math.max(0, groundY - ch.y);
+          const shScale = Math.max(0.3, 1 - lift / 420) * ch.spawnPop;
+          if (!isDiver || game.state === 'RUN_TO_PIER') {
+            ctx.fillStyle = 'rgba(120, 75, 22, 0.28)';
+            ctx.beginPath();
+            ctx.ellipse(ch.x, (isDiver ? ch.y : ch.homeY) + 10, 54 * shScale, 14 * shScale, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        // Hover glow ring on sandy beach
+        if (!isDiver && ch.hoverBoost > 0.02) {
+          ctx.save();
+          ctx.globalAlpha = ch.hoverBoost * 0.72;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.ellipse(ch.x, ch.y + 8, 64 + ch.hoverBoost * 8, 18, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Idle breathing & weight-shifting transforms
+        let ox = 0;
+        let oy = 0;
+        let rot = ch.rotation;
+        let sx = ch.scaleX * ch.spawnPop;
+        let sy = ch.scaleY * ch.spawnPop;
+
+        if (!isDiver) {
+          const breath = Math.sin(t * 2.8 + ph);
+          oy = -Math.abs(breath) * 6;
+          rot += Math.sin(t * 1.9 + ph) * 0.04;
+          sy *= 1 + breath * 0.025;
+          sx *= 1 - breath * 0.02;
+
+          if (ch.hoverBoost > 0.01) {
+            sx *= 1 + ch.hoverBoost * 0.11;
+            sy *= 1 + ch.hoverBoost * 0.11;
+            oy -= ch.hoverBoost * 14;
+          }
+
+          if (ch.wrongTimer > 0) {
+            const wp = ch.wrongTimer / 0.65;
+            ox += Math.sin(wp * Math.PI * 7) * 14 * wp;
+            oy -= Math.abs(Math.sin(wp * Math.PI * 3)) * 18 * wp;
+            rot += Math.sin(wp * Math.PI * 7) * 0.2 * wp;
+          }
+        }
+
+        ctx.translate(ch.x + ox, ch.y + oy);
+        ctx.rotate(rot);
+        ctx.scale(sx, sy);
+
+        // Cursor-tracking gaze vector
+        const tx = game.pointer.active ? game.pointer.x : BOARD_TIP_X;
+        const ty = game.pointer.active ? game.pointer.y : BOARD_Y;
+        const gdx = tx - ch.x;
+        const gdy = ty - (ch.y - 80);
+        const gdist = Math.hypot(gdx, gdy) || 1;
+        const gazeX = (gdx / gdist) * 3.3;
+        const gazeY = (gdy / gdist) * 2.6;
+
+        const isExcited = isDiver || ch.hoverBoost > 0.3;
+        const isWrong = ch.wrongTimer > 0;
+        const pose = isDiver ? game.diver.pose : null;
+
+        // Back half of inflatable flamingo/duck ring when swimming after Super-Bounce!
+        if (swimming && game.diver.hasFloatRing) {
+          drawFloatRingBack(ctx);
+        }
+
+        // Clip bottom neatly below waterline when swimming
+        if (swimming) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(-150, -240, 300, 218);
+          ctx.clip();
+        }
+
+        if (kind === 'panda') {
+          drawPanda(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose, swimming);
+        } else if (kind === 'tomato') {
+          drawTomato(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose, swimming);
+        } else if (kind === 'poodle') {
+          drawPoodle(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose, swimming);
+        } else if (kind === 'vacuum') {
+          drawVacuum(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose, swimming);
+        } else if (kind === 'cookie') {
+          drawCookie(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose, swimming);
+        }
+
+        // Cute swimming goggles on character when bobbing in the waves!
+        if (swimming && game.diver.hasGoggles) {
+          const gy = kind === 'panda' || kind === 'poodle' ? -104 : kind === 'tomato' || kind === 'cookie' ? -84 : -90;
+          drawSwimGoggles(ctx, 0, gy);
+        }
+
+        if (swimming) {
+          ctx.restore();
+          // Front half of inflatable flamingo/duck swim ring!
+          if (game.diver.hasFloatRing) {
+            drawFloatRingFront(ctx);
+          }
+        }
+
+        ctx.restore();
+      }
+
+      // Shared expressive face (blinking, cursor-tracking, wide eyes for starfish pause, blush on wrong)
+      function drawFace(ctx, x, y, eyeSep, eyeR, blink, gx, gy, excited, wrong, wideEyes = false) {
+        // Rosy cheeks
+        ctx.fillStyle = wrong ? 'rgba(255, 65, 95, 0.72)' : 'rgba(255, 118, 138, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(x - eyeSep - 8, y + eyeR + 4, 9.5, 6, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + eyeSep + 8, y + eyeR + 4, 9.5, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const r = wideEyes ? eyeR * 1.25 : eyeR;
+        [-eyeSep, eyeSep].forEach((ex) => {
+          if (blink && !wideEyes) {
+            ctx.strokeStyle = '#222222';
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(x + ex, y + 2, r * 0.75, Math.PI * 1.15, Math.PI * 1.85);
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#242424';
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.ellipse(x + ex, y, r, r * 1.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            const px = x + ex + (wideEyes ? 0 : gx);
+            const py = y + (wideEyes ? 4 : gy);
+            ctx.fillStyle = '#181828';
+            ctx.beginPath();
+            ctx.arc(px, py, wideEyes ? r * 0.36 : r * 0.54, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(px - r * 0.2, py - r * 0.22, r * 0.22, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+
+        // Mouth
+        ctx.strokeStyle = '#3b1e1e';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
+        if (wideEyes) {
+          // Comical "O" surprise mouth
+          ctx.fillStyle = '#ff6b81';
+          ctx.beginPath();
+          ctx.ellipse(x, y + eyeR + 12, 7.5, 9.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else if (wrong) {
+          ctx.beginPath();
+          ctx.moveTo(x - 10, y + eyeR + 12);
+          ctx.quadraticCurveTo(x - 4, y + eyeR + 7, x, y + eyeR + 12);
+          ctx.quadraticCurveTo(x + 4, y + eyeR + 17, x + 10, y + eyeR + 12);
+          ctx.stroke();
+        } else if (excited) {
+          ctx.fillStyle = '#ff6b81';
+          ctx.beginPath();
+          ctx.arc(x, y + eyeR + 7, 11, 0, Math.PI);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y + eyeR + 5, 9.5, 0.15 * Math.PI, 0.85 * Math.PI);
+          ctx.stroke();
+        }
+      }
+
+      // Shared legs with feet/flippers
+      function drawLegs(ctx, legSep, hipY, t, ph, legColor, footColor, excited, wrong, pose, swimming) {
+        if (swimming) return;
+        const tuck = pose && pose.tuck;
+        const split = pose ? (pose.split || 0) : 0;
+        const swingL = pose && pose.legL !== undefined ? pose.legL : (wrong ? Math.sin(t * 20) * 0.25 : 0);
+        const swingR = pose && pose.legR !== undefined ? pose.legR : (wrong ? -Math.sin(t * 20) * 0.25 : 0);
+
+        [-1, 1].forEach((side) => {
+          ctx.save();
+          ctx.translate(side * legSep, hipY);
+          const ang = tuck ? side * -0.85 : side * split * 1.05 + (side < 0 ? swingL : swingR);
+          ctx.rotate(ang);
+
+          ctx.strokeStyle = legColor;
+          ctx.lineWidth = 8.5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(side * 3, tuck ? 14 : -hipY);
+          ctx.stroke();
+
+          ctx.fillStyle = footColor;
+          ctx.strokeStyle = '#242424';
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.ellipse(side * 8, (tuck ? 16 : -hipY + 2), 14, 8.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+      }
+
+      // Shared lively cartoon arms with hands
+      function drawArms(ctx, shoulderX, shoulderY, t, ph, armColor, handColor, excited, wrong, pose) {
+        const tuck = pose && pose.tuck;
+        const defaultWave = wrong ? Math.sin(t * 20) * 0.7 : Math.sin(t * 2.8 + ph) * 0.2;
+        const rotL = tuck ? 0.95 : (pose && pose.armL !== undefined ? pose.armL : -0.35 + defaultWave);
+        const rotR = tuck ? -0.95 : (pose && pose.armR !== undefined ? pose.armR : 0.35 - defaultWave);
+
+        [-1, 1].forEach((side) => {
+          ctx.save();
+          ctx.translate(side * shoulderX, shoulderY);
+          ctx.rotate(side < 0 ? rotL : rotR);
+
+          ctx.strokeStyle = armColor;
+          ctx.lineWidth = 8;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.quadraticCurveTo(side * 15, 11, side * 28, 3);
+          ctx.stroke();
+
+          ctx.fillStyle = handColor;
+          ctx.strokeStyle = '#242424';
+          ctx.lineWidth = 2.3;
+          ctx.beginPath();
+          ctx.arc(side * 31, 3, 8.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+      }
+
+      // 1. ПА — PANDA (Панда): Realistic-cartoon fluffy panda in bright swimming shorts
+      function drawPanda(ctx, t, ph, blink, gx, gy, excited, wrong, pose, swimming) {
+        drawLegs(ctx, 18, -30, t, ph, '#242424', '#1a1a1a', excited, wrong, pose, swimming);
+
+        // Chunky fluffy white panda body
+        const bGrad = ctx.createRadialGradient(-10, -64, 8, 0, -56, 42);
+        bGrad.addColorStop(0, '#ffffff');
+        bGrad.addColorStop(0.75, '#f0f2f5');
+        bGrad.addColorStop(1, '#cfd6df');
+        ctx.fillStyle = bGrad;
+        ctx.strokeStyle = '#242424';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -56, 37, 36, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Iconic black panda shoulder band
+        ctx.fillStyle = '#222429';
+        ctx.beginPath();
+        ctx.ellipse(0, -76, 32, 13, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Cute bright turquoise & coral swimming shorts!
+        ctx.fillStyle = '#00d2d3';
+        ctx.strokeStyle = '#006e75';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.roundRect(-30, -45, 60, 22, 9);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ff6b6b';
+        ctx.fillRect(-29, -39, 58, 5);
+
+        drawArms(ctx, 32, -70, t, ph, '#222429', '#1a1a1a', excited, wrong, pose);
+
+        // Round black panda ears
+        [-27, 27].forEach((ex) => {
+          ctx.fillStyle = '#222429';
+          ctx.strokeStyle = '#111111';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(ex, -128, 14, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        // Fluffy white panda head
+        const hGrad = ctx.createRadialGradient(-10, -112, 8, 0, -100, 40);
+        hGrad.addColorStop(0, '#ffffff');
+        hGrad.addColorStop(0.78, '#f1f3f7');
+        hGrad.addColorStop(1, '#d3dae3');
+        ctx.fillStyle = hGrad;
+        ctx.strokeStyle = '#242424';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -102, 39, 34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Iconic angled black eye patches
+        ctx.fillStyle = '#222429';
+        ctx.beginPath();
+        ctx.ellipse(-16, -103, 14, 17, 0.25, 0, Math.PI * 2);
+        ctx.ellipse(16, -103, 14, 17, -0.25, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawFace(ctx, 0, -104, 15, 9.5, blink, gx, gy, excited, wrong, pose && pose.wideEyes);
+
+        // Cute shiny dark panda snout/nose
+        ctx.fillStyle = '#222429';
+        ctx.beginPath();
+        ctx.ellipse(0, -90, 8, 5.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.beginPath();
+        ctx.ellipse(-2.5, -91.5, 2.5, 1.5, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 2. ПО — TOMATO (Помідор / Помидор): Plump glossy ripe red tomato with leafy green calyx
+      function drawTomato(ctx, t, ph, blink, gx, gy, excited, wrong, pose, swimming) {
+        drawLegs(ctx, 18, -32, t, ph, '#27ae60', '#2ecc71', excited, wrong, pose, swimming);
+        drawArms(ctx, 44, -76, t, ph, '#27ae60', '#58d68d', excited, wrong, pose);
+
+        // Plump glossy ripe tomato body (slightly wider oval with subtle cleft at top)
+        const tomGrad = ctx.createRadialGradient(-18, -98, 10, 0, -76, 58);
+        tomGrad.addColorStop(0, '#ff8787');
+        tomGrad.addColorStop(0.4, '#ee2c2c');
+        tomGrad.addColorStop(0.85, '#c41414');
+        tomGrad.addColorStop(1, '#8c0c0c');
+        ctx.fillStyle = tomGrad;
+        ctx.strokeStyle = '#730a0a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, -122);
+        ctx.bezierCurveTo(36, -130, 56, -102, 52, -70);
+        ctx.bezierCurveTo(48, -36, 22, -24, 0, -26);
+        ctx.bezierCurveTo(-22, -24, -48, -36, -52, -70);
+        ctx.bezierCurveTo(-56, -102, -36, -130, 0, -122);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Crisp glossy light specular highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(-25, -96, 10, 20, 0.42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(-14, -112, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Realistic 5-pointed leafy green tomato calyx & curved stem on top
+        ctx.fillStyle = '#27ae60';
+        ctx.strokeStyle = '#145a32';
+        ctx.lineWidth = 2.4;
+        const sepals = [
+          [-26, -122, -0.45], [-12, -130, -0.15], [0, -124, 0], [12, -130, 0.15], [26, -122, 0.45]
+        ];
+        sepals.forEach(([sx, sy, sr]) => {
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(sr);
+          ctx.beginPath();
+          ctx.moveTo(-12, 2);
+          ctx.quadraticCurveTo(0, -14, 14, 2);
+          ctx.quadraticCurveTo(0, 6, -12, 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+
+        // Curved green stem
+        ctx.strokeStyle = '#1b7a43';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, -124);
+        ctx.quadraticCurveTo(4, -144, 16, -148);
+        ctx.stroke();
+
+        drawFace(ctx, 0, -82, 17, 11.5, blink, gx, gy, excited, wrong, pose && pose.wideEyes);
+      }
+
+      // 3. ПУ — POODLE (Пудель): Fluffy apricot/cream poodle with curly cloud tufts, pom-pom tail & collar
+      function drawPoodle(ctx, t, ph, blink, gx, gy, excited, wrong, pose, swimming) {
+        // Pom-pom wagging tail behind
+        const wag = Math.sin(t * (excited ? 16 : 6) + ph) * 0.35;
+        ctx.save();
+        ctx.translate(28, -48);
+        ctx.rotate(wag);
+        ctx.strokeStyle = '#d99a5b';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(18, -14);
+        ctx.stroke();
+        ctx.fillStyle = '#ffdfb8';
+        ctx.strokeStyle = '#a86b32';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(22, -18, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Legs with cute fluffy ankle pom-poms
+        drawLegs(ctx, 16, -32, t, ph, '#d99a5b', '#ffdfb8', excited, wrong, pose, swimming);
+        if (!swimming && !(pose && pose.tuck)) {
+          ctx.fillStyle = '#ffe5c4';
+          ctx.strokeStyle = '#a86b32';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(-18, -10, 9.5, 0, Math.PI * 2);
+          ctx.arc(18, -10, 9.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // Fluffy cloud-like chest/body
+        const pGrad = ctx.createRadialGradient(-8, -68, 6, 0, -58, 38);
+        pGrad.addColorStop(0, '#fff0db');
+        pGrad.addColorStop(0.65, '#f6c28b');
+        pGrad.addColorStop(1, '#d99552');
+        ctx.fillStyle = pGrad;
+        ctx.strokeStyle = '#995c24';
+        ctx.lineWidth = 2.5;
+        const chestPuffs = [
+          [-18, -64, 18], [18, -64, 18], [0, -70, 22], [-14, -46, 16], [14, -46, 16], [0, -44, 18]
+        ];
+        chestPuffs.forEach(([px, py, pr]) => {
+          ctx.beginPath();
+          ctx.arc(px, py, pr, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.beginPath();
+        ctx.ellipse(0, -56, 30, 28, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Bright magenta collar with tiny gold heart/bell
+        ctx.strokeStyle = '#ff477e';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, -86, 22, 0.25 * Math.PI, 0.75 * Math.PI);
+        ctx.stroke();
+        ctx.fillStyle = '#ffd32a';
+        ctx.beginPath();
+        ctx.arc(0, -72, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawArms(ctx, 28, -66, t, ph, '#d99552', '#ffe5c4', excited, wrong, pose);
+
+        // Fluffy drooping curly poodle ears
+        const earBounce = Math.sin(t * 5 + ph) * 0.08;
+        [-34, 34].forEach((ex, idx) => {
+          ctx.save();
+          ctx.translate(ex, -106);
+          ctx.rotate(idx === 0 ? 0.18 + earBounce : -0.18 - earBounce);
+          ctx.fillStyle = '#f3ba7d';
+          ctx.strokeStyle = '#995c24';
+          ctx.lineWidth = 2.3;
+          [[0, 0, 14], [-3, 14, 14], [3, 26, 13]].forEach(([cx, cy, cr]) => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          });
+          ctx.restore();
+        });
+
+        // Poodle head
+        ctx.fillStyle = pGrad;
+        ctx.strokeStyle = '#995c24';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.ellipse(0, -100, 32, 29, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Iconic fluffy curly cloud-crown pompadour on top of head!
+        ctx.fillStyle = '#ffebd1';
+        ctx.strokeStyle = '#995c24';
+        ctx.lineWidth = 2.4;
+        [[-18, -126, 14], [18, -126, 14], [-8, -135, 15], [8, -135, 15], [0, -128, 16]].forEach(([cx, cy, cr]) => {
+          ctx.beginPath();
+          ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        drawFace(ctx, 0, -103, 14, 10.5, blink, gx, gy, excited, wrong, pose && pose.wideEyes);
+
+        // Cute dark poodle button nose
+        ctx.fillStyle = '#3d2210';
+        ctx.beginPath();
+        ctx.ellipse(0, -88, 7, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 4. ПИ / ПЫ — VACUUM CLEANER (Пилосос / Пылесос): Bright turquoise & yellow canister vacuum with ribbed hose, silver wand & nozzle!
+      function drawVacuum(ctx, t, ph, blink, gx, gy, excited, wrong, pose, swimming) {
+        drawLegs(ctx, 18, -28, t, ph, '#2c3e50', '#ff9f43', excited, wrong, pose, swimming);
+
+        // Ribbed flexible hose curling up from top-right with silver metal wand & floor nozzle!
+        const hoseSway = Math.sin(t * 4.5 + ph) * 6;
+        ctx.save();
+        // Ribbed dark-slate hose
+        ctx.strokeStyle = '#34495e';
+        ctx.lineWidth = 11;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(22, -104);
+        ctx.bezierCurveTo(64, -128, 66 + hoseSway, -172, 26 + hoseSway, -162);
+        ctx.stroke();
+        // Hose ribbing ridges
+        ctx.strokeStyle = '#7f8c8d';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([3, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Shiny silver metal wand extending up-right
+        ctx.strokeStyle = '#dfe6e9';
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(26 + hoseSway, -162);
+        ctx.lineTo(68 + hoseSway, -130);
+        ctx.stroke();
+        ctx.strokeStyle = '#636e72';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Recognizable flat vacuum floor brush nozzle at wand tip
+        ctx.save();
+        ctx.translate(72 + hoseSway, -126);
+        ctx.rotate(0.55);
+        ctx.fillStyle = '#2d3436';
+        ctx.strokeStyle = '#feca57';
+        ctx.lineWidth = 2.5;
+        roundRect(ctx, -16, -6, 32, 13, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        ctx.restore();
+
+        drawArms(ctx, 42, -74, t, ph, '#0086b3', '#feca57', excited, wrong, pose);
+
+        // Glossy rounded turquoise & sunny-yellow canister body
+        const vGrad = ctx.createRadialGradient(-16, -98, 10, 0, -72, 56);
+        vGrad.addColorStop(0, '#55efc4');
+        vGrad.addColorStop(0.45, '#00cec9');
+        vGrad.addColorStop(1, '#007799');
+        ctx.fillStyle = vGrad;
+        ctx.strokeStyle = '#004b63';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, -76, 44, 46, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Sunny yellow racing accent lid & bumper
+        ctx.fillStyle = '#feca57';
+        ctx.strokeStyle = '#b37400';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(0, -110, 28, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Big recognizable red-orange power button on lower front
+        ctx.fillStyle = '#ff6b6b';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, -45, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Side canister wheels
+        [-43, 43].forEach((wx) => {
+          ctx.fillStyle = '#2d3436';
+          ctx.strokeStyle = '#feca57';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.ellipse(wx, -52, 8, 18, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        // Glossy reflection on canister
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(-20, -96, 8, 18, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawFace(ctx, 0, -84, 15, 11, blink, gx, gy, excited, wrong, pose && pose.wideEyes);
+      }
+
+      // 5. ПЕ — CHOCOLATE-CHIP COOKIE (Печиво / Печенье): Realistic golden-brown baked cookie with bumpy edge & glossy choco chips!
+      function drawCookie(ctx, t, ph, blink, gx, gy, excited, wrong, pose, swimming) {
+        drawLegs(ctx, 18, -30, t, ph, '#8d5524', '#ff6b6b', excited, wrong, pose, swimming);
+        drawArms(ctx, 44, -76, t, ph, '#8d5524', '#d99a5b', excited, wrong, pose);
+
+        // Realistic slightly bumpy organic baked cookie silhouette
+        const cGrad = ctx.createRadialGradient(-14, -96, 10, 0, -78, 56);
+        cGrad.addColorStop(0, '#f3c677');
+        cGrad.addColorStop(0.65, '#d99848');
+        cGrad.addColorStop(1, '#a66321');
+        ctx.fillStyle = cGrad;
+        ctx.strokeStyle = '#733e10';
+        ctx.lineWidth = 3;
+
+        ctx.beginPath();
+        const bumps = 18;
+        for (let i = 0; i <= bumps; i++) {
+          const a = (i / bumps) * Math.PI * 2;
+          const r = 48 + Math.sin(i * 3.7) * 3.2;
+          const px = Math.cos(a) * r;
+          const py = -78 + Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Subtle baked crumb speckles
+        ctx.fillStyle = 'rgba(120, 62, 14, 0.25)';
+        [[-28, -56], [26, -108], [-12, -40], [32, -62], [-34, -92], [10, -118]].forEach(([sx, sy]) => {
+          ctx.beginPath();
+          ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Glossy dark-chocolate chips scattered around face (never obstructing eyes!)
+        const chips = [
+          [-26, -112, 7.5], [22, -112, 7], [-34, -74, 6.5],
+          [34, -76, 7.5], [-24, -46, 7], [22, -48, 8], [2, -116, 6]
+        ];
+        chips.forEach(([cx, cy, cr]) => {
+          ctx.fillStyle = '#4a2511';
+          ctx.strokeStyle = '#2b1307';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, cr, cr * 0.82, cx * 0.05, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+          ctx.beginPath();
+          ctx.arc(cx - cr * 0.28, cy - cr * 0.24, cr * 0.25, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        drawFace(ctx, 0, -82, 16, 11.5, blink, gx, gy, excited, wrong, pose && pose.wideEyes);
+      }
+
+      // Cute swim goggles drawn when character pops up in the waves
+      function drawSwimGoggles(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = '#ff6b6b';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-36, 0);
+        ctx.lineTo(36, 0);
+        ctx.stroke();
+
+        [-15, 15].forEach((gx) => {
+          ctx.fillStyle = 'rgba(72, 219, 251, 0.48)';
+          ctx.strokeStyle = '#ffd32a';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.ellipse(gx, 0, 14, 11, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
+
+      // Bright pink inflatable flamingo swim ring (back & front layers for realistic seating!)
+      function drawFloatRingBack(ctx) {
+        ctx.save();
+        ctx.fillStyle = '#ff6b9d';
+        ctx.strokeStyle = '#c43a68';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, -24, 62, 22, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawFloatRingFront(ctx) {
+        ctx.save();
+        // Front torus arc
+        const rGrad = ctx.createLinearGradient(0, -34, 0, 4);
+        rGrad.addColorStop(0, '#ff9ec0');
+        rGrad.addColorStop(0.5, '#ff5c93');
+        rGrad.addColorStop(1, '#d6336c');
+        ctx.fillStyle = rGrad;
+        ctx.strokeStyle = '#a61e4d';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, -18, 64, 22, 0, 0, Math.PI);
+        ctx.bezierCurveTo(-40, -12, 40, -12, 64, -18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Cute inflatable flamingo neck & head on right side of ring!
+        ctx.strokeStyle = '#ff5c93';
+        ctx.lineWidth = 14;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(52, -24);
+        ctx.quadraticCurveTo(72, -52, 64, -76);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ff5c93';
+        ctx.strokeStyle = '#a61e4d';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(64, -78, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Flamingo beak & eye
+        ctx.fillStyle = '#2d3436';
+        ctx.beginPath();
+        ctx.moveTo(74, -80);
+        ctx.lineTo(86, -74);
+        ctx.lineTo(74, -72);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(67, -80, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(68, -80, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Utility: safe rounded rectangle
+      function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      /* =========================================================================
+       * 13. MAIN RENDER & 60FPS ANIMATION LOOP
+       * ========================================================================= */
+      function render() {
+        const minX = -stageOffsetX / stageScale - 40;
+        const maxX = (viewW - stageOffsetX) / stageScale + 40;
+
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.translate(stageOffsetX, stageOffsetY);
+        ctx.scale(stageScale, stageScale);
+
+        // 1. Scenic tropical sky, sun, island, sailboat, waves & sandy beach
+        drawTropicalBackdrop(ctx);
+
+        // 2. Painted wooden surfboard syllable signboard
+        drawSurfboardSign(ctx);
+
+        // 3. Detailed wooden pier & flexible springy diving board
+        drawWoodenPier(ctx);
+
+        // 4. Waiting characters on the sandy beach sorted by Y for natural depth
+        const waiting = game.characters
+          .filter((c) => c !== game.diver.char)
+          .sort((a, b) => a.y - b.y);
+        for (const ch of waiting) {
+          drawCharacter(ctx, ch, false, false);
+        }
+
+        // 5. Active diver (running on pier, flying through the air, or swimming in waves!)
+        if (game.diver.char) {
+          drawCharacter(ctx, game.diver.char, true, game.state === 'SWIM_OFF');
+        }
+
+        // 6. Foreground sea wave crest & foam rings overlapping lower waterline for authentic immersion
+        drawFoamRings(ctx);
+        drawWaveLayer(ctx, 880, maxX, 724, 10, 0.012, 2.2, 'rgba(0, 150, 199, 0.36)', 'rgba(255,255,255,0.68)');
+
+        // 7. Celebration bouncing beach balls & splash/sparkle/bubble particles
+        drawBeachBalls(ctx);
+        drawParticles(ctx);
+
+        ctx.restore();
+      }
+
+      let lastTime = 0;
+      function loop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        updateGame(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      window.onload = function () {
+        resizeCanvas();
+        createWave();
+        requestAnimationFrame(loop);
+      };
+    })();
+  </script>
+</body>
+</html>
