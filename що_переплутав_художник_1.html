@@ -1,0 +1,4101 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>• • •</title>
+  <style>
+    /* Full-bleed viewport setup, zero scrollbars, no selection */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #2b1d12;
+      touch-action: none;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: pointer;
+    }
+
+    /* Stylized wooden / paint-palette circular Next button (zero text) */
+    #next-btn {
+      position: fixed;
+      right: clamp(18px, 2.6vw, 38px);
+      bottom: clamp(18px, 2.6vw, 38px);
+      width: clamp(66px, 6.2vw, 94px);
+      height: clamp(66px, 6.2vw, 94px);
+      border-radius: 50%;
+      border: 4px solid #fff3d1;
+      background: radial-gradient(circle at 32% 28%, #f8c66b 0%, #d9832c 55%, #9c4f18 100%);
+      box-shadow:
+        0 8px 22px rgba(32, 16, 4, 0.45),
+        inset 0 3px 6px rgba(255, 248, 220, 0.65),
+        inset 0 -5px 10px rgba(95, 42, 8, 0.65);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+      outline: none;
+    }
+
+    /* Decorative paint dots around the palette button */
+    #next-btn::before {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      border: 2px dashed rgba(255, 240, 200, 0.45);
+      pointer-events: none;
+    }
+
+    #next-btn:hover {
+      transform: scale(1.09) rotate(4deg);
+      box-shadow:
+        0 12px 28px rgba(32, 16, 4, 0.55),
+        inset 0 3px 8px rgba(255, 248, 220, 0.8),
+        inset 0 -5px 10px rgba(95, 42, 8, 0.65);
+    }
+
+    #next-btn:active {
+      transform: scale(0.93) rotate(-3deg);
+      box-shadow:
+        0 4px 12px rgba(32, 16, 4, 0.5),
+        inset 0 3px 6px rgba(95, 42, 8, 0.5);
+    }
+
+    #next-btn.pulse {
+      animation: btnPulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes btnPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.11); }
+    }
+
+    #next-btn svg {
+      width: 56%;
+      height: 56%;
+      filter: drop-shadow(0 3px 2px rgba(85, 34, 6, 0.45));
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Minimalist icon-only Next button with hand-drawn arrow SVG -->
+  <button id="next-btn" aria-label="Next">
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 32C22 31.5 34 31.5 47 32" stroke="#FFF9E6" stroke-width="8.5" stroke-linecap="round"/>
+      <path d="M35 16C40 22 46 27.5 51 32C46 36.5 40 42 35 48" stroke="#FFF9E6" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="15" cy="17" r="3.2" fill="#FF6B6B"/>
+      <circle cx="23" cy="12" r="2.8" fill="#4ECDC4"/>
+      <circle cx="15" cy="48" r="3.0" fill="#FFE66D"/>
+    </svg>
+  </button>
+
+  <script>
+    (() => {
+      "use strict";
+
+      /* ============================================================================
+         1. CANVAS & VIEWPORT MANAGEMENT (16:9 Virtual Space 1600x900, Full-Bleed)
+      ============================================================================ */
+      const canvas = document.getElementById("game-canvas");
+      const ctx = canvas.getContext("2d");
+      const nextBtn = document.getElementById("next-btn");
+
+      const VW = 1600;
+      const VH = 900;
+      let viewW = window.innerWidth;
+      let viewH = window.innerHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let scale = 1;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      // Subtle offscreen paper texture for warm storybook feel
+      const grainCanvas = document.createElement("canvas");
+      grainCanvas.width = 128;
+      grainCanvas.height = 128;
+      const gCtx = grainCanvas.getContext("2d");
+      let grainPattern = null;
+
+      function createGrainPattern() {
+        const img = gCtx.createImageData(128, 128);
+        for (let i = 0; i < img.data.length; i += 4) {
+          const v = 220 + Math.random() * 35;
+          img.data[i] = v;
+          img.data[i + 1] = v - 6;
+          img.data[i + 2] = v - 16;
+          img.data[i + 3] = 10;
+        }
+        gCtx.putImageData(img, 0, 0);
+        grainPattern = ctx.createPattern(grainCanvas, "repeat");
+      }
+
+      function resizeCanvas() {
+        viewW = window.innerWidth;
+        viewH = window.innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(viewW * dpr);
+        canvas.height = Math.round(viewH * dpr);
+        scale = Math.min(viewW / VW, viewH / VH);
+        offsetX = (viewW - VW * scale) * 0.5;
+        offsetY = (viewH - VH * scale) * 0.5;
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      createGrainPattern();
+      resizeCanvas();
+
+      function screenToVirtual(clientX, clientY) {
+        return {
+          x: (clientX - offsetX) / scale,
+          y: (clientY - offsetY) / scale
+        };
+      }
+
+      /* ============================================================================
+         2. WEB AUDIO API SYNTHESIZER (Zero external audio files)
+      ============================================================================ */
+      const SoundFX = (() => {
+        let ac = null;
+
+        function ensure() {
+          if (!ac) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) ac = new AudioCtx();
+          }
+          if (ac && ac.state === "suspended") {
+            ac.resume().catch(() => {});
+          }
+          return ac;
+        }
+
+        function createNoiseBuffer(audioCtx, duration) {
+          const bufferSize = Math.floor(audioCtx.sampleRate * duration);
+          const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          return buffer;
+        }
+
+        function playTone(freqStart, freqEnd, dur, type = "sine", vol = 0.16, delay = 0) {
+          const audioCtx = ensure();
+          if (!audioCtx) return;
+          const now = audioCtx.currentTime + delay;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freqStart, now);
+          if (freqEnd !== freqStart) {
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), now + dur);
+          }
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(vol, now + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + dur + 0.02);
+        }
+
+        return {
+          tap() {
+            const base = 290 + Math.random() * 90;
+            playTone(base, base * 0.72, 0.09, "triangle", 0.12);
+          },
+          nextClick() {
+            playTone(420, 620, 0.08, "triangle", 0.12, 0);
+            playTone(640, 820, 0.09, "sine", 0.10, 0.04);
+          },
+          boing() {
+            const audioCtx = ensure();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(170, now);
+            osc.frequency.exponentialRampToValueAtTime(520, now + 0.14);
+            osc.frequency.exponentialRampToValueAtTime(240, now + 0.28);
+            osc.frequency.exponentialRampToValueAtTime(430, now + 0.42);
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.22, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.5);
+            this.sparkle(0.18);
+          },
+          splash() {
+            const audioCtx = ensure();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const src = audioCtx.createBufferSource();
+            src.buffer = createNoiseBuffer(audioCtx, 0.45);
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = "bandpass";
+            filter.frequency.setValueAtTime(1400, now);
+            filter.frequency.exponentialRampToValueAtTime(320, now + 0.42);
+            filter.Q.value = 1.2;
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.26, now + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+            src.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            src.start(now);
+            // Water bubbles
+            playTone(320, 680, 0.11, "sine", 0.12, 0.05);
+            playTone(440, 890, 0.11, "sine", 0.12, 0.13);
+            playTone(540, 1080, 0.12, "sine", 0.11, 0.21);
+            this.sparkle(0.24);
+          },
+          popPop() {
+            playTone(300, 740, 0.08, "sine", 0.18, 0.0);
+            playTone(360, 860, 0.08, "sine", 0.18, 0.09);
+            playTone(430, 980, 0.09, "sine", 0.19, 0.18);
+            this.sparkle(0.24);
+          },
+          whoosh() {
+            const audioCtx = ensure();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const src = audioCtx.createBufferSource();
+            src.buffer = createNoiseBuffer(audioCtx, 0.36);
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = "bandpass";
+            filter.frequency.setValueAtTime(280, now);
+            filter.frequency.exponentialRampToValueAtTime(1900, now + 0.18);
+            filter.frequency.exponentialRampToValueAtTime(450, now + 0.35);
+            filter.Q.value = 2.0;
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.22, now + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            src.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            src.start(now);
+            playTone(340, 780, 0.22, "sine", 0.12, 0.04);
+            this.sparkle(0.2);
+          },
+          chirp() {
+            playTone(1200, 2100, 0.09, "sine", 0.14, 0.0);
+            playTone(1500, 2500, 0.09, "sine", 0.14, 0.11);
+            playTone(1350, 2300, 0.11, "sine", 0.14, 0.22);
+            this.sparkle(0.25);
+          },
+          bell() {
+            playTone(1180, 1180, 0.35, "sine", 0.16, 0.0);
+            playTone(2360, 2360, 0.25, "sine", 0.09, 0.0);
+            playTone(1180, 1180, 0.38, "sine", 0.16, 0.15);
+            playTone(2360, 2360, 0.28, "sine", 0.09, 0.15);
+            this.sparkle(0.28);
+          },
+          croak() {
+            playTone(135, 240, 0.13, "sawtooth", 0.11, 0.08);
+            playTone(145, 265, 0.15, "sawtooth", 0.11, 0.26);
+            this.splash();
+          },
+          sparkle(delay = 0) {
+            const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+            notes.forEach((n, idx) => {
+              playTone(n, n * 1.01, 0.22, "sine", 0.11, delay + idx * 0.055);
+            });
+          }
+        };
+      })();
+
+      /* ============================================================================
+         3. PARTICLES & TACTILE RIPPLES (100% Hand-Drawn Vector, No Emojis)
+      ============================================================================ */
+      const particles = [];
+      const ripples = [];
+
+      function spawnRipple(x, y) {
+        ripples.push({ x, y, r: 8, maxR: 64, alpha: 0.75 });
+      }
+
+      function spawnBurst(x, y, types = ["star", "splatter", "petal"], count = 34) {
+        const palette = ["#FF6B6B", "#FFD93D", "#6BCB77", "#4D96FF", "#FF9F1C", "#FF85A1", "#A8E6CF", "#FFFFFF"];
+        for (let i = 0; i < count; i++) {
+          const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.45;
+          const speed = 170 + Math.random() * 440;
+          particles.push({
+            x: x + (Math.random() - 0.5) * 40,
+            y: y + (Math.random() - 0.5) * 40,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 130,
+            size: 10 + Math.random() * 16,
+            rot: Math.random() * Math.PI * 2,
+            vrot: (Math.random() - 0.5) * 8,
+            life: 0,
+            maxLife: 0.75 + Math.random() * 0.65,
+            type: types[i % types.length],
+            color: palette[Math.floor(Math.random() * palette.length)],
+            gravity: types[i % types.length] === "bubble" ? -90 : 520
+          });
+        }
+      }
+
+      function updateAndDrawParticles(dt) {
+        // Tactile ripples
+        for (let i = ripples.length - 1; i >= 0; i--) {
+          const rp = ripples[i];
+          rp.r += dt * 165;
+          rp.alpha -= dt * 1.9;
+          if (rp.alpha <= 0) {
+            ripples.splice(i, 1);
+            continue;
+          }
+          ctx.save();
+          ctx.strokeStyle = `rgba(255, 252, 232, ${rp.alpha})`;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Celebration particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.life += dt;
+          if (p.life >= p.maxLife) {
+            particles.splice(i, 1);
+            continue;
+          }
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy += p.gravity * dt;
+          p.vx *= 0.985;
+          p.rot += p.vrot * dt;
+
+          const alpha = Math.max(0, 1 - Math.pow(p.life / p.maxLife, 1.8));
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.globalAlpha = alpha;
+          drawParticleShape(p.type, p.size, p.color);
+          ctx.restore();
+        }
+      }
+
+      function drawParticleShape(type, s, color) {
+        ctx.fillStyle = color;
+        if (type === "star") {
+          ctx.beginPath();
+          for (let i = 0; i < 10; i++) {
+            const rad = i % 2 === 0 ? s : s * 0.46;
+            const a = (i * Math.PI) / 5 - Math.PI / 2;
+            const px = Math.cos(a) * rad;
+            const py = Math.sin(a) * rad;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill();
+        } else if (type === "petal") {
+          ctx.beginPath();
+          ctx.moveTo(0, -s);
+          ctx.bezierCurveTo(s * 0.85, -s * 0.4, s * 0.75, s * 0.7, 0, s);
+          ctx.bezierCurveTo(-s * 0.75, s * 0.7, -s * 0.85, -s * 0.4, 0, -s);
+          ctx.fill();
+        } else if (type === "bubble") {
+          ctx.strokeStyle = "rgba(255,255,255,0.9)";
+          ctx.lineWidth = 2.5;
+          ctx.fillStyle = "rgba(180,235,255,0.35)";
+          ctx.beginPath();
+          ctx.arc(0, 0, s * 0.75, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.beginPath();
+          ctx.arc(-s * 0.24, -s * 0.24, s * 0.2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (type === "leaf") {
+          ctx.fillStyle = "#52B788";
+          ctx.beginPath();
+          ctx.moveTo(-s, 0);
+          ctx.quadraticCurveTo(0, -s * 0.85, s, 0);
+          ctx.quadraticCurveTo(0, s * 0.85, -s, 0);
+          ctx.fill();
+          ctx.strokeStyle = "#2D6A4F";
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(-s * 0.8, 0);
+          ctx.lineTo(s * 0.8, 0);
+          ctx.stroke();
+        } else if (type === "note") {
+          ctx.beginPath();
+          ctx.ellipse(-s * 0.25, s * 0.35, s * 0.42, s * 0.3, -0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3.2;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(s * 0.1, s * 0.28);
+          ctx.lineTo(s * 0.1, -s * 0.85);
+          ctx.quadraticCurveTo(s * 0.75, -s * 0.65, s * 0.55, -s * 0.15);
+          ctx.stroke();
+        } else if (type === "heart") {
+          ctx.beginPath();
+          ctx.moveTo(0, s * 0.75);
+          ctx.bezierCurveTo(-s * 1.1, 0, -s * 0.9, -s * 0.95, 0, -s * 0.3);
+          ctx.bezierCurveTo(s * 0.9, -s * 0.95, s * 1.1, 0, 0, s * 0.75);
+          ctx.fill();
+        } else {
+          // Organic paint splatter
+          ctx.beginPath();
+          ctx.arc(0, 0, s * 0.62, 0, Math.PI * 2);
+          ctx.arc(s * 0.5, -s * 0.3, s * 0.25, 0, Math.PI * 2);
+          ctx.arc(-s * 0.45, s * 0.35, s * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      /* ============================================================================
+         4. SHARED ILLUSTRATION HELPERS (Skies, Clouds, Sun, Eyes, Trees, Hills)
+      ============================================================================ */
+      function lerp(a, b, t) { return a + (b - a) * t; }
+      function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+      function easeOutBack(t) {
+        const c1 = 1.70158, c3 = c1 + 1;
+        return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+      }
+      function easeInOutQuad(t) {
+        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      }
+
+      // Compute juicy squash/stretch transform during fix animation
+      function getMorphScale(anim) {
+        if (anim <= 0 || anim >= 1) return { sx: 1, sy: 1 };
+        if (anim < 0.22) {
+          const p = anim / 0.22;
+          return { sx: 1 + 0.24 * Math.sin(p * Math.PI), sy: 1 - 0.26 * Math.sin(p * Math.PI) };
+        }
+        const p = (anim - 0.22) / 0.78;
+        const bounce = easeOutBack(p);
+        return { sx: 0.75 + 0.25 * bounce, sy: 0.75 + 0.25 * bounce };
+      }
+
+      function drawSky(topColor, midColor, botColor) {
+        const grad = ctx.createLinearGradient(0, -350, 0, 1250);
+        grad.addColorStop(0, topColor);
+        grad.addColorStop(0.55, midColor);
+        grad.addColorStop(1, botColor);
+        ctx.fillStyle = grad;
+        ctx.fillRect(-700, -400, 3000, 1750);
+      }
+
+      function drawSun(x, y, r, t, rayColor = "rgba(255, 240, 150, 0.35)") {
+        ctx.save();
+        ctx.translate(x, y);
+        // Rotating sunbeams
+        ctx.save();
+        ctx.rotate(t * 0.14);
+        ctx.fillStyle = rayColor;
+        for (let i = 0; i < 12; i++) {
+          ctx.rotate((Math.PI * 2) / 12);
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.18, -r * 1.05);
+          ctx.lineTo(0, -r * (1.75 + 0.12 * Math.sin(t * 2 + i)));
+          ctx.lineTo(r * 0.18, -r * 1.05);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Warm glow
+        const glow = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 2.1);
+        glow.addColorStop(0, "rgba(255, 247, 170, 0.95)");
+        glow.addColorStop(0.45, "rgba(255, 215, 90, 0.45)");
+        glow.addColorStop(1, "rgba(255, 215, 90, 0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2.1, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Sun body
+        const core = ctx.createRadialGradient(-r * 0.2, -r * 0.2, r * 0.1, 0, 0, r);
+        core.addColorStop(0, "#FFFCE0");
+        core.addColorStop(0.7, "#FFD94A");
+        core.addColorStop(1, "#FFA62B");
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawCloud(x, y, s, alpha = 0.92, tint = "#FFFFFF") {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = tint;
+        ctx.beginPath();
+        ctx.arc(-44, 12, 28, 0, Math.PI * 2);
+        ctx.arc(-14, -6, 38, 0, Math.PI * 2);
+        ctx.arc(26, -2, 34, 0, Math.PI * 2);
+        ctx.arc(54, 14, 24, 0, Math.PI * 2);
+        ctx.rect(-44, 10, 98, 30);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawDriftingClouds(t, count = 4, tint = "#FFFFFF", yMax = 240) {
+        for (let i = 0; i < count; i++) {
+          const speed = 14 + i * 5;
+          const cx = ((i * 460 + t * speed) % 2300) - 350;
+          const cy = 95 + (i % 3) * (yMax / 3.2) + Math.sin(t * 0.7 + i) * 7;
+          drawCloud(cx, cy, 0.85 + (i % 3) * 0.25, 0.88, tint);
+        }
+      }
+
+      function drawRollingHills(yBase, color1, color2, color3) {
+        // Distant hill
+        ctx.fillStyle = color1;
+        ctx.beginPath();
+        ctx.moveTo(-700, 1300);
+        ctx.lineTo(-700, yBase - 40);
+        ctx.bezierCurveTo(-100, yBase - 180, 500, yBase - 140, 950, yBase - 30);
+        ctx.bezierCurveTo(1350, yBase - 160, 1850, yBase - 110, 2300, yBase - 20);
+        ctx.lineTo(2300, 1300);
+        ctx.closePath();
+        ctx.fill();
+
+        // Mid hill
+        ctx.fillStyle = color2;
+        ctx.beginPath();
+        ctx.moveTo(-700, 1300);
+        ctx.lineTo(-700, yBase + 40);
+        ctx.bezierCurveTo(150, yBase - 65, 650, yBase + 90, 1180, yBase + 10);
+        ctx.bezierCurveTo(1550, yBase - 50, 1950, yBase + 40, 2300, yBase + 20);
+        ctx.lineTo(2300, 1300);
+        ctx.closePath();
+        ctx.fill();
+
+        // Foreground meadow
+        const fg = ctx.createLinearGradient(0, yBase + 30, 0, 1100);
+        fg.addColorStop(0, color3);
+        fg.addColorStop(1, color2);
+        ctx.fillStyle = fg;
+        ctx.beginPath();
+        ctx.moveTo(-700, 1300);
+        ctx.lineTo(-700, yBase + 95);
+        ctx.quadraticCurveTo(800, yBase + 15, 2300, yBase + 105);
+        ctx.lineTo(2300, 1300);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawSwayingGrass(x, y, s, t, color = "#3D9948") {
+        const sway = Math.sin(t * 2.4 + x * 0.02) * 7 * s;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4 * s;
+        ctx.lineCap = "round";
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * 7 * s, 0);
+          ctx.quadraticCurveTo(i * 12 * s + sway * 0.5, -18 * s, i * 16 * s + sway, -34 * s);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawFlower(x, y, s, petalColor, centerColor = "#FFD166", t = 0) {
+        const sway = Math.sin(t * 2.2 + x * 0.03) * 5;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = "#3E8E41";
+        ctx.lineWidth = 3.5 * s;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(sway * 0.5, -18 * s, sway, -34 * s);
+        ctx.stroke();
+        ctx.translate(sway, -34 * s);
+        ctx.fillStyle = petalColor;
+        for (let i = 0; i < 5; i++) {
+          const a = (i * Math.PI * 2) / 5 + t * 0.15;
+          ctx.beginPath();
+          ctx.arc(Math.cos(a) * 9 * s, Math.sin(a) * 9 * s, 7 * s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = centerColor;
+        ctx.beginPath();
+        ctx.arc(0, 0, 6.5 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawButterfly(x, y, s, color1, color2, t) {
+        const flap = 0.35 + 0.65 * Math.abs(Math.sin(t * 9 + x));
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        // Wings
+        ctx.fillStyle = color1;
+        ctx.beginPath();
+        ctx.ellipse(-14 * flap, -8, 16 * flap, 12, -0.3, 0, Math.PI * 2);
+        ctx.ellipse(14 * flap, -8, 16 * flap, 12, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = color2;
+        ctx.beginPath();
+        ctx.ellipse(-10 * flap, 9, 11 * flap, 9, 0.25, 0, Math.PI * 2);
+        ctx.ellipse(10 * flap, 9, 11 * flap, 9, -0.25, 0, Math.PI * 2);
+        ctx.fill();
+        // Body
+        ctx.fillStyle = "#3B2820";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 3.5, 13, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawCuteEye(x, y, r, t, happy = false, seed = 0) {
+        const blink = ((t + seed) % 4.2) > 4.02;
+        ctx.save();
+        ctx.translate(x, y);
+        if (happy) {
+          ctx.strokeStyle = "#2A1F1A";
+          ctx.lineWidth = Math.max(3, r * 0.34);
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.arc(0, r * 0.2, r * 0.85, Math.PI * 1.15, Math.PI * 1.85);
+          ctx.stroke();
+        } else if (blink) {
+          ctx.strokeStyle = "#2A1F1A";
+          ctx.lineWidth = Math.max(2.5, r * 0.3);
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.8, 0);
+          ctx.lineTo(r * 0.8, 0);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = "#FFFFFF";
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#241914";
+          ctx.beginPath();
+          ctx.arc(r * 0.12, r * 0.05, r * 0.62, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#FFFFFF";
+          ctx.beginPath();
+          ctx.arc(-r * 0.22, -r * 0.26, r * 0.26, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawShadowEllipse(x, y, rx, ry, alpha = 0.22) {
+        ctx.save();
+        ctx.fillStyle = `rgba(35, 22, 12, ${alpha})`;
+        ctx.beginPath();
+        ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawRoundRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      /* ============================================================================
+         5. THE 20 ILLUSTRATED SCENES (Each self-contained with mistake -> fixed)
+      ============================================================================ */
+      const SCENES = [
+        /* ------------------------------------------------------------------------
+           SCENE 1: Sunny Tropical Beach — Snowman on hot sand -> Colorful Sandcastle
+        ------------------------------------------------------------------------ */
+        {
+          sound: "splash",
+          particles: ["star", "splatter", "bubble"],
+          hitbox: { x: 610, y: 290, w: 380, h: 460 },
+          draw(t, st) {
+            drawSky("#38B6FF", "#90E0EF", "#FFF3B0");
+            drawSun(1350, 145, 82, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 170);
+
+            // Flying seagulls
+            for (let g = 0; g < 3; g++) {
+              const gx = ((t * (42 + g * 12) + g * 480) % 1900) - 150;
+              const gy = 175 + g * 48 + Math.sin(t * 2.5 + g) * 14;
+              const flap = Math.sin(t * 7 + g * 2) * 10;
+              ctx.strokeStyle = "#FFFFFF";
+              ctx.lineWidth = 4.5;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(gx - 22, gy + flap);
+              ctx.quadraticCurveTo(gx - 10, gy - 10, gx, gy);
+              ctx.quadraticCurveTo(gx + 10, gy - 10, gx + 22, gy + flap);
+              ctx.stroke();
+            }
+
+            // Tropical turquoise ocean & animated rolling waves
+            ctx.fillStyle = "#0096C7";
+            ctx.fillRect(-700, 485, 3000, 220);
+            ctx.fillStyle = "#00B4D8";
+            ctx.beginPath();
+            ctx.moveTo(-700, 700);
+            for (let x = -700; x <= 2300; x += 45) {
+              ctx.lineTo(x, 530 + Math.sin(x * 0.01 + t * 2.6) * 12);
+            }
+            ctx.lineTo(2300, 700);
+            ctx.closePath();
+            ctx.fill();
+
+            // Foamy shoreline wave
+            ctx.fillStyle = "rgba(255,255,255,0.65)";
+            ctx.beginPath();
+            ctx.moveTo(-700, 700);
+            for (let x = -700; x <= 2300; x += 40) {
+              ctx.lineTo(x, 588 + Math.sin(x * 0.014 + t * 3.1) * 9);
+            }
+            ctx.lineTo(2300, 700);
+            ctx.closePath();
+            ctx.fill();
+
+            // Golden beach sand
+            const sandG = ctx.createLinearGradient(0, 595, 0, 960);
+            sandG.addColorStop(0, "#FFE08A");
+            sandG.addColorStop(1, "#F4B952");
+            ctx.fillStyle = sandG;
+            ctx.beginPath();
+            ctx.moveTo(-700, 1300);
+            ctx.lineTo(-700, 610);
+            ctx.quadraticCurveTo(800, 565, 2300, 620);
+            ctx.lineTo(2300, 1300);
+            ctx.closePath();
+            ctx.fill();
+
+            // Swaying palm tree on left
+            const drawPalm = (px, py, flip, s) => {
+              const sw = Math.sin(t * 1.6 + px) * 14;
+              ctx.save();
+              ctx.translate(px, py);
+              ctx.scale(flip * s, s);
+              ctx.strokeStyle = "#8D5524";
+              ctx.lineWidth = 34;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(0, 0);
+              ctx.quadraticCurveTo(45, -180, 95 + sw, -370);
+              ctx.stroke();
+              // Palm fronds
+              ctx.translate(95 + sw, -370);
+              const angles = [-2.4, -1.7, -0.8, 0.1, 0.9, 1.8];
+              angles.forEach((a, i) => {
+                ctx.save();
+                ctx.rotate(a + Math.sin(t * 2 + i) * 0.06);
+                ctx.fillStyle = i % 2 === 0 ? "#2D9348" : "#40916C";
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(85, -36, 165, 18);
+                ctx.quadraticCurveTo(85, 8, 0, 0);
+                ctx.fill();
+                ctx.restore();
+              });
+              // Coconuts
+              ctx.fillStyle = "#582F0E";
+              ctx.beginPath();
+              ctx.arc(-10, 16, 15, 0, Math.PI * 2);
+              ctx.arc(14, 18, 15, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            };
+            drawPalm(145, 690, 1, 1.15);
+            drawPalm(1460, 685, -1, 1.0);
+
+            // Decorative starfish & seashells on sand
+            ctx.fillStyle = "#FF6B6B";
+            ctx.save();
+            ctx.translate(340, 770);
+            drawParticleShape("star", 28, "#FF6B6B");
+            ctx.restore();
+
+            // SUBJECT: Snowman on hot sand -> Colorful Sandcastle!
+            const sx = 800, sy = 735;
+            drawShadowEllipse(sx, sy + 18, 175, 34, 0.22);
+            const ms = getMorphScale(st.anim);
+            const clickBounce = st.bounce > 0 ? Math.sin(st.bounce * Math.PI) * 16 : 0;
+
+            ctx.save();
+            ctx.translate(sx, sy - clickBounce);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Melting winter snowman on the hot tropical beach!
+              // Small melt puddle
+              ctx.fillStyle = "rgba(130, 215, 255, 0.65)";
+              ctx.beginPath(); ctx.ellipse(0, 14, 145, 28, 0, 0, Math.PI * 2); ctx.fill();
+
+              // Stick arms
+              ctx.strokeStyle = "#6F4518";
+              ctx.lineWidth = 10;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(-72, -190); ctx.lineTo(-158, -238);
+              ctx.moveTo(-132, -224); ctx.lineTo(-152, -260);
+              ctx.moveTo(72, -190); ctx.lineTo(158, -238);
+              ctx.moveTo(132, -224); ctx.lineTo(152, -260);
+              ctx.stroke();
+
+              // Three snowballs
+              const snowGrad = (cy, r) => {
+                const g = ctx.createRadialGradient(-r * 0.3, cy - r * 0.3, r * 0.1, 0, cy, r);
+                g.addColorStop(0, "#FFFFFF");
+                g.addColorStop(0.75, "#EBF7FF");
+                g.addColorStop(1, "#C8E6FA");
+                return g;
+              };
+              ctx.fillStyle = snowGrad(-74, 96);
+              ctx.beginPath(); ctx.arc(0, -74, 96, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = snowGrad(-200, 74);
+              ctx.beginPath(); ctx.arc(0, -200, 74, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = snowGrad(-304, 54);
+              ctx.beginPath(); ctx.arc(0, -304, 54, 0, Math.PI * 2); ctx.fill();
+
+              // Coal buttons
+              ctx.fillStyle = "#2B2D42";
+              [-220, -190, -160].forEach(by => {
+                ctx.beginPath(); ctx.arc(0, by, 8, 0, Math.PI * 2); ctx.fill();
+              });
+
+              // Red winter scarf
+              ctx.fillStyle = "#E63946";
+              drawRoundRect(-56, -260, 112, 24, 10); ctx.fill();
+              drawRoundRect(20, -245, 24, 72, 10); ctx.fill();
+              ctx.fillStyle = "#FFD166";
+              ctx.fillRect(-52, -252, 104, 7);
+
+              // Eyes & Carrot nose
+              drawCuteEye(-20, -314, 8, t, false, 1);
+              drawCuteEye(20, -314, 8, t, false, 1);
+              ctx.fillStyle = "#FF7B00";
+              ctx.beginPath();
+              ctx.moveTo(0, -304); ctx.lineTo(54, -294); ctx.lineTo(0, -286);
+              ctx.closePath(); ctx.fill();
+
+              // Bucket hat on head
+              ctx.fillStyle = "#1982C4";
+              ctx.beginPath();
+              ctx.moveTo(-42, -346); ctx.lineTo(42, -346);
+              ctx.lineTo(30, -408); ctx.lineTo(-30, -408);
+              ctx.closePath(); ctx.fill();
+              ctx.fillStyle = "#126782";
+              drawRoundRect(-48, -352, 96, 14, 7); ctx.fill();
+
+              // Sweat / melting drop
+              const dropY = (t * 48) % 40;
+              ctx.fillStyle = "#48CAE4";
+              ctx.beginPath(); ctx.arc(46, -325 + dropY, 6, 0, Math.PI * 2); ctx.fill();
+            } else {
+              // FIXED: Detailed colorful sandcastle with flags, seashells & beach bucket!
+              // Base mound
+              ctx.fillStyle = "#E6B35A";
+              ctx.beginPath(); ctx.ellipse(0, 6, 168, 32, 0, 0, Math.PI * 2); ctx.fill();
+
+              // Main castle wall
+              const scG = ctx.createLinearGradient(-130, -180, 130, 0);
+              scG.addColorStop(0, "#F6CA7E");
+              scG.addColorStop(1, "#DFA34B");
+              ctx.fillStyle = scG;
+              drawRoundRect(-115, -145, 230, 145, 10); ctx.fill();
+
+              // Left & right towers
+              drawRoundRect(-146, -215, 74, 215, 10); ctx.fill();
+              drawRoundRect(72, -215, 74, 215, 10); ctx.fill();
+              // Tall center keep tower
+              drawRoundRect(-46, -275, 92, 275, 10); ctx.fill();
+
+              // Battlements (crenellations)
+              ctx.fillStyle = "#F9D697";
+              [-146, -120, -94].forEach(bx => { drawRoundRect(bx, -232, 20, 24, 4); ctx.fill(); });
+              [72, 98, 124].forEach(bx => { drawRoundRect(bx, -232, 20, 24, 4); ctx.fill(); });
+              [-46, -14, 18].forEach(bx => { drawRoundRect(bx, -294, 24, 26, 4); ctx.fill(); });
+
+              // Arched castle doorway & windows
+              ctx.fillStyle = "#9C6644";
+              ctx.beginPath();
+              ctx.arc(0, -60, 34, Math.PI, 0);
+              ctx.lineTo(34, 0); ctx.lineTo(-34, 0); ctx.closePath(); ctx.fill();
+              [-109, 109].forEach(wx => {
+                ctx.beginPath();
+                ctx.arc(wx, -155, 14, Math.PI, 0);
+                ctx.lineTo(wx + 14, -125); ctx.lineTo(wx - 14, -125); ctx.closePath(); ctx.fill();
+              });
+              ctx.beginPath();
+              ctx.arc(0, -215, 16, Math.PI, 0);
+              ctx.lineTo(16, -185); ctx.lineTo(-16, -185); ctx.closePath(); ctx.fill();
+
+              // Fluttering colorful flags on towers
+              const drawFlag = (fx, fy, col, ph) => {
+                const wave = Math.sin(t * 6 + ph) * 6;
+                ctx.strokeStyle = "#8D5524";
+                ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 62); ctx.stroke();
+                ctx.fillStyle = col;
+                ctx.beginPath();
+                ctx.moveTo(fx, fy - 62);
+                ctx.lineTo(fx + 44, fy - 48 + wave);
+                ctx.lineTo(fx, fy - 34);
+                ctx.closePath(); ctx.fill();
+              };
+              drawFlag(-109, -230, "#FF595E", 0);
+              drawFlag(0, -292, "#1982C4", 1.2);
+              drawFlag(109, -230, "#FFCA3A", 2.4);
+
+              // Cute red beach bucket beside sandcastle
+              ctx.save();
+              ctx.translate(185, -10);
+              ctx.fillStyle = "#E63946";
+              ctx.beginPath();
+              ctx.moveTo(-26, -34); ctx.lineTo(26, -34);
+              ctx.lineTo(20, 18); ctx.lineTo(-20, 18);
+              ctx.closePath(); ctx.fill();
+              ctx.fillStyle = "#FFD166";
+              drawRoundRect(-29, -42, 58, 11, 5); ctx.fill();
+              ctx.restore();
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 2: Oak Tree Branch — Goldfish in bird nest -> Bluebird & chicks
+        ------------------------------------------------------------------------ */
+        {
+          sound: "chirp",
+          particles: ["note", "petal", "star"],
+          hitbox: { x: 630, y: 310, w: 360, h: 270 },
+          draw(t, st) {
+            drawSky("#72EFDD", "#A8E6CF", "#E8F8F5");
+            drawSun(210, 150, 74, t);
+            drawDriftingClouds(t, 3, "#FFFFFF", 170);
+
+            // Distant lush canopy
+            ctx.fillStyle = "#74C69D";
+            for (let i = 0; i < 9; i++) {
+              ctx.beginPath();
+              ctx.arc(i * 220 - 80, 810, 190, 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            // Big oak trunk on left
+            const trunkG = ctx.createLinearGradient(0, 0, 320, 0);
+            trunkG.addColorStop(0, "#5C3A21");
+            trunkG.addColorStop(0.5, "#7F4F24");
+            trunkG.addColorStop(1, "#582F0E");
+            ctx.fillStyle = trunkG;
+            ctx.beginPath();
+            ctx.moveTo(-200, -100);
+            ctx.lineTo(290, -100);
+            ctx.quadraticCurveTo(230, 420, 310, 1000);
+            ctx.lineTo(-200, 1000);
+            ctx.closePath();
+            ctx.fill();
+
+            // Sturdy oak branch stretching across
+            const sway = Math.sin(t * 1.4) * 5;
+            ctx.save();
+            ctx.translate(0, sway);
+            ctx.strokeStyle = "#6F4518";
+            ctx.lineWidth = 64;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(190, 460);
+            ctx.bezierCurveTo(560, 560, 980, 520, 1460, 410);
+            ctx.stroke();
+
+            // Smaller twigs & oak leaf clusters
+            const leafCluster = (lx, ly, r, col) => {
+              const ls = Math.sin(t * 2 + lx * 0.01) * 5;
+              ctx.fillStyle = col;
+              ctx.beginPath();
+              ctx.arc(lx + ls, ly, r, 0, Math.PI * 2);
+              ctx.arc(lx - r * 0.7 + ls, ly + 18, r * 0.78, 0, Math.PI * 2);
+              ctx.arc(lx + r * 0.72 + ls, ly + 15, r * 0.8, 0, Math.PI * 2);
+              ctx.fill();
+            };
+            leafCluster(340, 210, 82, "#40916C");
+            leafCluster(1310, 300, 95, "#2D6A4F");
+            leafCluster(1440, 410, 78, "#52B788");
+            leafCluster(1120, 230, 88, "#52B788");
+            leafCluster(540, 140, 75, "#74C69D");
+
+            // Cozy woven twig nest
+            const nx = 810, ny = 495;
+            const ms = getMorphScale(st.anim);
+
+            // Nest back
+            ctx.fillStyle = "#6B4226";
+            ctx.beginPath();
+            ctx.ellipse(nx, ny - 10, 132, 42, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // SUBJECT inside nest
+            ctx.save();
+            ctx.translate(nx, ny - 18);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Bright orange goldfish flopping & blowing bubbles in dry nest
+              const flop = Math.sin(t * 4.2) * 0.08;
+              ctx.save();
+              ctx.rotate(flop);
+              // Flowing tail fin
+              ctx.fillStyle = "#FF9F1C";
+              ctx.beginPath();
+              ctx.moveTo(65, -26);
+              ctx.quadraticCurveTo(138, -88, 152, -25);
+              ctx.quadraticCurveTo(118, -14, 148, 22);
+              ctx.quadraticCurveTo(100, 16, 65, -4);
+              ctx.closePath();
+              ctx.fill();
+              // Top fin
+              ctx.beginPath();
+              ctx.moveTo(-36, -68);
+              ctx.quadraticCurveTo(14, -124, 54, -56);
+              ctx.closePath();
+              ctx.fill();
+              // Round plump fish body
+              const fg = ctx.createRadialGradient(-25, -42, 12, 0, -25, 92);
+              fg.addColorStop(0, "#FFD166");
+              fg.addColorStop(0.55, "#FF7F11");
+              fg.addColorStop(1, "#E85D04");
+              ctx.fillStyle = fg;
+              ctx.beginPath();
+              ctx.ellipse(0, -24, 88, 56, -0.08, 0, Math.PI * 2);
+              ctx.fill();
+              // Pectoral fin
+              ctx.fillStyle = "#FFBE0B";
+              ctx.beginPath();
+              ctx.ellipse(-6, -4, 30, 16, 0.4, 0, Math.PI * 2);
+              ctx.fill();
+              // Eye & round "O" mouth
+              drawCuteEye(-46, -38, 13, t, false, 2);
+              ctx.fillStyle = "#D62828";
+              ctx.beginPath();
+              ctx.ellipse(-86, -20, 9, 12, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+
+              // Floating water bubbles
+              for (let b = 0; b < 4; b++) {
+                const prog = ((t * 0.7 + b * 0.25) % 1);
+                const bx = -105 - Math.sin(t * 3 + b) * 14;
+                const by = -45 - prog * 140;
+                ctx.save();
+                ctx.translate(bx, by);
+                drawParticleShape("bubble", 10 + b * 3, "#FFFFFF");
+                ctx.restore();
+              }
+            } else {
+              // FIXED: Happy blue songbird + two chirping baby chicks!
+              const bounce = Math.abs(Math.sin(t * 5.2)) * 8;
+              // Two baby chicks on right
+              const drawChick = (cx, cy, ph) => {
+                const cb = Math.abs(Math.sin(t * 7 + ph)) * 7;
+                ctx.save();
+                ctx.translate(cx, cy - cb);
+                ctx.fillStyle = "#FFE169";
+                ctx.beginPath();
+                ctx.arc(0, 0, 28, 0, Math.PI * 2);
+                ctx.fill();
+                // Tuft
+                ctx.beginPath();
+                ctx.moveTo(-4, -26); ctx.lineTo(0, -40); ctx.lineTo(7, -26);
+                ctx.fill();
+                drawCuteEye(-8, -6, 5, t, true, ph);
+                drawCuteEye(8, -6, 5, t, true, ph);
+                // Open chirping beak
+                ctx.fillStyle = "#F77F00";
+                ctx.beginPath();
+                ctx.moveTo(-6, 4); ctx.lineTo(0, -4); ctx.lineTo(6, 4); ctx.closePath(); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(-5, 5); ctx.lineTo(0, 14); ctx.lineTo(5, 5); ctx.closePath(); ctx.fill();
+                ctx.restore();
+              };
+              drawChick(44, -26, 0);
+              drawChick(88, -18, 1.5);
+
+              // Mother blue songbird
+              ctx.save();
+              ctx.translate(-34, -36 - bounce * 0.5);
+              // Tail
+              ctx.fillStyle = "#1D70B8";
+              ctx.beginPath();
+              ctx.moveTo(-56, -8);
+              ctx.lineTo(-114, -46);
+              ctx.lineTo(-102, -4);
+              ctx.closePath();
+              ctx.fill();
+              // Body
+              const bg = ctx.createRadialGradient(-10, -25, 10, 0, -10, 72);
+              bg.addColorStop(0, "#56CFE1");
+              bg.addColorStop(0.6, "#219EBC");
+              bg.addColorStop(1, "#126782");
+              ctx.fillStyle = bg;
+              ctx.beginPath();
+              ctx.ellipse(0, -10, 66, 48, -0.1, 0, Math.PI * 2);
+              ctx.fill();
+              // Warm tummy
+              ctx.fillStyle = "#FFE8D6";
+              ctx.beginPath();
+              ctx.ellipse(16, 4, 40, 28, 0.1, 0, Math.PI * 2);
+              ctx.fill();
+              // Head
+              ctx.fillStyle = "#219EBC";
+              ctx.beginPath();
+              ctx.arc(38, -56, 36, 0, Math.PI * 2);
+              ctx.fill();
+              // Wing fluttering happily
+              ctx.save();
+              ctx.translate(-12, -16);
+              ctx.rotate(-0.2 - Math.sin(t * 8) * 0.15);
+              ctx.fillStyle = "#126782";
+              ctx.beginPath();
+              ctx.ellipse(0, 0, 38, 22, -0.2, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+              // Eye & golden beak
+              drawCuteEye(48, -62, 8, t, true, 3);
+              ctx.fillStyle = "#FFB703";
+              ctx.beginPath();
+              ctx.moveTo(70, -60); ctx.lineTo(98, -52); ctx.lineTo(70, -44);
+              ctx.closePath();
+              ctx.fill();
+              ctx.restore();
+            }
+            ctx.restore();
+
+            // Nest front rim (overlaps bottom of subject cleanly)
+            const nestG = ctx.createLinearGradient(nx, ny - 15, nx, ny + 65);
+            nestG.addColorStop(0, "#A47148");
+            nestG.addColorStop(1, "#6F4518");
+            ctx.fillStyle = nestG;
+            ctx.beginPath();
+            ctx.ellipse(nx, ny + 4, 138, 48, 0, 0, Math.PI);
+            ctx.quadraticCurveTo(nx, ny + 18, nx - 138, ny + 4);
+            ctx.fill();
+
+            // Woven twig strokes
+            ctx.strokeStyle = "#582F0E";
+            ctx.lineWidth = 4;
+            for (let i = -4; i <= 4; i++) {
+              ctx.beginPath();
+              ctx.moveTo(nx + i * 24 - 30, ny + 12 + Math.abs(i) * 3);
+              ctx.quadraticCurveTo(nx + i * 20, ny + 34, nx + i * 24 + 34, ny + 10);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 3: Sunny Orchard — Carrots hanging on apple tree -> Red Apples
+        ------------------------------------------------------------------------ */
+        {
+          sound: "popPop",
+          particles: ["leaf", "star", "petal"],
+          hitbox: { x: 460, y: 120, w: 680, h: 430 },
+          draw(t, st) {
+            drawSky("#64B5F6", "#B3E5FC", "#FFF9C4");
+            drawSun(1380, 145, 76, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 180);
+            drawRollingHills(650, "#95D5B2", "#74C69D", "#52B788");
+
+            // Wooden orchard fence in background
+            ctx.fillStyle = "#C68B59";
+            ctx.fillRect(-200, 625, 2000, 14);
+            ctx.fillRect(-200, 665, 2000, 14);
+            for (let fx = -100; fx < 1800; fx += 120) {
+              drawRoundRect(fx, 595, 22, 110, 6);
+              ctx.fill();
+            }
+
+            // Big apple tree
+            const tx = 800, ty = 740;
+            drawShadowEllipse(tx, ty + 20, 240, 42, 0.2);
+
+            // Trunk
+            const trG = ctx.createLinearGradient(tx - 70, 0, tx + 70, 0);
+            trG.addColorStop(0, "#6F4518");
+            trG.addColorStop(0.5, "#8D5B2D");
+            trG.addColorStop(1, "#582F0E");
+            ctx.fillStyle = trG;
+            ctx.beginPath();
+            ctx.moveTo(tx - 65, ty + 15);
+            ctx.quadraticCurveTo(tx - 45, 560, tx - 52, 410);
+            ctx.lineTo(tx + 52, 410);
+            ctx.quadraticCurveTo(tx + 45, 560, tx + 72, ty + 15);
+            ctx.closePath();
+            ctx.fill();
+
+            // Lush multi-layered canopy
+            const sway = Math.sin(t * 1.4) * 6;
+            ctx.save();
+            ctx.translate(sway, 0);
+            const puffs = [
+              { x: 560, y: 360, r: 135, c: "#2D6A4F" },
+              { x: 1040, y: 365, r: 135, c: "#2D6A4F" },
+              { x: 660, y: 240, r: 145, c: "#40916C" },
+              { x: 940, y: 245, r: 145, c: "#40916C" },
+              { x: 800, y: 190, r: 155, c: "#52B788" },
+              { x: 620, y: 375, r: 120, c: "#52B788" },
+              { x: 970, y: 380, r: 120, c: "#52B788" },
+              { x: 800, y: 335, r: 150, c: "#5EC28E" }
+            ];
+            puffs.forEach(p => {
+              ctx.fillStyle = p.c;
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+              ctx.fill();
+            });
+
+            // 7 Hanging items (Carrots -> Shiny Red Apples)
+            const spots = [
+              { x: 605, y: 350 }, { x: 710, y: 245 }, { x: 830, y: 205 },
+              { x: 955, y: 265 }, { x: 1015, y: 380 }, { x: 785, y: 365 },
+              { x: 665, y: 425 }
+            ];
+            const ms = getMorphScale(st.anim);
+
+            spots.forEach((sp, idx) => {
+              const swing = Math.sin(t * 2.2 + idx) * 0.08;
+              ctx.save();
+              ctx.translate(sp.x, sp.y);
+              ctx.rotate(swing);
+              ctx.scale(ms.sx, ms.sy);
+
+              if (!st.fixed || st.anim < 0.25) {
+                // MISTAKE: Bright orange carrot hanging upside down from branch!
+                // Green leafy top
+                ctx.fillStyle = "#2B9348";
+                ctx.beginPath();
+                ctx.ellipse(-10, -24, 7, 18, -0.4, 0, Math.PI * 2);
+                ctx.ellipse(0, -27, 7, 20, 0, 0, Math.PI * 2);
+                ctx.ellipse(10, -24, 7, 18, 0.4, 0, Math.PI * 2);
+                ctx.fill();
+                // Tapered orange carrot body
+                const cg = ctx.createLinearGradient(-20, -10, 20, 60);
+                cg.addColorStop(0, "#FF9F1C");
+                cg.addColorStop(1, "#E85D04");
+                ctx.fillStyle = cg;
+                ctx.beginPath();
+                ctx.moveTo(-21, -12);
+                ctx.quadraticCurveTo(0, -20, 21, -12);
+                ctx.quadraticCurveTo(14, 34, 0, 74);
+                ctx.quadraticCurveTo(-14, 34, -21, -12);
+                ctx.fill();
+                // Carrot lines
+                ctx.strokeStyle = "#C84B02";
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(-12, 6); ctx.lineTo(4, 6);
+                ctx.moveTo(-4, 24); ctx.lineTo(10, 24);
+                ctx.moveTo(-7, 42); ctx.lineTo(5, 42);
+                ctx.stroke();
+              } else {
+                // FIXED: Glossy shiny red apple with leaf!
+                // Stem
+                ctx.strokeStyle = "#582F0E";
+                ctx.lineWidth = 5;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(0, -24);
+                ctx.quadraticCurveTo(4, -38, 10, -42);
+                ctx.stroke();
+                // Leaf
+                ctx.fillStyle = "#70E000";
+                ctx.beginPath();
+                ctx.ellipse(15, -34, 14, 7, -0.35, 0, Math.PI * 2);
+                ctx.fill();
+                // Apple body
+                const ag = ctx.createRadialGradient(-12, -8, 6, 0, 4, 38);
+                ag.addColorStop(0, "#FF6B6B");
+                ag.addColorStop(0.55, "#E63946");
+                ag.addColorStop(1, "#9D0208");
+                ctx.fillStyle = ag;
+                ctx.beginPath();
+                ctx.moveTo(0, -22);
+                ctx.bezierCurveTo(28, -32, 42, -2, 30, 24);
+                ctx.bezierCurveTo(20, 42, 4, 38, 0, 32);
+                ctx.bezierCurveTo(-4, 38, -20, 42, -30, 24);
+                ctx.bezierCurveTo(-42, -2, -28, -32, 0, -22);
+                ctx.fill();
+                // Glossy highlight
+                ctx.fillStyle = "rgba(255,255,255,0.55)";
+                ctx.beginPath();
+                ctx.ellipse(-13, -6, 7, 13, 0.35, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              ctx.restore();
+            });
+            ctx.restore();
+
+            // Woven basket under tree
+            ctx.save();
+            ctx.translate(1050, 745);
+            ctx.fillStyle = "#C68B59";
+            ctx.beginPath();
+            ctx.moveTo(-58, -36); ctx.lineTo(58, -36);
+            ctx.lineTo(44, 24); ctx.lineTo(-44, 24);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "#8D5524";
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(0, -36, 48, Math.PI, 0);
+            ctx.stroke();
+            ctx.restore();
+
+            // Flowers on grass
+            drawFlower(340, 795, 1.1, "#FF85A1", "#FFD166", t);
+            drawFlower(420, 835, 0.9, "#FFFFFF", "#FFD166", t + 1);
+            drawFlower(1240, 815, 1.15, "#FFCA3A", "#FF595E", t + 2);
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 4: Sunny Meadow — Ginger cat with giant elephant ears -> Cat ears
+        ------------------------------------------------------------------------ */
+        {
+          sound: "boing",
+          particles: ["heart", "star", "petal"],
+          hitbox: { x: 560, y: 210, w: 480, h: 320 },
+          draw(t, st) {
+            drawSky("#74C0FC", "#BDE0FE", "#FFF3B0");
+            drawSun(230, 155, 76, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 180);
+            drawRollingHills(600, "#A3D9A5", "#7BC96F", "#58B368");
+
+            // Ambient butterflies & daisies
+            drawButterfly(360 + Math.sin(t * 1.4) * 55, 310 + Math.cos(t * 2.2) * 28, 1.1, "#FF9F1C", "#FFD166", t);
+            drawButterfly(1240 + Math.cos(t * 1.2) * 50, 290 + Math.sin(t * 2.0) * 32, 1.0, "#FF6B9D", "#FFC2D1", t + 2);
+            for (let i = 0; i < 6; i++) {
+              drawFlower(180 + i * 245, 790 + (i % 2) * 45, 1.0, i % 2 === 0 ? "#FFFFFF" : "#FFE066", "#FF9F1C", t + i);
+            }
+
+            // SUBJECT: Ginger Cat
+            const cx = 800, cy = 735;
+            drawShadowEllipse(cx, cy + 16, 160, 34, 0.22);
+
+            // Wagging striped tail
+            const wag = Math.sin(t * (st.fixed ? 6.5 : 2.2)) * (st.fixed ? 0.35 : 0.12);
+            ctx.save();
+            ctx.translate(cx + 95, cy - 45);
+            ctx.rotate(wag);
+            ctx.strokeStyle = "#F48C06";
+            ctx.lineWidth = 34;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.bezierCurveTo(95, -20, 115, -135, 68, -175);
+            ctx.stroke();
+            ctx.restore();
+
+            // Plump sitting cat body
+            const catG = ctx.createRadialGradient(cx - 25, cy - 170, 20, cx, cy - 120, 165);
+            catG.addColorStop(0, "#FFBA49");
+            catG.addColorStop(0.7, "#F48C06");
+            catG.addColorStop(1, "#DC6803");
+            ctx.fillStyle = catG;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy - 120, 118, 138, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cream chest fur
+            ctx.fillStyle = "#FFF3D6";
+            ctx.beginPath();
+            ctx.ellipse(cx, cy - 102, 64, 88, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cute front paws
+            ctx.fillStyle = "#FFF3D6";
+            ctx.beginPath();
+            ctx.ellipse(cx - 42, cy - 6, 36, 22, 0, 0, Math.PI * 2);
+            ctx.ellipse(cx + 42, cy - 6, 36, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // EARS (Mistake: Giant Elephant Ears -> Fixed: Pointed Cat Ears)
+            const headY = cy - 295 + (st.fixed ? Math.sin(t * 5) * 6 : 0);
+            const ms = getMorphScale(st.anim);
+
+            ctx.save();
+            ctx.translate(cx, headY);
+            ctx.scale(ms.sx, ms.sy);
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Giant floppy grey elephant ears!
+              const flap = Math.sin(t * 2.4) * 0.08;
+              [-1, 1].forEach(dir => {
+                ctx.save();
+                ctx.scale(dir, 1);
+                ctx.rotate(flap);
+                ctx.fillStyle = "#9AA5B1";
+                ctx.beginPath();
+                ctx.moveTo(64, -40);
+                ctx.bezierCurveTo(220, -140, 255, 45, 165, 125);
+                ctx.bezierCurveTo(115, 160, 62, 105, 58, 35);
+                ctx.closePath();
+                ctx.fill();
+                // Inner pink ear
+                ctx.fillStyle = "#E5B3BB";
+                ctx.beginPath();
+                ctx.moveTo(76, -15);
+                ctx.bezierCurveTo(178, -85, 200, 35, 145, 92);
+                ctx.bezierCurveTo(106, 118, 72, 72, 70, 24);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+              });
+            } else {
+              // FIXED: Cute pointed ginger cat ears
+              [-1, 1].forEach(dir => {
+                ctx.save();
+                ctx.scale(dir, 1);
+                ctx.fillStyle = "#F48C06";
+                ctx.beginPath();
+                ctx.moveTo(32, -68);
+                ctx.lineTo(86, -148);
+                ctx.lineTo(96, -34);
+                ctx.closePath();
+                ctx.fill();
+                ctx.fillStyle = "#FFB5C2";
+                ctx.beginPath();
+                ctx.moveTo(46, -68);
+                ctx.lineTo(80, -124);
+                ctx.lineTo(84, -46);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+              });
+            }
+            ctx.restore();
+
+            // Cat head
+            ctx.fillStyle = catG;
+            ctx.beginPath();
+            ctx.ellipse(cx, headY, 102, 88, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Forehead ginger stripes
+            ctx.strokeStyle = "#C85A00";
+            ctx.lineWidth = 9;
+            ctx.lineCap = "round";
+            [-20, 0, 20].forEach((sx, i) => {
+              ctx.beginPath();
+              ctx.moveTo(cx + sx, headY - 82 + Math.abs(i - 1) * 4);
+              ctx.lineTo(cx + sx, headY - 48);
+              ctx.stroke();
+            });
+
+            // Face
+            drawCuteEye(cx - 38, headY - 8, 14, t, st.fixed, 4);
+            drawCuteEye(cx + 38, headY - 8, 14, t, st.fixed, 4);
+            // Pink nose
+            ctx.fillStyle = "#FF758F";
+            ctx.beginPath();
+            ctx.moveTo(cx - 12, headY + 12);
+            ctx.lineTo(cx + 12, headY + 12);
+            ctx.lineTo(cx, headY + 26);
+            ctx.closePath();
+            ctx.fill();
+            // Smile
+            ctx.strokeStyle = "#4A2C1D";
+            ctx.lineWidth = 4.5;
+            ctx.beginPath();
+            ctx.arc(cx - 13, headY + 28, 13, 0.1, Math.PI * 0.85);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx + 13, headY + 28, 13, Math.PI * 0.15, Math.PI * 0.9);
+            ctx.stroke();
+            // Whiskers
+            ctx.strokeStyle = "#6B4423";
+            ctx.lineWidth = 3;
+            [-1, 1].forEach(dir => {
+              [-6, 8, 22].forEach(wy => {
+                ctx.beginPath();
+                ctx.moveTo(cx + dir * 52, headY + 14 + wy * 0.4);
+                ctx.lineTo(cx + dir * 124, headY + 10 + wy);
+                ctx.stroke();
+              });
+            });
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 5: Deep Blue Ocean — Yellow Bus on waves -> Colorful Sailboat
+        ------------------------------------------------------------------------ */
+        {
+          sound: "splash",
+          particles: ["bubble", "star", "splatter"],
+          hitbox: { x: 540, y: 240, w: 520, h: 360 },
+          draw(t, st) {
+            drawSky("#38B6FF", "#90E0EF", "#CAF0F8");
+            drawSun(1370, 145, 76, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 185);
+
+            // Distant ocean layer
+            ctx.fillStyle = "#0077B6";
+            ctx.fillRect(-700, 480, 3000, 560);
+
+            // Jumping dolphins on left & right
+            const drawDolphin = (dx, dy, ph, flip) => {
+              const jump = Math.sin(t * 2.1 + ph);
+              ctx.save();
+              ctx.translate(dx, dy - Math.max(0, jump) * 95);
+              ctx.scale(flip, 1);
+              ctx.rotate(-jump * 0.45);
+              ctx.fillStyle = "#5AA9E6";
+              ctx.beginPath();
+              ctx.ellipse(0, 0, 54, 22, 0, 0, Math.PI * 2);
+              ctx.fill();
+              // Dorsal fin
+              ctx.beginPath();
+              ctx.moveTo(-8, -18); ctx.quadraticCurveTo(-18, -46, 12, -16);
+              ctx.fill();
+              // Tail
+              ctx.beginPath();
+              ctx.moveTo(-48, 2); ctx.lineTo(-74, -18); ctx.lineTo(-68, 14);
+              ctx.closePath();
+              ctx.fill();
+              // Snout
+              ctx.beginPath();
+              ctx.ellipse(52, 4, 16, 7, 0.2, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "#FFFFFF";
+              ctx.beginPath();
+              ctx.arc(32, -5, 3.5, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            };
+            drawDolphin(290, 545, 0, 1);
+            drawDolphin(1320, 560, 2.2, -1);
+
+            // Back wave
+            const drawWave = (y, amp, freq, speed, col) => {
+              ctx.fillStyle = col;
+              ctx.beginPath();
+              ctx.moveTo(-700, 1300);
+              for (let x = -700; x <= 2300; x += 45) {
+                const wy = y + Math.sin(x * freq + t * speed) * amp;
+                ctx.lineTo(x, wy);
+              }
+              ctx.lineTo(2300, 1300);
+              ctx.closePath();
+              ctx.fill();
+            };
+            drawWave(535, 16, 0.008, 2.1, "#0096C7");
+
+            // SUBJECT: Yellow Bus -> Colorful Sailboat
+            const bx = 800;
+            const by = 545 + Math.sin(t * 2.4) * 14;
+            const tilt = Math.cos(t * 2.4) * 0.055;
+            const ms = getMorphScale(st.anim);
+
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.rotate(tilt);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Bright yellow school bus floating on ocean waves!
+              ctx.fillStyle = "#FFD100";
+              drawRoundRect(-210, -165, 420, 175, 28);
+              ctx.fill();
+              ctx.fillStyle = "#F48C06";
+              ctx.fillRect(-210, -52, 420, 20);
+              // Windows
+              ctx.fillStyle = "#BDE0FE";
+              for (let i = 0; i < 4; i++) {
+                drawRoundRect(-182 + i * 94, -140, 72, 68, 10);
+                ctx.fill();
+              }
+              // Headlight
+              ctx.fillStyle = "#FFF3B0";
+              ctx.beginPath(); ctx.arc(204, -22, 12, 0, Math.PI * 2); ctx.fill();
+              // Wheels partially submerged
+              [-125, 125].forEach(wx => {
+                ctx.fillStyle = "#2B2D42";
+                ctx.beginPath(); ctx.arc(wx, 12, 42, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "#D9D9D9";
+                ctx.beginPath(); ctx.arc(wx, 12, 18, 0, Math.PI * 2); ctx.fill();
+              });
+            } else {
+              // FIXED: Colorful sailboat with billowing striped sails
+              // Mast
+              ctx.strokeStyle = "#7F4F24";
+              ctx.lineWidth = 14;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(0, -10); ctx.lineTo(0, -320);
+              ctx.stroke();
+
+              // Main striped sail (billowing)
+              const billow = Math.sin(t * 3.5) * 14;
+              ctx.save();
+              ctx.beginPath();
+              ctx.moveTo(10, -300);
+              ctx.quadraticCurveTo(145 + billow, -180, 165, -45);
+              ctx.lineTo(10, -45);
+              ctx.closePath();
+              ctx.clip();
+              const stripeCols = ["#FF595E", "#FFFFFF", "#FFCA3A", "#FFFFFF", "#1982C4"];
+              for (let s = 0; s < 5; s++) {
+                ctx.fillStyle = stripeCols[s];
+                ctx.fillRect(0, -305 + s * 54, 210, 54);
+              }
+              ctx.restore();
+
+              // Front jib sail
+              ctx.fillStyle = "#FFFDF5";
+              ctx.beginPath();
+              ctx.moveTo(-10, -275);
+              ctx.quadraticCurveTo(-110 + billow * 0.5, -160, -155, -45);
+              ctx.lineTo(-10, -45);
+              ctx.closePath();
+              ctx.fill();
+
+              // Pennant flag at top
+              ctx.fillStyle = "#FF595E";
+              ctx.beginPath();
+              ctx.moveTo(0, -320);
+              ctx.lineTo(-56, -306 + Math.sin(t * 7) * 5);
+              ctx.lineTo(0, -292);
+              ctx.closePath();
+              ctx.fill();
+
+              // Boat hull
+              ctx.fillStyle = "#E63946";
+              ctx.beginPath();
+              ctx.moveTo(-195, -24);
+              ctx.lineTo(195, -24);
+              ctx.quadraticCurveTo(155, 58, 95, 58);
+              ctx.lineTo(-105, 58);
+              ctx.quadraticCurveTo(-165, 58, -195, -24);
+              ctx.closePath();
+              ctx.fill();
+              // White stripe & portholes
+              ctx.fillStyle = "#FFFFFF";
+              ctx.fillRect(-175, -14, 350, 16);
+              [-80, 0, 80].forEach(px => {
+                ctx.fillStyle = "#FFD166";
+                ctx.beginPath(); ctx.arc(px, 24, 13, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "#48CAE4";
+                ctx.beginPath(); ctx.arc(px, 24, 8, 0, Math.PI * 2); ctx.fill();
+              });
+            }
+            ctx.restore();
+
+            // Foreground waves covering waterline
+            drawWave(595, 18, 0.009, 2.8, "#00B4D8");
+            drawWave(685, 20, 0.007, 3.4, "#48CAE4");
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 6: Rainy Park — Kid holding umbrella upside-down -> Right-side-up
+        ------------------------------------------------------------------------ */
+        {
+          sound: "whoosh",
+          particles: ["bubble", "star", "splatter"],
+          hitbox: { x: 590, y: 170, w: 420, h: 350 },
+          draw(t, st) {
+            drawSky("#5C7A99", "#8FA9C4", "#C9D8E6");
+            drawDriftingClouds(t, 5, "#6C8299", 180);
+
+            // Park trees in misty rain
+            ctx.fillStyle = "#5B8E7D";
+            [180, 420, 1210, 1440].forEach((tx, idx) => {
+              ctx.fillStyle = "#6F4E37";
+              ctx.fillRect(tx - 16, 480, 32, 180);
+              ctx.fillStyle = idx % 2 === 0 ? "#4D8B6F" : "#5FA07F";
+              ctx.beginPath();
+              ctx.arc(tx, 430, 95, 0, Math.PI * 2);
+              ctx.fill();
+            });
+
+            // Wet park path & grass
+            ctx.fillStyle = "#63A375";
+            ctx.fillRect(-700, 620, 3000, 680);
+            ctx.fillStyle = "#9AA5B1";
+            ctx.beginPath();
+            ctx.moveTo(-700, 725);
+            ctx.quadraticCurveTo(800, 690, 2300, 730);
+            ctx.lineTo(2300, 1300);
+            ctx.lineTo(-700, 1300);
+            ctx.closePath();
+            ctx.fill();
+
+            // Puddle under boots
+            ctx.fillStyle = "rgba(130, 195, 235, 0.65)";
+            ctx.beginPath();
+            ctx.ellipse(800, 795, 220, 36, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Kid in bright yellow raincoat
+            const kx = 800, ky = 770;
+            // Boots
+            ctx.fillStyle = "#E63946";
+            drawRoundRect(kx - 52, ky - 46, 38, 52, 10); ctx.fill();
+            drawRoundRect(kx + 14, ky - 46, 38, 52, 10); ctx.fill();
+
+            // Yellow raincoat body
+            ctx.fillStyle = "#FFD100";
+            ctx.beginPath();
+            ctx.moveTo(kx - 56, ky - 210);
+            ctx.lineTo(kx + 56, ky - 210);
+            ctx.lineTo(kx + 92, ky - 40);
+            ctx.lineTo(kx - 92, ky - 40);
+            ctx.closePath();
+            ctx.fill();
+            // Buttons
+            ctx.fillStyle = "#E85D04";
+            [-170, -130, -90].forEach(by => {
+              ctx.beginPath(); ctx.arc(kx, ky + by, 7, 0, Math.PI * 2); ctx.fill();
+            });
+
+            // Head & hood
+            ctx.fillStyle = "#FFD100";
+            ctx.beginPath();
+            ctx.arc(kx, ky - 265, 68, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#FFE0BD";
+            ctx.beginPath();
+            ctx.arc(kx, ky - 260, 50, 0, Math.PI * 2);
+            ctx.fill();
+            // Rosy cheeks & eyes
+            ctx.fillStyle = "rgba(255, 120, 140, 0.45)";
+            ctx.beginPath();
+            ctx.arc(kx - 28, ky - 246, 9, 0, Math.PI * 2);
+            ctx.arc(kx + 28, ky - 246, 9, 0, Math.PI * 2);
+            ctx.fill();
+            drawCuteEye(kx - 18, ky - 266, 8, t, st.fixed, 6);
+            drawCuteEye(kx + 18, ky - 266, 8, t, st.fixed, 6);
+            // Expression: puzzled frown -> big happy smile
+            ctx.strokeStyle = "#4A2C1D";
+            ctx.lineWidth = 4;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            if (!st.fixed) {
+              ctx.arc(kx, ky - 230, 12, Math.PI * 1.15, Math.PI * 1.85);
+            } else {
+              ctx.arc(kx, ky - 244, 16, 0.15, Math.PI - 0.15);
+            }
+            ctx.stroke();
+
+            // Arm holding umbrella
+            ctx.strokeStyle = "#FFD100";
+            ctx.lineWidth = 26;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(kx + 52, ky - 180);
+            ctx.lineTo(kx + 110, ky - 215);
+            ctx.stroke();
+
+            // SUBJECT: Umbrella (Upside-down filling with water -> Right-side-up!)
+            const ux = kx + 110, uy = ky - 365;
+            const flipAngle = st.fixed
+              ? lerp(Math.PI, 0, easeOutBack(clamp(st.anim, 0, 1)))
+              : Math.PI;
+
+            ctx.save();
+            ctx.translate(ux, uy);
+            // Handle shaft stays attached to hand
+            ctx.strokeStyle = "#5C3A21";
+            ctx.lineWidth = 9;
+            ctx.beginPath();
+            ctx.moveTo(0, 155);
+            ctx.lineTo(0, -55);
+            ctx.stroke();
+
+            // Rotating canopy
+            ctx.translate(0, -15);
+            ctx.rotate(flipAngle);
+            // Canopy panels
+            const panels = ["#FF595E", "#FFCA3A", "#1982C4", "#8AC926"];
+            for (let p = 0; p < 4; p++) {
+              ctx.fillStyle = panels[p];
+              ctx.beginPath();
+              ctx.moveTo(0, -95);
+              const a1 = Math.PI + (p * Math.PI) / 4;
+              const a2 = Math.PI + ((p + 1) * Math.PI) / 4;
+              ctx.arc(0, 20, 170, a1, a2);
+              ctx.closePath();
+              ctx.fill();
+            }
+            // Water pooling inside when upside down
+            if (!st.fixed || st.anim < 0.25) {
+              ctx.fillStyle = "rgba(100, 195, 255, 0.78)";
+              ctx.beginPath();
+              ctx.ellipse(0, -20, 130, 24, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+
+            // Falling raindrops
+            ctx.strokeStyle = "rgba(210, 238, 255, 0.78)";
+            ctx.lineWidth = 3;
+            ctx.lineCap = "round";
+            for (let r = 0; r < 55; r++) {
+              const rx = ((r * 137 + t * 90) % 1800) - 100;
+              let ry = ((r * 89 + t * 620) % 960) - 40;
+              // Bounce raindrops off umbrella when fixed!
+              if (st.fixed && rx > ux - 165 && rx < ux + 165 && ry > uy - 95 && ry < uy + 180) {
+                ry = uy - 105 - (ry % 20);
+              }
+              ctx.beginPath();
+              ctx.moveTo(rx, ry);
+              ctx.lineTo(rx - 6, ry + 22);
+              ctx.stroke();
+            }
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 7: Garden Path — Turtle with car wheels -> Cute green turtle legs
+        ------------------------------------------------------------------------ */
+        {
+          sound: "boing",
+          particles: ["leaf", "star", "splatter"],
+          hitbox: { x: 560, y: 440, w: 460, h: 310 },
+          draw(t, st) {
+            drawSky("#7BDFF2", "#B2F7EF", "#EFF7F6");
+            drawSun(240, 145, 72, t);
+            drawDriftingClouds(t, 3, "#FFFFFF", 160);
+            drawRollingHills(560, "#A8E6CF", "#76C893", "#52B788");
+
+            // Stepping-stone garden path
+            ctx.fillStyle = "#E9D8A6";
+            ctx.beginPath();
+            ctx.moveTo(-700, 740);
+            ctx.quadraticCurveTo(800, 640, 2300, 750);
+            ctx.lineTo(2300, 1050);
+            ctx.lineTo(-700, 1050);
+            ctx.closePath();
+            ctx.fill();
+
+            // Garden flowers along border
+            for (let i = 0; i < 7; i++) {
+              drawFlower(140 + i * 225, 650 + (i % 2) * 28, 1.05, i % 2 === 0 ? "#FF6B6B" : "#FFCA3A", "#FFF3B0", t + i);
+            }
+
+            // SUBJECT: Cute green turtle (ONLY ONE TURTLE SCENE IN THE GAME)
+            const walkX = 790 + (st.fixed ? Math.sin(t * 1.35) * 42 : Math.sin(t * 2.2) * 16);
+            const ty = 700;
+            const bounceY = (st.fixed ? Math.abs(Math.sin(t * 5)) * 4 : Math.sin(t * 7) * 3) + (st.bounce > 0 ? Math.sin(st.bounce * Math.PI) * 18 : 0);
+            drawShadowEllipse(walkX, ty + 24, 185, 34, 0.22);
+
+            // Tail
+            ctx.fillStyle = "#52B788";
+            ctx.beginPath();
+            ctx.moveTo(walkX - 142, ty - 70 - bounceY);
+            ctx.lineTo(walkX - 188, ty - 56 - bounceY);
+            ctx.lineTo(walkX - 140, ty - 44 - bounceY);
+            ctx.closePath();
+            ctx.fill();
+
+            // Cute turtle head & neck
+            const headNod = st.fixed ? Math.sin(t * 5.2) * 10 : Math.sin(t * 2.5) * 4;
+            ctx.fillStyle = "#62C370";
+            ctx.beginPath();
+            ctx.moveTo(walkX + 125, ty - 80 - bounceY);
+            ctx.quadraticCurveTo(walkX + 185, ty - 118 - bounceY, walkX + 205, ty - 138 + headNod);
+            ctx.lineTo(walkX + 165, ty - 148 + headNod);
+            ctx.quadraticCurveTo(walkX + 145, ty - 108 - bounceY, walkX + 105, ty - 98 - bounceY);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(walkX + 204, ty - 148 + headNod, 48, 38, -0.1, 0, Math.PI * 2);
+            ctx.fill();
+            drawCuteEye(walkX + 218, ty - 156 + headNod, 10, t, st.fixed, 7);
+            ctx.strokeStyle = "#2D6A4F";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(walkX + 220, ty - 136 + headNod, 15, 0.15, Math.PI * 0.75);
+            ctx.stroke();
+
+            // Natural rich patterned brown-green turtle shell
+            ctx.save();
+            ctx.translate(walkX, ty - 56 - bounceY);
+            const shG = ctx.createRadialGradient(-30, -135, 20, 0, -75, 165);
+            shG.addColorStop(0, "#B08968");
+            shG.addColorStop(0.6, "#7F5539");
+            shG.addColorStop(1, "#582F0E");
+            ctx.fillStyle = shG;
+            ctx.beginPath();
+            ctx.ellipse(0, -52, 156, 118, 0, Math.PI, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // Hexagonal scutes on shell
+            ctx.strokeStyle = "#DDB892";
+            ctx.lineWidth = 5;
+            const hex = (hx, hy, r) => {
+              ctx.beginPath();
+              for (let k = 0; k < 6; k++) {
+                const a = (k * Math.PI) / 3;
+                const px = hx + Math.cos(a) * r;
+                const py = hy + Math.sin(a) * r;
+                if (k === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+              }
+              ctx.closePath();
+              ctx.fillStyle = "rgba(156, 102, 68, 0.55)";
+              ctx.fill();
+              ctx.stroke();
+            };
+            hex(0, -114, 34);
+            hex(-66, -94, 30);
+            hex(66, -94, 30);
+
+            // Shell rim
+            ctx.fillStyle = "#DDB892";
+            drawRoundRect(-162, -62, 324, 24, 12);
+            ctx.fill();
+            ctx.restore();
+
+            // MISTAKE -> FIXED: Black rubber CAR WHEELS -> Cute green turtle legs/paws
+            const ms = getMorphScale(st.anim);
+            ctx.save();
+            ctx.translate(walkX, ty - bounceY);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Two chunky black rubber car wheels with shiny silver alloy rims!
+              ctx.fillStyle = "#495057";
+              drawRoundRect(-115, -62, 230, 14, 6);
+              ctx.fill();
+
+              const drawCarWheel = (wx, wy) => {
+                ctx.save();
+                ctx.translate(wx, wy);
+                ctx.rotate(t * 2.6);
+                ctx.fillStyle = "#212529";
+                ctx.beginPath();
+                ctx.arc(0, 0, 56, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#343A40";
+                ctx.lineWidth = 6;
+                for (let k = 0; k < 12; k++) {
+                  const a = (k * Math.PI * 2) / 12;
+                  ctx.beginPath();
+                  ctx.moveTo(Math.cos(a) * 46, Math.sin(a) * 46);
+                  ctx.lineTo(Math.cos(a) * 56, Math.sin(a) * 56);
+                  ctx.stroke();
+                }
+                const rimG = ctx.createRadialGradient(-10, -10, 4, 0, 0, 34);
+                rimG.addColorStop(0, "#FFFFFF");
+                rimG.addColorStop(0.55, "#CED4DA");
+                rimG.addColorStop(1, "#868E96");
+                ctx.fillStyle = rimG;
+                ctx.beginPath();
+                ctx.arc(0, 0, 33, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#495057";
+                for (let s = 0; s < 5; s++) {
+                  const a = (s * Math.PI * 2) / 5;
+                  ctx.beginPath();
+                  ctx.arc(Math.cos(a) * 19, Math.sin(a) * 19, 7.5, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+                ctx.fillStyle = "#F8F9FA";
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#ADB5BD";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+              };
+
+              drawCarWheel(-92, -32);
+              drawCarWheel(92, -32);
+            } else {
+              // FIXED: Normal cute green turtle legs/paws walking happily!
+              const step = Math.sin(t * 5.2) * 14;
+              const legs = [
+                { x: -102, phase: 1, back: true },
+                { x: -46, phase: -1, back: false },
+                { x: 46, phase: 1, back: true },
+                { x: 102, phase: -1, back: false }
+              ];
+              legs.forEach(leg => {
+                const lift = Math.max(0, leg.phase * step) * 0.65;
+                const swing = leg.phase * step * 0.55;
+                ctx.save();
+                ctx.translate(leg.x + swing, -36 - lift);
+                ctx.fillStyle = leg.back ? "#40916C" : "#52B788";
+                drawRoundRect(-23, -34, 46, 70, 20);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(6, 30, 26, 13, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#E9D8A6";
+                ctx.beginPath();
+                ctx.arc(24, 34, 4.5, 0, Math.PI * 2);
+                ctx.arc(15, 37, 4.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+              });
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 8: Blooming Summer Forest — Bear on red winter skis -> Natural bear picking berries
+        ------------------------------------------------------------------------ */
+        {
+          sound: "whoosh",
+          particles: ["leaf", "petal", "star"],
+          hitbox: { x: 560, y: 200, w: 480, h: 560 },
+          draw(t, st) {
+            drawSky("#4EA8DE", "#A2D2FF", "#FFF3B0");
+            drawSun(1370, 140, 74, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 160);
+
+            // Distant green alpine peaks
+            ctx.fillStyle = "#76A9A5";
+            ctx.beginPath();
+            ctx.moveTo(-200, 620); ctx.lineTo(260, 290); ctx.lineTo(680, 620);
+            ctx.lineTo(1060, 250); ctx.lineTo(1480, 620); ctx.lineTo(1850, 320);
+            ctx.lineTo(2200, 620); ctx.closePath(); ctx.fill();
+
+            drawRollingHills(570, "#80ED99", "#57CC99", "#38B000");
+
+            // Lush green summer forest trees on sides
+            const drawSummerTree = (tx, ty, s) => {
+              ctx.save();
+              ctx.translate(tx, ty);
+              ctx.scale(s, s);
+              ctx.fillStyle = "#7F4F24";
+              ctx.fillRect(-18, -60, 36, 95);
+              ctx.fillStyle = "#2D6A4F";
+              ctx.beginPath();
+              ctx.arc(0, -135, 82, 0, Math.PI * 2);
+              ctx.arc(-55, -90, 58, 0, Math.PI * 2);
+              ctx.arc(55, -90, 58, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "#40916C";
+              ctx.beginPath();
+              ctx.arc(-18, -145, 54, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            };
+            drawSummerTree(220, 635, 1.15);
+            drawSummerTree(1375, 645, 1.2);
+
+            // Summer butterflies & wildflowers
+            drawButterfly(380 + Math.sin(t * 1.4) * 55, 310 + Math.cos(t * 2.1) * 28, 1.05, "#FF9F1C", "#FFD166", t);
+            drawButterfly(1210 + Math.cos(t * 1.3) * 50, 295 + Math.sin(t * 2.0) * 30, 0.95, "#FF6B9D", "#FFC2D1", t + 1.5);
+            for (let i = 0; i < 8; i++) {
+              drawFlower(130 + i * 200, 780 + (i % 3) * 26, 1.0, i % 2 === 0 ? "#FFD60A" : "#FFFFFF", "#FF9F1C", t + i);
+            }
+
+            // Lush bush of ripe forest berries beside the bear
+            const bushX = 1045, bushY = 715;
+            const bushScale = st.fixed ? 0.9 + 0.15 * easeOutBack(clamp(st.anim, 0, 1)) : 0.85;
+            ctx.save();
+            ctx.translate(bushX, bushY);
+            ctx.scale(bushScale, bushScale);
+            drawShadowEllipse(0, 26, 118, 22, 0.2);
+            ctx.fillStyle = "#2D6A4F";
+            ctx.beginPath();
+            ctx.arc(-58, -18, 56, 0, Math.PI * 2);
+            ctx.arc(58, -18, 56, 0, Math.PI * 2);
+            ctx.arc(0, -56, 72, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#40916C";
+            ctx.beginPath();
+            ctx.arc(-36, -34, 46, 0, Math.PI * 2);
+            ctx.arc(38, -32, 46, 0, Math.PI * 2);
+            ctx.arc(0, -68, 52, 0, Math.PI * 2);
+            ctx.fill();
+            const berries = [
+              { x: -64, y: -24, c: "#E63946" }, { x: -34, y: -62, c: "#E63946" },
+              { x: 4, y: -92, c: "#E63946" }, { x: 44, y: -56, c: "#E63946" },
+              { x: 66, y: -18, c: "#E63946" }, { x: -12, y: -32, c: "#4361EE" },
+              { x: 26, y: -18, c: "#4361EE" }, { x: -50, y: 2, c: "#4361EE" }
+            ];
+            berries.forEach(b => {
+              ctx.fillStyle = b.c;
+              ctx.beginPath();
+              ctx.arc(b.x, b.y, 11, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "rgba(255,255,255,0.45)";
+              ctx.beginPath();
+              ctx.arc(b.x - 3, b.y - 3, 3.5, 0, Math.PI * 2);
+              ctx.fill();
+            });
+            ctx.restore();
+
+            // SUBJECT: Friendly big brown bear (NO skateboard, NO cap!)
+            const bx = 775;
+            const by = 720 - (st.bounce > 0 ? Math.sin(st.bounce * Math.PI) * 18 : 0);
+            const ms = getMorphScale(st.anim);
+
+            drawShadowEllipse(bx, 742, 165, 30, 0.22);
+
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.scale(ms.sx, ms.sy);
+
+            // MISTAKE: Red winter skis & poles (vanish completely when fixed!)
+            if (!st.fixed || st.anim < 0.25) {
+              ctx.strokeStyle = "#E63946";
+              ctx.lineWidth = 20;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(-185, 8); ctx.lineTo(175, 8);
+              ctx.quadraticCurveTo(222, 4, 236, -28);
+              ctx.stroke();
+              ctx.strokeStyle = "#FFFDF7";
+              ctx.lineWidth = 5;
+              ctx.beginPath();
+              ctx.moveTo(-150, 8); ctx.lineTo(165, 8);
+              ctx.stroke();
+              ctx.strokeStyle = "#495057";
+              ctx.lineWidth = 7;
+              ctx.beginPath();
+              ctx.moveTo(-120, -178); ctx.lineTo(-172, 12);
+              ctx.moveTo(120, -178); ctx.lineTo(172, 12);
+              ctx.stroke();
+              ctx.fillStyle = "#E63946";
+              ctx.beginPath();
+              ctx.ellipse(-168, -4, 14, 5, 0.2, 0, Math.PI * 2);
+              ctx.ellipse(168, -4, 14, 5, -0.2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            // Bear legs & natural brown paws standing directly on grass
+            ctx.fillStyle = "#8D5524";
+            drawRoundRect(-66, -92, 50, 86, 22); ctx.fill();
+            drawRoundRect(16, -92, 50, 86, 22); ctx.fill();
+            ctx.fillStyle = "#7F4F24";
+            ctx.beginPath();
+            ctx.ellipse(-42, -2, 34, 16, 0, 0, Math.PI * 2);
+            ctx.ellipse(42, -2, 34, 16, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bear torso
+            ctx.fillStyle = "#9C6644";
+            ctx.beginPath();
+            ctx.ellipse(0, -175, 108, 118, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#DDB892";
+            ctx.beginPath();
+            ctx.ellipse(0, -162, 64, 76, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Arms
+            ctx.strokeStyle = "#8D5524";
+            ctx.lineWidth = 42;
+            ctx.lineCap = "round";
+            if (!st.fixed || st.anim < 0.25) {
+              ctx.beginPath();
+              ctx.moveTo(-84, -210); ctx.lineTo(-125, -172);
+              ctx.moveTo(84, -210); ctx.lineTo(125, -172);
+              ctx.stroke();
+            } else {
+              const reach = Math.sin(t * 4.2) * 10;
+              ctx.beginPath();
+              ctx.moveTo(-84, -210); ctx.lineTo(-108, -138);
+              ctx.moveTo(84, -210); ctx.lineTo(168, -148 + reach);
+              ctx.stroke();
+              ctx.fillStyle = "#E63946";
+              ctx.beginPath();
+              ctx.arc(182, -150 + reach, 13, 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            // Bear head & ears (completely natural, no hat)
+            const headTilt = st.fixed ? 0.08 + Math.sin(t * 4.2) * 0.05 : 0;
+            ctx.save();
+            ctx.translate(0, -325);
+            ctx.rotate(headTilt);
+            ctx.fillStyle = "#9C6644";
+            ctx.beginPath();
+            ctx.arc(-62, -48, 28, 0, Math.PI * 2);
+            ctx.arc(62, -48, 28, 0, Math.PI * 2);
+            ctx.arc(0, 0, 82, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#DDB892";
+            ctx.beginPath();
+            ctx.arc(-62, -48, 14, 0, Math.PI * 2);
+            ctx.arc(62, -48, 14, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#EDE0D4";
+            ctx.beginPath();
+            ctx.ellipse(0, 21, 38, 28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#3B2820";
+            ctx.beginPath();
+            ctx.ellipse(0, 10, 15, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+            drawCuteEye(-28, -17, 10, t, st.fixed, 8);
+            drawCuteEye(28, -17, 10, t, st.fixed, 8);
+            ctx.strokeStyle = "#3B2820";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(0, 29, 16, 0.15, Math.PI - 0.15);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 9: Sunny Backyard — Big puppy in birdhouse & tiny bird in doghouse -> Swap!
+        ------------------------------------------------------------------------ */
+        {
+          sound: "whoosh",
+          particles: ["heart", "note", "star"],
+          hitbox: { x: 430, y: 170, w: 740, h: 590 },
+          draw(t, st) {
+            drawSky("#64B5F6", "#BDE0FE", "#FFF9C4");
+            drawSun(210, 145, 72, t);
+            drawDriftingClouds(t, 3, "#FFFFFF", 160);
+            drawRollingHills(580, "#95D5B2", "#74C69D", "#52B788");
+
+            // White picket backyard fence
+            ctx.fillStyle = "#FFFDF7";
+            ctx.fillRect(-200, 560, 2000, 16);
+            ctx.fillRect(-200, 620, 2000, 16);
+            for (let fx = -60; fx < 1750; fx += 78) {
+              ctx.beginPath();
+              ctx.moveTo(fx, 670);
+              ctx.lineTo(fx, 515);
+              ctx.lineTo(fx + 22, 488);
+              ctx.lineTo(fx + 44, 515);
+              ctx.lineTo(fx + 44, 670);
+              ctx.closePath();
+              ctx.fill();
+            }
+
+            // Tall wooden birdhouse pole on left
+            const bhX = 560, bhY = 300;
+            ctx.fillStyle = "#8D5524";
+            ctx.fillRect(bhX - 12, bhY + 50, 24, 430);
+            // Birdhouse box
+            ctx.fillStyle = "#FFD166";
+            drawRoundRect(bhX - 66, bhY - 52, 132, 118, 10); ctx.fill();
+            // Roof
+            ctx.fillStyle = "#E63946";
+            ctx.beginPath();
+            ctx.moveTo(bhX - 88, bhY - 46);
+            ctx.lineTo(bhX, bhY - 122);
+            ctx.lineTo(bhX + 88, bhY - 46);
+            ctx.closePath();
+            ctx.fill();
+            // Hole
+            ctx.fillStyle = "#3B2820";
+            ctx.beginPath(); ctx.arc(bhX, bhY + 4, 28, 0, Math.PI * 2); ctx.fill();
+
+            // Big wooden doghouse on right
+            const dhX = 1040, dhY = 670;
+            drawShadowEllipse(dhX, dhY + 52, 190, 32, 0.22);
+            ctx.fillStyle = "#C68B59";
+            drawRoundRect(dhX - 155, dhY - 165, 310, 220, 12); ctx.fill();
+            // Roof
+            ctx.fillStyle = "#2A9D8F";
+            ctx.beginPath();
+            ctx.moveTo(dhX - 190, dhY - 155);
+            ctx.lineTo(dhX, dhY - 290);
+            ctx.lineTo(dhX + 190, dhY - 155);
+            ctx.closePath();
+            ctx.fill();
+            // Doghouse archway
+            ctx.fillStyle = "#3B2820";
+            ctx.beginPath();
+            ctx.arc(dhX, dhY - 48, 72, Math.PI, 0);
+            ctx.lineTo(dhX + 72, dhY + 55);
+            ctx.lineTo(dhX - 72, dhY + 55);
+            ctx.closePath();
+            ctx.fill();
+
+            // Smooth arc-swap positions!
+            const p = st.fixed ? easeInOutQuad(clamp(st.anim, 0, 1)) : 0;
+            const arc = Math.sin(p * Math.PI) * 165;
+
+            const pupX = lerp(bhX, dhX, p);
+            const pupY = lerp(bhY + 12, dhY + 16, p) - arc;
+            const birdX = lerp(dhX, bhX, p);
+            const birdY = lerp(dhY + 26, bhY + 6, p) - arc * 0.7;
+
+            // Draw cute brown puppy
+            ctx.save();
+            ctx.translate(pupX, pupY);
+            // Wagging tail when happy in doghouse
+            if (st.fixed) {
+              ctx.save();
+              ctx.translate(64, -12);
+              ctx.rotate(Math.sin(t * 10) * 0.45);
+              ctx.strokeStyle = "#8D5524";
+              ctx.lineWidth = 18;
+              ctx.lineCap = "round";
+              ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(36, -34); ctx.stroke();
+              ctx.restore();
+            }
+            // Body bulging out
+            ctx.fillStyle = "#A46434";
+            ctx.beginPath(); ctx.ellipse(0, 8, 72, 54, 0, 0, Math.PI * 2); ctx.fill();
+            // Floppy ears
+            ctx.fillStyle = "#6F3E18";
+            ctx.beginPath();
+            ctx.ellipse(-56, -34, 20, 42, 0.3, 0, Math.PI * 2);
+            ctx.ellipse(56, -34, 20, 42, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            // Head
+            ctx.fillStyle = "#A46434";
+            ctx.beginPath(); ctx.arc(0, -42, 54, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#E6CCB2";
+            ctx.beginPath(); ctx.ellipse(0, -24, 30, 22, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#2B1D12";
+            ctx.beginPath(); ctx.ellipse(0, -33, 12, 8, 0, 0, Math.PI * 2); ctx.fill();
+            drawCuteEye(-20, -52, 8.5, t, st.fixed, 9);
+            drawCuteEye(20, -52, 8.5, t, st.fixed, 9);
+            // Happy pink tongue when fixed
+            if (st.fixed) {
+              ctx.fillStyle = "#FF758F";
+              ctx.beginPath(); ctx.ellipse(0, -8, 10, 14, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+
+            // Draw tiny bluebird
+            ctx.save();
+            ctx.translate(birdX, birdY - (st.fixed ? Math.abs(Math.sin(t * 6)) * 8 : 0));
+            ctx.fillStyle = "#219EBC";
+            ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#8ECAE6";
+            ctx.beginPath(); ctx.ellipse(-10, 4, 14, 9, -0.3, 0, Math.PI * 2); ctx.fill();
+            drawCuteEye(8, -6, 5, t, st.fixed, 10);
+            ctx.fillStyle = "#FFB703";
+            ctx.beginPath(); ctx.moveTo(22, -4); ctx.lineTo(36, 2); ctx.lineTo(22, 8); ctx.closePath(); ctx.fill();
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 10: Park Bike Path — Fox on bicycle with square wheels -> Round wheels
+        ------------------------------------------------------------------------ */
+        {
+          sound: "bell",
+          particles: ["star", "note", "leaf"],
+          hitbox: { x: 520, y: 450, w: 560, h: 320 },
+          draw(t, st) {
+            drawSky("#72EFDD", "#BDE0FE", "#FFF3B0");
+            drawSun(1370, 140, 74, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 160);
+            drawRollingHills(580, "#95D5B2", "#74C69D", "#52B788");
+
+            // Park bike path
+            ctx.fillStyle = "#E5D3B3";
+            ctx.fillRect(-700, 675, 3000, 190);
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 8;
+            ctx.setLineDash([42, 34]);
+            ctx.beginPath();
+            ctx.moveTo(-700, 770);
+            ctx.lineTo(2300, 770);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Park trees passing by gently
+            for (let i = 0; i < 4; i++) {
+              const px = 210 + i * 410;
+              ctx.fillStyle = "#7F4F24";
+              ctx.fillRect(px - 14, 495, 28, 145);
+              ctx.fillStyle = "#40916C";
+              ctx.beginPath(); ctx.arc(px, 460, 78, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // SUBJECT: Fox on bicycle
+            // Bumpy hop when square wheels, smooth roll when round wheels!
+            const bump = st.fixed ? Math.sin(t * 2) * 3 : Math.abs(Math.sin(t * 5.5)) * 22;
+            const glideX = st.fixed ? Math.sin(t * 1.4) * 95 : 0;
+            const cx = 800 + glideX;
+            const cy = 720 - bump;
+            const ms = getMorphScale(st.anim);
+
+            drawShadowEllipse(cx, 745, 220, 26, 0.22);
+
+            // WHEELS (Square -> Smooth Round Spoked Wheels)
+            const drawWheel = (wx, wy) => {
+              ctx.save();
+              ctx.translate(wx, wy);
+              ctx.scale(ms.sx, ms.sy);
+              if (!st.fixed || st.anim < 0.25) {
+                // MISTAKE: Clunky square wheel!
+                ctx.rotate(t * 1.8);
+                ctx.strokeStyle = "#2B2D42";
+                ctx.lineWidth = 18;
+                drawRoundRect(-66, -66, 132, 132, 6);
+                ctx.stroke();
+                ctx.strokeStyle = "#ADB5BD";
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.moveTo(-60, 0); ctx.lineTo(60, 0);
+                ctx.moveTo(0, -60); ctx.lineTo(0, 60);
+                ctx.moveTo(-54, -54); ctx.lineTo(54, 54);
+                ctx.moveTo(54, -54); ctx.lineTo(-54, 54);
+                ctx.stroke();
+              } else {
+                // FIXED: Smooth round spoked bicycle wheel!
+                ctx.rotate(t * 5.2);
+                ctx.strokeStyle = "#2B2D42";
+                ctx.lineWidth = 16;
+                ctx.beginPath(); ctx.arc(0, 0, 70, 0, Math.PI * 2); ctx.stroke();
+                ctx.strokeStyle = "#E9ECEF";
+                ctx.lineWidth = 4;
+                for (let k = 0; k < 8; k++) {
+                  const a = (k * Math.PI) / 4;
+                  ctx.beginPath();
+                  ctx.moveTo(0, 0);
+                  ctx.lineTo(Math.cos(a) * 64, Math.sin(a) * 64);
+                  ctx.stroke();
+                }
+                ctx.fillStyle = "#FFCA3A";
+                ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+              }
+              ctx.restore();
+            };
+
+            drawWheel(cx - 135, cy - 35);
+            drawWheel(cx + 135, cy - 35);
+
+            // Red bicycle frame
+            ctx.strokeStyle = "#E63946";
+            ctx.lineWidth = 14;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.beginPath();
+            ctx.moveTo(cx - 135, cy - 35);
+            ctx.lineTo(cx - 10, cy - 35);
+            ctx.lineTo(cx + 95, cy - 145);
+            ctx.lineTo(cx - 65, cy - 145);
+            ctx.closePath();
+            ctx.stroke();
+            // Fork & handlebars
+            ctx.beginPath();
+            ctx.moveTo(cx + 135, cy - 35);
+            ctx.lineTo(cx + 84, cy - 205);
+            ctx.lineTo(cx + 46, cy - 210);
+            ctx.stroke();
+            // Seat
+            ctx.fillStyle = "#3B2820";
+            drawRoundRect(cx - 105, cy - 165, 68, 22, 10); ctx.fill();
+
+            // Cute Orange Fox rider
+            ctx.save();
+            ctx.translate(cx - 50, cy - 165);
+            // Fluffy white-tipped tail
+            ctx.fillStyle = "#F77F00";
+            ctx.beginPath();
+            ctx.ellipse(-95, -18, 66, 26, -0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#FFFFFF";
+            ctx.beginPath();
+            ctx.ellipse(-144, -36, 24, 15, -0.35, 0, Math.PI * 2);
+            ctx.fill();
+            // Torso
+            ctx.fillStyle = "#F77F00";
+            ctx.beginPath(); ctx.ellipse(0, -60, 52, 68, 0.15, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#FFF3D6";
+            ctx.beginPath(); ctx.ellipse(14, -54, 28, 46, 0.15, 0, Math.PI * 2); ctx.fill();
+            // Arm reaching handlebars
+            ctx.strokeStyle = "#F77F00";
+            ctx.lineWidth = 24;
+            ctx.beginPath(); ctx.moveTo(15, -88); ctx.lineTo(95, -45); ctx.stroke();
+            // Head
+            ctx.fillStyle = "#F77F00";
+            ctx.beginPath();
+            ctx.moveTo(-26, -180); ctx.lineTo(-44, -245); ctx.lineTo(6, -196);
+            ctx.moveTo(20, -184); ctx.lineTo(44, -245); ctx.lineTo(54, -172);
+            ctx.fill();
+            ctx.beginPath(); ctx.ellipse(12, -158, 56, 46, 0, 0, Math.PI * 2); ctx.fill();
+            // White cheek & snout
+            ctx.fillStyle = "#FFFFFF";
+            ctx.beginPath(); ctx.ellipse(38, -142, 34, 22, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#2B2D42";
+            ctx.beginPath(); ctx.arc(68, -146, 9, 0, Math.PI * 2); ctx.fill();
+            drawCuteEye(26, -166, 9, t, st.fixed, 11);
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 11: Hot Cactus Desert — Sweating Penguin -> Smiling Camel
+        ------------------------------------------------------------------------ */
+        {
+          sound: "whoosh",
+          particles: ["star", "splatter", "petal"],
+          hitbox: { x: 600, y: 310, w: 420, h: 430 },
+          draw(t, st) {
+            drawSky("#FF9F1C", "#FFBF69", "#FFE8B6");
+            drawSun(1350, 155, 88, t, "rgba(255, 245, 190, 0.4)");
+
+            // Golden rolling sand dunes
+            drawRollingHills(560, "#E9A958", "#F2BC6B", "#F6CA7E");
+
+            // Saguaro Cactuses
+            const drawCactus = (cx, cy, s) => {
+              ctx.save();
+              ctx.translate(cx, cy);
+              ctx.scale(s, s);
+              ctx.strokeStyle = "#3A8E54";
+              ctx.lineWidth = 42;
+              ctx.lineCap = "round";
+              ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -230); ctx.stroke();
+              ctx.lineWidth = 30;
+              ctx.beginPath();
+              ctx.moveTo(0, -100); ctx.lineTo(-58, -100); ctx.lineTo(-58, -175);
+              ctx.moveTo(0, -135); ctx.lineTo(56, -135); ctx.lineTo(56, -200);
+              ctx.stroke();
+              // Pink cactus flower
+              ctx.fillStyle = "#FF6B9D";
+              ctx.beginPath(); ctx.arc(0, -252, 13, 0, Math.PI * 2); ctx.fill();
+              ctx.restore();
+            };
+            drawCactus(290, 695, 1.05);
+            drawCactus(1320, 675, 0.92);
+
+            // SUBJECT: Penguin in scarf -> Smiling Camel
+            const sx = 800, sy = 730;
+            drawShadowEllipse(sx, sy + 14, 155, 28, 0.22);
+            const ms = getMorphScale(st.anim);
+
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Sweating Antarctic Penguin in a winter scarf
+              const wobble = Math.sin(t * 2.5) * 4;
+              ctx.fillStyle = "#FF9F1C";
+              ctx.beginPath();
+              ctx.ellipse(-42, 4, 34, 14, 0, 0, Math.PI * 2);
+              ctx.ellipse(42, 4, 34, 14, 0, 0, Math.PI * 2);
+              ctx.fill();
+              // Body
+              ctx.fillStyle = "#24303C";
+              ctx.beginPath(); ctx.ellipse(0, -130, 96, 132, 0, 0, Math.PI * 2); ctx.fill();
+              // Flippers
+              ctx.beginPath();
+              ctx.ellipse(-102, -130, 24, 72, 0.35, 0, Math.PI * 2);
+              ctx.ellipse(102, -130, 24, 72, -0.35, 0, Math.PI * 2);
+              ctx.fill();
+              // White belly
+              ctx.fillStyle = "#FFFFFF";
+              ctx.beginPath(); ctx.ellipse(0, -118, 66, 98, 0, 0, Math.PI * 2); ctx.fill();
+              // Head
+              ctx.fillStyle = "#24303C";
+              ctx.beginPath(); ctx.arc(wobble, -262, 62, 0, Math.PI * 2); ctx.fill();
+              // Red knitted scarf
+              ctx.fillStyle = "#E63946";
+              drawRoundRect(-62, -220, 124, 28, 12); ctx.fill();
+              drawRoundRect(22, -206, 26, 78, 10); ctx.fill();
+              // Eyes & beak
+              drawCuteEye(-22 + wobble, -270, 10, t, false, 12);
+              drawCuteEye(22 + wobble, -270, 10, t, false, 12);
+              ctx.fillStyle = "#FF9F1C";
+              ctx.beginPath();
+              ctx.moveTo(-16 + wobble, -254); ctx.lineTo(16 + wobble, -254);
+              ctx.lineTo(wobble, -230); ctx.closePath(); ctx.fill();
+              // Sweat drops
+              ctx.fillStyle = "#4CC9F0";
+              const dy = (t * 50) % 36;
+              ctx.beginPath(); ctx.arc(54, -278 + dy, 6, 0, Math.PI * 2); ctx.fill();
+            } else {
+              // FIXED: Friendly smiling desert camel!
+              const nod = Math.sin(t * 3) * 8;
+              // Legs
+              ctx.strokeStyle = "#C68B59";
+              ctx.lineWidth = 26;
+              ctx.lineCap = "round";
+              [-95, -45, 45, 95].forEach(lx => {
+                ctx.beginPath(); ctx.moveTo(lx, -145); ctx.lineTo(lx, 0); ctx.stroke();
+              });
+              // Tail
+              ctx.lineWidth = 10;
+              ctx.beginPath(); ctx.moveTo(-132, -165); ctx.quadraticCurveTo(-168, -130, -158, -95); ctx.stroke();
+              // Body & two cozy humps
+              ctx.fillStyle = "#D49A5A";
+              ctx.beginPath();
+              ctx.ellipse(0, -170, 138, 68, 0, 0, Math.PI * 2);
+              ctx.arc(-52, -225, 56, 0, Math.PI * 2);
+              ctx.arc(46, -228, 58, 0, Math.PI * 2);
+              ctx.fill();
+              // Colorful desert saddle blanket
+              ctx.fillStyle = "#E63946";
+              drawRoundRect(-46, -224, 92, 66, 12); ctx.fill();
+              ctx.fillStyle = "#FFD166";
+              ctx.fillRect(-46, -198, 92, 16);
+              // Graceful neck & smiling head
+              ctx.strokeStyle = "#D49A5A";
+              ctx.lineWidth = 42;
+              ctx.beginPath();
+              ctx.moveTo(106, -172);
+              ctx.quadraticCurveTo(175, -185, 186, -295 + nod);
+              ctx.stroke();
+              ctx.fillStyle = "#D49A5A";
+              ctx.beginPath();
+              ctx.ellipse(214, -304 + nod, 54, 34, 0.08, 0, Math.PI * 2);
+              ctx.fill();
+              // Ears
+              ctx.beginPath(); ctx.ellipse(174, -334 + nod, 12, 22, -0.3, 0, Math.PI * 2); ctx.fill();
+              drawCuteEye(212, -314 + nod, 9.5, t, true, 13);
+              ctx.strokeStyle = "#5C3A21";
+              ctx.lineWidth = 4;
+              ctx.beginPath(); ctx.arc(234, -294 + nod, 18, 0.2, Math.PI * 0.85); ctx.stroke();
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 12: Green Pasture — Spotted Cow with butterfly wings -> Butterfly flies away
+        ------------------------------------------------------------------------ */
+        {
+          sound: "sparkle",
+          particles: ["star", "heart", "splatter"],
+          hitbox: { x: 840, y: 260, w: 380, h: 390 },
+          draw(t, st) {
+            // Warm cozy kitchen wall
+            drawSky("#FFF3D6", "#FFE5B4", "#F9D5A7");
+
+            // Sunlit kitchen window on left
+            ctx.fillStyle = "#90E0EF";
+            drawRoundRect(150, 120, 290, 270, 16); ctx.fill();
+            ctx.strokeStyle = "#FFFDF7";
+            ctx.lineWidth = 14;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(295, 120); ctx.lineTo(295, 390);
+            ctx.moveTo(150, 255); ctx.lineTo(440, 255);
+            ctx.stroke();
+
+            // Kitchen shelf with jars on right
+            ctx.fillStyle = "#A47148";
+            drawRoundRect(1140, 220, 320, 24, 8); ctx.fill();
+            ["#FF6B6B", "#52B788", "#FFD166"].forEach((col, i) => {
+              ctx.fillStyle = col;
+              drawRoundRect(1175 + i * 95, 145, 62, 75, 14); ctx.fill();
+              ctx.fillStyle = "#8D5524";
+              drawRoundRect(1182 + i * 95, 132, 48, 16, 6); ctx.fill();
+            });
+
+            // Teddy bear sitting behind table
+            const bx = 760, by = 520;
+            const eatBob = st.fixed ? Math.sin(t * 5) * 8 : 0;
+            ctx.fillStyle = "#B07D52";
+            ctx.beginPath(); ctx.ellipse(bx, by + 30, 135, 140, 0, 0, Math.PI * 2); ctx.fill();
+            // Ears & head
+            ctx.beginPath();
+            ctx.arc(bx - 82, by - 195 + eatBob, 36, 0, Math.PI * 2);
+            ctx.arc(bx + 82, by - 195 + eatBob, 36, 0, Math.PI * 2);
+            ctx.arc(bx, by - 135 + eatBob, 96, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#E6CCB2";
+            ctx.beginPath();
+            ctx.arc(bx - 82, by - 195 + eatBob, 18, 0, Math.PI * 2);
+            ctx.arc(bx + 82, by - 195 + eatBob, 18, 0, Math.PI * 2);
+            ctx.ellipse(bx, by - 108 + eatBob, 42, 32, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#3B2820";
+            ctx.beginPath(); ctx.ellipse(bx, by - 122 + eatBob, 15, 11, 0, 0, Math.PI * 2); ctx.fill();
+            drawCuteEye(bx - 34, by - 152 + eatBob, 11, t, st.fixed, 14);
+            drawCuteEye(bx + 34, by - 152 + eatBob, 11, t, st.fixed, 14);
+            ctx.strokeStyle = "#3B2820";
+            ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.arc(bx, by - 102 + eatBob, 16, 0.15, Math.PI - 0.15); ctx.stroke();
+
+            // Checkered tablecloth
+            ctx.fillStyle = "#FFF8F0";
+            ctx.fillRect(-700, 610, 3000, 500);
+            ctx.fillStyle = "rgba(230, 57, 70, 0.18)";
+            for (let gx = -600; gx < 2200; gx += 90) {
+              ctx.fillRect(gx, 610, 45, 500);
+            }
+            for (let gy = 610; gy < 1060; gy += 90) {
+              ctx.fillRect(-700, gy, 3000, 45);
+            }
+
+            // Steaming soup bowl
+            ctx.fillStyle = "#1982C4";
+            ctx.beginPath();
+            ctx.arc(760, 665, 110, 0, Math.PI);
+            ctx.fill();
+            ctx.fillStyle = "#FF9F1C";
+            ctx.beginPath();
+            ctx.ellipse(760, 665, 108, 30, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Rising steam curls
+            ctx.strokeStyle = "rgba(255,255,255,0.75)";
+            ctx.lineWidth = 6;
+            ctx.lineCap = "round";
+            for (let s = -1; s <= 1; s++) {
+              const sy = ((t * 42 + (s + 1) * 28) % 85);
+              ctx.globalAlpha = 1 - sy / 85;
+              ctx.beginPath();
+              ctx.moveTo(760 + s * 38, 635 - sy);
+              ctx.quadraticCurveTo(775 + s * 38, 615 - sy, 755 + s * 38, 595 - sy);
+              ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+
+            // SUBJECT: Giant Garden Shovel -> Cute Wooden Spoon
+            const ms = getMorphScale(st.anim);
+            ctx.save();
+            ctx.translate(930, 540);
+            ctx.rotate(st.fixed ? -0.35 + Math.sin(t * 4.5) * 0.14 : -0.25);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Giant metal garden shovel!
+              ctx.fillStyle = "#8D5524";
+              drawRoundRect(-10, -230, 20, 280, 8); ctx.fill();
+              // D-grip handle
+              ctx.strokeStyle = "#E63946";
+              ctx.lineWidth = 14;
+              drawRoundRect(-28, -280, 56, 52, 14); ctx.stroke();
+              // Wide metal spade blade
+              ctx.fillStyle = "#7D8597";
+              ctx.beginPath();
+              ctx.moveTo(-64, 42); ctx.lineTo(64, 42);
+              ctx.lineTo(54, 155); ctx.quadraticCurveTo(0, 195, -54, 155);
+              ctx.closePath(); ctx.fill();
+            } else {
+              // FIXED: Warm wooden soup spoon
+              ctx.fillStyle = "#C68B59";
+              drawRoundRect(-9, -90, 18, 175, 9); ctx.fill();
+              ctx.beginPath();
+              ctx.ellipse(0, 108, 34, 46, 0, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "#A47148";
+              ctx.beginPath();
+              ctx.ellipse(0, 108, 22, 32, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+
+            // Bear's right paw holding utensil
+            ctx.fillStyle = "#B07D52";
+            ctx.beginPath(); ctx.arc(925, 560, 34, 0, Math.PI * 2); ctx.fill();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 13: Green Pasture — Spotted Cow with butterfly wings -> Butterfly flies away
+        ------------------------------------------------------------------------ */
+        {
+          sound: "whoosh",
+          particles: ["petal", "star", "heart"],
+          hitbox: { x: 640, y: 170, w: 460, h: 340 },
+          draw(t, st) {
+            drawSky("#74C0FC", "#BDE0FE", "#FFF8D6");
+            drawSun(210, 145, 74, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 160);
+            drawRollingHills(570, "#A3D9A5", "#74C69D", "#52B788");
+
+            // Red barn in distance
+            ctx.fillStyle = "#D62828";
+            ctx.fillRect(1220, 445, 165, 125);
+            ctx.fillStyle = "#8D2222";
+            ctx.beginPath();
+            ctx.moveTo(1200, 450); ctx.lineTo(1302, 380); ctx.lineTo(1405, 450);
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 6;
+            ctx.strokeRect(1272, 495, 60, 75);
+
+            // Daisies
+            for (let i = 0; i < 6; i++) {
+              drawFlower(190 + i * 240, 790 + (i % 2) * 35, 1.0, "#FFFFFF", "#FFD166", t + i);
+            }
+
+            // SUBJECT: Wings (on cow -> fly away as a real monarch butterfly!)
+            const cx = 790, cy = 695;
+            drawShadowEllipse(cx, cy + 20, 195, 34, 0.22);
+
+            const flyP = st.fixed ? clamp(st.anim, 0, 1) : 0;
+            const wingX = st.fixed ? lerp(cx + 35, 1180 + Math.sin(t * 2) * 45, easeInOutQuad(flyP)) : cx + 35;
+            const wingY = st.fixed ? lerp(cy - 245, 250 + Math.cos(t * 3) * 30, easeInOutQuad(flyP)) : cy - 245;
+            const wingScale = st.fixed ? lerp(1.0, 0.42, flyP) : 1.0;
+            const flap = 0.45 + 0.55 * Math.abs(Math.sin(t * 7));
+
+            // Monarch butterfly wings
+            ctx.save();
+            ctx.translate(wingX, wingY);
+            ctx.scale(wingScale, wingScale);
+            [-1, 1].forEach(dir => {
+              ctx.save();
+              ctx.scale(dir * flap, 1);
+              ctx.fillStyle = "#FF7B00";
+              ctx.strokeStyle = "#241914";
+              ctx.lineWidth = 10;
+              ctx.beginPath();
+              ctx.moveTo(0, 10);
+              ctx.bezierCurveTo(95, -160, 225, -120, 180, -10);
+              ctx.bezierCurveTo(145, 45, 55, 40, 0, 24);
+              ctx.closePath();
+              ctx.fill(); ctx.stroke();
+              // Lower wing
+              ctx.beginPath();
+              ctx.moveTo(0, 20);
+              ctx.bezierCurveTo(115, 20, 145, 110, 68, 125);
+              ctx.bezierCurveTo(25, 130, 8, 70, 0, 35);
+              ctx.closePath();
+              ctx.fill(); ctx.stroke();
+              // White monarch dots
+              ctx.fillStyle = "#FFFFFF";
+              ctx.beginPath(); ctx.arc(148, -68, 9, 0, Math.PI * 2); ctx.fill();
+              ctx.beginPath(); ctx.arc(156, -24, 7, 0, Math.PI * 2); ctx.fill();
+              ctx.restore();
+            });
+            // Butterfly body appears as it flies away!
+            if (st.fixed) {
+              ctx.fillStyle = "#241914";
+              ctx.beginPath(); ctx.ellipse(0, 25, 14, 65, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+
+            // Chubby spotted cow
+            // Legs
+            ctx.fillStyle = "#FFFDF9";
+            [-110, -52, 62, 118].forEach(lx => {
+              drawRoundRect(cx + lx - 16, cy - 110, 32, 120, 12); ctx.fill();
+              ctx.fillStyle = "#3B2820";
+              drawRoundRect(cx + lx - 17, cy - 8, 34, 20, 6); ctx.fill();
+              ctx.fillStyle = "#FFFDF9";
+            });
+            // Body
+            ctx.fillStyle = "#FFFDF9";
+            ctx.beginPath(); ctx.ellipse(cx + 12, cy - 160, 165, 102, 0, 0, Math.PI * 2); ctx.fill();
+            // Black spots
+            ctx.fillStyle = "#2B2D42";
+            ctx.beginPath(); ctx.ellipse(cx - 35, cy - 190, 44, 32, 0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(cx + 85, cy - 155, 50, 36, -0.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(cx + 25, cy - 110, 32, 24, 0.1, 0, Math.PI * 2); ctx.fill();
+
+            // Cow head (munches daisy happily when fixed!)
+            const munch = st.fixed ? Math.sin(t * 6) * 5 : 0;
+            ctx.save();
+            ctx.translate(cx - 150, cy - 215 + munch);
+            // Horns & ears
+            ctx.fillStyle = "#E9D8A6";
+            ctx.beginPath(); ctx.ellipse(-34, -56, 10, 26, -0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(34, -56, 10, 26, 0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#FFFDF9";
+            ctx.beginPath(); ctx.ellipse(-62, -26, 26, 14, -0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(62, -26, 26, 14, 0.3, 0, Math.PI * 2); ctx.fill();
+            // Head oval
+            ctx.beginPath(); ctx.ellipse(0, 0, 64, 58, 0, 0, Math.PI * 2); ctx.fill();
+            // Pink snout
+            ctx.fillStyle = "#FFB5C2";
+            ctx.beginPath(); ctx.ellipse(0, 32, 54, 34, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#A84A5C";
+            ctx.beginPath(); ctx.arc(-18, 26, 6, 0, Math.PI * 2); ctx.arc(18, 26, 6, 0, Math.PI * 2); ctx.fill();
+            drawCuteEye(-24, -14, 9.5, t, st.fixed, 15);
+            drawCuteEye(24, -14, 9.5, t, st.fixed, 15);
+            // Daisy in mouth when fixed
+            if (st.fixed) {
+              drawFlower(-22, 68, 0.75, "#FFFFFF", "#FFD166", t);
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 14: Serene Lily Pond — Baby elephant on tiny lily pad -> Happy Frog
+        ------------------------------------------------------------------------ */
+        {
+          sound: "croak",
+          particles: ["bubble", "leaf", "star"],
+          hitbox: { x: 590, y: 260, w: 420, h: 420 },
+          draw(t, st) {
+            drawSky("#90E0EF", "#CAF0F8", "#E8F8F5");
+            drawSun(1370, 140, 70, t);
+            drawDriftingClouds(t, 3, "#FFFFFF", 160);
+            drawRollingHills(490, "#95D5B2", "#74C69D", "#52B788");
+
+            // Serene blue-green pond
+            const pond = ctx.createLinearGradient(0, 500, 0, 950);
+            pond.addColorStop(0, "#48CAE4");
+            pond.addColorStop(1, "#0077B6");
+            ctx.fillStyle = pond;
+            ctx.fillRect(-700, 515, 3000, 600);
+
+            // Cattails on left and right banks
+            const drawCattail = (rx, ry) => {
+              const sw = Math.sin(t * 1.9 + rx) * 8;
+              ctx.strokeStyle = "#2D6A4F";
+              ctx.lineWidth = 6;
+              ctx.beginPath(); ctx.moveTo(rx, ry); ctx.quadraticCurveTo(rx + sw * 0.5, ry - 120, rx + sw, ry - 230); ctx.stroke();
+              ctx.fillStyle = "#6F4518";
+              ctx.beginPath(); ctx.ellipse(rx + sw * 0.85, ry - 185, 11, 34, 0, 0, Math.PI * 2); ctx.fill();
+            };
+            [180, 230, 275, 1320, 1375, 1425].forEach(rx => drawCattail(rx, 770));
+
+            // Extra floating lily pads & lotus
+            const drawPad = (px, py, rx, ry) => {
+              ctx.fillStyle = "#52B788";
+              ctx.beginPath();
+              ctx.ellipse(px, py, rx, ry, 0, 0.25, Math.PI * 2 - 0.25);
+              ctx.lineTo(px, py);
+              ctx.closePath();
+              ctx.fill();
+            };
+            drawPad(370, 710, 90, 30);
+            drawPad(1240, 680, 105, 34);
+            // Pink lotus flower on right pad
+            ctx.save();
+            ctx.translate(1240, 668);
+            ctx.fillStyle = "#FF85A1";
+            for (let i = -2; i <= 2; i++) {
+              ctx.beginPath(); ctx.ellipse(i * 12, -8, 12, 24, i * 0.25, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+
+            // Center lily pad (sinks low under elephant, floats high under frog!)
+            const cx = 800;
+            const padY = st.fixed ? 655 + Math.sin(t * 2.5) * 6 : 695 + Math.sin(t * 4) * 5;
+            // Water ripples around pad
+            ctx.strokeStyle = "rgba(255,255,255,0.65)";
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.ellipse(cx, padY + 8, 175 + Math.sin(t * 3) * 14, 46, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            drawPad(cx, padY, 148, 42);
+
+            // SUBJECT: Baby Elephant -> Happy Green Frog
+            const ms = getMorphScale(st.anim);
+            ctx.save();
+            ctx.translate(cx, padY - 6);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Teetering baby grey elephant balancing on tiny lily pad!
+              const teeter = Math.sin(t * 3.4) * 0.08;
+              ctx.rotate(teeter);
+              // Four legs bunched tightly together
+              ctx.fillStyle = "#8D99AE";
+              [-48, -16, 16, 48].forEach(lx => {
+                drawRoundRect(lx - 14, -95, 28, 95, 12); ctx.fill();
+              });
+              // Big round elephant body
+              ctx.fillStyle = "#9AA5B1";
+              ctx.beginPath(); ctx.ellipse(0, -165, 128, 102, 0, 0, Math.PI * 2); ctx.fill();
+              // Giant ears
+              ctx.fillStyle = "#8D99AE";
+              ctx.beginPath();
+              ctx.ellipse(-118, -245, 58, 72, -0.25, 0, Math.PI * 2);
+              ctx.ellipse(118, -245, 58, 72, 0.25, 0, Math.PI * 2);
+              ctx.fill();
+              // Head
+              ctx.fillStyle = "#9AA5B1";
+              ctx.beginPath(); ctx.arc(0, -250, 76, 0, Math.PI * 2); ctx.fill();
+              // Curved trunk
+              ctx.strokeStyle = "#8D99AE";
+              ctx.lineWidth = 28;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(0, -230);
+              ctx.quadraticCurveTo(22, -160, 76, -185);
+              ctx.stroke();
+              drawCuteEye(-28, -264, 10, t, false, 16);
+              drawCuteEye(28, -264, 10, t, false, 16);
+            } else {
+              // FIXED: Happy green frog croaking on lily pad!
+              const hop = Math.abs(Math.sin(t * 4.2)) * 22;
+              const puff = Math.sin(t * 4.2) > 0.3 ? 16 : 0;
+              ctx.translate(0, -hop);
+              // Folded frog legs
+              ctx.fillStyle = "#38B000";
+              ctx.beginPath();
+              ctx.ellipse(-66, -18, 42, 24, -0.35, 0, Math.PI * 2);
+              ctx.ellipse(66, -18, 42, 24, 0.35, 0, Math.PI * 2);
+              ctx.fill();
+              // Plump body
+              ctx.fillStyle = "#70E000";
+              ctx.beginPath(); ctx.ellipse(0, -52, 74, 58, 0, 0, Math.PI * 2); ctx.fill();
+              // Pale belly / croak sac
+              ctx.fillStyle = "#CCFF33";
+              ctx.beginPath(); ctx.ellipse(0, -34, 48 + puff * 0.5, 34 + puff * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+              // Big perky frog eyes on top
+              ctx.fillStyle = "#70E000";
+              ctx.beginPath();
+              ctx.arc(-34, -106, 26, 0, Math.PI * 2);
+              ctx.arc(34, -106, 26, 0, Math.PI * 2);
+              ctx.fill();
+              drawCuteEye(-34, -108, 15, t, true, 17);
+              drawCuteEye(34, -108, 15, t, true, 17);
+              // Big cheerful smile
+              ctx.strokeStyle = "#1B4332";
+              ctx.lineWidth = 4.5;
+              ctx.beginPath(); ctx.arc(0, -68, 36, 0.15, Math.PI - 0.15); ctx.stroke();
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 15: Countryside Cottage — Front door stuck on roof -> Slides down + attic window
+        ------------------------------------------------------------------------ */
+        {
+          sound: "whoosh",
+          particles: ["star", "petal", "splatter"],
+          hitbox: { x: 640, y: 170, w: 320, h: 520 },
+          draw(t, st) {
+            drawSky("#64B5F6", "#BDE0FE", "#FFF3B0");
+            drawSun(210, 145, 74, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 160);
+            drawRollingHills(600, "#95D5B2", "#74C69D", "#52B788");
+
+            // Winding garden path to cottage
+            ctx.fillStyle = "#E9D8A6";
+            ctx.beginPath();
+            ctx.moveTo(740, 710);
+            ctx.quadraticCurveTo(790, 810, 680, 950);
+            ctx.lineTo(860, 950);
+            ctx.quadraticCurveTo(900, 810, 860, 710);
+            ctx.closePath();
+            ctx.fill();
+
+            // Chimney with gentle smoke puffs
+            ctx.fillStyle = "#9B2226";
+            ctx.fillRect(960, 165, 64, 150);
+            for (let s = 0; s < 4; s++) {
+              const sp = ((t * 0.45 + s * 0.25) % 1);
+              ctx.fillStyle = `rgba(255,255,255,${(1 - sp) * 0.7})`;
+              ctx.beginPath();
+              ctx.arc(992 + Math.sin(t * 2 + s) * 18 + sp * 40, 150 - sp * 110, 18 + sp * 22, 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            // Cottage walls
+            const hx = 800;
+            drawShadowEllipse(hx, 725, 290, 32, 0.2);
+            ctx.fillStyle = "#FFF3D6";
+            drawRoundRect(hx - 240, 415, 480, 300, 14); ctx.fill();
+
+            // Two ground-floor windows
+            const drawWin = (wx, wy) => {
+              ctx.fillStyle = "#90E0EF";
+              drawRoundRect(wx - 48, wy - 48, 96, 96, 12); ctx.fill();
+              ctx.strokeStyle = "#8D5524";
+              ctx.lineWidth = 8;
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(wx, wy - 48); ctx.lineTo(wx, wy + 48);
+              ctx.moveTo(wx - 48, wy); ctx.lineTo(wx + 48, wy);
+              ctx.stroke();
+            };
+            drawWin(hx - 148, 550);
+            drawWin(hx + 148, 550);
+
+            // Sloped red tiled roof
+            ctx.fillStyle = "#E63946";
+            ctx.beginPath();
+            ctx.moveTo(hx - 300, 430);
+            ctx.lineTo(hx, 175);
+            ctx.lineTo(hx + 300, 430);
+            ctx.closePath();
+            ctx.fill();
+
+            // Cute round attic window appears on roof when fixed!
+            const p = st.fixed ? easeInOutQuad(clamp(st.anim, 0, 1)) : 0;
+            if (p > 0.25) {
+              ctx.save();
+              ctx.globalAlpha = clamp((p - 0.25) / 0.75, 0, 1);
+              ctx.fillStyle = "#FFE66D";
+              ctx.beginPath(); ctx.arc(hx, 320, 48, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = "#FFFDF7";
+              ctx.lineWidth = 9;
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(hx, 272); ctx.lineTo(hx, 368);
+              ctx.moveTo(hx - 48, 320); ctx.lineTo(hx + 48, 320);
+              ctx.stroke();
+              ctx.restore();
+            }
+
+            // Welcome mat appears at ground level
+            if (p > 0.5) {
+              ctx.fillStyle = "#F4A261";
+              ctx.beginPath(); ctx.ellipse(hx, 725, 68 * p, 14, 0, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // SUBJECT: Wooden Front Door (Stuck on roof -> Slides down to ground!)
+            const doorY = lerp(248, 545, p);
+            ctx.save();
+            ctx.translate(hx, doorY);
+            ctx.fillStyle = "#8D5524";
+            ctx.beginPath();
+            ctx.arc(0, 44, 52, Math.PI, 0);
+            ctx.lineTo(52, 170);
+            ctx.lineTo(-52, 170);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "#582F0E";
+            ctx.lineWidth = 7;
+            ctx.stroke();
+            // Golden doorknob
+            ctx.fillStyle = "#FFD166";
+            ctx.beginPath(); ctx.arc(30, 108, 9, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+
+            // Bushes & flowers around cottage
+            ctx.fillStyle = "#40916C";
+            ctx.beginPath(); ctx.arc(520, 710, 56, 0, Math.PI * 2); ctx.arc(1080, 710, 56, 0, Math.PI * 2); ctx.fill();
+            drawFlower(460, 750, 1.0, "#FF6B6B", "#FFD166", t);
+            drawFlower(1140, 750, 1.0, "#FFCA3A", "#FF595E", t + 1);
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 16: Lush Pine Forest — Purple Octopus in pine tree -> Red Squirrel with acorn
+        ------------------------------------------------------------------------ */
+        {
+          sound: "popPop",
+          particles: ["leaf", "star", "splatter"],
+          hitbox: { x: 600, y: 270, w: 400, h: 330 },
+          draw(t, st) {
+            drawSky("#74C0FC", "#C9F0FF", "#E8F8F5");
+            drawSun(1380, 140, 70, t);
+            drawDriftingClouds(t, 3, "#FFFFFF", 160);
+            drawRollingHills(640, "#52B788", "#40916C", "#2D6A4F");
+
+            // Background pine trees
+            const drawPine = (px, py, s, col) => {
+              ctx.save();
+              ctx.translate(px, py);
+              ctx.scale(s, s);
+              ctx.fillStyle = "#6F4518";
+              ctx.fillRect(-16, -50, 32, 80);
+              ctx.fillStyle = col;
+              for (let i = 0; i < 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, -280 + i * 60);
+                ctx.lineTo(-95 - i * 18, -140 + i * 52);
+                ctx.lineTo(95 + i * 18, -140 + i * 52);
+                ctx.closePath();
+                ctx.fill();
+              }
+              ctx.restore();
+            };
+            drawPine(190, 720, 1.2, "#1B4332");
+            drawPine(410, 690, 0.95, "#2D6A4F");
+            drawPine(1240, 700, 1.05, "#2D6A4F");
+            drawPine(1450, 735, 1.25, "#1B4332");
+
+            // Big foreground pine trunk & sturdy branch
+            ctx.fillStyle = "#582F0E";
+            ctx.fillRect(1020, 120, 140, 780);
+            ctx.strokeStyle = "#6F4518";
+            ctx.lineWidth = 48;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(1060, 500);
+            ctx.quadraticCurveTo(820, 535, 530, 485);
+            ctx.stroke();
+
+            // Pine needle tufts on branch
+            ctx.fillStyle = "#2D6A4F";
+            ctx.beginPath(); ctx.arc(540, 460, 68, 0, Math.PI * 2); ctx.arc(1080, 260, 145, 0, Math.PI * 2); ctx.fill();
+
+            // SUBJECT: Purple Octopus -> Fluffy Red Squirrel holding an acorn
+            const sx = 795, sy = 485;
+            const ms = getMorphScale(st.anim);
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Bright purple octopus waving tentacles on pine branch!
+              ctx.strokeStyle = "#9D4EDD";
+              ctx.lineWidth = 24;
+              ctx.lineCap = "round";
+              for (let i = -3; i <= 3; i++) {
+                const wave = Math.sin(t * 3.5 + i) * 24;
+                ctx.beginPath();
+                ctx.moveTo(i * 18, -22);
+                ctx.bezierCurveTo(i * 42, 40, i * 48 + wave, 110, i * 38 - wave * 0.5, 148);
+                ctx.stroke();
+              }
+              // Bulbous octopus head
+              const og = ctx.createRadialGradient(-25, -105, 15, 0, -85, 95);
+              og.addColorStop(0, "#C77DFF");
+              og.addColorStop(1, "#7B2CBF");
+              ctx.fillStyle = og;
+              ctx.beginPath(); ctx.ellipse(0, -88, 84, 78, 0, 0, Math.PI * 2); ctx.fill();
+              drawCuteEye(-28, -74, 13, t, false, 18);
+              drawCuteEye(28, -74, 13, t, false, 18);
+            } else {
+              // FIXED: Fluffy red squirrel holding an acorn!
+              const bounce = Math.abs(Math.sin(t * 5.2)) * 8;
+              ctx.translate(0, -bounce);
+              // Big fluffy curled tail
+              ctx.fillStyle = "#D95D1E";
+              ctx.beginPath();
+              ctx.moveTo(-25, -18);
+              ctx.bezierCurveTo(-155, -20, -175, -195, -62, -205);
+              ctx.bezierCurveTo(-18, -210, -25, -135, -55, -120);
+              ctx.bezierCurveTo(-85, -105, -70, -45, -15, -35);
+              ctx.closePath();
+              ctx.fill();
+              // Body
+              ctx.fillStyle = "#E86A28";
+              ctx.beginPath(); ctx.ellipse(12, -55, 56, 68, 0.15, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = "#FFE8D6";
+              ctx.beginPath(); ctx.ellipse(30, -50, 32, 46, 0.1, 0, Math.PI * 2); ctx.fill();
+              // Head & tufted ears
+              ctx.fillStyle = "#E86A28";
+              ctx.beginPath();
+              ctx.moveTo(-4, -150); ctx.lineTo(-14, -195); ctx.lineTo(18, -162);
+              ctx.moveTo(26, -152); ctx.lineTo(42, -195); ctx.lineTo(54, -150);
+              ctx.fill();
+              ctx.beginPath(); ctx.arc(28, -132, 46, 0, Math.PI * 2); ctx.fill();
+              drawCuteEye(44, -140, 9, t, true, 19);
+              ctx.fillStyle = "#2B1D12";
+              ctx.beginPath(); ctx.arc(72, -132, 7, 0, Math.PI * 2); ctx.fill();
+              // Acorn held in paws
+              ctx.fillStyle = "#B07D52";
+              ctx.beginPath(); ctx.ellipse(76, -64, 22, 26, 0.2, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = "#582F0E";
+              ctx.beginPath(); ctx.ellipse(80, -82, 26, 12, 0.2, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 17: Coral Reef Underwater — Rooster swimming -> Colorful Sea Turtle / Clownfish
+        ------------------------------------------------------------------------ */
+        {
+          sound: "splash",
+          particles: ["bubble", "star", "splatter"],
+          hitbox: { x: 580, y: 270, w: 440, h: 340 },
+          draw(t, st) {
+            drawSky("#00B4D8", "#0077B6", "#023E8A");
+
+            // Underwater sunbeams
+            ctx.save();
+            ctx.fillStyle = "rgba(180, 245, 255, 0.12)";
+            for (let i = 0; i < 5; i++) {
+              const bx = 200 + i * 310 + Math.sin(t * 0.7 + i) * 30;
+              ctx.beginPath();
+              ctx.moveTo(bx, -50); ctx.lineTo(bx + 110, -50);
+              ctx.lineTo(bx - 60, 950); ctx.lineTo(bx - 190, 950);
+              ctx.closePath(); ctx.fill();
+            }
+            ctx.restore();
+
+            // Sandy ocean floor
+            ctx.fillStyle = "#F4D58D";
+            ctx.beginPath();
+            ctx.moveTo(-700, 1300); ctx.lineTo(-700, 770);
+            ctx.quadraticCurveTo(800, 710, 2300, 780);
+            ctx.lineTo(2300, 1300); ctx.closePath(); ctx.fill();
+
+            // Swaying kelp & colorful corals
+            for (let i = 0; i < 8; i++) {
+              const kx = 140 + i * 195;
+              const sw = Math.sin(t * 2 + i) * 24;
+              ctx.strokeStyle = i % 2 === 0 ? "#2A9D8F" : "#52B788";
+              ctx.lineWidth = 22;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(kx, 800);
+              ctx.bezierCurveTo(kx + sw, 680, kx - sw, 590, kx + sw * 0.7, 500 + (i % 3) * 45);
+              ctx.stroke();
+            }
+            // Pink coral
+            ctx.fillStyle = "#FF6B8B";
+            ctx.beginPath();
+            ctx.arc(320, 745, 52, Math.PI, 0);
+            ctx.arc(370, 755, 42, Math.PI, 0);
+            ctx.arc(1260, 745, 58, Math.PI, 0);
+            ctx.fill();
+
+            // Ambient rising bubbles
+            for (let b = 0; b < 14; b++) {
+              const bx = 120 + (b * 115) % 1400 + Math.sin(t * 2 + b) * 14;
+              const by = 850 - ((t * (55 + (b % 4) * 18) + b * 75) % 920);
+              ctx.save();
+              ctx.translate(bx, by);
+              drawParticleShape("bubble", 9 + (b % 3) * 5, "#FFFFFF");
+              ctx.restore();
+            }
+
+            // SUBJECT: Proud Rooster underwater -> Graceful Colorful Clownfish
+            const fx = 800 + Math.sin(t * 1.5) * 45;
+            const fy = 450 + Math.cos(t * 2.2) * 22;
+            const ms = getMorphScale(st.anim);
+            ctx.save();
+            ctx.translate(fx, fy);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Proud farm rooster swimming underwater!
+              // Flowing tail feathers
+              ctx.fillStyle = "#1B4332";
+              for (let k = 0; k < 3; k++) {
+                ctx.beginPath();
+                ctx.moveTo(-75, -10);
+                ctx.quadraticCurveTo(-165, -90 - k * 18, -180, -10 + k * 25);
+                ctx.quadraticCurveTo(-135, -35, -75, 18);
+                ctx.fill();
+              }
+              // Rooster body
+              ctx.fillStyle = "#E76F51";
+              ctx.beginPath(); ctx.ellipse(0, 12, 102, 74, -0.1, 0, Math.PI * 2); ctx.fill();
+              // Wing
+              ctx.fillStyle = "#F4A261";
+              ctx.beginPath(); ctx.ellipse(-10, 16, 56, 34, 0.1, 0, Math.PI * 2); ctx.fill();
+              // Neck & head
+              ctx.fillStyle = "#E76F51";
+              ctx.beginPath(); ctx.ellipse(76, -54, 42, 54, 0.2, 0, Math.PI * 2); ctx.fill();
+              // Big red comb & wattle
+              ctx.fillStyle = "#E63946";
+              ctx.beginPath();
+              ctx.arc(62, -106, 16, 0, Math.PI * 2);
+              ctx.arc(82, -112, 18, 0, Math.PI * 2);
+              ctx.arc(100, -100, 15, 0, Math.PI * 2);
+              ctx.arc(106, -34, 14, 0, Math.PI * 2);
+              ctx.fill();
+              // Beak & eye
+              ctx.fillStyle = "#FFD166";
+              ctx.beginPath(); ctx.moveTo(114, -64); ctx.lineTo(148, -54); ctx.lineTo(114, -44); ctx.closePath(); ctx.fill();
+              drawCuteEye(94, -68, 10, t, false, 20);
+            } else {
+              // FIXED: Bright colorful clownfish swimming happily!
+              const tailWag = Math.sin(t * 7) * 14;
+              // Tail fin
+              ctx.fillStyle = "#FF7B00";
+              ctx.beginPath();
+              ctx.moveTo(-98, 0);
+              ctx.quadraticCurveTo(-175, -75 + tailWag, -165, tailWag * 0.5);
+              ctx.quadraticCurveTo(-175, 75 + tailWag, -98, 0);
+              ctx.fill();
+              // Top & bottom fins
+              ctx.beginPath();
+              ctx.ellipse(-10, -76, 58, 28, -0.1, 0, Math.PI * 2);
+              ctx.ellipse(-18, 72, 44, 24, 0.15, 0, Math.PI * 2);
+              ctx.fill();
+              // Striped clownfish body
+              ctx.save();
+              ctx.beginPath();
+              ctx.ellipse(0, 0, 125, 78, 0, 0, Math.PI * 2);
+              ctx.clip();
+              ctx.fillStyle = "#FF7B00";
+              ctx.fillRect(-140, -90, 280, 180);
+              // Crisp white stripes with dark trim
+              [-55, 22].forEach(sx => {
+                ctx.fillStyle = "#241914";
+                ctx.fillRect(sx - 20, -90, 40, 180);
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillRect(sx - 14, -90, 28, 180);
+              });
+              ctx.restore();
+              // Eye & happy smile
+              drawCuteEye(76, -16, 13, t, true, 21);
+              ctx.strokeStyle = "#5C2B06";
+              ctx.lineWidth = 4;
+              ctx.beginPath(); ctx.arc(96, 12, 16, 0.2, Math.PI * 0.8); ctx.stroke();
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 18: Sunny Windowsill — Middle pot growing striped socks -> Vibrant Tulips
+        ------------------------------------------------------------------------ */
+        {
+          sound: "popPop",
+          particles: ["petal", "star", "leaf"],
+          hitbox: { x: 640, y: 200, w: 320, h: 460 },
+          draw(t, st) {
+            // Sunny sky outside window
+            drawSky("#64B5F6", "#BDE0FE", "#FFF9C4");
+            drawSun(1160, 175, 74, t);
+            drawDriftingClouds(t, 3, "#FFFFFF", 180);
+
+            // Window frame & curtains
+            ctx.strokeStyle = "#FFFDF7";
+            ctx.lineWidth = 26;
+            ctx.strokeRect(180, 40, 1240, 620);
+            ctx.beginPath(); ctx.moveTo(800, 40); ctx.lineTo(800, 660); ctx.stroke();
+
+            // Soft peach curtains on sides
+            ctx.fillStyle = "#FFADAD";
+            ctx.beginPath();
+            ctx.moveTo(-200, -100); ctx.lineTo(290, -100);
+            ctx.quadraticCurveTo(230, 320, 150, 700);
+            ctx.lineTo(-200, 700); ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(1800, -100); ctx.lineTo(1310, -100);
+            ctx.quadraticCurveTo(1370, 320, 1450, 700);
+            ctx.lineTo(1800, 700); ctx.closePath(); ctx.fill();
+
+            // Warm wooden windowsill
+            ctx.fillStyle = "#DDA15E";
+            ctx.fillRect(-700, 650, 3000, 45);
+            ctx.fillStyle = "#FAEDCD";
+            ctx.fillRect(-700, 695, 3000, 380);
+
+            // Helper for terracotta pot
+            const drawPot = (px, py) => {
+              drawShadowEllipse(px, py + 76, 86, 16, 0.2);
+              ctx.fillStyle = "#D46A43";
+              ctx.beginPath();
+              ctx.moveTo(px - 72, py - 58); ctx.lineTo(px + 72, py - 58);
+              ctx.lineTo(px + 54, py + 74); ctx.lineTo(px - 54, py + 74);
+              ctx.closePath(); ctx.fill();
+              ctx.fillStyle = "#E07A5F";
+              drawRoundRect(px - 84, py - 74, 168, 28, 8); ctx.fill();
+            };
+
+            // Left & right normal flowering pots
+            const drawNormalPlant = (px, py, col) => {
+              const sw = Math.sin(t * 2 + px) * 6;
+              ctx.strokeStyle = "#40916C";
+              ctx.lineWidth = 9;
+              ctx.beginPath();
+              ctx.moveTo(px, py - 74); ctx.quadraticCurveTo(px - 28, py - 150, px - 36 + sw, py - 210);
+              ctx.moveTo(px, py - 74); ctx.quadraticCurveTo(px + 28, py - 150, px + 36 + sw, py - 220);
+              ctx.stroke();
+              drawFlower(px - 36 + sw, py - 178, 1.2, col, "#FFD166", t);
+              drawFlower(px + 36 + sw, py - 188, 1.3, col, "#FFD166", t + 1);
+              drawPot(px, py);
+            };
+            drawNormalPlant(430, 615, "#FF85A1");
+            drawNormalPlant(1170, 615, "#A0C4FF");
+
+            // SUBJECT: Middle pot (Colorful Striped Socks -> Red & Yellow Tulips!)
+            const mx = 800, my = 615;
+            const ms = getMorphScale(st.anim);
+
+            // Green stems & leaves
+            const sw = Math.sin(t * 2.1) * 7;
+            ctx.strokeStyle = "#2D9348";
+            ctx.lineWidth = 10;
+            ctx.lineCap = "round";
+            const stems = [
+              { x: -64, y: -235 },
+              { x: 0, y: -285 },
+              { x: 64, y: -245 }
+            ];
+            stems.forEach(s => {
+              ctx.beginPath();
+              ctx.moveTo(mx, my - 72);
+              ctx.quadraticCurveTo(mx + s.x * 0.5, my - 160, mx + s.x + sw, my + s.y);
+              ctx.stroke();
+            });
+
+            // Blossoms on stems
+            stems.forEach((s, idx) => {
+              ctx.save();
+              ctx.translate(mx + s.x + sw, my + s.y);
+              ctx.scale(ms.sx, ms.sy);
+
+              if (!st.fixed || st.anim < 0.25) {
+                // MISTAKE: Colorful striped socks growing on flower stems!
+                ctx.rotate((idx - 1) * 0.25);
+                const sockCol = idx === 1 ? "#FF595E" : idx === 0 ? "#1982C4" : "#8338EC";
+                ctx.fillStyle = sockCol;
+                drawRoundRect(-22, -74, 44, 72, 10); ctx.fill();
+                // Sock foot
+                ctx.beginPath();
+                ctx.ellipse(16, -12, 34, 20, 0.1, 0, Math.PI * 2);
+                ctx.fill();
+                // Stripes
+                ctx.fillStyle = "#FFCA3A";
+                ctx.fillRect(-22, -58, 44, 10);
+                ctx.fillRect(-22, -38, 44, 10);
+              } else {
+                // FIXED: Vibrant red & yellow tulips!
+                const tCol = idx === 1 ? "#E63946" : "#FFCA3A";
+                ctx.fillStyle = tCol;
+                ctx.beginPath();
+                ctx.moveTo(0, 12);
+                ctx.bezierCurveTo(-44, 4, -46, -54, -28, -74);
+                ctx.lineTo(-10, -46);
+                ctx.lineTo(0, -82);
+                ctx.lineTo(10, -46);
+                ctx.lineTo(28, -74);
+                ctx.bezierCurveTo(46, -54, 44, 4, 0, 12);
+                ctx.closePath();
+                ctx.fill();
+              }
+              ctx.restore();
+            });
+
+            drawPot(mx, my);
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 19: Sunny Carrot Patch — White bunny with crocodile tail -> Fluffy cotton tail
+        ------------------------------------------------------------------------ */
+        {
+          sound: "boing",
+          particles: ["star", "heart", "leaf"],
+          hitbox: { x: 840, y: 450, w: 420, h: 270 },
+          draw(t, st) {
+            drawSky("#74C0FC", "#BDE0FE", "#FFF3B0");
+            drawSun(220, 145, 74, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 160);
+            drawRollingHills(570, "#95D5B2", "#74C69D", "#52B788");
+
+            // Carrot patch soil rows
+            ctx.fillStyle = "#8D5524";
+            ctx.beginPath(); ctx.ellipse(420, 775, 290, 56, 0, 0, Math.PI * 2); ctx.fill();
+            // Carrots peeking out of ground
+            [260, 360, 460, 550].forEach((cx, i) => {
+              ctx.fillStyle = "#2B9348";
+              ctx.beginPath();
+              ctx.ellipse(cx - 8, 722, 7, 22, -0.3, 0, Math.PI * 2);
+              ctx.ellipse(cx + 8, 722, 7, 22, 0.3, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "#FF7B00";
+              ctx.beginPath(); ctx.ellipse(cx, 750, 18, 22, 0, 0, Math.PI * 2); ctx.fill();
+            });
+
+            // SUBJECT: Fluffy White Bunny
+            const hop = st.fixed ? Math.abs(Math.sin(t * 5.2)) * 28 : 0;
+            const bx = 735, by = 710 - hop;
+            drawShadowEllipse(bx, 725, 165, 28, 0.22);
+
+            // TAIL (Scaly green crocodile tail -> Fluffy white cotton-ball tail)
+            const ms = getMorphScale(st.anim);
+            ctx.save();
+            ctx.translate(bx + 115, by - 68);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Long scaly green crocodile tail!
+              const swish = Math.sin(t * 3) * 16;
+              ctx.fillStyle = "#40916C";
+              ctx.beginPath();
+              ctx.moveTo(-20, -34);
+              ctx.bezierCurveTo(105, -45, 200, -10 + swish, 295, 18 + swish);
+              ctx.bezierCurveTo(195, 58 + swish, 95, 55, -20, 36);
+              ctx.closePath();
+              ctx.fill();
+              // Crocodile ridges along top
+              ctx.fillStyle = "#1B4332";
+              for (let k = 0; k < 6; k++) {
+                const rx = 25 + k * 40;
+                const ry = -32 + k * 7 + (k / 6) * swish;
+                ctx.beginPath();
+                ctx.moveTo(rx - 14, ry + 8);
+                ctx.lineTo(rx, ry - 18);
+                ctx.lineTo(rx + 14, ry + 10);
+                ctx.closePath();
+                ctx.fill();
+              }
+            } else {
+              // FIXED: Fluffy round white cotton-ball tail!
+              ctx.fillStyle = "#FFFFFF";
+              ctx.beginPath();
+              ctx.arc(16, -4, 34, 0, Math.PI * 2);
+              ctx.arc(34, -18, 24, 0, Math.PI * 2);
+              ctx.arc(34, 12, 24, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+
+            // Bunny body & paws
+            ctx.fillStyle = "#FFFFFF";
+            ctx.beginPath(); ctx.ellipse(bx, by - 95, 118, 96, -0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(bx - 55, by - 4, 46, 20, 0, 0, Math.PI * 2);
+            ctx.ellipse(bx + 45, by - 4, 46, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Long bunny ears
+            ctx.save();
+            ctx.translate(bx - 75, by - 235);
+            [-0.22, 0.16].forEach(ang => {
+              ctx.save();
+              ctx.rotate(ang);
+              ctx.fillStyle = "#FFFFFF";
+              ctx.beginPath(); ctx.ellipse(0, -68, 24, 72, 0, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = "#FFB5C2";
+              ctx.beginPath(); ctx.ellipse(0, -64, 12, 52, 0, 0, Math.PI * 2); ctx.fill();
+              ctx.restore();
+            });
+            ctx.restore();
+
+            // Bunny head
+            ctx.fillStyle = "#FFFFFF";
+            ctx.beginPath(); ctx.arc(bx - 88, by - 195, 68, 0, Math.PI * 2); ctx.fill();
+            drawCuteEye(bx - 112, by - 208, 10, t, st.fixed, 22);
+            ctx.fillStyle = "#FF85A1";
+            ctx.beginPath(); ctx.arc(bx - 150, by - 190, 9, 0, Math.PI * 2); ctx.fill();
+
+            // Carrot nibbled happily when fixed
+            if (st.fixed) {
+              ctx.save();
+              ctx.translate(bx - 158, by - 165);
+              ctx.rotate(0.4 + Math.sin(t * 9) * 0.08);
+              ctx.fillStyle = "#FF7B00";
+              ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-68, 0); ctx.lineTo(0, 10); ctx.closePath(); ctx.fill();
+              ctx.fillStyle = "#2B9348";
+              ctx.beginPath(); ctx.ellipse(12, 0, 14, 7, 0, 0, Math.PI * 2); ctx.fill();
+              ctx.restore();
+            }
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 20: Park Picnic — Muddy rubber boot on plate -> Layered Berry Cake
+        ------------------------------------------------------------------------ */
+        {
+          sound: "sparkle",
+          particles: ["star", "petal", "heart"],
+          hitbox: { x: 610, y: 390, w: 380, h: 320 },
+          draw(t, st) {
+            drawSky("#74C0FC", "#BDE0FE", "#FFF3B0");
+            drawSun(1370, 140, 74, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 160);
+            drawRollingHills(490, "#95D5B2", "#74C69D", "#52B788");
+
+            // Butterflies fluttering above picnic
+            drawButterfly(350 + Math.sin(t * 1.5) * 60, 260 + Math.cos(t * 2.1) * 28, 1.05, "#FF9F1C", "#FFD166", t);
+            drawButterfly(1210 + Math.cos(t * 1.3) * 55, 240 + Math.sin(t * 2.2) * 25, 1.0, "#FF6B9D", "#FFC2D1", t + 2);
+
+            // Vibrant red-and-white checkered picnic blanket (perspective trapezoid)
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(310, 560); ctx.lineTo(1290, 560);
+            ctx.lineTo(1480, 865); ctx.lineTo(120, 865);
+            ctx.closePath();
+            ctx.clip();
+            ctx.fillStyle = "#FFFDF7";
+            ctx.fillRect(100, 550, 1400, 330);
+            ctx.fillStyle = "rgba(230, 57, 70, 0.78)";
+            for (let gx = 100; gx < 1500; gx += 96) ctx.fillRect(gx, 550, 48, 330);
+            ctx.fillStyle = "rgba(230, 57, 70, 0.35)";
+            for (let gy = 550; gy < 880; gy += 68) ctx.fillRect(100, gy, 1400, 34);
+            ctx.restore();
+
+            // Lemonade pitcher on left
+            ctx.save();
+            ctx.translate(410, 625);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+            drawRoundRect(-46, -98, 92, 128, 22); ctx.fill();
+            ctx.fillStyle = "#FFE66D";
+            drawRoundRect(-38, -56, 76, 80, 16); ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.85)";
+            ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.arc(48, -42, 26, -Math.PI * 0.5, Math.PI * 0.5); ctx.stroke();
+            ctx.restore();
+
+            // Shiny apples on right
+            [1175, 1245].forEach((ax, i) => {
+              ctx.fillStyle = i === 0 ? "#E63946" : "#8AC926";
+              ctx.beginPath(); ctx.arc(ax, 665 + i * 18, 32, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = "#582F0E"; ctx.lineWidth = 4;
+              ctx.beginPath(); ctx.moveTo(ax, 634 + i * 18); ctx.lineTo(ax + 6, 618 + i * 18); ctx.stroke();
+            });
+
+            // Main dinner plate, fork & knife in center
+            const px = 800, py = 680;
+            // Fork (left)
+            ctx.fillStyle = "#ADB5BD";
+            drawRoundRect(px - 235, py - 58, 14, 125, 6); ctx.fill();
+            ctx.fillRect(px - 246, py - 88, 36, 36);
+            // Knife (right)
+            drawRoundRect(px + 220, py - 78, 16, 145, 7); ctx.fill();
+
+            // Plate
+            drawShadowEllipse(px, py + 18, 175, 48, 0.22);
+            ctx.fillStyle = "#FFFDF9";
+            ctx.beginPath(); ctx.ellipse(px, py, 175, 56, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "#48CAE4";
+            ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.ellipse(px, py, 142, 42, 0, 0, Math.PI * 2); ctx.stroke();
+
+            // SUBJECT: Muddy Rubber Boot -> Delicious Layered Berry Cake
+            const ms = getMorphScale(st.anim);
+            ctx.save();
+            ctx.translate(px, py + 4);
+            ctx.scale(ms.sx, ms.sy);
+
+            if (!st.fixed || st.anim < 0.25) {
+              // MISTAKE: Muddy green rubber rain boot served on plate!
+              ctx.fillStyle = "#386641";
+              drawRoundRect(-54, -220, 96, 175, 14); ctx.fill();
+              ctx.beginPath();
+              ctx.ellipse(36, -34, 86, 42, 0, 0, Math.PI * 2);
+              ctx.fill();
+              // Sole
+              ctx.fillStyle = "#2B2D42";
+              drawRoundRect(-56, -12, 178, 22, 8); ctx.fill();
+              // Mud splatters
+              ctx.fillStyle = "#6F4518";
+              ctx.beginPath();
+              ctx.ellipse(24, -22, 42, 16, 0.1, 0, Math.PI * 2);
+              ctx.arc(-22, -64, 15, 0, Math.PI * 2);
+              ctx.arc(65, -36, 12, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              // FIXED: Delicious layered berry cake with strawberries!
+              // Cake base
+              ctx.fillStyle = "#F4A261";
+              drawRoundRect(-112, -125, 224, 125, 18); ctx.fill();
+              // Pink berry cream filling layer
+              ctx.fillStyle = "#FF8FA3";
+              ctx.fillRect(-112, -72, 224, 24);
+              // Glossy white frosting dripping down top
+              ctx.fillStyle = "#FFFDF9";
+              ctx.beginPath();
+              ctx.ellipse(0, -122, 114, 34, 0, 0, Math.PI * 2);
+              ctx.fill();
+              for (let d = -90; d <= 90; d += 36) {
+                ctx.beginPath();
+                ctx.arc(d, -108, 18, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              // Bright red strawberries on top
+              [-62, 0, 62].forEach((sx, idx) => {
+                const sy = idx === 1 ? -144 : -134;
+                ctx.fillStyle = "#E63946";
+                ctx.beginPath();
+                ctx.moveTo(sx - 18, sy - 6);
+                ctx.quadraticCurveTo(sx, sy - 38, sx + 18, sy - 6);
+                ctx.quadraticCurveTo(sx, sy + 16, sx - 18, sy - 6);
+                ctx.fill();
+                ctx.fillStyle = "#52B788";
+                ctx.beginPath(); ctx.ellipse(sx, sy - 24, 12, 5, 0, 0, Math.PI * 2); ctx.fill();
+              });
+            }
+            ctx.restore();
+          }
+        },
+
+        /* ------------------------------------------------------------------------
+           SCENE 20: Sunny Meadow Hill — Upside-down tree (roots in sky) -> Right-side-up tree
+        ------------------------------------------------------------------------ */
+        {
+          sound: "whoosh",
+          particles: ["leaf", "star", "petal"],
+          hitbox: { x: 540, y: 120, w: 520, h: 610 },
+          draw(t, st) {
+            drawSky("#64B5F6", "#BDE0FE", "#FFF8D6");
+            drawSun(220, 145, 76, t);
+            drawDriftingClouds(t, 4, "#FFFFFF", 165);
+            drawRollingHills(590, "#A3D9A5", "#74C69D", "#52B788");
+
+            // Wooden meadow fence in background
+            ctx.fillStyle = "#C68B59";
+            ctx.fillRect(-200, 600, 2000, 14);
+            ctx.fillRect(-200, 642, 2000, 14);
+            for (let fx = -80; fx < 1760; fx += 135) {
+              drawRoundRect(fx, 570, 22, 110, 6);
+              ctx.fill();
+            }
+
+            // Meadow flowers & swaying grass
+            for (let i = 0; i < 6; i++) {
+              drawFlower(160 + i * 260, 790 + (i % 2) * 35, 1.0, i % 2 === 0 ? "#FFD60A" : "#FF85A1", "#FFFFFF", t + i);
+            }
+
+            // SUBJECT: Big Tree (Upside-down roots in sky -> Right-side-up lush green tree!)
+            const tx = 800, ty = 460;
+            const flipP = st.fixed ? easeOutBack(clamp(st.anim, 0, 1)) : 0;
+            const rot = lerp(Math.PI, 0, flipP);
+            const sway = Math.sin(t * 1.6) * (st.fixed ? 0.025 : 0.01);
+            const clickBounce = st.bounce > 0 ? Math.sin(st.bounce * Math.PI) * 18 : 0;
+
+            drawShadowEllipse(tx, 742, 225, 36, 0.22);
+
+            ctx.save();
+            ctx.translate(tx, ty - clickBounce);
+            ctx.rotate(rot + sway);
+
+            // Sturdy tree trunk
+            const trG = ctx.createLinearGradient(-55, 0, 55, 0);
+            trG.addColorStop(0, "#6F4518");
+            trG.addColorStop(0.5, "#9C6644");
+            trG.addColorStop(1, "#582F0E");
+            ctx.fillStyle = trG;
+            ctx.beginPath();
+            ctx.moveTo(-56, 260);
+            ctx.quadraticCurveTo(-36, 80, -42, -55);
+            ctx.lineTo(42, -55);
+            ctx.quadraticCurveTo(36, 80, 56, 260);
+            ctx.closePath();
+            ctx.fill();
+
+            // Tangled brown roots (sticking up into the sky when upside-down, grounded when fixed!)
+            ctx.strokeStyle = "#6F4518";
+            ctx.lineWidth = 22;
+            ctx.lineCap = "round";
+            const roots = [
+              [-35, 245, -135, 295, -185, 275],
+              [-15, 252, -75, 315, -110, 345],
+              [0, 255, 15, 325, 0, 360],
+              [22, 252, 85, 315, 128, 340],
+              [38, 242, 130, 290, 185, 268]
+            ];
+            roots.forEach(([x0, y0, cx1, cy1, x2, y2]) => {
+              ctx.beginPath();
+              ctx.moveTo(x0, y0);
+              ctx.quadraticCurveTo(cx1, cy1, x2, y2);
+              ctx.stroke();
+            });
+
+            // Lush green leafy crown
+            const crownPuffs = [
+              { x: -135, y: -95, r: 108, c: "#2D6A4F" },
+              { x: 135, y: -95, r: 108, c: "#2D6A4F" },
+              { x: -85, y: -195, r: 118, c: "#40916C" },
+              { x: 85, y: -195, r: 118, c: "#40916C" },
+              { x: 0, y: -245, r: 128, c: "#52B788" },
+              { x: 0, y: -125, r: 132, c: "#5EC28E" }
+            ];
+            crownPuffs.forEach(p => {
+              ctx.fillStyle = p.c;
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+              ctx.fill();
+            });
+            ctx.restore();
+
+            // Foreground grass mound covering base neatly
+            ctx.fillStyle = "#52B788";
+            ctx.beginPath();
+            ctx.ellipse(tx, 765, 240, 48, 0, Math.PI, 0);
+            ctx.fill();
+          }
+        }
+      ];
+
+      /* ============================================================================
+         6. GAME STATE, INPUT HANDLING & PAINTERLY FRAME
+      ============================================================================ */
+      let currentIndex = 0;
+      let sceneState = { fixed: false, anim: 0, celebrateTime: 0, bounce: 0 };
+      let transitionAlpha = 0; // Smooth warm fade on scene change
+      let globalTime = 0;
+      let lastFrame = performance.now();
+
+      function advanceScene() {
+        SoundFX.nextClick();
+        currentIndex = (currentIndex + 1) % SCENES.length;
+        sceneState = { fixed: false, anim: 0, celebrateTime: 0, bounce: 0 };
+        particles.length = 0;
+        ripples.length = 0;
+        transitionAlpha = 0.85;
+        nextBtn.classList.remove("pulse");
+      }
+
+      nextBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        advanceScene();
+      });
+
+      function isPointInHitbox(pt, hb) {
+        const pad = 35;
+        return (
+          pt.x >= hb.x - pad &&
+          pt.x <= hb.x + hb.w + pad &&
+          pt.y >= hb.y - pad &&
+          pt.y <= hb.y + hb.h + pad
+        );
+      }
+
+      function handleCanvasTap(clientX, clientY) {
+        const pt = screenToVirtual(clientX, clientY);
+        const scene = SCENES[currentIndex];
+        const hb = scene.hitbox;
+        const inside = isPointInHitbox(pt, hb);
+
+        if (inside && !sceneState.fixed) {
+          sceneState.fixed = true;
+          sceneState.anim = 0.001;
+          sceneState.celebrateTime = 0;
+          if (SoundFX[scene.sound]) SoundFX[scene.sound]();
+          spawnBurst(hb.x + hb.w * 0.5, hb.y + hb.h * 0.5, scene.particles, 38);
+          nextBtn.classList.add("pulse");
+        } else if (inside && sceneState.fixed) {
+          // Joyful extra sparkle & happy bounce when tapping the already-fixed object!
+          sceneState.bounce = 1;
+          SoundFX.sparkle();
+          spawnBurst(pt.x, pt.y, scene.particles, 18);
+        } else {
+          // Gentle playful tap feedback anywhere else on the living scene
+          SoundFX.tap();
+          spawnRipple(pt.x, pt.y);
+        }
+      }
+
+      canvas.addEventListener("pointerdown", (e) => {
+        handleCanvasTap(e.clientX, e.clientY);
+      });
+
+      canvas.addEventListener("pointermove", (e) => {
+        const pt = screenToVirtual(e.clientX, e.clientY);
+        const inside = isPointInHitbox(pt, SCENES[currentIndex].hitbox);
+        canvas.style.cursor = inside ? "pointer" : "default";
+      });
+
+      function handleCanvasTap(clientX, clientY) {
+        const pt = screenToVirtual(clientX, clientY);
+        const scene = SCENES[currentIndex];
+        const hb = scene.hitbox;
+        // Generous +35px padding around hitbox for kid-friendly touch/mouse control
+        const pad = 35;
+        const inside =
+          pt.x >= hb.x - pad &&
+          pt.x <= hb.x + hb.w + pad &&
+          pt.y >= hb.y - pad &&
+          pt.y <= hb.y + hb.h + pad;
+
+        if (inside && !sceneState.fixed) {
+          sceneState.fixed = true;
+          sceneState.anim = 0.001;
+          sceneState.celebrateTime = 0;
+          if (SoundFX[scene.sound]) SoundFX[scene.sound]();
+          spawnBurst(hb.x + hb.w * 0.5, hb.y + hb.h * 0.5, scene.particles, 38);
+          nextBtn.classList.add("pulse");
+        } else if (inside && sceneState.fixed) {
+          // Joyful extra sparkle when tapping the already-fixed object!
+          SoundFX.sparkle();
+          spawnBurst(pt.x, pt.y, scene.particles, 16);
+        } else {
+          // Gentle playful tap feedback anywhere else on the living scene
+          SoundFX.tap();
+          spawnRipple(pt.x, pt.y);
+        }
+      }
+
+      canvas.addEventListener("pointerdown", (e) => {
+        handleCanvasTap(e.clientX, e.clientY);
+      });
+
+      // Draw subtle textured storybook wooden/painterly vignette border around viewport
+      function drawPainterlyFrame() {
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Soft paper grain across whole canvas
+        if (grainPattern) {
+          ctx.fillStyle = grainPattern;
+          ctx.fillRect(0, 0, viewW, viewH);
+        }
+
+        // Warm painterly vignette around edges
+        const rad = Math.max(viewW, viewH) * 0.72;
+        const vig = ctx.createRadialGradient(viewW * 0.5, viewH * 0.5, rad * 0.58, viewW * 0.5, viewH * 0.5, rad);
+        vig.addColorStop(0, "rgba(45, 25, 10, 0)");
+        vig.addColorStop(0.82, "rgba(45, 25, 10, 0.14)");
+        vig.addColorStop(1, "rgba(45, 22, 8, 0.42)");
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, viewW, viewH);
+
+        // Thin handcrafted wooden storybook border
+        const bw = Math.max(8, Math.min(viewW, viewH) * 0.014);
+        ctx.strokeStyle = "#6F4518";
+        ctx.lineWidth = bw * 2;
+        ctx.strokeRect(0, 0, viewW, viewH);
+
+        ctx.strokeStyle = "rgba(255, 240, 200, 0.35)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bw + 2, bw + 2, viewW - (bw + 2) * 2, viewH - (bw + 2) * 2);
+
+        // Smooth scene transition veil
+        if (transitionAlpha > 0.005) {
+          ctx.fillStyle = `rgba(255, 246, 226, ${transitionAlpha})`;
+          ctx.fillRect(0, 0, viewW, viewH);
+        }
+        ctx.restore();
+      }
+
+      /* ============================================================================
+         7. MAIN 60FPS ANIMATION LOOP
+      ============================================================================ */
+      function loop(now) {
+        const dt = Math.min(0.05, (now - lastFrame) / 1000);
+        lastFrame = now;
+        globalTime += dt;
+
+        if (sceneState.fixed && sceneState.anim < 1) {
+          sceneState.anim = Math.min(1, sceneState.anim + dt * 1.9);
+        }
+        if (sceneState.fixed) {
+          sceneState.celebrateTime += dt;
+        }
+        if (sceneState.bounce > 0) {
+          sceneState.bounce = Math.max(0, sceneState.bounce - dt * 2.8);
+        }
+        if (transitionAlpha > 0) {
+          transitionAlpha = Math.max(0, transitionAlpha - dt * 3.4);
+        }
+
+        // Apply high-DPI + centered 16:9 virtual transform
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+
+        // Render active scene
+        SCENES[currentIndex].draw(globalTime, sceneState);
+
+        // Render particles & ripples in virtual coordinates
+        updateAndDrawParticles(dt);
+
+        // Render viewport-fitted painterly frame & vignette
+        drawPainterlyFrame();
+
+        requestAnimationFrame(loop);
+      }
+
+      window.onload = function () {
+        resizeCanvas();
+        lastFrame = performance.now();
+        requestAnimationFrame(loop);
+      };
+    })();
+  </script>
+</body>
+</html>
