@@ -1,0 +1,2539 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Дискотека складів Д</title>
+  <style>
+    /* Full-screen locked viewport, zero scrollbars, crisp touch interaction */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #23093d;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      cursor: default;
+    }
+
+    /* Strictly 2 minimalist floating disco-styled buttons, zero white rectangles */
+    .ui-btn {
+      position: fixed;
+      top: 16px;
+      z-index: 20;
+      border: 3px solid #ffe66d;
+      border-radius: 999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: 900;
+      color: #ffffff;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+      box-shadow:
+        0 0 16px rgba(255, 107, 214, 0.55),
+        0 5px 0 rgba(25, 5, 50, 0.45),
+        inset 0 3px 6px rgba(255, 255, 255, 0.42);
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease, box-shadow 0.14s ease;
+      outline: none;
+    }
+
+    .ui-btn:hover {
+      transform: translateY(-2px) scale(1.07);
+      filter: brightness(1.1);
+    }
+
+    .ui-btn:active {
+      transform: translateY(3px) scale(0.94);
+      box-shadow:
+        0 0 10px rgba(255, 107, 214, 0.4),
+        0 2px 0 rgba(25, 5, 50, 0.5),
+        inset 0 2px 4px rgba(255, 255, 255, 0.3);
+    }
+
+    #langBtn {
+      left: 18px;
+      min-width: 78px;
+      height: 54px;
+      padding: 0 18px;
+      font-size: 22px;
+      letter-spacing: 1px;
+      background: linear-gradient(180deg, #ff4fd8 0%, #9b2cff 100%);
+    }
+
+    #nextBtn {
+      right: 18px;
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(180deg, #00e5ff 0%, #3a5bff 100%);
+    }
+
+    #nextBtn svg {
+      width: 28px;
+      height: 28px;
+      filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+    }
+
+    @media (max-width: 640px) {
+      .ui-btn {
+        top: 10px;
+      }
+      #langBtn {
+        left: 10px;
+        min-width: 66px;
+        height: 46px;
+        font-size: 18px;
+        padding: 0 14px;
+      }
+      #nextBtn {
+        right: 10px;
+        width: 48px;
+        height: 48px;
+      }
+      #nextBtn svg {
+        width: 22px;
+        height: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fullscreen procedural cartoon disco canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Top-left: Single sleek language toggle button ('укр' / 'рус') -->
+  <button id="langBtn" class="ui-btn" aria-label="Language toggle">укр</button>
+
+  <!-- Top-right: Minimalist circular Next button with crisp arrow icon -->
+  <button id="nextBtn" class="ui-btn" aria-label="Next">
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 16H24M24 16L16.5 8.5M24 16L16.5 23.5" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <script>
+    (function () {
+      'use strict';
+
+      /* =========================================================================
+       * 1. WEB AUDIO API DISCO SYNTHESIZER (Zero external audio files)
+       *    Generates funky basslines, disco drums, 5 distinct dance riffs,
+       *    playful wrong boings, syllable chimes, and finale synth fanfares.
+       * ========================================================================= */
+      class DiscoSoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.noiseBuffer = null;
+          this.activeTimers = [];
+        }
+
+        unlock() {
+          try {
+            if (!this.ctx) {
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (AudioCtx) {
+                this.ctx = new AudioCtx();
+                this._createNoiseBuffer();
+              }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+              this.ctx.resume();
+            }
+          } catch (e) {
+            // Gracefully degrade if Web Audio is unavailable
+          }
+        }
+
+        _ensure() {
+          if (!this.ctx) this.unlock();
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+          return this.ctx;
+        }
+
+        _createNoiseBuffer() {
+          if (!this.ctx) return;
+          const length = this.ctx.sampleRate * 0.4;
+          const buf = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
+          const data = buf.getChannelData(0);
+          for (let i = 0; i < length; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          this.noiseBuffer = buf;
+        }
+
+        stopGroove() {
+          this.activeTimers.forEach((id) => clearTimeout(id));
+          this.activeTimers = [];
+        }
+
+        _kick(t) {
+          const ctx = this.ctx;
+          if (!ctx) return;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(145, t);
+          osc.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+          gain.gain.setValueAtTime(0.24, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.19);
+        }
+
+        _clap(t) {
+          const ctx = this.ctx;
+          if (!ctx || !this.noiseBuffer) return;
+          const src = ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(1350, t);
+          filter.Q.setValueAtTime(1.4, t);
+          const gain = ctx.createGain();
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(0.13, t + 0.008);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          src.start(t);
+          src.stop(t + 0.14);
+        }
+
+        _hihat(t, open = false) {
+          const ctx = this.ctx;
+          if (!ctx || !this.noiseBuffer) return;
+          const src = ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'highpass';
+          filter.frequency.setValueAtTime(6500, t);
+          const gain = ctx.createGain();
+          const dur = open ? 0.11 : 0.045;
+          gain.gain.setValueAtTime(open ? 0.075 : 0.045, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          src.start(t);
+          src.stop(t + dur + 0.01);
+        }
+
+        _bass(t, freq, dur = 0.16) {
+          const ctx = this.ctx;
+          if (!ctx) return;
+          const osc = ctx.createOscillator();
+          const filter = ctx.createBiquadFilter();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, t);
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(720, t);
+          filter.frequency.exponentialRampToValueAtTime(240, t + dur);
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(0.12, t + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + dur + 0.02);
+        }
+
+        _synthNote(t, freq, dur = 0.16, type = 'triangle', vol = 0.11) {
+          const ctx = this.ctx;
+          if (!ctx) return;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(vol, t + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + dur + 0.02);
+        }
+
+        // Play a 2.3-second custom upbeat disco groove tailored to each dance style
+        playDanceGroove(style) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          this.stopGroove();
+
+          const now = ctx.currentTime + 0.02;
+          const step = 0.14; // ~107-115 BPM funky sixteenth/eighth groove
+          const steps = 16;
+
+          // Distinct funky basslines & synth lead melodies per dance style
+          const grooves = {
+            headspin: {
+              bass: [110, 0, 220, 110, 130.8, 0, 146.8, 164.8, 110, 0, 220, 110, 196, 164.8, 146.8, 130.8],
+              lead: [440, 523.25, 659.25, 523.25, 880, 0, 784, 659.25, 523.25, 659.25, 784, 880, 1046.5, 0, 880, 1046.5],
+              type: 'square'
+            },
+            fever: {
+              bass: [130.8, 261.6, 130.8, 261.6, 146.8, 293.6, 164.8, 329.6, 174.6, 349.2, 164.8, 329.6, 146.8, 293.6, 196, 261.6],
+              lead: [523.25, 0, 659.25, 784, 880, 784, 659.25, 0, 784, 880, 1046.5, 880, 784, 659.25, 784, 1046.5],
+              type: 'triangle'
+            },
+            moonwalk: {
+              bass: [123.5, 0, 146.8, 164.8, 185, 0, 164.8, 146.8, 123.5, 0, 146.8, 164.8, 196, 220, 246.9, 0],
+              lead: [493.88, 587.33, 659.25, 739.99, 987.77, 0, 739.99, 659.25, 587.33, 659.25, 739.99, 987.77, 1174.66, 987.77, 880, 987.77],
+              type: 'sine'
+            },
+            jelly: {
+              bass: [146.8, 146.8, 293.6, 0, 164.8, 164.8, 329.6, 0, 196, 196, 392, 0, 220, 196, 164.8, 146.8],
+              lead: [587.33, 739.99, 880, 0, 659.25, 880, 987.77, 0, 784, 987.77, 1174.66, 0, 880, 1174.66, 1318.5, 1174.66],
+              type: 'triangle'
+            },
+            cancan: {
+              bass: [130.8, 196, 130.8, 196, 146.8, 220, 146.8, 220, 164.8, 246.9, 174.6, 261.6, 196, 293.6, 261.6, 196],
+              lead: [523.25, 659.25, 784, 659.25, 880, 784, 659.25, 587.33, 659.25, 784, 880, 987.77, 1046.5, 880, 1046.5, 1318.5],
+              type: 'sawtooth'
+            }
+          };
+
+          const g = grooves[style] || grooves.fever;
+
+          for (let i = 0; i < steps; i++) {
+            const t = now + i * step;
+            // Four-on-the-floor disco kick + claps + crisp hi-hats
+            if (i % 4 === 0) this._kick(t);
+            if (i % 4 === 2) this._clap(t);
+            this._hihat(t, i % 4 === 2);
+
+            if (g.bass[i] > 0) {
+              this._bass(t, g.bass[i], step * 0.9);
+            }
+            if (g.lead[i] > 0) {
+              const vol = g.type === 'square' || g.type === 'sawtooth' ? 0.065 : 0.11;
+              this._synthNote(t, g.lead[i], step * 0.85, g.type, vol);
+            }
+          }
+        }
+
+        // Playful rubbery boing/wobble for wrong character (never harsh!)
+        playWrong() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const lfo = ctx.createOscillator();
+          const lfoGain = ctx.createGain();
+          const gain = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(310, now);
+          osc.frequency.exponentialRampToValueAtTime(165, now + 0.34);
+
+          lfo.type = 'sine';
+          lfo.frequency.setValueAtTime(24, now);
+          lfoGain.gain.setValueAtTime(34, now);
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          lfo.start(now);
+          osc.stop(now + 0.38);
+          lfo.stop(now + 0.38);
+        }
+
+        // Cheerful sparkle pop on new syllable or button press
+        playSyllablePop() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          [523.25, 783.99].forEach((f, idx) => {
+            const t = now + idx * 0.055;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(f, t);
+            osc.frequency.exponentialRampToValueAtTime(f * 1.15, t + 0.09);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.11, t + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.15);
+          });
+        }
+
+        // Joyful upward sparkle burst when dancer finishes and vanishes in confetti
+        playVanishSparkle() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          [587.33, 783.99, 1046.5, 1318.5].forEach((f, idx) => {
+            this._synthNote(now + idx * 0.045, f, 0.22, 'triangle', 0.1);
+          });
+        }
+
+        // Bouncy boing for jelly trampoline jumps
+        playBoing(pitch = 1) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(210 * pitch, now);
+          osc.frequency.exponentialRampToValueAtTime(590 * pitch, now + 0.15);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.1, now + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.22);
+        }
+
+        // Triumphant synth disco fanfare when all 5 characters finish dancing!
+        playWaveFinale() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const notes = [523.25, 659.25, 783.99, 1046.5, 880, 1046.5, 1318.5, 1567.98];
+          notes.forEach((f, i) => {
+            const t = now + i * 0.095;
+            this._synthNote(t, f, 0.38, 'triangle', 0.13);
+            this._synthNote(t, f * 0.5, 0.35, 'sawtooth', 0.045);
+            if (i % 2 === 0) this._kick(t);
+            if (i % 2 === 1) this._clap(t);
+          });
+        }
+      }
+
+      const sound = new DiscoSoundEngine();
+
+      /* =========================================================================
+       * 2. CONFIGURATION, SYLLABLES & DANCE STYLES
+       * ========================================================================= */
+      const VIRTUAL_W = 1600;
+      const VIRTUAL_H = 900;
+
+      const CHARACTER_DEFS = {
+        da: { id: 'da', syllables: { uk: 'ДА', ru: 'ДА' }, kind: 'dalmatian' },
+        do: { id: 'do', syllables: { uk: 'ДО', ru: 'ДО' }, kind: 'domino' },
+        du: { id: 'du', syllables: { uk: 'ДУ', ru: 'ДУ' }, kind: 'shower' },
+        dy: { id: 'dy', syllables: { uk: 'ДИ', ru: 'ДЫ' }, kind: 'melon' },
+        de: { id: 'de', syllables: { uk: 'ДЕ', ru: 'ДЕ' }, kind: 'dolphin' }
+      };
+
+      const CHAR_KEYS = ['da', 'do', 'du', 'dy', 'de'];
+      const DANCE_STYLES = ['headspin', 'fever', 'moonwalk', 'jelly', 'cancan'];
+
+      // 5 spacious foreground waiting slots arranged in a clean arc below the center dance floor
+      const WAITING_SLOTS = [
+        { x: 220, y: 810 },
+        { x: 510, y: 836 },
+        { x: 800, y: 850 },
+        { x: 1090, y: 836 },
+        { x: 1380, y: 810 }
+      ];
+
+      // Center stage coordinates on the illuminated 3D disco floor
+      const DANCE_CENTER_X = 800;
+      const DANCE_CENTER_Y = 612;
+
+      // Disco floor perspective grid geometry
+      const FLOOR_TOP_Y = 478;
+      const FLOOR_BOT_Y = 735;
+      const FLOOR_TOP_W = 860;
+      const FLOOR_BOT_W = 1380;
+      const FLOOR_COLS = 8;
+      const FLOOR_ROWS = 5;
+
+      const TILE_PALETTE = [
+        '#ff3e9d', '#00e5ff', '#ffe66d', '#9b5cff',
+        '#2ed573', '#ff7f50', '#ff6b81', '#1e90ff'
+      ];
+
+      function shuffleArray(arr) {
+        const copy = arr.slice();
+        for (let i = copy.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+      }
+
+      /* =========================================================================
+       * 3. RESPONSIVE CANVAS & COORDINATE MAPPING
+       * ========================================================================= */
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const langBtn = document.getElementById('langBtn');
+      const nextBtn = document.getElementById('nextBtn');
+
+      let viewW = window.innerWidth;
+      let viewH = window.innerHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let stageScale = 1;
+      let stageOffsetX = 0;
+      let stageOffsetY = 0;
+
+      function resizeCanvas() {
+        viewW = window.innerWidth;
+        viewH = window.innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(viewW * dpr);
+        canvas.height = Math.round(viewH * dpr);
+        canvas.style.width = viewW + 'px';
+        canvas.style.height = viewH + 'px';
+
+        stageScale = Math.min(viewW / VIRTUAL_W, viewH / VIRTUAL_H);
+        stageOffsetX = (viewW - VIRTUAL_W * stageScale) * 0.5;
+        stageOffsetY = (viewH - VIRTUAL_H * stageScale) * 0.5;
+      }
+
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      function screenToStage(clientX, clientY) {
+        return {
+          x: (clientX - stageOffsetX) / stageScale,
+          y: (clientY - stageOffsetY) / stageScale
+        };
+      }
+
+      /* =========================================================================
+       * 4. AMBIENT DISCO ROOM ELEMENTS (Light Dots, Equalizer, Floor Ripples)
+       * ========================================================================= */
+      const discoDots = [];
+      for (let i = 0; i < 38; i++) {
+        discoDots.push({
+          angle: (i / 38) * Math.PI * 2,
+          radiusX: 220 + (i % 7) * 105,
+          radiusY: 110 + (i % 5) * 85,
+          speed: (i % 2 === 0 ? 1 : -1) * (0.28 + (i % 4) * 0.14),
+          size: 7 + (i % 4) * 3.5,
+          color: TILE_PALETTE[i % TILE_PALETTE.length],
+          phase: i * 0.9
+        });
+      }
+
+      const eqBars = [];
+      const EQ_COUNT = 22;
+      for (let i = 0; i < EQ_COUNT; i++) {
+        eqBars.push({
+          height: 0.25,
+          target: 0.25,
+          phase: i * 0.55,
+          color: TILE_PALETTE[i % TILE_PALETTE.length]
+        });
+      }
+
+      const floorRipples = []; // { x, y, radius, maxRadius, life, maxLife, color }
+      const soundRings = [];   // Emitted from left/right speakers during dances
+
+      function spawnFloorRipple(x, y, color = '#00e5ff') {
+        floorRipples.push({
+          x,
+          y,
+          radius: 10,
+          maxRadius: 420,
+          life: 0,
+          maxLife: 0.7,
+          color
+        });
+      }
+
+      function spawnSpeakerRing(x, y, dir) {
+        soundRings.push({
+          x,
+          y,
+          dir,
+          radius: 26,
+          life: 0,
+          maxLife: 0.65,
+          color: TILE_PALETTE[Math.floor(Math.random() * TILE_PALETTE.length)]
+        });
+      }
+
+      /* =========================================================================
+       * 5. PARTICLE SYSTEM (Disco Stars, Confetti, Musical Notes, Sparkles)
+       * ========================================================================= */
+      const particles = [];
+
+      function spawnDiscoBurst(x, y, count = 36, speedBoost = 1) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = (120 + Math.random() * 340) * speedBoost;
+          const types = ['star', 'confetti', 'note', 'sparkle'];
+          particles.push({
+            type: types[i % types.length],
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 150,
+            gravity: 390,
+            size: 10 + Math.random() * 14,
+            color: TILE_PALETTE[Math.floor(Math.random() * TILE_PALETTE.length)],
+            rot: Math.random() * Math.PI * 2,
+            vrot: (Math.random() - 0.5) * 11,
+            life: 0,
+            maxLife: 0.9 + Math.random() * 0.75
+          });
+        }
+      }
+
+      function spawnSingleSparkle(x, y, type = 'star', color = null) {
+        particles.push({
+          type,
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 130,
+          vy: -80 - Math.random() * 140,
+          gravity: type === 'note' ? -35 : 220,
+          size: 9 + Math.random() * 10,
+          color: color || TILE_PALETTE[Math.floor(Math.random() * TILE_PALETTE.length)],
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 8,
+          life: 0,
+          maxLife: 0.65 + Math.random() * 0.45
+        });
+      }
+
+      function spawnFinaleConfetti() {
+        for (let i = 0; i < 90; i++) {
+          particles.push({
+            type: i % 3 === 0 ? 'star' : (i % 4 === 0 ? 'note' : 'confetti'),
+            x: 80 + Math.random() * 1440,
+            y: -40 - Math.random() * 220,
+            vx: (Math.random() - 0.5) * 160,
+            vy: 140 + Math.random() * 260,
+            gravity: 110,
+            size: 11 + Math.random() * 14,
+            color: TILE_PALETTE[i % TILE_PALETTE.length],
+            rot: Math.random() * Math.PI * 2,
+            vrot: (Math.random() - 0.5) * 12,
+            life: 0,
+            maxLife: 2.1 + Math.random() * 0.9
+          });
+        }
+      }
+
+      function updateParticles(dt) {
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.life += dt;
+          if (p.life >= p.maxLife) {
+            particles.splice(i, 1);
+            continue;
+          }
+          p.vy += p.gravity * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.rot += p.vrot * dt;
+        }
+      }
+
+      function drawParticles(ctx) {
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          const t = p.life / p.maxLife;
+          const alpha = t < 0.12 ? t / 0.12 : Math.max(0, 1 - (t - 0.12) / 0.88);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+
+          if (p.type === 'confetti') {
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.size * 0.5, -p.size * 0.28, p.size, p.size * 0.56);
+          } else if (p.type === 'star' || p.type === 'sparkle') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            const spikes = p.type === 'star' ? 5 : 4;
+            const outerR = p.size * 0.75;
+            const innerR = outerR * 0.42;
+            for (let s = 0; s < spikes * 2; s++) {
+              const r = s % 2 === 0 ? outerR : innerR;
+              const a = (s * Math.PI) / spikes - Math.PI / 2;
+              const sx = Math.cos(a) * r;
+              const sy = Math.sin(a) * r;
+              if (s === 0) ctx.moveTo(sx, sy);
+              else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.fill();
+          } else if (p.type === 'note') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.ellipse(-4, 6, 7.5, 5.5, -0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(2, 5);
+            ctx.lineTo(2, -14);
+            ctx.quadraticCurveTo(13, -12, 11, -3);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+
+      /* =========================================================================
+       * 6. GAME STATE & WAVE MANAGEMENT
+       * ========================================================================= */
+      const game = {
+        lang: 'uk', // 'uk' -> 'укр' (ДА,ДО,ДУ,ДИ,ДЕ), 'ru' -> 'рус' (ДА,ДО,ДУ,ДЫ,ДЕ)
+        state: 'WAITING_INPUT', // WAITING_INPUT | LEAP_TO_FLOOR | DANCING | VANISH_POP | WAVE_FINALE
+        time: 0,
+        beatPhase: 0,
+        speakerPulse: 0,
+        discoSpin: 0,
+        spotlightFocus: 0, // 0 = sweeping room, 1 = converged on center floor
+
+        pointer: { x: 800, y: 450, active: false },
+        hoveredId: null,
+
+        characters: [],
+        queue: [],
+        targetId: null,
+        signBounce: 1,
+
+        dancer: {
+          char: null,
+          style: 'fever',
+          t: 0,
+          duration: 2.35,
+          leapT: 0,
+          startX: 0,
+          startY: 0,
+          pose: {}, // Dynamic procedural dance limb overrides
+          flags: {},
+          sparkTimer: 0
+        },
+
+        finaleTimer: 0
+      };
+
+      function getSyllableText(charId) {
+        return CHARACTER_DEFS[charId].syllables[game.lang];
+      }
+
+      function createWave() {
+        sound.stopGroove();
+        const shuffledIds = shuffleArray(CHAR_KEYS);
+        const shuffledSlots = shuffleArray(WAITING_SLOTS);
+        const shuffledDances = shuffleArray(DANCE_STYLES);
+
+        game.characters = shuffledIds.map((id, idx) => ({
+          id,
+          homeX: shuffledSlots[idx].x,
+          homeY: shuffledSlots[idx].y,
+          x: shuffledSlots[idx].x,
+          y: shuffledSlots[idx].y,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          idlePhase: Math.random() * Math.PI * 2,
+          blinkTimer: 1.4 + Math.random() * 3.2,
+          isBlinking: false,
+          wrongTimer: 0,
+          hoverBoost: 0,
+          danceStyle: shuffledDances[idx],
+          spawnPop: 0.05
+        }));
+
+        game.queue = shuffleArray(CHAR_KEYS);
+        game.targetId = game.queue[0];
+        game.state = 'WAITING_INPUT';
+        game.dancer.char = null;
+        game.signBounce = 0.25;
+      }
+
+      function startCharacterDance(ch) {
+        game.state = 'LEAP_TO_FLOOR';
+        game.hoveredId = null;
+        canvas.style.cursor = 'default';
+
+        game.dancer.char = ch;
+        game.dancer.style = ch.danceStyle;
+        game.dancer.leapT = 0;
+        game.dancer.t = 0;
+        game.dancer.duration = 2.4;
+        game.dancer.startX = ch.homeX;
+        game.dancer.startY = ch.homeY;
+        game.dancer.pose = {};
+        game.dancer.flags = {};
+        game.dancer.sparkTimer = 0;
+
+        sound.playDanceGroove(ch.danceStyle);
+        spawnDiscoBurst(ch.x, ch.y - 70, 22, 0.8);
+      }
+
+      function finishCurrentDancer() {
+        const ch = game.dancer.char;
+        if (ch) {
+          spawnDiscoBurst(ch.x, ch.y - 70, 48, 1.15);
+          spawnFloorRipple(ch.x, ch.y, '#ffe66d');
+          sound.playVanishSparkle();
+
+          const doneId = ch.id;
+          game.characters = game.characters.filter((c) => c.id !== doneId);
+          game.queue = game.queue.filter((id) => id !== doneId);
+          game.dancer.char = null;
+        }
+
+        if (game.queue.length > 0 && game.characters.length > 0) {
+          game.targetId = game.queue[0];
+          game.signBounce = 0.25;
+          game.state = 'WAITING_INPUT';
+          sound.playSyllablePop();
+        } else {
+          // All 5 characters finished dancing — trigger festive disco finale!
+          game.state = 'WAVE_FINALE';
+          game.finaleTimer = 2.3;
+          game.targetId = null;
+          sound.playWaveFinale();
+          spawnFinaleConfetti();
+          spawnFloorRipple(DANCE_CENTER_X, DANCE_CENTER_Y, '#ff3e9d');
+          spawnFloorRipple(DANCE_CENTER_X - 240, DANCE_CENTER_Y + 30, '#00e5ff');
+          spawnFloorRipple(DANCE_CENTER_X + 240, DANCE_CENTER_Y + 30, '#ffe66d');
+        }
+      }
+
+      function skipToNext() {
+        sound.unlock();
+        sound.stopGroove();
+        sound.playSyllablePop();
+
+        if (game.state === 'WAVE_FINALE') {
+          createWave();
+          return;
+        }
+
+        if ((game.state === 'LEAP_TO_FLOOR' || game.state === 'DANCING') && game.dancer.char) {
+          // Immediately complete the active dancer and advance
+          const doneId = game.dancer.char.id;
+          game.characters = game.characters.filter((c) => c.id !== doneId);
+          game.queue = game.queue.filter((id) => id !== doneId);
+          game.dancer.char = null;
+        } else if (game.state === 'WAITING_INPUT') {
+          if (game.queue.length > 1) {
+            const current = game.queue.shift();
+            game.queue.push(current);
+          } else {
+            createWave();
+            return;
+          }
+        }
+
+        if (game.queue.length === 0 || game.characters.length === 0) {
+          createWave();
+          return;
+        }
+
+        // Reset remaining characters cleanly to their home slots
+        game.characters.forEach((c) => {
+          c.x = c.homeX;
+          c.y = c.homeY;
+          c.scaleX = 1;
+          c.scaleY = 1;
+          c.rotation = 0;
+          c.wrongTimer = 0;
+        });
+
+        game.targetId = game.queue[0];
+        game.signBounce = 0.25;
+        game.state = 'WAITING_INPUT';
+      }
+
+      /* =========================================================================
+       * 7. INPUT HANDLING (Accurate Mouse + Touch with Child-Friendly Hitboxes)
+       * ========================================================================= */
+      function findCharacterAt(x, y) {
+        for (let i = game.characters.length - 1; i >= 0; i--) {
+          const c = game.characters[i];
+          if (c === game.dancer.char) continue;
+          const dx = x - c.x;
+          const dy = y - (c.y - 72);
+          if (dx * dx + dy * dy <= 105 * 105) {
+            return c;
+          }
+        }
+        return null;
+      }
+
+      canvas.addEventListener('pointermove', (e) => {
+        const pt = screenToStage(e.clientX, e.clientY);
+        game.pointer.x = pt.x;
+        game.pointer.y = pt.y;
+        game.pointer.active = true;
+
+        if (game.state === 'WAITING_INPUT') {
+          const hit = findCharacterAt(pt.x, pt.y);
+          game.hoveredId = hit ? hit.id : null;
+          canvas.style.cursor = hit ? 'pointer' : 'default';
+        } else {
+          game.hoveredId = null;
+          canvas.style.cursor = 'default';
+        }
+      });
+
+      canvas.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        sound.unlock();
+        const pt = screenToStage(e.clientX, e.clientY);
+        game.pointer.x = pt.x;
+        game.pointer.y = pt.y;
+        game.pointer.active = true;
+
+        if (game.state !== 'WAITING_INPUT') return;
+        const hit = findCharacterAt(pt.x, pt.y);
+        if (!hit) return;
+
+        if (hit.id === game.targetId) {
+          startCharacterDance(hit);
+        } else {
+          hit.wrongTimer = 0.62;
+          sound.playWrong();
+        }
+      });
+
+      langBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.unlock();
+        sound.playSyllablePop();
+        game.lang = game.lang === 'uk' ? 'ru' : 'uk';
+        langBtn.textContent = game.lang === 'uk' ? 'укр' : 'рус';
+        game.signBounce = 0.45;
+      });
+
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        skipToNext();
+      });
+
+      /* =========================================================================
+       * 8. UPDATE LOOP & 5 COMPLETELY DIFFERENT HILARIOUS DANCES
+       * ========================================================================= */
+      function updateGame(dt) {
+        game.time += dt;
+
+        const isParty = game.state === 'DANCING' || game.state === 'LEAP_TO_FLOOR' || game.state === 'WAVE_FINALE';
+        const isFinale = game.state === 'WAVE_FINALE';
+
+        // Disco ball rotation speed (normal, energetic, turbo during finale!)
+        const spinRate = isFinale ? 4.8 : isParty ? 2.2 : 0.75;
+        game.discoSpin += dt * spinRate;
+
+        // Beat pulse (syncs speakers, equalizer, and character bobbing)
+        const beatFreq = isParty ? 3.55 : 1.75;
+        const prevBeat = Math.floor(game.beatPhase);
+        game.beatPhase += dt * beatFreq;
+        if (Math.floor(game.beatPhase) !== prevBeat) {
+          game.speakerPulse = isParty ? 1.0 : 0.32;
+          if (isParty) {
+            spawnSpeakerRing(175, 420, 1);
+            spawnSpeakerRing(1425, 420, -1);
+          }
+        }
+        game.speakerPulse = Math.max(0, game.speakerPulse - dt * 4.5);
+
+        // Smooth spotlight convergence onto center dance floor
+        const targetFocus = (game.state === 'DANCING' || game.state === 'LEAP_TO_FLOOR') ? 1 : 0;
+        game.spotlightFocus += (targetFocus - game.spotlightFocus) * Math.min(1, dt * 6);
+
+        // Elastic bounce for syllable marquee
+        game.signBounce += (1 - game.signBounce) * Math.min(1, dt * 11);
+
+        // Update equalizer bars dynamically
+        for (let i = 0; i < eqBars.length; i++) {
+          const bar = eqBars[i];
+          const wave = Math.sin(game.time * (isParty ? 11 : 3.5) + bar.phase) * 0.5 + 0.5;
+          const jitter = Math.sin(game.time * (isParty ? 17 : 5) + i * 1.9) * 0.5 + 0.5;
+          bar.target = isParty
+            ? 0.25 + wave * 0.45 + jitter * 0.35 + game.speakerPulse * 0.2
+            : 0.14 + wave * 0.24 + jitter * 0.12;
+          bar.height += (bar.target - bar.height) * Math.min(1, dt * 14);
+        }
+
+        // Update floor ripples
+        for (let i = floorRipples.length - 1; i >= 0; i--) {
+          const r = floorRipples[i];
+          r.life += dt;
+          if (r.life >= r.maxLife) {
+            floorRipples.splice(i, 1);
+          } else {
+            r.radius = (r.life / r.maxLife) * r.maxRadius;
+          }
+        }
+
+        // Update speaker sound-wave rings
+        for (let i = soundRings.length - 1; i >= 0; i--) {
+          const sr = soundRings[i];
+          sr.life += dt;
+          if (sr.life >= sr.maxLife) {
+            soundRings.splice(i, 1);
+          } else {
+            sr.radius += 260 * dt;
+          }
+        }
+
+        // Update waiting characters
+        for (const c of game.characters) {
+          c.spawnPop += (1 - c.spawnPop) * Math.min(1, dt * 9);
+          c.blinkTimer -= dt;
+          if (c.blinkTimer <= 0) {
+            if (!c.isBlinking) {
+              c.isBlinking = true;
+              c.blinkTimer = 0.13;
+            } else {
+              c.isBlinking = false;
+              c.blinkTimer = 1.8 + Math.random() * 3.4;
+            }
+          }
+          if (c.wrongTimer > 0) {
+            c.wrongTimer = Math.max(0, c.wrongTimer - dt);
+          }
+          const targetHover = game.hoveredId === c.id && game.state === 'WAITING_INPUT' ? 1 : 0;
+          c.hoverBoost += (targetHover - c.hoverBoost) * Math.min(1, dt * 12);
+        }
+
+        // Active dancer state machine
+        if (game.state === 'LEAP_TO_FLOOR') {
+          const d = game.dancer;
+          const ch = d.char;
+          d.leapT += dt / 0.42;
+          const t = Math.min(1, d.leapT);
+          const ease = 1 - Math.pow(1 - t, 3);
+          ch.x = d.startX + (DANCE_CENTER_X - d.startX) * ease;
+          ch.y = d.startY + (DANCE_CENTER_Y - d.startY) * ease - Math.sin(t * Math.PI) * 210;
+          ch.rotation = Math.sin(t * Math.PI) * (DANCE_CENTER_X >= d.startX ? 0.25 : -0.25);
+          ch.scaleX = 1 + (1 - Math.sin(t * Math.PI)) * 0.12;
+          ch.scaleY = 1 + Math.sin(t * Math.PI) * 0.18;
+
+          if (t >= 1) {
+            ch.x = DANCE_CENTER_X;
+            ch.y = DANCE_CENTER_Y;
+            ch.rotation = 0;
+            ch.scaleX = 1.15;
+            ch.scaleY = 1.15;
+            spawnFloorRipple(DANCE_CENTER_X, DANCE_CENTER_Y, '#00e5ff');
+            game.state = 'DANCING';
+          }
+        } else if (game.state === 'DANCING') {
+          updateDancePerformance(dt);
+        } else if (game.state === 'WAVE_FINALE') {
+          game.finaleTimer -= dt;
+          if (Math.random() < dt * 10) {
+            spawnSingleSparkle(150 + Math.random() * 1300, 120 + Math.random() * 550, 'star');
+          }
+          if (game.finaleTimer <= 0) {
+            createWave();
+          }
+        }
+
+        updateParticles(dt);
+      }
+
+      function updateDancePerformance(dt) {
+        const d = game.dancer;
+        const ch = d.char;
+        if (!ch) return;
+
+        d.t += dt / d.duration;
+        const t = Math.min(1, d.t);
+        const time = d.t * d.duration;
+
+        // Reset dynamic limb pose
+        const pose = {
+          armL: 0,
+          armR: 0,
+          legL: 0,
+          legR: 0,
+          kickL: 0,
+          kickR: 0,
+          split: 0,
+          noodle: false
+        };
+        d.pose = pose;
+
+        d.sparkTimer -= dt;
+
+        // Final celebratory jump in the last 12% before vanishing
+        if (t > 0.88) {
+          const ft = (t - 0.88) / 0.12;
+          ch.x = DANCE_CENTER_X;
+          ch.y = DANCE_CENTER_Y - Math.sin(ft * Math.PI * 0.85) * 165;
+          ch.rotation = 0;
+          ch.scaleX = 1.18 * (1 + ft * 0.22);
+          ch.scaleY = 1.18 * (1 + ft * 0.22);
+          pose.armL = -2.2;
+          pose.armR = 2.2;
+          pose.split = 0.5;
+          if (t >= 1) {
+            finishCurrentDancer();
+          }
+          return;
+        }
+
+        const p = t / 0.88; // 0..1 main dance routine
+
+        if (d.style === 'headspin') {
+          /* 1. BREAKDANCE HEADSPIN: Flips upside-down onto head, spins super fast with legs wide, sparks flying, pops upright */
+          if (p < 0.16) {
+            const k = p / 0.16;
+            ch.x = DANCE_CENTER_X;
+            ch.y = DANCE_CENTER_Y - Math.sin(k * Math.PI) * 95;
+            ch.rotation = k * Math.PI;
+            ch.scaleX = 1.16;
+            ch.scaleY = 1.16;
+          } else if (p < 0.84) {
+            const k = (p - 0.16) / 0.68;
+            ch.x = DANCE_CENTER_X + Math.sin(time * 9) * 28;
+            ch.y = DANCE_CENTER_Y - 120 + Math.abs(Math.sin(time * 18)) * 12;
+            ch.rotation = Math.PI + Math.sin(time * 20) * 0.12;
+            const spin = Math.cos(k * Math.PI * 16);
+            ch.scaleX = (spin >= 0 ? 1 : -1) * (0.28 + Math.abs(spin) * 0.92);
+            ch.scaleY = 1.16;
+            pose.split = 0.85 + Math.sin(time * 18) * 0.2;
+            pose.armL = -0.9;
+            pose.armR = 0.9;
+            if (d.sparkTimer <= 0) {
+              spawnSingleSparkle(ch.x + (Math.random() - 0.5) * 70, DANCE_CENTER_Y - 12, 'sparkle', '#ffe66d');
+              spawnSingleSparkle(ch.x + (Math.random() - 0.5) * 90, DANCE_CENTER_Y - 140, 'star');
+              d.sparkTimer = 0.07;
+            }
+          } else {
+            // Pop upright into triumphant finish pose
+            const k = (p - 0.84) / 0.16;
+            ch.x = DANCE_CENTER_X;
+            ch.y = DANCE_CENTER_Y - Math.sin(k * Math.PI) * 110;
+            ch.rotation = Math.PI + k * Math.PI;
+            ch.scaleX = 1.18;
+            ch.scaleY = 1.18;
+            pose.armL = -2.1;
+            pose.armR = 2.1;
+            if (!d.flags.popRipple) {
+              d.flags.popRipple = true;
+              spawnFloorRipple(DANCE_CENTER_X, DANCE_CENTER_Y, '#ff3e9d');
+            }
+          }
+        } else if (d.style === 'fever') {
+          /* 2. DISCO FEVER GROOVE: Classic diagonal arm-pointing high-up and low-down, hip sways, knee bends, star trails */
+          const beat = Math.sin(time * 7.2);
+          const doubleBeat = Math.abs(Math.sin(time * 7.2));
+          ch.x = DANCE_CENTER_X + beat * 85;
+          ch.y = DANCE_CENTER_Y - doubleBeat * 34;
+          ch.rotation = beat * 0.22;
+          ch.scaleX = 1.16 * (1 + (1 - doubleBeat) * 0.12);
+          ch.scaleY = 1.16 * (1 - (1 - doubleBeat) * 0.1);
+
+          // Classic Travolta diagonal point!
+          if (beat >= 0) {
+            pose.armR = 2.35;  // High up right
+            pose.armL = 0.65;  // Low hip left
+          } else {
+            pose.armL = -2.35; // High up left
+            pose.armR = -0.65; // Low hip right
+          }
+          pose.legL = beat * 0.35;
+          pose.legR = -beat * 0.35;
+
+          if (d.sparkTimer <= 0) {
+            const handX = ch.x + (beat >= 0 ? 78 : -78);
+            const handY = ch.y - 145;
+            spawnSingleSparkle(handX, handY, 'star', '#ffe66d');
+            d.sparkTimer = 0.08;
+          }
+        } else if (d.style === 'moonwalk') {
+          /* 3. MOONWALK & PIROUETTE: Smooth backward glide across tiles + dramatic leg slides, then tornado pirouette with musical notes */
+          if (p < 0.62) {
+            const k = p / 0.62;
+            const glide = Math.sin(k * Math.PI * 2);
+            ch.x = DANCE_CENTER_X + glide * 240;
+            ch.y = DANCE_CENTER_Y - Math.abs(Math.sin(time * 12)) * 10;
+            ch.rotation = glide >= 0 ? -0.14 : 0.14;
+            ch.scaleX = 1.16 * (Math.cos(k * Math.PI * 2) >= 0 ? -1 : 1);
+            ch.scaleY = 1.16;
+            pose.legL = Math.sin(time * 14) * 0.7;
+            pose.legR = -Math.sin(time * 14) * 0.7;
+            pose.armL = -0.7 + Math.sin(time * 14) * 0.4;
+            pose.armR = 0.7 - Math.sin(time * 14) * 0.4;
+            if (d.sparkTimer <= 0) {
+              spawnSingleSparkle(ch.x, DANCE_CENTER_Y + 4, 'sparkle', '#00e5ff');
+              d.sparkTimer = 0.09;
+            }
+          } else {
+            // Rapid tornado pirouette releasing musical notes!
+            const k = (p - 0.62) / 0.38;
+            ch.x = DANCE_CENTER_X + Math.sin(k * Math.PI * 3) * 30;
+            ch.y = DANCE_CENTER_Y - Math.sin(k * Math.PI) * 95;
+            const spin = Math.cos(k * Math.PI * 14);
+            ch.scaleX = (spin >= 0 ? 1 : -1) * (0.25 + Math.abs(spin) * 0.95);
+            ch.scaleY = 1.22;
+            ch.rotation = Math.sin(k * Math.PI * 6) * 0.14;
+            pose.armL = -1.6;
+            pose.armR = 1.6;
+            if (d.sparkTimer <= 0) {
+              spawnSingleSparkle(ch.x + (Math.random() - 0.5) * 90, ch.y - 95, 'note');
+              d.sparkTimer = 0.07;
+            }
+          }
+        } else if (d.style === 'jelly') {
+          /* 4. RUBBER JELLY BOUNCE & SPLITS: Squash-and-stretch trampoline jumps, noodle arms, mid-air splits, floor ripples on landing */
+          const jumps = 3;
+          const jIdx = Math.min(jumps - 1, Math.floor(p * jumps));
+          const localT = (p * jumps) - jIdx;
+
+          if (!d.flags['jump' + jIdx]) {
+            d.flags['jump' + jIdx] = true;
+            sound.playBoing(0.95 + jIdx * 0.16);
+            spawnFloorRipple(DANCE_CENTER_X, DANCE_CENTER_Y, TILE_PALETTE[jIdx * 2 % TILE_PALETTE.length]);
+          }
+
+          const air = Math.sin(localT * Math.PI);
+          ch.x = DANCE_CENTER_X + Math.sin(p * Math.PI * 3) * 65;
+          ch.y = DANCE_CENTER_Y - air * 215;
+
+          // Exaggerated rubber squash on ground, tall stretch in air
+          ch.scaleX = 1.16 * (1.38 - air * 0.55);
+          ch.scaleY = 1.16 * (0.68 + air * 0.58);
+          ch.rotation = Math.sin(localT * Math.PI * 2) * 0.15;
+
+          // Mid-air splits + noodle waving arms!
+          pose.split = air > 0.35 ? (air - 0.35) * 1.65 : 0;
+          pose.noodle = true;
+          pose.armL = -1.8 + Math.sin(time * 22) * 0.9;
+          pose.armR = 1.8 - Math.sin(time * 22) * 0.9;
+
+          if (d.sparkTimer <= 0 && air > 0.5) {
+            spawnSingleSparkle(ch.x + (Math.random() - 0.5) * 110, ch.y - 60, 'star');
+            d.sparkTimer = 0.09;
+          }
+        } else {
+          /* 5. WILD TWIST & HIGH-KICK CAN-CAN: Energetic torso twisting, alternating super-high funny leg kicks, windmill arms, confetti */
+          const kickWave = Math.sin(time * 11.5);
+          ch.x = DANCE_CENTER_X + Math.sin(time * 5.75) * 115;
+          ch.y = DANCE_CENTER_Y - Math.abs(kickWave) * 58;
+          ch.rotation = kickWave * 0.28;
+          ch.scaleX = 1.16 * (0.86 + Math.abs(Math.cos(time * 11.5)) * 0.3);
+          ch.scaleY = 1.16;
+
+          // Alternating super-high can-can kicks!
+          pose.kickL = kickWave > 0 ? kickWave * 1.1 : 0;
+          pose.kickR = kickWave < 0 ? -kickWave * 1.1 : 0;
+
+          // Windmill spinning arms!
+          pose.armL = -time * 14;
+          pose.armR = time * 14;
+
+          if (d.sparkTimer <= 0) {
+            spawnSingleSparkle(ch.x + (Math.random() - 0.5) * 120, ch.y - 90, 'confetti');
+            d.sparkTimer = 0.075;
+          }
+        }
+      }
+
+      /* =========================================================================
+       * 9. PROCEDURAL DISCO HALL BACKGROUND, BALL, SPEAKERS, EQUALIZER & FLOOR
+       * ========================================================================= */
+      function drawDiscoHall(ctx) {
+        const minX = -stageOffsetX / stageScale - 40;
+        const maxX = (viewW - stageOffsetX) / stageScale + 40;
+        const minY = -stageOffsetY / stageScale - 40;
+        const maxY = (viewH - stageOffsetY) / stageScale + 40;
+        const fullW = maxX - minX;
+        const fullH = maxY - minY;
+
+        // 1. Rich Vibrant Party Hall Wall Gradient (deep plum / indigo / magenta — never dull black!)
+        const bgGrad = ctx.createRadialGradient(800, 260, 80, 800, 420, 1150);
+        bgGrad.addColorStop(0, '#6a1b9a');
+        bgGrad.addColorStop(0.42, '#411378');
+        bgGrad.addColorStop(0.78, '#280a52');
+        bgGrad.addColorStop(1, '#1c063b');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(minX, minY, fullW, fullH);
+
+        // Lower club floor surround beneath the illuminated tiles
+        const lowerGrad = ctx.createLinearGradient(0, FLOOR_TOP_Y, 0, maxY);
+        lowerGrad.addColorStop(0, '#320d5e');
+        lowerGrad.addColorStop(0.5, '#25084a');
+        lowerGrad.addColorStop(1, '#1a0538');
+        ctx.fillStyle = lowerGrad;
+        ctx.fillRect(minX, FLOOR_TOP_Y, fullW, maxY - FLOOR_TOP_Y);
+
+        // 2. Floating Rainbow Disco Light Dots drifting across the party hall
+        drawFloatingDiscoDots(ctx);
+
+        // 3. Animated Colorful Equalizer Bars along the back wall
+        drawEqualizer(ctx);
+
+        // 4. Sweeping Translucent Colored Spotlight Beams from the ceiling & disco ball
+        drawSpotlights(ctx);
+
+        // 5. Festive Glowing Fairy-Light Garlands draped across upper corners
+        drawFairyGarlands(ctx, minX, maxX);
+
+        // 6. Left & Right Retro Stereo Speakers pulsing to the beat
+        drawSpeaker(ctx, 130, 415, 1);
+        drawSpeaker(ctx, 1470, 415, -1);
+
+        // Sound-wave rings radiating from speakers during dances
+        for (const sr of soundRings) {
+          const t = sr.life / sr.maxLife;
+          ctx.save();
+          ctx.globalAlpha = (1 - t) * 0.7;
+          ctx.strokeStyle = sr.color;
+          ctx.lineWidth = 6 * (1 - t * 0.5);
+          ctx.beginPath();
+          if (sr.dir > 0) {
+            ctx.arc(sr.x, sr.y, sr.radius, -0.75, 0.75);
+          } else {
+            ctx.arc(sr.x, sr.y, sr.radius, Math.PI - 0.75, Math.PI + 0.75);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 7. 3D-Perspective Illuminated Disco Dance Floor
+        drawDiscoFloor(ctx);
+
+        // 8. Large Detailed Spinning Mirror Disco Ball hanging from top center
+        drawDiscoBall(ctx, 800, 74, 58);
+      }
+
+      function drawFloatingDiscoDots(ctx) {
+        const isParty = game.state === 'DANCING' || game.state === 'WAVE_FINALE';
+        for (const dot of discoDots) {
+          const a = dot.angle + game.discoSpin * dot.speed;
+          const x = 800 + Math.cos(a) * dot.radiusX;
+          const y = 310 + Math.sin(a * 1.15 + dot.phase) * dot.radiusY;
+          const pulse = 0.55 + Math.sin(game.time * 4 + dot.phase) * 0.35;
+          ctx.save();
+          ctx.globalAlpha = (isParty ? 0.5 : 0.28) * pulse;
+          ctx.fillStyle = dot.color;
+          ctx.beginPath();
+          ctx.arc(x, y, dot.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawEqualizer(ctx) {
+        const startX = 270;
+        const totalW = 1060;
+        const barW = totalW / EQ_COUNT - 10;
+        const baseY = FLOOR_TOP_Y - 4;
+        const maxH = 195;
+
+        for (let i = 0; i < EQ_COUNT; i++) {
+          const bar = eqBars[i];
+          const x = startX + i * (barW + 10);
+          const h = Math.max(16, bar.height * maxH);
+          const segments = Math.max(2, Math.round(h / 18));
+
+          for (let s = 0; s < segments; s++) {
+            const sy = baseY - (s + 1) * 18;
+            const ratio = s / 11;
+            ctx.save();
+            ctx.fillStyle = ratio > 0.72 ? '#ff3e9d' : ratio > 0.42 ? '#ffe66d' : '#00e5ff';
+            ctx.globalAlpha = 0.35 + ratio * 0.5;
+            roundRect(ctx, x, sy, barW, 13, 4);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+
+      function drawSpotlights(ctx) {
+        const f = game.spotlightFocus;
+        const isFinale = game.state === 'WAVE_FINALE';
+        const origins = [
+          { x: 260, y: -20, color: 'rgba(0, 229, 255, 0.20)', baseTarget: 480, amp: 320, spd: 1.1 },
+          { x: 1340, y: -20, color: 'rgba(255, 62, 157, 0.20)', baseTarget: 1120, amp: 320, spd: -1.25 },
+          { x: 560, y: -20, color: 'rgba(255, 230, 109, 0.16)', baseTarget: 760, amp: 260, spd: 0.9 },
+          { x: 1040, y: -20, color: 'rgba(155, 92, 255, 0.18)', baseTarget: 840, amp: 260, spd: -0.95 }
+        ];
+
+        origins.forEach((sp, idx) => {
+          const sweepX = sp.baseTarget + Math.sin(game.time * sp.spd * (isFinale ? 2.4 : 1) + idx) * sp.amp;
+          const tx = sweepX * (1 - f) + DANCE_CENTER_X * f;
+          const ty = 640;
+          const spread = 135 - f * 35;
+
+          const grad = ctx.createLinearGradient(sp.x, sp.y, tx, ty);
+          grad.addColorStop(0, sp.color);
+          grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+          ctx.save();
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.moveTo(sp.x - 16, sp.y);
+          ctx.lineTo(sp.x + 16, sp.y);
+          ctx.lineTo(tx + spread, ty + 140);
+          ctx.lineTo(tx - spread, ty + 140);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Glowing spotlight pool on the center dance floor when dancing
+        if (f > 0.05) {
+          ctx.save();
+          ctx.globalAlpha = f * 0.55;
+          const poolGrad = ctx.createRadialGradient(DANCE_CENTER_X, DANCE_CENTER_Y + 6, 10, DANCE_CENTER_X, DANCE_CENTER_Y + 6, 210);
+          poolGrad.addColorStop(0, 'rgba(255, 250, 190, 0.85)');
+          poolGrad.addColorStop(0.55, 'rgba(255, 110, 220, 0.35)');
+          poolGrad.addColorStop(1, 'rgba(255, 110, 220, 0)');
+          ctx.fillStyle = poolGrad;
+          ctx.beginPath();
+          ctx.ellipse(DANCE_CENTER_X, DANCE_CENTER_Y + 6, 210, 62, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawFairyGarlands(ctx, minX, maxX) {
+        const strands = [
+          { x1: Math.min(minX, -40), y1: 35, cx: 280, cy: 175, x2: 640, y2: 18 },
+          { x1: 960, y1: 18, cx: 1320, cy: 175, x2: Math.max(maxX, 1640), y2: 35 }
+        ];
+
+        strands.forEach((st, sIdx) => {
+          ctx.strokeStyle = 'rgba(255, 230, 160, 0.45)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(st.x1, st.y1);
+          ctx.quadraticCurveTo(st.cx, st.cy, st.x2, st.y2);
+          ctx.stroke();
+
+          const bulbs = 11;
+          for (let i = 1; i < bulbs; i++) {
+            const t = i / bulbs;
+            const bx = (1 - t) * (1 - t) * st.x1 + 2 * (1 - t) * t * st.cx + t * t * st.x2;
+            const by = (1 - t) * (1 - t) * st.y1 + 2 * (1 - t) * t * st.cy + t * t * st.y2;
+            const col = TILE_PALETTE[(i + sIdx * 3) % TILE_PALETTE.length];
+            const glow = 0.65 + Math.sin(game.time * 5 + i + sIdx) * 0.35;
+
+            ctx.save();
+            ctx.fillStyle = col;
+            ctx.globalAlpha = 0.35 * glow;
+            ctx.beginPath();
+            ctx.arc(bx, by + 6, 17, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.globalAlpha = 0.95;
+            ctx.beginPath();
+            ctx.arc(bx, by + 6, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff9d6';
+            ctx.beginPath();
+            ctx.arc(bx - 2, by + 4, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        });
+      }
+
+      function drawSpeaker(ctx, x, y, side) {
+        const thump = game.speakerPulse;
+        const scX = 1 + thump * 0.065;
+        const scY = 1 - thump * 0.04;
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(side * 0.04);
+        ctx.scale(scX, scY);
+
+        // Retro cabinet body
+        const cabGrad = ctx.createLinearGradient(-72, -135, 72, 135);
+        cabGrad.addColorStop(0, '#5a3891');
+        cabGrad.addColorStop(0.5, '#3b1e6e');
+        cabGrad.addColorStop(1, '#241047');
+        ctx.fillStyle = cabGrad;
+        ctx.strokeStyle = '#ff6bd6';
+        ctx.lineWidth = 4;
+        roundRect(ctx, -70, -132, 140, 264, 22);
+        ctx.fill();
+        ctx.stroke();
+
+        // Inner front bevel
+        ctx.fillStyle = '#1f0d3d';
+        roundRect(ctx, -56, -116, 112, 232, 14);
+        ctx.fill();
+
+        // Top tweeter cone
+        const twR = 30 + thump * 5;
+        ctx.fillStyle = '#2d1a54';
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, -64, twR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffe66d';
+        ctx.beginPath();
+        ctx.arc(0, -64, 11 + thump * 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bottom big woofer cone
+        const wfR = 45 + thump * 8;
+        ctx.fillStyle = '#2d1a54';
+        ctx.strokeStyle = '#ff3e9d';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(0, 44, wfR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 44, wfR * 0.65, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath();
+        ctx.arc(0, 44, 16 + thump * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawDiscoFloor(ctx) {
+        const isParty = game.state === 'DANCING' || game.state === 'LEAP_TO_FLOOR' || game.state === 'WAVE_FINALE';
+        const isFinale = game.state === 'WAVE_FINALE';
+
+        // Outer neon floor rim glow
+        ctx.save();
+        ctx.fillStyle = '#1e083d';
+        ctx.strokeStyle = '#ff4fd8';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(800 - FLOOR_TOP_W * 0.5 - 12, FLOOR_TOP_Y - 4);
+        ctx.lineTo(800 + FLOOR_TOP_W * 0.5 + 12, FLOOR_TOP_Y - 4);
+        ctx.lineTo(800 + FLOOR_BOT_W * 0.5 + 18, FLOOR_BOT_Y + 8);
+        ctx.lineTo(800 - FLOOR_BOT_W * 0.5 - 18, FLOOR_BOT_Y + 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw perspective tiles row by row
+        for (let r = 0; r < FLOOR_ROWS; r++) {
+          const t0 = r / FLOOR_ROWS;
+          const t1 = (r + 1) / FLOOR_ROWS;
+          // Non-linear perspective spacing for authentic 3D depth
+          const y0 = FLOOR_TOP_Y + Math.pow(t0, 1.18) * (FLOOR_BOT_Y - FLOOR_TOP_Y);
+          const y1 = FLOOR_TOP_Y + Math.pow(t1, 1.18) * (FLOOR_BOT_Y - FLOOR_TOP_Y);
+          const w0 = FLOOR_TOP_W + Math.pow(t0, 1.18) * (FLOOR_BOT_W - FLOOR_TOP_W);
+          const w1 = FLOOR_TOP_W + Math.pow(t1, 1.18) * (FLOOR_BOT_W - FLOOR_TOP_W);
+
+          for (let c = 0; c < FLOOR_COLS; c++) {
+            const c0 = c / FLOOR_COLS;
+            const c1 = (c + 1) / FLOOR_COLS;
+            const x00 = 800 - w0 * 0.5 + c0 * w0;
+            const x10 = 800 - w0 * 0.5 + c1 * w0;
+            const x01 = 800 - w1 * 0.5 + c0 * w1;
+            const x11 = 800 - w1 * 0.5 + c1 * w1;
+
+            const tileCX = (x00 + x10 + x01 + x11) * 0.25;
+            const tileCY = (y0 + y1) * 0.5;
+
+            // Rippling wave pattern + dancer proximity boost + floor ripple shockwaves
+            const waveSpeed = isFinale ? 8.5 : isParty ? 5.2 : 2.2;
+            const waveVal = Math.sin(game.time * waveSpeed - (r * 0.8 + c * 0.65)) * 0.5 + 0.5;
+            let boost = 0;
+
+            if (game.dancer.char) {
+              const dist = Math.hypot(tileCX - game.dancer.char.x, (tileCY - DANCE_CENTER_Y) * 2.2);
+              if (dist < 190) {
+                boost += (1 - dist / 190) * 0.65;
+              }
+            }
+
+            for (const rp of floorRipples) {
+              const dist = Math.hypot(tileCX - rp.x, (tileCY - rp.y) * 2.0);
+              const band = Math.abs(dist - rp.radius);
+              if (band < 70) {
+                boost += (1 - band / 70) * (1 - rp.life / rp.maxLife) * 0.85;
+              }
+            }
+
+            const colorIdx = (r * 3 + c + (isFinale ? Math.floor(game.time * 6) : 0)) % TILE_PALETTE.length;
+            const baseAlpha = 0.24 + waveVal * (isParty ? 0.42 : 0.25) + Math.min(0.6, boost);
+
+            ctx.fillStyle = TILE_PALETTE[colorIdx];
+            ctx.globalAlpha = Math.min(0.96, baseAlpha);
+            ctx.beginPath();
+            ctx.moveTo(x00 + 3, y0 + 2);
+            ctx.lineTo(x10 - 3, y0 + 2);
+            ctx.lineTo(x11 - 4, y1 - 2);
+            ctx.lineTo(x01 + 4, y1 - 2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Subtle glossy tile highlight
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+
+      function drawDiscoBall(ctx, cx, cy, r) {
+        ctx.save();
+
+        // Hanging metallic chain from top
+        ctx.strokeStyle = '#d8e3f0';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(cx, -40);
+        ctx.lineTo(cx, cy - r);
+        ctx.stroke();
+
+        // Outer halo glow
+        const halo = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r * 2.1);
+        halo.addColorStop(0, 'rgba(255, 255, 255, 0.42)');
+        halo.addColorStop(0.5, 'rgba(0, 229, 255, 0.16)');
+        halo.addColorStop(1, 'rgba(255, 62, 157, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 2.1, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Clip to sphere
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Base metallic gradient
+        const ballGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 6, cx, cy, r);
+        ballGrad.addColorStop(0, '#ffffff');
+        ballGrad.addColorStop(0.5, '#b8d4f0');
+        ballGrad.addColorStop(1, '#4c5e8a');
+        ctx.fillStyle = ballGrad;
+        ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+        // Animated scrolling faceted mirror squares
+        const rows = 7;
+        const cols = 10;
+        const facetColors = ['#ffffff', '#a8f0ff', '#ffd6f5', '#fff2a6', '#c5b8ff', '#8ee3ff'];
+        const scrollX = (game.discoSpin * 26) % (r * 2);
+
+        for (let row = 0; row < rows; row++) {
+          const y = cy - r + (row / rows) * r * 2;
+          const h = (r * 2) / rows;
+          for (let col = -1; col <= cols; col++) {
+            const x = cx - r + ((col / cols) * r * 2 + scrollX) % (r * 2 + 24) - 12;
+            const w = (r * 2) / cols;
+            const shimmer = Math.sin(game.time * 7 + row * 1.9 + col * 2.3) * 0.5 + 0.5;
+            ctx.fillStyle = facetColors[(row * 3 + col + 20) % facetColors.length];
+            ctx.globalAlpha = 0.35 + shimmer * 0.6;
+            ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+          }
+        }
+        ctx.restore();
+
+        // Crisp rim highlight
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Twinkling 4-point glints on disco ball surface
+        const glints = [
+          [-22, -18, 0], [20, -10, 1.5], [-6, 20, 3.1], [24, 18, 4.4]
+        ];
+        glints.forEach(([gx, gy, ph]) => {
+          const s = (Math.sin(game.time * 6 + ph) * 0.5 + 0.5) * 12;
+          if (s > 3) {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(cx + gx, cy + gy - s);
+            ctx.lineTo(cx + gx + s * 0.25, cy + gy - s * 0.25);
+            ctx.lineTo(cx + gx + s, cy + gy);
+            ctx.lineTo(cx + gx + s * 0.25, cy + gy + s * 0.25);
+            ctx.lineTo(cx + gx, cy + gy + s);
+            ctx.lineTo(cx + gx - s * 0.25, cy + gy + s * 0.25);
+            ctx.lineTo(cx + gx - s, cy + gy);
+            ctx.lineTo(cx + gx - s * 0.25, cy + gy - s * 0.25);
+            ctx.closePath();
+            ctx.fill();
+          }
+        });
+
+        ctx.restore();
+      }
+
+      /* =========================================================================
+       * 10. RETRO NEON DISCO MARQUEE SYLLABLE BADGE (NO WHITE RECTANGLES!)
+       * ========================================================================= */
+      function drawSyllableMarquee(ctx) {
+        if (!game.targetId) return;
+        const text = getSyllableText(game.targetId);
+
+        ctx.save();
+        ctx.translate(800, 232);
+        const pop = game.signBounce;
+        ctx.scale(pop, pop);
+
+        // Outer neon magenta/gold glow
+        ctx.shadowColor = 'rgba(255, 62, 157, 0.65)';
+        ctx.shadowBlur = 28;
+
+        // Glossy outer disco marquee frame
+        const frameGrad = ctx.createLinearGradient(-195, -90, 195, 90);
+        frameGrad.addColorStop(0, '#ff3e9d');
+        frameGrad.addColorStop(0.5, '#ff9f1a');
+        frameGrad.addColorStop(1, '#9b2cff');
+        ctx.fillStyle = frameGrad;
+        roundRect(ctx, -196, -88, 392, 176, 46);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Inner vibrant radial starburst disco stage screen (rich magenta-indigo, never white!)
+        ctx.save();
+        roundRect(ctx, -172, -68, 344, 136, 32);
+        ctx.clip();
+
+        const innerGrad = ctx.createRadialGradient(0, 0, 18, 0, 0, 210);
+        innerGrad.addColorStop(0, '#4f128c');
+        innerGrad.addColorStop(0.65, '#2b0959');
+        innerGrad.addColorStop(1, '#1a0538');
+        ctx.fillStyle = innerGrad;
+        ctx.fillRect(-176, -72, 352, 144);
+
+        // Subtle rotating starburst rays inside screen
+        ctx.save();
+        ctx.rotate(game.time * 0.35);
+        ctx.fillStyle = 'rgba(255, 110, 220, 0.14)';
+        for (let i = 0; i < 12; i++) {
+          ctx.rotate((Math.PI * 2) / 12);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(-18, -230);
+          ctx.lineTo(18, -230);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+        ctx.restore();
+
+        // Crisp inner golden rim
+        ctx.strokeStyle = '#ffe66d';
+        ctx.lineWidth = 4;
+        roundRect(ctx, -172, -68, 344, 136, 32);
+        ctx.stroke();
+
+        // Animated chasing warm golden marquee bulbs around the rounded border
+        const bulbCount = 24;
+        for (let i = 0; i < bulbCount; i++) {
+          const p = getRoundedRectPerimeterPoint(i / bulbCount, 368, 152, 38);
+          const chase = Math.sin(game.time * 9 - i * 0.85) * 0.5 + 0.5;
+          ctx.fillStyle = chase > 0.45 ? '#fff3a1' : '#ffb830';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 4.8 + chase * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Giant ultra-legible bold uppercase syllable
+        ctx.font = '900 122px Arial, Helvetica, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Crisp neon drop-shadow + bright white-gold fill
+        ctx.fillStyle = 'rgba(255, 62, 157, 0.55)';
+        ctx.fillText(text, 4, 8);
+
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#ff3e9d';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, 0, 2);
+
+        const textGrad = ctx.createLinearGradient(0, -55, 0, 55);
+        textGrad.addColorStop(0, '#ffffff');
+        textGrad.addColorStop(0.55, '#fff5b8');
+        textGrad.addColorStop(1, '#ffd32a');
+        ctx.fillStyle = textGrad;
+        ctx.fillText(text, 0, 2);
+
+        ctx.restore();
+      }
+
+      // Helper to distribute chasing bulbs evenly along the marquee rounded rectangle
+      function getRoundedRectPerimeterPoint(u, w, h, r) {
+        const hw = w * 0.5;
+        const hh = h * 0.5;
+        const straightW = w - 2 * r;
+        const straightH = h - 2 * r;
+        const arcLen = Math.PI * 0.5 * r;
+        const total = 2 * straightW + 2 * straightH + 4 * arcLen;
+        let d = (u % 1) * total;
+
+        if (d < straightW) return { x: -hw + r + d, y: -hh };
+        d -= straightW;
+        if (d < arcLen) {
+          const a = -Math.PI * 0.5 + (d / arcLen) * Math.PI * 0.5;
+          return { x: hw - r + Math.cos(a) * r, y: -hh + r + Math.sin(a) * r };
+        }
+        d -= arcLen;
+        if (d < straightH) return { x: hw, y: -hh + r + d };
+        d -= straightH;
+        if (d < arcLen) {
+          const a = (d / arcLen) * Math.PI * 0.5;
+          return { x: hw - r + Math.cos(a) * r, y: hh - r + Math.sin(a) * r };
+        }
+        d -= arcLen;
+        if (d < straightW) return { x: hw - r - d, y: hh };
+        d -= straightW;
+        if (d < arcLen) {
+          const a = Math.PI * 0.5 + (d / arcLen) * Math.PI * 0.5;
+          return { x: -hw + r + Math.cos(a) * r, y: hh - r + Math.sin(a) * r };
+        }
+        d -= arcLen;
+        if (d < straightH) return { x: -hw, y: hh - r - d };
+        d -= straightH;
+        const a = Math.PI + (d / arcLen) * Math.PI * 0.5;
+        return { x: -hw + r + Math.cos(a) * r, y: -hh + r + Math.sin(a) * r };
+      }
+
+      /* =========================================================================
+       * 11. FIVE EXPRESSIVE CARTOON CHARACTERS (Letter Д)
+       *     All with blinking cursor-tracking eyes, arms/gloves, legs/sneakers!
+       * ========================================================================= */
+      function drawCharacter(ctx, ch, isDancer = false) {
+        const kind = CHARACTER_DEFS[ch.id].kind;
+        const t = game.time;
+        const ph = ch.idlePhase;
+
+        ctx.save();
+
+        // Soft glowing hover ring on floor when hovered
+        if (!isDancer && ch.hoverBoost > 0.02) {
+          ctx.save();
+          ctx.globalAlpha = ch.hoverBoost * 0.7;
+          ctx.strokeStyle = '#ffe66d';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.ellipse(ch.x, ch.y + 8, 66 + ch.hoverBoost * 8, 20, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Ground shadow
+        const baseGroundY = isDancer ? DANCE_CENTER_Y : ch.homeY;
+        const lift = Math.max(0, baseGroundY - ch.y);
+        const shadowScale = Math.max(0.32, 1 - lift / 360) * ch.spawnPop;
+        ctx.fillStyle = 'rgba(14, 4, 34, 0.42)';
+        ctx.beginPath();
+        ctx.ellipse(ch.x, Math.max(ch.y, baseGroundY) + 10, 56 * shadowScale, 15 * shadowScale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Idle transforms (gentle disco bobbing to the beat)
+        let ox = 0;
+        let oy = 0;
+        let rot = ch.rotation;
+        let sx = ch.scaleX * ch.spawnPop;
+        let sy = ch.scaleY * ch.spawnPop;
+
+        if (!isDancer) {
+          const beatBob = Math.abs(Math.sin(game.beatPhase * Math.PI + ph));
+          oy = -beatBob * 10;
+          rot += Math.sin(game.beatPhase * Math.PI * 0.5 + ph) * 0.055;
+
+          if (ch.hoverBoost > 0.01) {
+            sx *= 1 + ch.hoverBoost * 0.12;
+            sy *= 1 + ch.hoverBoost * 0.12;
+            oy -= ch.hoverBoost * 16;
+          }
+
+          if (ch.wrongTimer > 0) {
+            const wp = ch.wrongTimer / 0.62;
+            ox += Math.sin(wp * Math.PI * 7) * 16 * wp;
+            oy -= Math.abs(Math.sin(wp * Math.PI * 3)) * 20 * wp;
+            rot += Math.sin(wp * Math.PI * 7) * 0.22 * wp;
+          }
+        }
+
+        ctx.translate(ch.x + ox, ch.y + oy);
+        ctx.rotate(rot);
+        ctx.scale(sx, sy);
+
+        // Gaze tracking toward cursor (or center stage when dancing)
+        const tx = game.pointer.active ? game.pointer.x : DANCE_CENTER_X;
+        const ty = game.pointer.active ? game.pointer.y : DANCE_CENTER_Y;
+        const gdx = tx - ch.x;
+        const gdy = ty - (ch.y - 80);
+        const gdist = Math.hypot(gdx, gdy) || 1;
+        const gazeX = (gdx / gdist) * 3.4;
+        const gazeY = (gdy / gdist) * 2.6;
+
+        const isExcited = isDancer || ch.hoverBoost > 0.3;
+        const isWrong = ch.wrongTimer > 0;
+        const pose = isDancer ? game.dancer.pose : null;
+
+        if (kind === 'dalmatian') {
+          drawDalmatian(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose);
+        } else if (kind === 'domino') {
+          drawDomino(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose);
+        } else if (kind === 'shower') {
+          drawShower(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose);
+        } else if (kind === 'melon') {
+          drawMelon(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose);
+        } else if (kind === 'dolphin') {
+          drawDolphin(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, pose);
+        }
+
+        ctx.restore();
+      }
+
+      // Shared expressive face with dizzy spirals on wrong click!
+      function drawExpressiveFace(ctx, x, y, eyeSep, eyeR, isBlinking, gazeX, gazeY, isExcited, isWrong) {
+        // Rosy cheeks
+        ctx.fillStyle = isWrong ? 'rgba(255, 62, 157, 0.72)' : 'rgba(255, 107, 157, 0.48)';
+        ctx.beginPath();
+        ctx.ellipse(x - eyeSep - 8, y + eyeR + 4, 9.5, 6, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + eyeSep + 8, y + eyeR + 4, 9.5, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eyes
+        [-eyeSep, eyeSep].forEach((ex, idx) => {
+          if (isWrong) {
+            // Funny dizzy spiral eyes!
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#22223b';
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.arc(x + ex, y, eyeR * 1.05, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.save();
+            ctx.translate(x + ex, y);
+            ctx.rotate(game.time * 16 * (idx === 0 ? 1 : -1));
+            ctx.strokeStyle = '#ff3e9d';
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            for (let a = 0; a < Math.PI * 3.5; a += 0.3) {
+              const r = (a / (Math.PI * 3.5)) * (eyeR * 0.75);
+              const sx = Math.cos(a) * r;
+              const sy = Math.sin(a) * r;
+              if (a === 0) ctx.moveTo(sx, sy);
+              else ctx.lineTo(sx, sy);
+            }
+            ctx.stroke();
+            ctx.restore();
+          } else if (isBlinking) {
+            ctx.strokeStyle = '#22223b';
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(x + ex, y + 2, eyeR * 0.75, Math.PI * 1.15, Math.PI * 1.85);
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#22223b';
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.ellipse(x + ex, y, eyeR, eyeR * 1.16, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            const px = x + ex + gazeX;
+            const py = y + gazeY;
+            ctx.fillStyle = '#1b1438';
+            ctx.beginPath();
+            ctx.arc(px, py, eyeR * 0.56, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(px - eyeR * 0.22, py - eyeR * 0.25, eyeR * 0.24, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+
+        // Mouth
+        ctx.strokeStyle = '#2b1038';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
+        if (isWrong) {
+          ctx.beginPath();
+          ctx.moveTo(x - 11, y + eyeR + 12);
+          ctx.quadraticCurveTo(x - 5, y + eyeR + 6, x, y + eyeR + 12);
+          ctx.quadraticCurveTo(x + 5, y + eyeR + 18, x + 11, y + eyeR + 12);
+          ctx.stroke();
+        } else if (isExcited) {
+          ctx.fillStyle = '#ff4d7d';
+          ctx.beginPath();
+          ctx.arc(x, y + eyeR + 7, 11.5, 0, Math.PI);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y + eyeR + 5, 9.5, 0.15 * Math.PI, 0.85 * Math.PI);
+          ctx.stroke();
+        }
+      }
+
+      // Shared dancing legs with cute disco sneakers (supports splits, high can-can kicks, moonwalk)
+      function drawDancingLegs(ctx, legSep, hipY, t, ph, sneakerColor, excited, wrong, pose) {
+        const split = pose ? (pose.split || 0) : 0;
+        const kickL = pose ? (pose.kickL || 0) : 0;
+        const kickR = pose ? (pose.kickR || 0) : 0;
+        const legSwingL = pose ? (pose.legL || 0) : (excited ? Math.sin(t * 10 + ph) * 0.25 : Math.sin(game.beatPhase * Math.PI + ph) * 0.12);
+        const legSwingR = pose ? (pose.legR || 0) : (excited ? -Math.sin(t * 10 + ph) * 0.25 : -Math.sin(game.beatPhase * Math.PI + ph) * 0.12);
+
+        const drawOneLeg = (side, swing, kick) => {
+          ctx.save();
+          ctx.translate(side * legSep, hipY);
+          const angle = side * (split * 1.15 + kick * 1.35) + swing;
+          ctx.rotate(angle);
+
+          ctx.strokeStyle = '#231942';
+          ctx.lineWidth = 7.5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(side * 4, -hipY);
+          ctx.stroke();
+
+          // Cute funky sneaker with white sole
+          ctx.translate(side * 8, -hipY + 2);
+          ctx.fillStyle = sneakerColor;
+          ctx.strokeStyle = '#231942';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 16, 9.5, side * -0.08, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Sneaker sole stripe
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-12, 4);
+          ctx.lineTo(12, 4);
+          ctx.stroke();
+          ctx.restore();
+        };
+
+        drawOneLeg(-1, legSwingL, kickL);
+        drawOneLeg(1, legSwingR, kickR);
+      }
+
+      // Shared dancing arms with cute gloves (supports disco pointing, windmill spins, noodle waves)
+      function drawDancingArms(ctx, shoulderX, shoulderY, t, ph, armColor, gloveColor, excited, wrong, pose) {
+        const defaultWave = wrong
+          ? Math.sin(t * 22) * 0.75
+          : Math.sin(game.beatPhase * Math.PI + ph) * 0.35;
+
+        const rotL = pose ? (pose.armL || 0) : (-0.4 + defaultWave);
+        const rotR = pose ? (pose.armR || 0) : (0.4 - defaultWave);
+        const noodle = pose && pose.noodle;
+
+        const drawOneArm = (side, rot) => {
+          ctx.save();
+          ctx.translate(side * shoulderX, shoulderY);
+          ctx.rotate(rot);
+
+          ctx.strokeStyle = armColor;
+          ctx.lineWidth = 7.5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          if (noodle) {
+            const w1 = Math.sin(t * 24 + side) * 14;
+            ctx.bezierCurveTo(side * 12, w1, side * 24, -w1, side * 34, 4);
+          } else {
+            ctx.quadraticCurveTo(side * 16, 12, side * 30, 4);
+          }
+          ctx.stroke();
+
+          // Cute cartoon glove/hand
+          ctx.fillStyle = gloveColor;
+          ctx.strokeStyle = '#231942';
+          ctx.lineWidth = 2.3;
+          ctx.beginPath();
+          ctx.arc(side * 33, 4, 8.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        };
+
+        drawOneArm(-1, rotL);
+        drawOneArm(1, rotR);
+      }
+
+      // 1. ДА — DALMATIAN PUPPY (Далматинець / Далматинец)
+      function drawDalmatian(ctx, t, ph, blink, gx, gy, excited, wrong, pose) {
+        // Wagging spotted tail behind
+        const wag = Math.sin(t * (excited ? 18 : 7) + ph) * 0.45;
+        ctx.save();
+        ctx.translate(28, -42);
+        ctx.rotate(wag);
+        ctx.strokeStyle = '#f5f6fa';
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(22, -8, 28, -28);
+        ctx.stroke();
+        ctx.strokeStyle = '#231942';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.restore();
+
+        drawDancingLegs(ctx, 17, -30, t, ph, '#ff3e9d', excited, wrong, pose);
+
+        // Plump white puppy torso with classic black spots
+        const bGrad = ctx.createRadialGradient(-8, -62, 6, 0, -54, 40);
+        bGrad.addColorStop(0, '#ffffff');
+        bGrad.addColorStop(1, '#dce3ee');
+        ctx.fillStyle = bGrad;
+        ctx.strokeStyle = '#231942';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -54, 33, 32, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Body spots
+        ctx.fillStyle = '#1e1e2f';
+        ctx.beginPath();
+        ctx.ellipse(-14, -56, 8, 6, 0.3, 0, Math.PI * 2);
+        ctx.ellipse(15, -46, 7, 9, -0.2, 0, Math.PI * 2);
+        ctx.ellipse(2, -38, 5, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Red collar with shiny gold tag
+        ctx.strokeStyle = '#ff3b5c';
+        ctx.lineWidth = 8;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, -84, 24, 0.25 * Math.PI, 0.75 * Math.PI);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffd32a';
+        ctx.strokeStyle = '#b37400';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -68, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        drawDancingArms(ctx, 30, -64, t, ph, '#e4eaf2', '#ffffff', excited, wrong, pose);
+
+        // Floppy spotted ears
+        const earFlop = Math.sin(t * (excited ? 14 : 5) + ph) * 0.14;
+        [-32, 32].forEach((ex, idx) => {
+          ctx.save();
+          ctx.translate(ex, -112);
+          ctx.rotate(idx === 0 ? 0.35 + earFlop : -0.35 - earFlop);
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#231942';
+          ctx.lineWidth = 2.8;
+          ctx.beginPath();
+          ctx.ellipse(0, 18, 13, 24, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#1e1e2f';
+          ctx.beginPath();
+          ctx.arc(idx === 0 ? -2 : 2, 12, 6.5, 0, Math.PI * 2);
+          ctx.arc(idx === 0 ? 3 : -3, 27, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Puppy head
+        const hGrad = ctx.createRadialGradient(-10, -112, 6, 0, -100, 38);
+        hGrad.addColorStop(0, '#ffffff');
+        hGrad.addColorStop(1, '#dde4f0');
+        ctx.fillStyle = hGrad;
+        ctx.strokeStyle = '#231942';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -100, 36, 32, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Forehead spot
+        ctx.fillStyle = '#1e1e2f';
+        ctx.beginPath();
+        ctx.ellipse(-18, -118, 9, 6, -0.4, 0, Math.PI * 2);
+        ctx.ellipse(16, -121, 6, 4.5, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawExpressiveFace(ctx, 0, -104, 15, 11, blink, gx, gy, excited, wrong);
+
+        // Cute shiny black puppy nose
+        ctx.fillStyle = '#1e1e2f';
+        ctx.beginPath();
+        ctx.ellipse(0, -88, 8.5, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.ellipse(-2.5, -90, 2.8, 1.6, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 2. ДО — DOMINO (Доміно / Домино)
+      function drawDomino(ctx, t, ph, blink, gx, gy, excited, wrong, pose) {
+        drawDancingLegs(ctx, 18, -28, t, ph, '#00e5ff', excited, wrong, pose);
+        drawDancingArms(ctx, 36, -78, t, ph, '#3f37c9', '#ffe66d', excited, wrong, pose);
+
+        // Glossy rounded dark-indigo/cream domino tile
+        const domGrad = ctx.createLinearGradient(-38, -142, 38, -22);
+        domGrad.addColorStop(0, '#3a2d82');
+        domGrad.addColorStop(0.5, '#251b5c');
+        domGrad.addColorStop(1, '#191142');
+        ctx.fillStyle = domGrad;
+        ctx.strokeStyle = '#ffdf73';
+        ctx.lineWidth = 4;
+        roundRect(ctx, -37, -142, 74, 118, 16);
+        ctx.fill();
+        ctx.stroke();
+
+        // Warm cream inner face panel
+        const faceGrad = ctx.createLinearGradient(0, -134, 0, -30);
+        faceGrad.addColorStop(0, '#fff7dc');
+        faceGrad.addColorStop(1, '#f4e0a8');
+        ctx.fillStyle = faceGrad;
+        roundRect(ctx, -30, -135, 60, 104, 11);
+        ctx.fill();
+
+        // Metallic golden dividing bar across middle
+        ctx.fillStyle = '#f5a623';
+        ctx.strokeStyle = '#9c5a00';
+        ctx.lineWidth = 1.8;
+        roundRect(ctx, -26, -76, 52, 7, 3);
+        ctx.fill();
+        ctx.stroke();
+
+        // Classic raised domino pips on the bottom half (4 colorful-accented dark pips)
+        const pips = [[-14, -57], [14, -57], [-14, -40], [14, -40]];
+        pips.forEach(([px, py]) => {
+          ctx.fillStyle = '#251b5c';
+          ctx.beginPath();
+          ctx.arc(px, py, 6.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+          ctx.beginPath();
+          ctx.arc(px - 1.8, py - 1.8, 2, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Glossy corner highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(-20, -124, 6, 12, 0.25, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Expressive cartoon face on top half of domino
+        drawExpressiveFace(ctx, 0, -110, 14, 11, blink, gx, gy, excited, wrong);
+      }
+
+      // 3. ДУ — SHOWER HEAD (Душ)
+      function drawShower(ctx, t, ph, blink, gx, gy, excited, wrong, pose) {
+        drawDancingLegs(ctx, 16, -28, t, ph, '#ffe66d', excited, wrong, pose);
+        drawDancingArms(ctx, 26, -74, t, ph, '#74b9ff', '#00e5ff', excited, wrong, pose);
+
+        // Sparkling animated water droplets misting playfully out of the shower nozzle!
+        for (let i = 0; i < 6; i++) {
+          const dropPhase = (t * 2.8 + i * 0.33) % 1;
+          const dx = 32 + dropPhase * 34 + Math.sin(i * 2.1) * 8;
+          const dy = -114 + dropPhase * 52 + (i - 2.5) * 6;
+          ctx.save();
+          ctx.globalAlpha = 1 - dropPhase;
+          ctx.fillStyle = '#6cf0ff';
+          ctx.beginPath();
+          ctx.ellipse(dx, dy, 4.5, 2.8, 0.7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Curved chrome handle / neck body
+        const neckGrad = ctx.createLinearGradient(-22, -120, 22, -30);
+        neckGrad.addColorStop(0, '#eef7ff');
+        neckGrad.addColorStop(0.5, '#9ec5fe');
+        neckGrad.addColorStop(1, '#4b7bec');
+        ctx.fillStyle = neckGrad;
+        ctx.strokeStyle = '#231942';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-16, -28);
+        ctx.quadraticCurveTo(-24, -76, -16, -112);
+        ctx.quadraticCurveTo(-8, -138, 22, -134);
+        ctx.lineTo(20, -104);
+        ctx.quadraticCurveTo(8, -106, 14, -72);
+        ctx.quadraticCurveTo(20, -48, 16, -28);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Shiny bell-shaped sky-blue & chrome shower head nozzle
+        ctx.save();
+        ctx.translate(22, -122);
+        ctx.rotate(-0.35);
+        const headGrad = ctx.createLinearGradient(-14, -26, 22, 26);
+        headGrad.addColorStop(0, '#ffffff');
+        headGrad.addColorStop(0.45, '#48dbfb');
+        headGrad.addColorStop(1, '#0984e3');
+        ctx.fillStyle = headGrad;
+        ctx.strokeStyle = '#231942';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-14, -14);
+        ctx.lineTo(16, -28);
+        ctx.quadraticCurveTo(28, 0, 16, 28);
+        ctx.lineTo(-14, 14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Nozzle face plate with tiny spray holes
+        ctx.fillStyle = '#dff9fb';
+        ctx.beginPath();
+        ctx.ellipse(18, 0, 7, 25, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#0984e3';
+        for (let h = -15; h <= 15; h += 7.5) {
+          ctx.beginPath();
+          ctx.arc(18, h, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Expressive cartoon face on the sleek curved body
+        drawExpressiveFace(ctx, -2, -88, 13, 10.5, blink, gx, gy, excited, wrong);
+      }
+
+      // 4. ДИ / ДЫ — MELON (Диня / Дыня)
+      function drawMelon(ctx, t, ph, blink, gx, gy, excited, wrong, pose) {
+        drawDancingLegs(ctx, 18, -28, t, ph, '#2ed573', excited, wrong, pose);
+        drawDancingArms(ctx, 42, -76, t, ph, '#c77d00', '#ffe66d', excited, wrong, pose);
+
+        // Cute green curly stem & leaf on top
+        ctx.strokeStyle = '#1b8a47';
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, -128);
+        ctx.quadraticCurveTo(4, -148, 18, -146);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.translate(-14, -138);
+        ctx.rotate(-0.45);
+        ctx.fillStyle = '#2ed573';
+        ctx.strokeStyle = '#1b8a47';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 16, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Plump golden-yellow oval melon body
+        const mGrad = ctx.createRadialGradient(-14, -96, 10, 0, -78, 56);
+        mGrad.addColorStop(0, '#fff4a3');
+        mGrad.addColorStop(0.55, '#ffd32a');
+        mGrad.addColorStop(1, '#e69500');
+        ctx.fillStyle = mGrad;
+        ctx.strokeStyle = '#8c5300';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, -78, 43, 52, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Darker amber vertical ribs & subtle melon netting
+        ctx.strokeStyle = 'rgba(180, 105, 0, 0.42)';
+        ctx.lineWidth = 3;
+        [-22, 0, 22].forEach((rx) => {
+          ctx.beginPath();
+          ctx.moveTo(rx * 0.4, -127);
+          ctx.quadraticCurveTo(rx * 1.45, -78, rx * 0.4, -29);
+          ctx.stroke();
+        });
+
+        // Glossy sunlit highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.ellipse(-22, -98, 8, 20, 0.22, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawExpressiveFace(ctx, 0, -84, 15, 11.5, blink, gx, gy, excited, wrong);
+      }
+
+      // 5. ДЕ — DOLPHIN (Дельфін / Дельфин)
+      function drawDolphin(ctx, t, ph, blink, gx, gy, excited, wrong, pose) {
+        // Playful dolphin tail fluke behind
+        const tailWag = Math.sin(t * (excited ? 14 : 5) + ph) * 0.28;
+        ctx.save();
+        ctx.translate(28, -42);
+        ctx.rotate(tailWag);
+        ctx.fillStyle = '#00b4d8';
+        ctx.strokeStyle = '#005f73';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(26, -6, 36, -24);
+        ctx.quadraticCurveTo(24, 0, 36, 18);
+        ctx.quadraticCurveTo(18, 10, 0, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Dorsal fin on top/side
+        ctx.fillStyle = '#0096c7';
+        ctx.strokeStyle = '#005f73';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.moveTo(12, -124);
+        ctx.quadraticCurveTo(36, -150, 32, -108);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        drawDancingLegs(ctx, 16, -28, t, ph, '#ff7f50', excited, wrong, pose);
+
+        // Sleek joyful turquoise-blue upright dolphin body
+        const dGrad = ctx.createRadialGradient(-12, -96, 10, 0, -76, 58);
+        dGrad.addColorStop(0, '#72efdd');
+        dGrad.addColorStop(0.55, '#00b4d8');
+        dGrad.addColorStop(1, '#0077b6');
+        ctx.fillStyle = dGrad;
+        ctx.strokeStyle = '#004e73';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, -78, 36, 52, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Shiny pale-cyan belly patch
+        ctx.fillStyle = '#caf0f8';
+        ctx.beginPath();
+        ctx.ellipse(-4, -64, 21, 32, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Cute rounded dolphin snout
+        ctx.fillStyle = '#48cae4';
+        ctx.strokeStyle = '#004e73';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.ellipse(-28, -90, 16, 9, -0.15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        drawDancingArms(ctx, 32, -74, t, ph, '#0096c7', '#72efdd', excited, wrong, pose);
+
+        // Expressive cartoon face
+        drawExpressiveFace(ctx, 0, -96, 14, 11, blink, gx, gy, excited, wrong);
+      }
+
+      // Utility: safe rounded rectangle path
+      function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      /* =========================================================================
+       * 12. MAIN RENDER & ANIMATION LOOP
+       * ========================================================================= */
+      function render() {
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.translate(stageOffsetX, stageOffsetY);
+        ctx.scale(stageScale, stageScale);
+
+        // 1. Alive story-driven disco hall, ball, speakers, equalizer & 3D glowing floor
+        drawDiscoHall(ctx);
+
+        // 2. Retro neon disco marquee syllable sign
+        drawSyllableMarquee(ctx);
+
+        // 3. Active dancing character center-stage on the illuminated disco floor
+        if (game.dancer.char) {
+          drawCharacter(ctx, game.dancer.char, true);
+        }
+
+        // 4. Waiting characters along the lower foreground waiting area
+        const waiting = game.characters
+          .filter((c) => c !== game.dancer.char)
+          .sort((a, b) => a.y - b.y);
+        for (const ch of waiting) {
+          drawCharacter(ctx, ch, false);
+        }
+
+        // 5. Disco confetti, stars, sparkles, and musical notes
+        drawParticles(ctx);
+
+        ctx.restore();
+      }
+
+      let lastTime = 0;
+      function loop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        updateGame(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      window.onload = function () {
+        resizeCanvas();
+        createWave();
+        requestAnimationFrame(loop);
+      };
+    })();
+  </script>
+</body>
+</html>
