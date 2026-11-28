@@ -1,0 +1,2803 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Склади</title>
+  <style>
+    /* Full-screen locked viewport with zero scrollbars and touch optimization */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #5ec5f7;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      cursor: default;
+    }
+
+    /* Minimalist floating controls: strictly 2 stylized colorful buttons, zero white rectangles */
+    .ui-btn {
+      position: fixed;
+      top: 16px;
+      z-index: 20;
+      border: 4px solid #fff3c4;
+      border-radius: 999px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: 900;
+      color: #ffffff;
+      text-shadow: 0 2px 3px rgba(0, 0, 0, 0.28);
+      box-shadow:
+        0 6px 0 rgba(0, 0, 0, 0.18),
+        0 10px 20px rgba(0, 0, 0, 0.18),
+        inset 0 3px 6px rgba(255, 255, 255, 0.45);
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.14s ease, filter 0.15s ease;
+      outline: none;
+    }
+
+    .ui-btn:hover {
+      transform: translateY(-2px) scale(1.06);
+      filter: brightness(1.06);
+    }
+
+    .ui-btn:active {
+      transform: translateY(3px) scale(0.95);
+      box-shadow:
+        0 2px 0 rgba(0, 0, 0, 0.2),
+        0 4px 8px rgba(0, 0, 0, 0.16),
+        inset 0 2px 4px rgba(255, 255, 255, 0.35);
+    }
+
+    #langBtn {
+      left: 18px;
+      min-width: 78px;
+      height: 54px;
+      padding: 0 18px;
+      font-size: 22px;
+      letter-spacing: 1px;
+      background: linear-gradient(180deg, #ff9f43 0%, #ee5253 100%);
+    }
+
+    #nextBtn {
+      right: 18px;
+      width: 62px;
+      height: 54px;
+      background: linear-gradient(180deg, #2ed573 0%, #1e90ff 100%);
+    }
+
+    #nextBtn svg {
+      width: 30px;
+      height: 30px;
+      filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+    }
+
+    @media (max-width: 640px) {
+      .ui-btn {
+        top: 10px;
+        border-width: 3px;
+      }
+      #langBtn {
+        left: 10px;
+        min-width: 66px;
+        height: 46px;
+        font-size: 18px;
+        padding: 0 14px;
+      }
+      #nextBtn {
+        right: 10px;
+        width: 52px;
+        height: 46px;
+      }
+      #nextBtn svg {
+        width: 24px;
+        height: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fullscreen procedural cartoon game canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Top-left: Single language toggle button ('укр' / 'рус') -->
+  <button id="langBtn" class="ui-btn" aria-label="Language toggle">укр</button>
+
+  <!-- Top-right: Minimalist stylized Next button (crisp arrow SVG) -->
+  <button id="nextBtn" class="ui-btn" aria-label="Next">
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 16H24M24 16L16.5 8.5M24 16L16.5 23.5" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <script>
+    (function () {
+      'use strict';
+
+      /* =========================================================================
+       * 1. WEB AUDIO API SYNTHESIZER (No external audio files, rich playful SFX)
+       * ========================================================================= */
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.unlocked = false;
+        }
+
+        unlock() {
+          try {
+            if (!this.ctx) {
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (AudioCtx) {
+                this.ctx = new AudioCtx();
+              }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+              this.ctx.resume();
+            }
+            this.unlocked = true;
+          } catch (e) {
+            // Audio gracefully disabled if unsupported
+          }
+        }
+
+        _ensure() {
+          if (!this.ctx) this.unlock();
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+          return this.ctx;
+        }
+
+        // Cheerful dual-tone cartoon car horn ("beep!" or "beep-beep!")
+        playHorn(doubleBeep = false) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const times = doubleBeep ? [0, 0.19] : [0];
+          times.forEach((offset) => {
+            const t = now + offset;
+            [420, 530].forEach((freq) => {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sawtooth';
+              osc.frequency.setValueAtTime(freq, t);
+              osc.frequency.exponentialRampToValueAtTime(freq * 1.04, t + 0.04);
+              osc.frequency.setValueAtTime(freq, t + 0.12);
+
+              const filter = ctx.createBiquadFilter();
+              filter.type = 'lowpass';
+              filter.frequency.setValueAtTime(1400, t);
+
+              gain.gain.setValueAtTime(0.001, t);
+              gain.gain.linearRampToValueAtTime(0.075, t + 0.015);
+              gain.gain.setValueAtTime(0.07, t + 0.11);
+              gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+              osc.connect(filter);
+              filter.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start(t);
+              osc.stop(t + 0.16);
+            });
+          });
+        }
+
+        // Gentle engine purr (arriving) or zoom-off (departing)
+        playEngine(mode = 'arrive') {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const dur = mode === 'arrive' ? 0.75 : 0.85;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const filter = ctx.createBiquadFilter();
+
+          osc.type = 'triangle';
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(520, now);
+
+          if (mode === 'arrive') {
+            osc.frequency.setValueAtTime(125, now);
+            osc.frequency.exponentialRampToValueAtTime(68, now + dur);
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.09, now + 0.12);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+          } else {
+            osc.frequency.setValueAtTime(75, now);
+            osc.frequency.exponentialRampToValueAtTime(220, now + dur * 0.75);
+            osc.frequency.exponentialRampToValueAtTime(150, now + dur);
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.1, now + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+          }
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + dur + 0.02);
+        }
+
+        // Celebratory marimba / chime melody for correct match
+        playCorrect() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+          notes.forEach((freq, idx) => {
+            const t = now + idx * 0.075;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, t);
+
+            // Harmonic overtone for bright marimba feel
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.type = 'triangle';
+            osc2.frequency.setValueAtTime(freq * 2, t);
+
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.14, t + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+
+            gain2.gain.setValueAtTime(0.001, t);
+            gain2.gain.linearRampToValueAtTime(0.045, t + 0.01);
+            gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+
+            osc.start(t);
+            osc.stop(t + 0.36);
+            osc2.start(t);
+            osc2.stop(t + 0.16);
+          });
+        }
+
+        // Playful rubbery boing/wobble for wrong character (never harsh!)
+        playWrong() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const lfo = ctx.createOscillator();
+          const lfoGain = ctx.createGain();
+          const gain = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(290, now);
+          osc.frequency.exponentialRampToValueAtTime(175, now + 0.32);
+
+          lfo.type = 'sine';
+          lfo.frequency.setValueAtTime(22, now);
+          lfoGain.gain.setValueAtTime(32, now);
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.13, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(now);
+          lfo.start(now);
+          osc.stop(now + 0.35);
+          lfo.stop(now + 0.35);
+        }
+
+        // Bouncy boing for trampoline hops / jumps
+        playBoing(pitch = 1.0) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(220 * pitch, now);
+          osc.frequency.exponentialRampToValueAtTime(560 * pitch, now + 0.16);
+          osc.frequency.exponentialRampToValueAtTime(340 * pitch, now + 0.24);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.11, now + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        }
+
+        // Whoosh / twirl sound for somersault, tornado, superhero leap
+        playSwoosh(rising = true) {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          if (rising) {
+            osc.frequency.setValueAtTime(260, now);
+            osc.frequency.exponentialRampToValueAtTime(880, now + 0.28);
+          } else {
+            osc.frequency.setValueAtTime(720, now);
+            osc.frequency.exponentialRampToValueAtTime(240, now + 0.25);
+          }
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.08, now + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.32);
+        }
+
+        // Soft plop when landing in car seat
+        playPlop() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(420, now);
+          osc.frequency.exponentialRampToValueAtTime(160, now + 0.09);
+          osc.frequency.exponentialRampToValueAtTime(300, now + 0.16);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.13, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.18);
+        }
+
+        // Sparkling arpeggio fanfare when a full wave completes
+        playWaveFanfare() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const notes = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1318.5];
+          notes.forEach((f, i) => {
+            const t = now + i * 0.085;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(f, t);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.12, t + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.44);
+          });
+        }
+
+        // Cute pop when sign changes syllable
+        playPop() {
+          const ctx = this._ensure();
+          if (!ctx) return;
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(340, now);
+          osc.frequency.exponentialRampToValueAtTime(680, now + 0.08);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.09, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        }
+      }
+
+      const sound = new SoundEngine();
+
+      /* =========================================================================
+       * 2. GAME CONFIGURATION & LANGUAGE DATA
+       * ========================================================================= */
+      const VIRTUAL_W = 1600;
+      const VIRTUAL_H = 900;
+
+      // 5 logical character keys; 'me' swaps between butterfly (укр) and bear (рус)
+      const CHARACTER_DEFS = {
+        ma: { id: 'ma', syllables: { uk: 'МА', ru: 'МА' }, kind: { uk: 'raspberry', ru: 'raspberry' } },
+        mu: { id: 'mu', syllables: { uk: 'МУ', ru: 'МУ' }, kind: { uk: 'ant', ru: 'ant' } },
+        mo: { id: 'mo', syllables: { uk: 'МО', ru: 'МО' }, kind: { uk: 'carrot', ru: 'carrot' } },
+        my: { id: 'my', syllables: { uk: 'МИ', ru: 'МЫ' }, kind: { uk: 'mouse', ru: 'mouse' } },
+        me: { id: 'me', syllables: { uk: 'МЕ', ru: 'МЕ' }, kind: { uk: 'butterfly', ru: 'bear' } }
+      };
+
+      const CHAR_KEYS = ['ma', 'mu', 'mo', 'my', 'me'];
+
+      // 5 distinct funny boarding styles
+      const BOARDING_STYLES = ['somersault', 'trampoline', 'zigzag', 'tornado', 'superhero'];
+
+      // Playful convertible car palettes
+      const CAR_PALETTES = [
+        { body: '#1abc9c', dark: '#117a65', light: '#76f2d8', stripe: '#ffe66d', seat: '#ff7675' }, // Turquoise
+        { body: '#feca57', dark: '#d68910', light: '#fff2a6', stripe: '#ff6b6b', seat: '#54a0ff' }, // Sunny Yellow
+        { body: '#ff6b6b', dark: '#c0392b', light: '#ffb8b8', stripe: '#ffffff', seat: '#feca57' }, // Coral Red
+        { body: '#a55eea', dark: '#6c3483', light: '#e0c3fc', stripe: '#ffd32a', seat: '#26de81' }, // Lavender
+        { body: '#7bed9f', dark: '#218c53', light: '#c8ffd4', stripe: '#ff9f43', seat: '#ff6b81' }  // Lime
+      ];
+
+      // 5 meadow standing slots (generous spacing across the lush grass below the fence, above the road)
+      const MEADOW_SLOTS = [
+        { x: 245, y: 540 },
+        { x: 520, y: 515 },
+        { x: 800, y: 545 },
+        { x: 1080, y: 515 },
+        { x: 1355, y: 540 }
+      ];
+
+      function shuffleArray(arr) {
+        const copy = arr.slice();
+        for (let i = copy.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy;
+      }
+
+      /* =========================================================================
+       * 3. CANVAS & RESPONSIVE VIEWPORT COORDINATE MAPPING
+       * ========================================================================= */
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const langBtn = document.getElementById('langBtn');
+      const nextBtn = document.getElementById('nextBtn');
+
+      let viewW = window.innerWidth;
+      let viewH = window.innerHeight;
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let stageScale = 1;
+      let stageOffsetX = 0;
+      let stageOffsetY = 0;
+
+      function resizeCanvas() {
+        viewW = window.innerWidth;
+        viewH = window.innerHeight;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(viewW * dpr);
+        canvas.height = Math.round(viewH * dpr);
+        canvas.style.width = viewW + 'px';
+        canvas.style.height = viewH + 'px';
+
+        // Fit 1600x900 safe stage inside viewport while scenic background extends seamlessly edge-to-edge
+        stageScale = Math.min(viewW / VIRTUAL_W, viewH / VIRTUAL_H);
+        stageOffsetX = (viewW - VIRTUAL_W * stageScale) * 0.5;
+        stageOffsetY = (viewH - VIRTUAL_H * stageScale) * 0.5;
+      }
+
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      function screenToStage(clientX, clientY) {
+        return {
+          x: (clientX - stageOffsetX) / stageScale,
+          y: (clientY - stageOffsetY) / stageScale
+        };
+      }
+
+      /* =========================================================================
+       * 4. SCENIC BACKGROUND ENTITIES (Clouds, Wildflowers, Bees, Birds, Trees)
+       * ========================================================================= */
+      const clouds = [
+        { x: -150, y: 115, scale: 1.05, speed: 16 },
+        { x: 350, y: 80, scale: 0.8, speed: 11 },
+        { x: 1180, y: 105, scale: 1.15, speed: 14 },
+        { x: 1580, y: 155, scale: 0.72, speed: 19 }
+      ];
+
+      const wildflowers = [];
+      const flowerColors = ['#ff6b81', '#ffd32a', '#ff9ff3', '#70a1ff', '#ffa502', '#ffffff'];
+      for (let i = 0; i < 34; i++) {
+        const fx = -350 + i * 70 + (Math.sin(i * 12.7) * 24);
+        const fy = 455 + (Math.cos(i * 7.3) * 0.5 + 0.5) * 165;
+        wildflowers.push({
+          x: fx,
+          y: fy,
+          color: flowerColors[i % flowerColors.length],
+          size: 7 + (i % 4) * 2.2,
+          phase: i * 0.7
+        });
+      }
+
+      const ambientCritters = [
+        { type: 'bird', x: 140, y: 175, speed: 46, phase: 0, amp: 14 },
+        { type: 'bird', x: 1050, y: 145, speed: 38, phase: 2.1, amp: 12 },
+        { type: 'bee', x: 320, y: 420, speed: 55, phase: 1.0, amp: 20, dir: 1 },
+        { type: 'bee', x: 1260, y: 445, speed: 48, phase: 3.4, amp: 18, dir: -1 }
+      ];
+
+      /* =========================================================================
+       * 5. PARTICLE SYSTEM (Confetti, Stars, Music Notes, Bubbles, Smoke Rings)
+       * ========================================================================= */
+      const particles = [];
+
+      function spawnCelebrationBurst(x, y, count = 30) {
+        const colors = ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#1dd1a1', '#a55eea', '#ff9f43'];
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 130 + Math.random() * 320;
+          const types = ['star', 'confetti', 'note', 'sparkle'];
+          particles.push({
+            type: types[i % types.length],
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 180,
+            gravity: 420,
+            size: 10 + Math.random() * 14,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            rot: Math.random() * Math.PI * 2,
+            vrot: (Math.random() - 0.5) * 10,
+            life: 0,
+            maxLife: 1.1 + Math.random() * 0.7
+          });
+        }
+      }
+
+      function spawnWaveBubbles() {
+        const colors = ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#1dd1a1', '#a55eea'];
+        for (let i = 0; i < 42; i++) {
+          particles.push({
+            type: i % 3 === 0 ? 'star' : 'bubble',
+            x: 120 + Math.random() * 1360,
+            y: 650 + Math.random() * 260,
+            vx: (Math.random() - 0.5) * 70,
+            vy: -170 - Math.random() * 210,
+            gravity: -25,
+            size: 16 + Math.random() * 24,
+            color: colors[i % colors.length],
+            rot: Math.random() * Math.PI * 2,
+            vrot: (Math.random() - 0.5) * 5,
+            life: 0,
+            maxLife: 1.8 + Math.random() * 1.1
+          });
+        }
+      }
+
+      function spawnSmokeRing(x, y) {
+        particles.push({
+          type: 'smoke',
+          x,
+          y,
+          vx: -65 - Math.random() * 45,
+          vy: -25 - Math.random() * 30,
+          gravity: -15,
+          size: 12 + Math.random() * 8,
+          color: '#ffffff',
+          rot: 0,
+          vrot: 0,
+          life: 0,
+          maxLife: 0.75 + Math.random() * 0.3
+        });
+      }
+
+      function spawnSpeedLines(x, y) {
+        particles.push({
+          type: 'speedline',
+          x: x - 90 - Math.random() * 60,
+          y: y - 55 + Math.random() * 90,
+          vx: -480,
+          vy: 0,
+          gravity: 0,
+          size: 45 + Math.random() * 55,
+          color: 'rgba(255,255,255,0.75)',
+          rot: 0,
+          vrot: 0,
+          life: 0,
+          maxLife: 0.25
+        });
+      }
+
+      function updateParticles(dt) {
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.life += dt;
+          if (p.life >= p.maxLife) {
+            particles.splice(i, 1);
+            continue;
+          }
+          p.vy += p.gravity * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.rot += p.vrot * dt;
+          if (p.type === 'smoke') {
+            p.size += 32 * dt;
+          }
+        }
+      }
+
+      function drawParticles(ctx) {
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          const t = p.life / p.maxLife;
+          const alpha = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 0.85);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+
+          if (p.type === 'smoke') {
+            ctx.strokeStyle = 'rgba(245, 250, 255, 0.85)';
+            ctx.lineWidth = Math.max(2, 6 * (1 - t));
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (p.type === 'speedline') {
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(p.size, 0);
+            ctx.stroke();
+          } else if (p.type === 'confetti') {
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.size * 0.5, -p.size * 0.28, p.size, p.size * 0.56);
+          } else if (p.type === 'star' || p.type === 'sparkle') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            const spikes = 5;
+            const outerR = p.size * 0.7;
+            const innerR = outerR * 0.45;
+            for (let s = 0; s < spikes * 2; s++) {
+              const r = s % 2 === 0 ? outerR : innerR;
+              const a = (s * Math.PI) / spikes - Math.PI / 2;
+              const sx = Math.cos(a) * r;
+              const sy = Math.sin(a) * r;
+              if (s === 0) ctx.moveTo(sx, sy);
+              else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.fill();
+          } else if (p.type === 'note') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.ellipse(-4, 6, 7, 5, -0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(2, 5);
+            ctx.lineTo(2, -13);
+            ctx.quadraticCurveTo(12, -11, 10, -3);
+            ctx.stroke();
+          } else if (p.type === 'bubble') {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = alpha * 0.38;
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = alpha * 0.85;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(-p.size * 0.32, -p.size * 0.32, p.size * 0.22, p.size * 0.12, -0.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      /* =========================================================================
+       * 6. GAME STATE & CHARACTER INSTANCES
+       * ========================================================================= */
+      const game = {
+        lang: 'uk', // 'uk' -> 'укр', 'ru' -> 'рус'
+        state: 'CAR_ARRIVING', // CAR_ARRIVING | WAITING_INPUT | BOARDING | CAR_SEATED_PAUSE | CAR_DEPARTING | WAVE_CELEBRATION
+        time: 0,
+        pointer: { x: 800, y: 450, active: false },
+        hoveredId: null,
+
+        characters: [], // Active wave characters still on meadow or boarding
+        queue: [],      // Shuffled order of character ids to ask
+        targetId: null, // Current syllable's target character id
+        movementQueue: [],
+
+        signPop: 1,     // Elastic pop scale for syllable sign
+        signSway: 0,
+
+        car: {
+          x: -360,
+          y: 745,
+          stopX: 800,
+          vx: 0,
+          wheelAngle: 0,
+          bounce: 0,
+          bounceVel: 0,
+          pitch: 0,
+          paletteIndex: 0,
+          passenger: null, // Character object currently seated inside
+          smokeTimer: 0
+        },
+
+        boarding: {
+          char: null,
+          style: 'somersault',
+          t: 0,
+          duration: 1.15,
+          startX: 0,
+          startY: 0,
+          soundFlags: {}
+        },
+
+        pauseTimer: 0,
+        waveCelebrateTimer: 0
+      };
+
+      function getSyllableText(charId) {
+        return CHARACTER_DEFS[charId].syllables[game.lang];
+      }
+
+      function getCharacterKind(charId) {
+        return CHARACTER_DEFS[charId].kind[game.lang];
+      }
+
+      function createWave() {
+        const shuffledIds = shuffleArray(CHAR_KEYS);
+        const shuffledSlots = shuffleArray(MEADOW_SLOTS);
+        const shuffledMoves = shuffleArray(BOARDING_STYLES);
+
+        game.characters = shuffledIds.map((id, idx) => ({
+          id,
+          homeX: shuffledSlots[idx].x,
+          homeY: shuffledSlots[idx].y,
+          x: shuffledSlots[idx].x,
+          y: shuffledSlots[idx].y,
+          scaleX: 1,
+          scaleY: 1,
+          rotation: 0,
+          idlePhase: Math.random() * Math.PI * 2,
+          blinkTimer: 1.5 + Math.random() * 3.5,
+          isBlinking: false,
+          wrongTimer: 0,
+          hoverBoost: 0,
+          boardingStyle: shuffledMoves[idx],
+          seated: false,
+          spawnPop: 0.01 // pops in smoothly
+        }));
+
+        game.queue = shuffleArray(CHAR_KEYS);
+        game.targetId = game.queue[0];
+        game.signPop = 0.25;
+        startCarArrival();
+      }
+
+      function startCarArrival() {
+        game.state = 'CAR_ARRIVING';
+        game.car.paletteIndex = (game.car.paletteIndex + 1) % CAR_PALETTES.length;
+        game.car.x = -340;
+        game.car.vx = 0;
+        game.car.passenger = null;
+        game.car.bounce = 0;
+        game.car.bounceVel = 0;
+        game.car.pitch = 0;
+        game.boarding.char = null;
+        sound.playEngine('arrive');
+      }
+
+      function triggerWrongFeedback(ch) {
+        ch.wrongTimer = 0.85;
+        sound.playWrong();
+      }
+
+      function startBoarding(ch) {
+        game.state = 'BOARDING';
+        game.boarding.char = ch;
+        game.boarding.style = ch.boardingStyle;
+        game.boarding.t = 0;
+        game.boarding.startX = ch.homeX;
+        game.boarding.startY = ch.homeY;
+        game.boarding.soundFlags = {};
+        game.boarding.duration =
+          ch.boardingStyle === 'superhero' ? 1.3 :
+          ch.boardingStyle === 'zigzag' ? 1.25 :
+          ch.boardingStyle === 'trampoline' ? 1.2 : 1.1;
+
+        sound.playCorrect();
+        spawnCelebrationBurst(ch.x, ch.y - 60, 34);
+      }
+
+      function skipToNext() {
+        sound.unlock();
+        sound.playPop();
+
+        // Cleanly reset any active boarding/departure
+        if (game.state === 'BOARDING' && game.boarding.char) {
+          // Remove the character that was already solved
+          const doneId = game.boarding.char.id;
+          game.characters = game.characters.filter((c) => c.id !== doneId);
+          game.queue = game.queue.filter((id) => id !== doneId);
+          game.boarding.char = null;
+        } else if (game.state === 'CAR_SEATED_PAUSE' || game.state === 'CAR_DEPARTING') {
+          if (game.car.passenger) {
+            const doneId = game.car.passenger.id;
+            game.characters = game.characters.filter((c) => c.id !== doneId);
+            game.queue = game.queue.filter((id) => id !== doneId);
+            game.car.passenger = null;
+          }
+        } else if (game.state === 'WAITING_INPUT' || game.state === 'CAR_ARRIVING') {
+          // Rotate current target to the back so the child gets a different syllable immediately
+          if (game.queue.length > 1) {
+            const current = game.queue.shift();
+            game.queue.push(current);
+          } else {
+            // Only 1 left: generate a brand new wave!
+            createWave();
+            return;
+          }
+        } else if (game.state === 'WAVE_CELEBRATION') {
+          createWave();
+          return;
+        }
+
+        if (game.queue.length === 0 || game.characters.length === 0) {
+          createWave();
+          return;
+        }
+
+        // Reset all remaining characters to their home positions cleanly
+        game.characters.forEach((c) => {
+          c.x = c.homeX;
+          c.y = c.homeY;
+          c.scaleX = 1;
+          c.scaleY = 1;
+          c.rotation = 0;
+          c.wrongTimer = 0;
+          c.seated = false;
+        });
+
+        game.targetId = game.queue[0];
+        game.signPop = 0.25;
+
+        // If car is not parked nicely, drive a fresh one in
+        if (game.car.x < game.car.stopX - 40 || game.car.x > game.car.stopX + 40 || game.car.passenger) {
+          startCarArrival();
+        } else {
+          game.car.passenger = null;
+          game.state = 'WAITING_INPUT';
+          game.car.bounceVel = -160;
+        }
+      }
+
+      /* =========================================================================
+       * 7. INPUT HANDLING (Mouse + Touch, Generous Hitboxes for Young Kids)
+       * ========================================================================= */
+      function handlePointerMove(clientX, clientY) {
+        const pt = screenToStage(clientX, clientY);
+        game.pointer.x = pt.x;
+        game.pointer.y = pt.y;
+        game.pointer.active = true;
+
+        if (game.state === 'WAITING_INPUT') {
+          const hit = findCharacterAt(pt.x, pt.y);
+          game.hoveredId = hit ? hit.id : null;
+          canvas.style.cursor = hit ? 'pointer' : 'default';
+        } else {
+          game.hoveredId = null;
+          canvas.style.cursor = 'default';
+        }
+      }
+
+      function findCharacterAt(x, y) {
+        // Check in reverse draw order (front-most first) with generous child-friendly hitbox
+        for (let i = game.characters.length - 1; i >= 0; i--) {
+          const c = game.characters[i];
+          if (c.seated) continue;
+          const dx = x - c.x;
+          const dy = y - (c.y - 68);
+          if (dx * dx + dy * dy <= 110 * 110) {
+            return c;
+          }
+        }
+        return null;
+      }
+
+      function handlePointerDown(clientX, clientY) {
+        sound.unlock();
+        const pt = screenToStage(clientX, clientY);
+        game.pointer.x = pt.x;
+        game.pointer.y = pt.y;
+        game.pointer.active = true;
+
+        if (game.state !== 'WAITING_INPUT') return;
+
+        const hit = findCharacterAt(pt.x, pt.y);
+        if (!hit) return;
+
+        if (hit.id === game.targetId) {
+          startBoarding(hit);
+        } else {
+          triggerWrongFeedback(hit);
+        }
+      }
+
+      canvas.addEventListener('pointermove', (e) => {
+        handlePointerMove(e.clientX, e.clientY);
+      });
+
+      canvas.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handlePointerDown(e.clientX, e.clientY);
+      });
+
+      langBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.unlock();
+        sound.playPop();
+        game.lang = game.lang === 'uk' ? 'ru' : 'uk';
+        langBtn.textContent = game.lang === 'uk' ? 'укр' : 'рус';
+        game.signPop = 0.45;
+      });
+
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        skipToNext();
+      });
+
+      /* =========================================================================
+       * 8. GAME UPDATE LOOP (Physics, Animations, 5 Distinct Boarding Moves)
+       * ========================================================================= */
+      function updateGame(dt) {
+        game.time += dt;
+
+        // Elastic spring for syllable sign pop
+        game.signPop += (1 - game.signPop) * Math.min(1, dt * 11);
+        game.signSway = Math.sin(game.time * 1.6) * 0.028;
+
+        // Update clouds
+        for (const cl of clouds) {
+          cl.x += cl.speed * dt;
+          if (cl.x > VIRTUAL_W + 450) cl.x = -450;
+        }
+
+        // Update distant birds & bees
+        for (const cr of ambientCritters) {
+          if (cr.type === 'bird') {
+            cr.x += cr.speed * dt;
+            if (cr.x > VIRTUAL_W + 300) cr.x = -300;
+          } else {
+            cr.x += cr.speed * cr.dir * dt;
+            if (cr.x > VIRTUAL_W + 200) cr.dir = -1;
+            if (cr.x < -200) cr.dir = 1;
+          }
+        }
+
+        // Update car suspension spring
+        const springK = 140;
+        const damping = 12;
+        const acc = -springK * game.car.bounce - damping * game.car.bounceVel;
+        game.car.bounceVel += acc * dt;
+        game.car.bounce += game.car.bounceVel * dt;
+
+        // Update characters idle & blink
+        for (const c of game.characters) {
+          c.spawnPop += (1 - c.spawnPop) * Math.min(1, dt * 9);
+
+          c.blinkTimer -= dt;
+          if (c.blinkTimer <= 0) {
+            if (!c.isBlinking) {
+              c.isBlinking = true;
+              c.blinkTimer = 0.13;
+            } else {
+              c.isBlinking = false;
+              c.blinkTimer = 2.0 + Math.random() * 3.5;
+            }
+          }
+
+          if (c.wrongTimer > 0) {
+            c.wrongTimer = Math.max(0, c.wrongTimer - dt);
+          }
+
+          const targetHover = game.hoveredId === c.id && game.state === 'WAITING_INPUT' ? 1 : 0;
+          c.hoverBoost += (targetHover - c.hoverBoost) * Math.min(1, dt * 12);
+        }
+
+        // State machine
+        if (game.state === 'CAR_ARRIVING') {
+          const dist = game.car.stopX - game.car.x;
+          const speed = Math.max(220, dist * 3.8);
+          game.car.x += speed * dt;
+          game.car.wheelAngle += (speed * dt) / 36;
+          game.car.pitch = 0.015;
+
+          game.car.smokeTimer -= dt;
+          if (game.car.smokeTimer <= 0) {
+            spawnSmokeRing(game.car.x - 165, game.car.y + 18);
+            game.car.smokeTimer = 0.22;
+          }
+
+          if (game.car.x >= game.car.stopX) {
+            game.car.x = game.car.stopX;
+            game.car.pitch = -0.055; // Cute nose-dip braking
+            game.car.bounceVel = -220;
+            sound.playHorn(false);
+            game.state = 'WAITING_INPUT';
+          }
+        } else if (game.state === 'WAITING_INPUT') {
+          game.car.pitch += (0 - game.car.pitch) * Math.min(1, dt * 10);
+          // Subtle idle engine rumble
+          game.car.smokeTimer -= dt;
+          if (game.car.smokeTimer <= 0) {
+            spawnSmokeRing(game.car.x - 165, game.car.y + 18);
+            game.car.smokeTimer = 0.85;
+          }
+        } else if (game.state === 'BOARDING') {
+          game.car.pitch += (0 - game.car.pitch) * Math.min(1, dt * 10);
+          updateBoardingAnimation(dt);
+        } else if (game.state === 'CAR_SEATED_PAUSE') {
+          game.car.pitch += (0 - game.car.pitch) * Math.min(1, dt * 10);
+          game.pauseTimer -= dt;
+          game.car.smokeTimer -= dt;
+          if (game.car.smokeTimer <= 0) {
+            spawnSmokeRing(game.car.x - 165, game.car.y + 18);
+            game.car.smokeTimer = 0.16;
+          }
+          if (game.pauseTimer <= 0) {
+            game.state = 'CAR_DEPARTING';
+            game.car.vx = 140;
+            game.car.bounceVel = -190;
+            sound.playEngine('depart');
+          }
+        } else if (game.state === 'CAR_DEPARTING') {
+          game.car.vx += 1850 * dt;
+          game.car.x += game.car.vx * dt;
+          game.car.wheelAngle += (game.car.vx * dt) / 36;
+          game.car.pitch = -0.045; // Wheelie tilt while accelerating!
+
+          game.car.smokeTimer -= dt;
+          if (game.car.smokeTimer <= 0) {
+            spawnSmokeRing(game.car.x - 165, game.car.y + 18);
+            spawnSpeedLines(game.car.x, game.car.y);
+            game.car.smokeTimer = 0.08;
+          }
+
+          if (game.car.x > VIRTUAL_W + 460) {
+            // Finished departing! Remove passenger from wave
+            if (game.car.passenger) {
+              const doneId = game.car.passenger.id;
+              game.characters = game.characters.filter((c) => c.id !== doneId);
+              game.queue = game.queue.filter((id) => id !== doneId);
+              game.car.passenger = null;
+            }
+
+            if (game.queue.length > 0 && game.characters.length > 0) {
+              game.targetId = game.queue[0];
+              game.signPop = 0.25;
+              sound.playPop();
+              startCarArrival();
+            } else {
+              // All 5 characters rode away! Trigger joyful wave celebration
+              game.state = 'WAVE_CELEBRATION';
+              game.waveCelebrateTimer = 1.85;
+              sound.playWaveFanfare();
+              spawnWaveBubbles();
+            }
+          }
+        } else if (game.state === 'WAVE_CELEBRATION') {
+          game.waveCelebrateTimer -= dt;
+          if (game.waveCelebrateTimer <= 0) {
+            createWave();
+          }
+        }
+
+        updateParticles(dt);
+      }
+
+      function updateBoardingAnimation(dt) {
+        const b = game.boarding;
+        const ch = b.char;
+        if (!ch) return;
+
+        b.t += dt / b.duration;
+        const t = Math.min(1, b.t);
+
+        const seatX = game.car.x - 12;
+        const seatY = game.car.y - 32;
+        const sx = b.startX;
+        const sy = b.startY;
+
+        if (b.style === 'somersault') {
+          // 1. Acrobatic somersault / cartwheel flips in a high joyful arc
+          if (!b.soundFlags.s1) {
+            b.soundFlags.s1 = true;
+            sound.playSwoosh(true);
+          }
+          const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+          ch.x = sx + (seatX - sx) * ease;
+          const arc = Math.sin(t * Math.PI) * 290;
+          ch.y = sy + (seatY - sy) * ease - arc;
+          ch.rotation = t * Math.PI * 4 * (seatX >= sx ? 1 : -1);
+          ch.scaleX = 1 + Math.sin(t * Math.PI) * 0.14;
+          ch.scaleY = 1 - Math.sin(t * Math.PI) * 0.1;
+        } else if (b.style === 'trampoline') {
+          // 2. High squash-and-stretch trampoline boing-boing hops (3 bounces)
+          const hops = 3;
+          const hopIdx = Math.min(hops - 1, Math.floor(t * hops));
+          const localT = (t * hops) - hopIdx;
+          if (!b.soundFlags['h' + hopIdx]) {
+            b.soundFlags['h' + hopIdx] = true;
+            sound.playBoing(0.9 + hopIdx * 0.18);
+          }
+          ch.x = sx + (seatX - sx) * t;
+          const baseLineY = sy + (seatY - sy) * t;
+          const hopHeight = hopIdx === 2 ? 240 : 185;
+          ch.y = baseLineY - Math.sin(localT * Math.PI) * hopHeight;
+          // Squash on takeoff/landing, stretch at midair
+          const stretch = Math.sin(localT * Math.PI);
+          ch.scaleX = 1.24 - stretch * 0.42;
+          ch.scaleY = 0.76 + stretch * 0.46;
+          ch.rotation = Math.sin(localT * Math.PI * 2) * 0.16;
+        } else if (b.style === 'zigzag') {
+          // 3. Silly zigzag dance-run with waving arms before leaping in
+          if (t < 0.72) {
+            const p = t / 0.72;
+            const wig = Math.sin(p * Math.PI * 5) * 95 * (1 - p * 0.5);
+            ch.x = sx + (seatX - sx) * p + wig;
+            ch.y = sy + (seatY + 35 - sy) * p - Math.abs(Math.sin(p * Math.PI * 8)) * 38;
+            ch.rotation = Math.sin(p * Math.PI * 10) * 0.25;
+            ch.scaleX = 1.05;
+            ch.scaleY = 0.95;
+            if (!b.soundFlags.z1 && p > 0.25) { b.soundFlags.z1 = true; sound.playBoing(1.25); }
+            if (!b.soundFlags.z2 && p > 0.55) { b.soundFlags.z2 = true; sound.playBoing(1.4); }
+          } else {
+            if (!b.soundFlags.z3) { b.soundFlags.z3 = true; sound.playSwoosh(true); }
+            const p = (t - 0.72) / 0.28;
+            const startLeapX = sx + (seatX - sx) * 0.72;
+            const startLeapY = sy + (seatY + 35 - sy) * 0.72;
+            ch.x = startLeapX + (seatX - startLeapX) * p;
+            ch.y = startLeapY + (seatY - startLeapY) * p - Math.sin(p * Math.PI) * 165;
+            ch.rotation = (1 - p) * 0.3;
+            ch.scaleX = 0.88 + p * 0.12;
+            ch.scaleY = 1.15 - p * 0.15;
+          }
+        } else if (b.style === 'tornado') {
+          // 4. Tornado / helicopter spin-twirl lifting off and swooping into the car
+          if (!b.soundFlags.t1) {
+            b.soundFlags.t1 = true;
+            sound.playSwoosh(true);
+          }
+          const lift = Math.sin(t * Math.PI) * 260;
+          const swirlX = Math.sin(t * Math.PI * 6) * 55 * Math.sin(t * Math.PI);
+          ch.x = sx + (seatX - sx) * t + swirlX;
+          ch.y = sy + (seatY - sy) * t - lift;
+          // Rapid horizontal spin illusion via scaleX cosine + tilt
+          const spin = Math.cos(t * Math.PI * 14);
+          ch.scaleX = Math.sign(spin || 1) * (0.28 + Math.abs(spin) * 0.78);
+          ch.scaleY = 1.12;
+          ch.rotation = Math.sin(t * Math.PI * 4) * 0.18;
+        } else {
+          // 5. 'superhero': Comical tip-toe sneak, deep crouch anticipation, then giant superhero flying leap!
+          if (t < 0.34) {
+            // Deep comical crouch + wiggle anticipation
+            const p = t / 0.34;
+            ch.x = sx + Math.sin(p * Math.PI * 6) * 6;
+            ch.y = sy + p * 22;
+            ch.scaleX = 1 + p * 0.36;
+            ch.scaleY = 1 - p * 0.38;
+            ch.rotation = Math.sin(p * Math.PI * 4) * 0.08;
+          } else {
+            if (!b.soundFlags.sh1) {
+              b.soundFlags.sh1 = true;
+              sound.playSwoosh(true);
+              spawnCelebrationBurst(sx, sy - 20, 14);
+            }
+            const p = (t - 0.34) / 0.66;
+            const ease = 1 - Math.pow(1 - p, 2.2);
+            ch.x = sx + (seatX - sx) * ease;
+            ch.y = sy + (seatY - sy) * ease - Math.sin(p * Math.PI) * 330;
+            const dir = seatX >= sx ? 1 : -1;
+            ch.rotation = dir * Math.sin(p * Math.PI) * 0.62;
+            ch.scaleX = 0.85 + (1 - Math.sin(p * Math.PI)) * 0.15;
+            ch.scaleY = 1.22 - (1 - Math.sin(p * Math.PI)) * 0.22;
+          }
+        }
+
+        // Landed in the car seat!
+        if (t >= 1) {
+          ch.x = seatX;
+          ch.y = seatY;
+          ch.rotation = 0;
+          ch.scaleX = 1;
+          ch.scaleY = 1;
+          ch.seated = true;
+          game.car.passenger = ch;
+          game.boarding.char = null;
+          game.car.bounceVel = 260; // Plop suspension bounce!
+          sound.playPlop();
+          setTimeout(() => {
+            if (game.state === 'CAR_SEATED_PAUSE' || game.state === 'CAR_DEPARTING') {
+              sound.playHorn(true);
+            }
+          }, 180);
+          spawnCelebrationBurst(game.car.x, game.car.y - 80, 20);
+          game.state = 'CAR_SEATED_PAUSE';
+          game.pauseTimer = 0.62;
+        }
+      }
+
+      /* =========================================================================
+       * 9. PROCEDURAL SCENIC BACKGROUND RENDERING
+       * ========================================================================= */
+      function drawBackground(ctx) {
+        // Compute visible bounds in virtual stage coordinates so background fills 100vw x 100vh seamlessly
+        const minX = -stageOffsetX / stageScale - 40;
+        const maxX = (viewW - stageOffsetX) / stageScale + 40;
+        const minY = -stageOffsetY / stageScale - 40;
+        const maxY = (viewH - stageOffsetY) / stageScale + 40;
+        const fullW = maxX - minX;
+
+        // 1. Vibrant Sky Gradient
+        const skyGrad = ctx.createLinearGradient(0, minY, 0, 500);
+        skyGrad.addColorStop(0, '#36a9f5');
+        skyGrad.addColorStop(0.58, '#80d8ff');
+        skyGrad.addColorStop(1, '#d4f6ff');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(minX, minY, fullW, maxY - minY);
+
+        // 2. Smiling Glowing Sun with Rotating Rays (upper left-ish sky)
+        drawSun(ctx, 210, 125, game.time);
+
+        // 3. Fluffy Drifting Clouds
+        for (const cl of clouds) {
+          drawCloud(ctx, cl.x, cl.y, cl.scale);
+        }
+
+        // 4. Distant Flying Birds
+        for (const cr of ambientCritters) {
+          if (cr.type === 'bird') {
+            drawBird(ctx, cr.x, cr.y + Math.sin(game.time * 3 + cr.phase) * cr.amp, game.time * 7 + cr.phase);
+          }
+        }
+
+        // 5. Rolling Green Hills (3 depth layers)
+        // Far hill
+        ctx.fillStyle = '#8de07a';
+        ctx.beginPath();
+        ctx.moveTo(minX, 460);
+        for (let x = minX; x <= maxX + 120; x += 120) {
+          const y = 350 + Math.sin(x * 0.0028 + 0.5) * 48 + Math.cos(x * 0.0055) * 20;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(maxX + 120, maxY);
+        ctx.lineTo(minX, maxY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Mid hill
+        ctx.fillStyle = '#6ad15d';
+        ctx.beginPath();
+        ctx.moveTo(minX, 490);
+        for (let x = minX; x <= maxX + 100; x += 100) {
+          const y = 398 + Math.sin(x * 0.0036 + 2.3) * 34;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(maxX + 100, maxY);
+        ctx.lineTo(minX, maxY);
+        ctx.closePath();
+        ctx.fill();
+
+        // 6. Swaying Cartoon Trees along the hill horizon
+        const treePositions = [-160, 75, 310, 1295, 1520, 1740];
+        treePositions.forEach((tx, idx) => {
+          const ty = 408 + (idx % 2) * 14;
+          drawTree(ctx, tx, ty, 0.85 + (idx % 3) * 0.14, idx * 1.1);
+        });
+
+        // 7. Cute Patterned Wooden Picket Fence along the meadow edge
+        drawPicketFence(ctx, minX, maxX, 442);
+
+        // 8. Lush Foreground Meadow
+        const meadowGrad = ctx.createLinearGradient(0, 440, 0, 700);
+        meadowGrad.addColorStop(0, '#59c94e');
+        meadowGrad.addColorStop(0.55, '#46b83e');
+        meadowGrad.addColorStop(1, '#399e32');
+        ctx.fillStyle = meadowGrad;
+        ctx.fillRect(minX, 442, fullW, maxY - 442);
+
+        // Soft grass tuft highlights
+        ctx.strokeStyle = 'rgba(168, 245, 118, 0.45)';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        for (let i = -3; i < 24; i++) {
+          const gx = i * 92 + (i % 2) * 28;
+          const gy = 485 + ((i * 37) % 135);
+          const sway = Math.sin(game.time * 2.2 + i) * 4;
+          ctx.beginPath();
+          ctx.moveTo(gx, gy);
+          ctx.quadraticCurveTo(gx - 6 + sway, gy - 12, gx - 10 + sway, gy - 16);
+          ctx.moveTo(gx, gy);
+          ctx.quadraticCurveTo(gx + 5 + sway, gy - 14, gx + 8 + sway, gy - 18);
+          ctx.stroke();
+        }
+
+        // 9. Animated Wildflowers
+        for (const fl of wildflowers) {
+          if (fl.x < minX - 20 || fl.x > maxX + 20) continue;
+          drawWildflower(ctx, fl);
+        }
+
+        // 10. Winding Asphalt Road with curbs & dashed lane markings
+        drawRoad(ctx, minX, maxX, maxY);
+
+        // 11. Tiny buzzing meadow bees
+        for (const cr of ambientCritters) {
+          if (cr.type === 'bee') {
+            drawBee(ctx, cr.x, cr.y + Math.sin(game.time * 5 + cr.phase) * cr.amp, cr.dir);
+          }
+        }
+      }
+
+      function drawSun(ctx, x, y, t) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Soft radial glow
+        const glow = ctx.createRadialGradient(0, 0, 32, 0, 0, 120);
+        glow.addColorStop(0, 'rgba(255, 242, 130, 0.65)');
+        glow.addColorStop(1, 'rgba(255, 242, 130, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, 120, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Rotating rays
+        ctx.save();
+        ctx.rotate(t * 0.28);
+        const rays = 12;
+        for (let i = 0; i < rays; i++) {
+          ctx.rotate((Math.PI * 2) / rays);
+          ctx.fillStyle = i % 2 === 0 ? '#ffd32a' : '#ffdd59';
+          ctx.beginPath();
+          ctx.moveTo(-10, -54);
+          ctx.lineTo(0, -82 - Math.sin(t * 3 + i) * 5);
+          ctx.lineTo(10, -54);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Sun body
+        const sunGrad = ctx.createRadialGradient(-12, -12, 8, 0, 0, 50);
+        sunGrad.addColorStop(0, '#fff7a8');
+        sunGrad.addColorStop(0.7, '#ffd32a');
+        sunGrad.addColorStop(1, '#ffa801');
+        ctx.fillStyle = sunGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 48, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Smiling cute sun face
+        ctx.fillStyle = '#7a4b00';
+        ctx.beginPath();
+        ctx.arc(-14, -6, 4.5, 0, Math.PI * 2);
+        ctx.arc(14, -6, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 118, 117, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(-22, 4, 7, 4.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(22, 4, 7, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#7a4b00';
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, 2, 13, 0.15 * Math.PI, 0.85 * Math.PI);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawCloud(ctx, x, y, s) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+        ctx.beginPath();
+        ctx.arc(-44, 8, 28, 0, Math.PI * 2);
+        ctx.arc(-14, -10, 38, 0, Math.PI * 2);
+        ctx.arc(28, -4, 32, 0, Math.PI * 2);
+        ctx.arc(54, 12, 24, 0, Math.PI * 2);
+        ctx.arc(4, 16, 30, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawBird(ctx, x, y, flap) {
+        ctx.save();
+        ctx.translate(x, y);
+        const wingY = Math.sin(flap) * 8;
+        ctx.strokeStyle = '#2d5a7b';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-14, wingY);
+        ctx.quadraticCurveTo(-7, -8, 0, 0);
+        ctx.quadraticCurveTo(7, -8, 14, wingY);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawBee(ctx, x, y, dir) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(dir, 1);
+        const wing = Math.sin(game.time * 36) * 5;
+        // Wings
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.ellipse(-2, -9 + wing * 0.3, 6, 4, -0.4, 0, Math.PI * 2);
+        ctx.ellipse(3, -9 - wing * 0.3, 5, 3.5, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        // Body
+        ctx.fillStyle = '#ffd32a';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 9, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#2f3542';
+        ctx.fillRect(-3, -5.5, 3, 11);
+        ctx.fillRect(2, -5, 2.5, 10);
+        ctx.restore();
+      }
+
+      function drawTree(ctx, x, y, s, phase) {
+        const sway = Math.sin(game.time * 1.4 + phase) * 0.04;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(s, s);
+        ctx.rotate(sway);
+
+        // Trunk
+        ctx.fillStyle = '#8d5524';
+        ctx.beginPath();
+        ctx.moveTo(-14, 0);
+        ctx.lineTo(-9, -78);
+        ctx.lineTo(9, -78);
+        ctx.lineTo(15, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        // Lush layered canopy
+        ctx.fillStyle = '#2eb85c';
+        ctx.beginPath();
+        ctx.arc(-32, -92, 34, 0, Math.PI * 2);
+        ctx.arc(32, -90, 32, 0, Math.PI * 2);
+        ctx.arc(0, -122, 42, 0, Math.PI * 2);
+        ctx.arc(0, -86, 36, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Sunlit highlight canopy
+        ctx.fillStyle = '#55d96f';
+        ctx.beginPath();
+        ctx.arc(-12, -128, 22, 0, Math.PI * 2);
+        ctx.arc(18, -104, 18, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawPicketFence(ctx, minX, maxX, baseY) {
+        const startX = Math.floor(minX / 44) * 44;
+        // Horizontal wooden rails
+        ctx.fillStyle = '#e5b887';
+        ctx.fillRect(minX, baseY - 46, maxX - minX, 9);
+        ctx.fillRect(minX, baseY - 18, maxX - minX, 9);
+        ctx.strokeStyle = '#b9834f';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(minX, baseY - 46, maxX - minX, 9);
+        ctx.strokeRect(minX, baseY - 18, maxX - minX, 9);
+
+        // Pickets with warm painted wood tone
+        for (let x = startX; x <= maxX + 44; x += 44) {
+          ctx.fillStyle = '#f8e3c4';
+          ctx.strokeStyle = '#c48f5a';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x - 10, baseY);
+          ctx.lineTo(x - 10, baseY - 52);
+          ctx.lineTo(x, baseY - 64);
+          ctx.lineTo(x + 10, baseY - 52);
+          ctx.lineTo(x + 10, baseY);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          // Cute wooden nail dots
+          ctx.fillStyle = '#b9834f';
+          ctx.beginPath();
+          ctx.arc(x, baseY - 41, 2, 0, Math.PI * 2);
+          ctx.arc(x, baseY - 13, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function drawWildflower(ctx, fl) {
+        const sway = Math.sin(game.time * 2.5 + fl.phase) * 3.5;
+        ctx.save();
+        ctx.translate(fl.x, fl.y);
+        // Stem
+        ctx.strokeStyle = '#2d8a39';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(sway * 0.5, -10, sway, -18);
+        ctx.stroke();
+
+        // Petals
+        ctx.translate(sway, -18);
+        ctx.fillStyle = fl.color;
+        for (let p = 0; p < 5; p++) {
+          const a = (p * Math.PI * 2) / 5 + fl.phase;
+          ctx.beginPath();
+          ctx.arc(Math.cos(a) * fl.size * 0.65, Math.sin(a) * fl.size * 0.65, fl.size * 0.48, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Center
+        ctx.fillStyle = '#ffd32a';
+        ctx.beginPath();
+        ctx.arc(0, 0, fl.size * 0.36, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawRoad(ctx, minX, maxX, maxY) {
+        const roadTop = 668;
+        const roadBottom = 852;
+        const w = maxX - minX;
+
+        // Soft sandy road shoulder
+        ctx.fillStyle = '#d9c08c';
+        ctx.fillRect(minX, roadTop - 10, w, roadBottom - roadTop + 22);
+
+        // Asphalt surface with slight gentle curve illusion via gradient
+        const roadGrad = ctx.createLinearGradient(0, roadTop, 0, roadBottom);
+        roadGrad.addColorStop(0, '#57606f');
+        roadGrad.addColorStop(0.5, '#474f5c');
+        roadGrad.addColorStop(1, '#3d4450');
+        ctx.fillStyle = roadGrad;
+        ctx.fillRect(minX, roadTop, w, roadBottom - roadTop);
+
+        // Crisp white edge lines
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.fillRect(minX, roadTop + 8, w, 5);
+        ctx.fillRect(minX, roadBottom - 13, w, 5);
+
+        // Dashed sunny yellow lane markings
+        ctx.fillStyle = '#ffd32a';
+        const dashStart = Math.floor(minX / 110) * 110;
+        const midY = (roadTop + roadBottom) * 0.5 - 5;
+        for (let x = dashStart; x < maxX + 110; x += 110) {
+          roundRect(ctx, x, midY, 62, 11, 5);
+          ctx.fill();
+        }
+
+        // Foreground grass strip below road
+        if (maxY > roadBottom + 10) {
+          ctx.fillStyle = '#399e32';
+          ctx.fillRect(minX, roadBottom + 10, w, maxY - (roadBottom + 10));
+        }
+      }
+
+      /* =========================================================================
+       * 10. STYLIZED WOODEN CARNIVAL SYLLABLE SIGNBOARD (NO WHITE RECTANGLES!)
+       * ========================================================================= */
+      function drawSyllableSign(ctx) {
+        if (!game.targetId) return;
+        const text = getSyllableText(game.targetId);
+
+        ctx.save();
+        ctx.translate(800, 185);
+        ctx.rotate(game.signSway);
+
+        // Two sturdy wooden support posts anchored into the hill
+        ctx.fillStyle = '#9c5a27';
+        ctx.strokeStyle = '#6b3a14';
+        ctx.lineWidth = 4;
+        roundRect(ctx, -118, 65, 24, 200, 8);
+        ctx.fill();
+        ctx.stroke();
+        roundRect(ctx, 94, 65, 24, 200, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // Elastic pop scale for the sign body
+        const pop = game.signPop;
+        ctx.scale(pop, pop);
+
+        // Drop shadow behind sign
+        ctx.fillStyle = 'rgba(26, 62, 92, 0.22)';
+        roundRect(ctx, -196, -108, 404, 212, 34);
+        ctx.fill();
+
+        // Outer colorful candy-striped carnival frame
+        ctx.save();
+        roundRect(ctx, -202, -114, 404, 212, 34);
+        ctx.clip();
+        ctx.fillStyle = '#ff6b6b';
+        ctx.fillRect(-202, -114, 404, 212);
+        // Diagonal festive stripes
+        ctx.fillStyle = '#feca57';
+        for (let sx = -320; sx < 320; sx += 44) {
+          ctx.beginPath();
+          ctx.moveTo(sx, -120);
+          ctx.lineTo(sx + 22, -120);
+          ctx.lineTo(sx - 98, 120);
+          ctx.lineTo(sx - 120, 120);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Frame border stroke
+        ctx.strokeStyle = '#b33939';
+        ctx.lineWidth = 6;
+        roundRect(ctx, -202, -114, 404, 212, 34);
+        ctx.stroke();
+
+        // Inner warm honey-parchment painted wood panel (never stark white!)
+        const woodGrad = ctx.createLinearGradient(0, -94, 0, 82);
+        woodGrad.addColorStop(0, '#fff4cf');
+        woodGrad.addColorStop(0.5, '#ffeaa7');
+        woodGrad.addColorStop(1, '#f8d486');
+        ctx.fillStyle = woodGrad;
+        roundRect(ctx, -182, -94, 364, 172, 24);
+        ctx.fill();
+
+        // Subtle horizontal wood grain lines
+        ctx.strokeStyle = 'rgba(185, 130, 60, 0.16)';
+        ctx.lineWidth = 3;
+        for (let gy = -65; gy <= 55; gy += 28) {
+          ctx.beginPath();
+          ctx.moveTo(-168, gy);
+          ctx.quadraticCurveTo(0, gy + (gy % 56 === 0 ? 5 : -5), 168, gy);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = '#d68910';
+        ctx.lineWidth = 4;
+        roundRect(ctx, -182, -94, 364, 172, 24);
+        ctx.stroke();
+
+        // Four brass corner rivets
+        const rivets = [[-162, -74], [162, -74], [-162, 58], [162, 58]];
+        rivets.forEach(([rx, ry]) => {
+          ctx.fillStyle = '#e67e22';
+          ctx.beginPath();
+          ctx.arc(rx, ry, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffeaa7';
+          ctx.beginPath();
+          ctx.arc(rx - 2, ry - 2, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Festive pennant bunting flags along the top edge
+        const flagColors = ['#ff4757', '#2ed573', '#1e90ff', '#ffa502', '#a55eea', '#ff6b81', '#2ed573'];
+        ctx.strokeStyle = '#6b3a14';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-185, -112);
+        ctx.quadraticCurveTo(0, -96, 185, -112);
+        ctx.stroke();
+
+        for (let i = 0; i < 7; i++) {
+          const fx = -144 + i * 48;
+          const fy = -109 + Math.sin((i / 6) * Math.PI) * 7;
+          const flutter = Math.sin(game.time * 4.5 + i) * 3;
+          ctx.fillStyle = flagColors[i];
+          ctx.beginPath();
+          ctx.moveTo(fx - 15, fy);
+          ctx.lineTo(fx + 15, fy);
+          ctx.lineTo(fx + flutter, fy + 26);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // Giant ultra-clear uppercase syllable
+        ctx.font = '900 132px Arial, Helvetica, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Crisp 3D shadow + high contrast navy-chocolate fill
+        ctx.fillStyle = 'rgba(130, 72, 18, 0.25)';
+        ctx.fillText(text, 4, 2);
+
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(text, 0, -4);
+
+        ctx.fillStyle = '#1e2749';
+        ctx.fillText(text, 0, -4);
+
+        ctx.restore();
+      }
+
+      /* =========================================================================
+       * 11. FIVE EXPRESSIVE CARTOON CHARACTERS (+ BEAR FOR RUSSIAN 'МЕ')
+       *     All have big blinking eyes, tracking pupils, rosy cheeks, arms & legs!
+       * ========================================================================= */
+      function drawCharacter(ctx, ch, seatedMode = false) {
+        const kind = getCharacterKind(ch.id);
+        const t = game.time;
+        const ph = ch.idlePhase;
+
+        ctx.save();
+
+        // Ground shadow (only when on meadow or mid-air boarding)
+        if (!seatedMode) {
+          const heightAboveHome = Math.max(0, ch.homeY - ch.y);
+          const shadowScale = Math.max(0.35, 1 - heightAboveHome / 420) * ch.spawnPop;
+          ctx.fillStyle = 'rgba(20, 72, 24, 0.28)';
+          ctx.beginPath();
+          ctx.ellipse(ch.x, Math.max(ch.y, ch.homeY) + 12, 56 * shadowScale, 15 * shadowScale, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Idle & reaction transforms
+        let offsetY = 0;
+        let offsetX = 0;
+        let rot = ch.rotation;
+        let sx = ch.scaleX * ch.spawnPop;
+        let sy = ch.scaleY * ch.spawnPop;
+
+        if (!seatedMode && game.boarding.char !== ch) {
+          // Distinct lively idle animations per character
+          if (kind === 'raspberry') {
+            offsetY = -Math.abs(Math.sin(t * 3.1 + ph)) * 12;
+            sy *= 1 + Math.sin(t * 6.2 + ph) * 0.04;
+            sx *= 1 - Math.sin(t * 6.2 + ph) * 0.03;
+          } else if (kind === 'ant') {
+            rot += Math.sin(t * 2.8 + ph) * 0.06;
+            offsetY = -Math.abs(Math.sin(t * 4.2 + ph)) * 7;
+          } else if (kind === 'carrot') {
+            offsetY = -Math.abs(Math.sin(t * 2.5 + ph)) * 9;
+            rot += Math.sin(t * 2.2 + ph) * 0.05;
+          } else if (kind === 'mouse') {
+            offsetY = -Math.abs(Math.sin(t * 3.8 + ph)) * 10;
+          } else if (kind === 'butterfly') {
+            offsetY = -16 + Math.sin(t * 3.4 + ph) * 14;
+          } else if (kind === 'bear') {
+            rot += Math.sin(t * 2.0 + ph) * 0.06;
+            offsetY = -Math.abs(Math.sin(t * 2.0 + ph)) * 6;
+          }
+
+          // Hover perk-up
+          if (ch.hoverBoost > 0.01) {
+            sx *= 1 + ch.hoverBoost * 0.1;
+            sy *= 1 + ch.hoverBoost * 0.1;
+            offsetY -= ch.hoverBoost * 12;
+          }
+
+          // Funny wrong-click wobble, head-shake & hop
+          if (ch.wrongTimer > 0) {
+            const wp = ch.wrongTimer / 0.85;
+            offsetX += Math.sin(wp * Math.PI * 7) * 16 * wp;
+            offsetY -= Math.abs(Math.sin(wp * Math.PI * 3)) * 22 * wp;
+            rot += Math.sin(wp * Math.PI * 7) * 0.24 * wp;
+          }
+        }
+
+        ctx.translate(ch.x + offsetX, ch.y + offsetY);
+        ctx.rotate(rot);
+        ctx.scale(sx, sy);
+
+        // Compute pupil gaze direction toward cursor or car
+        const targetX = game.pointer.active ? game.pointer.x : game.car.x;
+        const targetY = game.pointer.active ? game.pointer.y : game.car.y;
+        const gdx = targetX - ch.x;
+        const gdy = targetY - (ch.y - 75);
+        const gdist = Math.hypot(gdx, gdy) || 1;
+        const gazeX = (gdx / gdist) * 3.5;
+        const gazeY = (gdy / gdist) * 2.8;
+
+        const isExcited = game.boarding.char === ch || seatedMode || ch.hoverBoost > 0.3;
+        const isWrong = ch.wrongTimer > 0;
+
+        if (kind === 'raspberry') {
+          drawRaspberry(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, seatedMode);
+        } else if (kind === 'ant') {
+          drawAnt(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, seatedMode);
+        } else if (kind === 'carrot') {
+          drawCarrot(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, seatedMode);
+        } else if (kind === 'mouse') {
+          drawMouse(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, seatedMode);
+        } else if (kind === 'butterfly') {
+          drawButterfly(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, seatedMode);
+        } else if (kind === 'bear') {
+          drawBear(ctx, t, ph, ch.isBlinking, gazeX, gazeY, isExcited, isWrong, seatedMode);
+        }
+
+        ctx.restore();
+      }
+
+      // Shared cute cartoon eyes, cheeks & mouth helper
+      function drawExpressiveFace(ctx, x, y, eyeSep, eyeR, isBlinking, gazeX, gazeY, isExcited, isWrong) {
+        // Rosy cheeks (extra bright blush when wrong!)
+        ctx.fillStyle = isWrong ? 'rgba(255, 71, 87, 0.72)' : 'rgba(255, 107, 129, 0.48)';
+        ctx.beginPath();
+        ctx.ellipse(x - eyeSep - 7, y + eyeR + 4, 10, 6.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + eyeSep + 7, y + eyeR + 4, 10, 6.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eyes
+        [-eyeSep, eyeSep].forEach((ex) => {
+          if (isBlinking) {
+            ctx.strokeStyle = '#222222';
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(x + ex, y + 2, eyeR * 0.75, Math.PI * 1.15, Math.PI * 1.85);
+            ctx.stroke();
+          } else {
+            // Glossy white sclera
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#2c2c2c';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.ellipse(x + ex, y, eyeR, eyeR * 1.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Tracking pupil
+            const px = x + ex + (isWrong ? Math.sin(game.time * 28) * 3 : gazeX);
+            const py = y + (isWrong ? -1 : gazeY);
+            ctx.fillStyle = '#1b1b2f';
+            ctx.beginPath();
+            ctx.arc(px, py, eyeR * 0.56, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Sparkle catchlight
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(px - eyeR * 0.22, py - eyeR * 0.25, eyeR * 0.24, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+
+        // Expressive Mouth
+        ctx.strokeStyle = '#3d1e1e';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
+        if (isWrong) {
+          // Funny squiggly "oops" mouth
+          ctx.beginPath();
+          ctx.moveTo(x - 11, y + eyeR + 12);
+          ctx.quadraticCurveTo(x - 5, y + eyeR + 7, x, y + eyeR + 12);
+          ctx.quadraticCurveTo(x + 5, y + eyeR + 17, x + 11, y + eyeR + 12);
+          ctx.stroke();
+        } else if (isExcited) {
+          // Joyful open smile
+          ctx.fillStyle = '#ff6b81';
+          ctx.beginPath();
+          ctx.arc(x, y + eyeR + 7, 11, 0, Math.PI);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          // Warm happy smile
+          ctx.beginPath();
+          ctx.arc(x, y + eyeR + 5, 10, 0.15 * Math.PI, 0.85 * Math.PI);
+          ctx.stroke();
+        }
+      }
+
+      // Shared animated cartoon legs & shoes
+      function drawLegs(ctx, legSep, hipY, t, ph, shoeColor, excited, wrong) {
+        const kickL = excited ? Math.sin(t * 14 + ph) * 12 : (wrong ? Math.sin(t * 18) * 8 : Math.sin(t * 4.5 + ph) * 4);
+        const kickR = excited ? -Math.sin(t * 14 + ph) * 12 : (wrong ? -Math.sin(t * 18) * 8 : -Math.sin(t * 4.5 + ph) * 4);
+
+        ctx.strokeStyle = '#2f3542';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+
+        // Left leg
+        ctx.beginPath();
+        ctx.moveTo(-legSep, hipY);
+        ctx.quadraticCurveTo(-legSep - 6, hipY + 18, -legSep - 5 + kickL * 0.4, 2 + Math.min(0, kickL));
+        ctx.stroke();
+
+        // Right leg
+        ctx.beginPath();
+        ctx.moveTo(legSep, hipY);
+        ctx.quadraticCurveTo(legSep + 6, hipY + 18, legSep + 5 + kickR * 0.4, 2 + Math.min(0, kickR));
+        ctx.stroke();
+
+        // Cute rounded shoes
+        ctx.fillStyle = shoeColor;
+        ctx.strokeStyle = '#2f3542';
+        ctx.lineWidth = 2.5;
+
+        ctx.beginPath();
+        ctx.ellipse(-legSep - 10 + kickL * 0.4, 4 + Math.min(0, kickL), 15, 9, -0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.ellipse(legSep + 10 + kickR * 0.4, 4 + Math.min(0, kickR), 15, 9, 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Shared animated cartoon arms & mittens/hands
+      function drawArms(ctx, shoulderX, shoulderY, t, ph, armColor, handColor, excited, wrong, seated) {
+        const wave = seated
+          ? Math.sin(t * 12) * 0.75
+          : excited
+          ? Math.sin(t * 14 + ph) * 0.6
+          : wrong
+          ? Math.sin(t * 20) * 0.8
+          : Math.sin(t * 3.2 + ph) * 0.25;
+
+        ctx.strokeStyle = armColor;
+        ctx.lineWidth = 7.5;
+        ctx.lineCap = 'round';
+
+        // Left arm
+        ctx.save();
+        ctx.translate(-shoulderX, shoulderY);
+        ctx.rotate(-0.45 + (excited || seated || wrong ? -0.95 + wave : wave));
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(-16, 12, -28, 4);
+        ctx.stroke();
+        ctx.fillStyle = handColor;
+        ctx.strokeStyle = '#2f3542';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(-30, 4, 8.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Right arm
+        ctx.save();
+        ctx.translate(shoulderX, shoulderY);
+        ctx.rotate(0.45 + (excited || seated || wrong ? 0.95 - wave : -wave));
+        ctx.strokeStyle = armColor;
+        ctx.lineWidth = 7.5;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(16, 12, 28, 4);
+        ctx.stroke();
+        ctx.fillStyle = handColor;
+        ctx.strokeStyle = '#2f3542';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(30, 4, 8.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 1. МАЛИНА (МА) — Plump juicy raspberry with clustered drupelets & leafy crown
+      function drawRaspberry(ctx, t, ph, blink, gx, gy, excited, wrong, seated) {
+        if (!seated) drawLegs(ctx, 18, -32, t, ph, '#2ed573', excited, wrong);
+        drawArms(ctx, 44, -74, t, ph, '#9c1c48', '#ff6b81', excited, wrong, seated);
+
+        // Clustered drupelets forming plump raspberry silhouette
+        const drupelets = [
+          [-24, -108, 19], [0, -114, 20], [24, -108, 19],
+          [-34, -84, 21], [-12, -88, 22], [12, -88, 22], [34, -84, 21],
+          [-30, -58, 20], [-10, -60, 21], [10, -60, 21], [30, -58, 20],
+          [-16, -38, 18], [16, -38, 18], [0, -32, 18]
+        ];
+
+        drupelets.forEach(([dx, dy, r]) => {
+          const g = ctx.createRadialGradient(dx - r * 0.3, dy - r * 0.3, r * 0.15, dx, dy, r);
+          g.addColorStop(0, '#ff85a2');
+          g.addColorStop(0.55, '#e82962');
+          g.addColorStop(1, '#a61442');
+          ctx.fillStyle = g;
+          ctx.strokeStyle = '#7d0f33';
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.arc(dx, dy, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Juicy specular highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+          ctx.beginPath();
+          ctx.ellipse(dx - r * 0.32, dy - r * 0.32, r * 0.28, r * 0.16, -0.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Lush green leafy crown on top
+        ctx.fillStyle = '#2ed573';
+        ctx.strokeStyle = '#1b8a47';
+        ctx.lineWidth = 2.5;
+        const leaves = [
+          [-32, -124, -0.6], [-14, -134, -0.25], [14, -134, 0.25], [32, -124, 0.6], [0, -138, 0]
+        ];
+        leaves.forEach(([lx, ly, lr]) => {
+          ctx.save();
+          ctx.translate(lx, ly);
+          ctx.rotate(lr);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 18, 8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+        // Tiny stem
+        ctx.strokeStyle = '#1b8a47';
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, -132);
+        ctx.quadraticCurveTo(4, -148, 12, -152);
+        ctx.stroke();
+
+        // Face
+        drawExpressiveFace(ctx, 0, -82, 16, 12, blink, gx, gy, excited, wrong);
+      }
+
+      // 2. МУРАХА / МУРАВЕЙ (МУ) — Friendly upright cartoon reddish-brown ant
+      function drawAnt(ctx, t, ph, blink, gx, gy, excited, wrong, seated) {
+        if (!seated) drawLegs(ctx, 16, -34, t, ph, '#ffa502', excited, wrong);
+
+        // Plump striped abdomen (gaster) behind/below thorax
+        if (!seated) {
+          ctx.save();
+          ctx.translate(22, -46);
+          ctx.rotate(0.28);
+          const abdGrad = ctx.createRadialGradient(-8, -8, 6, 0, 0, 32);
+          abdGrad.addColorStop(0, '#d96b43');
+          abdGrad.addColorStop(1, '#7d2a16');
+          ctx.fillStyle = abdGrad;
+          ctx.strokeStyle = '#4f180b';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 30, 23, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          // Cute stripes on abdomen
+          ctx.strokeStyle = 'rgba(79, 24, 11, 0.45)';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(0, 0, 22, -0.7, 0.7);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Thorax
+        const thGrad = ctx.createRadialGradient(-6, -68, 4, 0, -62, 26);
+        thGrad.addColorStop(0, '#e57a50');
+        thGrad.addColorStop(1, '#94351c');
+        ctx.fillStyle = thGrad;
+        ctx.strokeStyle = '#4f180b';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(0, -60, 22, 26, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Arms
+        drawArms(ctx, 20, -68, t, ph, '#6e2310', '#d96b43', excited, wrong, seated);
+
+        // Bobbing Antennae
+        const antBob = Math.sin(t * 5 + ph) * 6;
+        ctx.strokeStyle = '#4f180b';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        // Left antenna
+        ctx.beginPath();
+        ctx.moveTo(-14, -126);
+        ctx.quadraticCurveTo(-30, -152 + antBob, -42, -142 + antBob);
+        ctx.stroke();
+        ctx.fillStyle = '#c44b2b';
+        ctx.beginPath();
+        ctx.arc(-43, -142 + antBob, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Right antenna
+        ctx.beginPath();
+        ctx.moveTo(14, -126);
+        ctx.quadraticCurveTo(30, -152 - antBob, 42, -142 - antBob);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(43, -142 - antBob, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Big friendly round head
+        const headGrad = ctx.createRadialGradient(-12, -118, 6, 0, -104, 38);
+        headGrad.addColorStop(0, '#f08c62');
+        headGrad.addColorStop(0.65, '#c44b2b');
+        headGrad.addColorStop(1, '#8c2d15');
+        ctx.fillStyle = headGrad;
+        ctx.strokeStyle = '#4f180b';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -105, 36, 33, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        drawExpressiveFace(ctx, 0, -108, 15, 12, blink, gx, gy, excited, wrong);
+      }
+
+      // 3. МОРКВА / МОРКОВЬ (МО) — Vibrant tapered orange carrot with lush green leafy top
+      function drawCarrot(ctx, t, ph, blink, gx, gy, excited, wrong, seated) {
+        if (!seated) drawLegs(ctx, 14, -30, t, ph, '#ff6b6b', excited, wrong);
+        drawArms(ctx, 32, -82, t, ph, '#c75b00', '#ff9f43', excited, wrong, seated);
+
+        // Lush bouncy green leafy tuft on top
+        const leafSway = Math.sin(t * 4 + ph) * 0.1;
+        ctx.save();
+        ctx.translate(0, -128);
+        const tufts = [
+          [-22, -16, -0.55 + leafSway, 12, 26],
+          [-8, -24, -0.18 + leafSway, 13, 30],
+          [8, -24, 0.18 + leafSway, 13, 30],
+          [22, -16, 0.55 + leafSway, 12, 26]
+        ];
+        tufts.forEach(([lx, ly, lr, rx, ry]) => {
+          ctx.save();
+          ctx.translate(lx, ly);
+          ctx.rotate(lr);
+          ctx.fillStyle = '#2ed573';
+          ctx.strokeStyle = '#1b8a47';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
+        ctx.restore();
+
+        // Tapered plump carrot body
+        const carGrad = ctx.createLinearGradient(-38, -100, 38, -40);
+        carGrad.addColorStop(0, '#ffb142');
+        carGrad.addColorStop(0.5, '#ff793f');
+        carGrad.addColorStop(1, '#d35400');
+        ctx.fillStyle = carGrad;
+        ctx.strokeStyle = '#9e3e00';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-36, -112);
+        ctx.quadraticCurveTo(0, -132, 36, -112);
+        ctx.quadraticCurveTo(42, -72, 16, -24);
+        ctx.quadraticCurveTo(0, -10, -16, -24);
+        ctx.quadraticCurveTo(-42, -72, -36, -112);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Glossy side highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.beginPath();
+        ctx.ellipse(-18, -82, 7, 26, 0.18, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Horizontal carrot texture ridges
+        ctx.strokeStyle = 'rgba(158, 62, 0, 0.45)';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(12, -56); ctx.lineTo(25, -58);
+        ctx.moveTo(-24, -46); ctx.lineTo(-10, -44);
+        ctx.moveTo(6, -34); ctx.lineTo(16, -36);
+        ctx.stroke();
+
+        drawExpressiveFace(ctx, 0, -92, 15, 11.5, blink, gx, gy, excited, wrong);
+      }
+
+      // 4. МИШКА / МЫШКА (МИ / МЫ) — Adorable gray cartoon mouse with big pink ears & curling tail
+      function drawMouse(ctx, t, ph, blink, gx, gy, excited, wrong, seated) {
+        // Playful curling pink tail behind
+        if (!seated) {
+          const tailWag = Math.sin(t * 4.5 + ph) * 10;
+          ctx.strokeStyle = '#ff9ff3';
+          ctx.lineWidth = 6.5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(26, -36);
+          ctx.bezierCurveTo(64, -36, 70, -78 + tailWag, 50, -86 + tailWag);
+          ctx.stroke();
+          ctx.strokeStyle = '#c44569';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          drawLegs(ctx, 16, -28, t, ph, '#ff9ff3', excited, wrong);
+        }
+
+        // Plump pear-shaped gray body
+        const bodyGrad = ctx.createRadialGradient(-10, -66, 8, 0, -56, 44);
+        bodyGrad.addColorStop(0, '#dfe4ea');
+        bodyGrad.addColorStop(0.65, '#a4b0be');
+        bodyGrad.addColorStop(1, '#747d8c');
+        ctx.fillStyle = bodyGrad;
+        ctx.strokeStyle = '#57606f';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -54, 34, 34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Soft lighter belly patch
+        ctx.fillStyle = '#f1f2f6';
+        ctx.beginPath();
+        ctx.ellipse(0, -48, 20, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Arms
+        drawArms(ctx, 30, -64, t, ph, '#747d8c', '#ffb8d0', excited, wrong, seated);
+
+        // Big round gray ears with pink inner circles
+        const earTwitch = Math.sin(t * 6 + ph) * 0.05;
+        [-32, 32].forEach((ex, idx) => {
+          ctx.save();
+          ctx.translate(ex, -124);
+          ctx.rotate(idx === 0 ? -earTwitch : earTwitch);
+          ctx.fillStyle = '#a4b0be';
+          ctx.strokeStyle = '#57606f';
+          ctx.lineWidth = 2.8;
+          ctx.beginPath();
+          ctx.arc(0, 0, 24, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#ff9ff3';
+          ctx.beginPath();
+          ctx.arc(0, 2, 15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Cute mouse head
+        const headGrad = ctx.createRadialGradient(-10, -108, 6, 0, -96, 36);
+        headGrad.addColorStop(0, '#e8ecf0');
+        headGrad.addColorStop(0.7, '#a4b0be');
+        headGrad.addColorStop(1, '#747d8c');
+        ctx.fillStyle = headGrad;
+        ctx.strokeStyle = '#57606f';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -96, 36, 31, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Twitching whiskers
+        const wTwitch = Math.sin(t * 8 + ph) * 2.5;
+        ctx.strokeStyle = '#2f3542';
+        ctx.lineWidth = 2;
+        [-1, 1].forEach((dir) => {
+          ctx.beginPath();
+          ctx.moveTo(dir * 18, -86);
+          ctx.lineTo(dir * 46, -92 + wTwitch);
+          ctx.moveTo(dir * 19, -82);
+          ctx.lineTo(dir * 48, -82);
+          ctx.moveTo(dir * 18, -78);
+          ctx.lineTo(dir * 45, -72 - wTwitch);
+          ctx.stroke();
+        });
+
+        drawExpressiveFace(ctx, 0, -102, 14, 11, blink, gx, gy, excited, wrong);
+
+        // Tiny shiny pink nose
+        ctx.fillStyle = '#ff6b81';
+        ctx.strokeStyle = '#c44569';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -86, 6.5, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // 5. МЕТЕЛИК (МЕ in UKR) — Vibrant cartoon butterfly with flapping patterned wings
+      function drawButterfly(ctx, t, ph, blink, gx, gy, excited, wrong, seated) {
+        const flapRate = excited ? 18 : 9;
+        const wingScaleX = 0.55 + Math.abs(Math.sin(t * flapRate + ph)) * 0.5;
+
+        // Patterned Flapping Wings (behind body)
+        [-1, 1].forEach((dir) => {
+          ctx.save();
+          ctx.translate(dir * 12, -84);
+          ctx.scale(dir * wingScaleX, 1);
+
+          // Upper wing
+          const uwGrad = ctx.createRadialGradient(34, -22, 6, 36, -18, 52);
+          uwGrad.addColorStop(0, '#ffd32a');
+          uwGrad.addColorStop(0.55, '#ff6b81');
+          uwGrad.addColorStop(1, '#a55eea');
+          ctx.fillStyle = uwGrad;
+          ctx.strokeStyle = '#5f27cd';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.bezierCurveTo(22, -62, 86, -54, 74, -6);
+          ctx.bezierCurveTo(66, 22, 24, 16, 0, 8);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          // Decorative cyan & gold spots on upper wing
+          ctx.fillStyle = '#48dbfb';
+          ctx.beginPath();
+          ctx.arc(46, -24, 12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff2a6';
+          ctx.beginPath();
+          ctx.arc(28, -12, 6, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Lower wing
+          const lwGrad = ctx.createRadialGradient(26, 26, 4, 28, 28, 36);
+          lwGrad.addColorStop(0, '#70a1ff');
+          lwGrad.addColorStop(1, '#1e90ff');
+          ctx.fillStyle = lwGrad;
+          ctx.strokeStyle = '#3742fa';
+          ctx.lineWidth = 2.8;
+          ctx.beginPath();
+          ctx.moveTo(0, 8);
+          ctx.bezierCurveTo(38, 6, 56, 46, 26, 52);
+          ctx.bezierCurveTo(8, 54, 0, 30, 0, 14);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffd32a';
+          ctx.beginPath();
+          ctx.arc(26, 30, 7.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.restore();
+        });
+
+        if (!seated) drawLegs(ctx, 13, -34, t, ph, '#ffd32a', excited, wrong);
+        drawArms(ctx, 20, -68, t, ph, '#5f27cd', '#ff9ff3', excited, wrong, seated);
+
+        // Cute plump striped lilac body
+        const bGrad = ctx.createLinearGradient(-18, -80, 18, -36);
+        bGrad.addColorStop(0, '#b980f0');
+        bGrad.addColorStop(1, '#6c3483');
+        ctx.fillStyle = bGrad;
+        ctx.strokeStyle = '#4a1b63';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.ellipse(0, -60, 20, 32, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Stripes
+        ctx.fillStyle = '#ffd32a';
+        ctx.fillRect(-16, -68, 32, 6);
+        ctx.fillRect(-15, -52, 30, 6);
+
+        // Curled antennae
+        const aBob = Math.sin(t * 6 + ph) * 4;
+        ctx.strokeStyle = '#4a1b63';
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-10, -124);
+        ctx.quadraticCurveTo(-24, -154 + aBob, -34, -142 + aBob);
+        ctx.moveTo(10, -124);
+        ctx.quadraticCurveTo(24, -154 - aBob, 34, -142 - aBob);
+        ctx.stroke();
+        ctx.fillStyle = '#ffd32a';
+        ctx.beginPath();
+        ctx.arc(-34, -142 + aBob, 6, 0, Math.PI * 2);
+        ctx.arc(34, -142 - aBob, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Cute round head
+        ctx.fillStyle = '#c590f5';
+        ctx.strokeStyle = '#4a1b63';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.arc(0, -104, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        drawExpressiveFace(ctx, 0, -106, 13, 10.5, blink, gx, gy, excited, wrong);
+      }
+
+      // 6. МЕДВЕДЬ (МЕ in RUS) — Adorable warm-brown cartoon bear cub
+      function drawBear(ctx, t, ph, blink, gx, gy, excited, wrong, seated) {
+        if (!seated) drawLegs(ctx, 18, -32, t, ph, '#54a0ff', excited, wrong);
+
+        // Plump warm brown body
+        const bGrad = ctx.createRadialGradient(-10, -64, 8, 0, -56, 44);
+        bGrad.addColorStop(0, '#c7834e');
+        bGrad.addColorStop(0.65, '#9c5a27');
+        bGrad.addColorStop(1, '#6e3b14');
+        ctx.fillStyle = bGrad;
+        ctx.strokeStyle = '#4f280b';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -54, 36, 36, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Lighter tan belly patch
+        ctx.fillStyle = '#f3d2a8';
+        ctx.beginPath();
+        ctx.ellipse(0, -50, 21, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Arms
+        drawArms(ctx, 32, -66, t, ph, '#7a4218', '#b56e38', excited, wrong, seated);
+
+        // Round bear ears
+        [-28, 28].forEach((ex) => {
+          ctx.fillStyle = '#9c5a27';
+          ctx.strokeStyle = '#4f280b';
+          ctx.lineWidth = 2.8;
+          ctx.beginPath();
+          ctx.arc(ex, -126, 16, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#f3d2a8';
+          ctx.beginPath();
+          ctx.arc(ex, -126, 9, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Round bear head
+        const hGrad = ctx.createRadialGradient(-10, -112, 8, 0, -100, 38);
+        hGrad.addColorStop(0, '#cf8b55');
+        hGrad.addColorStop(0.7, '#9c5a27');
+        hGrad.addColorStop(1, '#733f16');
+        ctx.fillStyle = hGrad;
+        ctx.strokeStyle = '#4f280b';
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.ellipse(0, -100, 36, 33, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Lighter tan snout
+        ctx.fillStyle = '#f7dec0';
+        ctx.beginPath();
+        ctx.ellipse(0, -86, 18, 13, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        drawExpressiveFace(ctx, 0, -106, 15, 11, blink, gx, gy, excited, wrong);
+
+        // Cute dark brown button nose
+        ctx.fillStyle = '#3d1e0a';
+        ctx.beginPath();
+        ctx.ellipse(0, -90, 7.5, 5.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      /* =========================================================================
+       * 12. VIBRANT CARTOON OPEN-TOP CONVERTIBLE CAR
+       * ========================================================================= */
+      function drawConvertibleCar(ctx) {
+        const car = game.car;
+        const pal = CAR_PALETTES[car.paletteIndex];
+
+        ctx.save();
+        ctx.translate(car.x, car.y + car.bounce * 0.25);
+
+        // Ground shadow beneath car
+        ctx.fillStyle = 'rgba(20, 26, 34, 0.36)';
+        ctx.beginPath();
+        ctx.ellipse(0, 52 - car.bounce * 0.25, 178, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.rotate(car.pitch);
+
+        // --- BACK LAYER: Cozy interior, seat backrest, steering wheel ---
+        // Rear exhaust pipe
+        ctx.fillStyle = '#bdc3c7';
+        ctx.strokeStyle = '#57606f';
+        ctx.lineWidth = 3;
+        roundRect(ctx, -172, 12, 34, 14, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        // Interior tub background
+        ctx.fillStyle = '#2f3542';
+        ctx.beginPath();
+        ctx.roundRect(-84, -46, 152, 54, 16);
+        ctx.fill();
+
+        // Cozy seat backrest
+        ctx.fillStyle = pal.seat;
+        ctx.strokeStyle = '#2f3542';
+        ctx.lineWidth = 3;
+        roundRect(ctx, -78, -68, 38, 62, 14);
+        ctx.fill();
+        ctx.stroke();
+
+        // Steering column & steering wheel
+        ctx.strokeStyle = '#2f3542';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(52, -10);
+        ctx.lineTo(30, -44);
+        ctx.stroke();
+        ctx.strokeStyle = '#1e272e';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.ellipse(26, -46, 8, 20, -0.35, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // --- MIDDLE LAYER: Seated character visibly waving behind steering wheel! ---
+        if (car.passenger) {
+          ctx.save();
+          // Clip bottom so character sits cleanly inside cockpit
+          ctx.beginPath();
+          ctx.rect(-140, -260, 280, 245);
+          ctx.clip();
+
+          // Temporarily place character at cockpit origin
+          const p = car.passenger;
+          const savedX = p.x;
+          const savedY = p.y;
+          p.x = -12;
+          p.y = 26;
+          drawCharacter(ctx, p, true);
+          p.x = savedX;
+          p.y = savedY;
+          ctx.restore();
+        }
+
+        // --- FRONT LAYER: Glossy sculpted convertible body, windshield, headlights, spinning wheels ---
+        // Angled glossy windshield
+        ctx.save();
+        ctx.fillStyle = 'rgba(180, 240, 255, 0.72)';
+        ctx.strokeStyle = '#dfe6e9';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(58, -22);
+        ctx.lineTo(36, -78);
+        ctx.lineTo(54, -78);
+        ctx.lineTo(78, -22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Main glossy car body silhouette
+        const bodyGrad = ctx.createLinearGradient(0, -45, 0, 38);
+        bodyGrad.addColorStop(0, pal.light);
+        bodyGrad.addColorStop(0.28, pal.body);
+        bodyGrad.addColorStop(1, pal.dark);
+        ctx.fillStyle = bodyGrad;
+        ctx.strokeStyle = '#2c2c2c';
+        ctx.lineWidth = 4;
+
+        ctx.beginPath();
+        ctx.moveTo(-148, 28);
+        ctx.lineTo(-154, -6);
+        ctx.quadraticCurveTo(-152, -32, -118, -34);
+        ctx.lineTo(-76, -34);
+        ctx.lineTo(-68, -14); // Cockpit door dip
+        ctx.lineTo(48, -14);
+        ctx.lineTo(60, -34);
+        ctx.quadraticCurveTo(132, -34, 158, -12);
+        ctx.quadraticCurveTo(170, 4, 162, 28);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Playful side racing stripe
+        ctx.fillStyle = pal.stripe;
+        ctx.beginPath();
+        ctx.roundRect(-144, -2, 294, 11, 5);
+        ctx.fill();
+
+        // Glossy top shine highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+        ctx.beginPath();
+        ctx.ellipse(106, -22, 34, 6, 0.12, 0, Math.PI * 2);
+        ctx.ellipse(-116, -24, 24, 5, -0.05, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Chrome front & rear bumpers
+        ctx.fillStyle = '#ecf0f1';
+        ctx.strokeStyle = '#57606f';
+        ctx.lineWidth = 3;
+        roundRect(ctx, 146, 12, 26, 15, 7);
+        ctx.fill();
+        ctx.stroke();
+        roundRect(ctx, -166, 12, 26, 15, 7);
+        ctx.fill();
+        ctx.stroke();
+
+        // Shiny glowing headlight
+        ctx.fillStyle = '#fff59d';
+        ctx.strokeStyle = '#d68910';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(158, -4, 9, 13, -0.15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Cute red tail light
+        ctx.fillStyle = '#ff4757';
+        ctx.strokeStyle = '#b33939';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(-150, -6, 7, 11, 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Spinning spoked wheels
+        drawWheel(ctx, -96, 30, 36, car.wheelAngle);
+        drawWheel(ctx, 96, 30, 36, car.wheelAngle);
+
+        ctx.restore();
+      }
+
+      function drawWheel(ctx, x, y, r, angle) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        // Tire rubber
+        ctx.fillStyle = '#2f3542';
+        ctx.strokeStyle = '#1e272e';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Whitewall accent ring
+        ctx.strokeStyle = '#f1f2f6';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Rotating hub & spokes
+        ctx.rotate(angle);
+        ctx.fillStyle = '#ced6e0';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.58, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#57606f';
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 5; i++) {
+          const a = (i * Math.PI * 2) / 5;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55);
+          ctx.stroke();
+        }
+
+        // Center hubcap
+        ctx.fillStyle = '#ff6b6b';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // Utility for rounded rectangles (safe across all browsers)
+      function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      /* =========================================================================
+       * 13. MAIN RENDER & ANIMATION LOOP
+       * ========================================================================= */
+      function render() {
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.translate(stageOffsetX, stageOffsetY);
+        ctx.scale(stageScale, stageScale);
+
+        // 1. Living scenic countryside background
+        drawBackground(ctx);
+
+        // 2. Stylized large syllable signboard in upper-center
+        drawSyllableSign(ctx);
+
+        // 3. Meadow characters sorted by Y for natural depth (excluding currently seated passenger)
+        const standing = game.characters
+          .filter((c) => !c.seated && c !== game.boarding.char)
+          .sort((a, b) => a.y - b.y);
+        for (const ch of standing) {
+          drawCharacter(ctx, ch, false);
+        }
+
+        // 4. Convertible car (with seated passenger inside)
+        drawConvertibleCar(ctx);
+
+        // 5. Currently boarding character drawn in front so jumps/flips soar cleanly over the car!
+        if (game.boarding.char) {
+          // Optional tornado wind swirl lines when doing the tornado spin
+          if (game.boarding.style === 'tornado') {
+            drawTornadoSwirl(ctx, game.boarding.char.x, game.boarding.char.y - 50);
+          }
+          drawCharacter(ctx, game.boarding.char, false);
+        }
+
+        // 6. Celebration particles, bubbles, smoke rings, speed lines
+        drawParticles(ctx);
+
+        ctx.restore();
+      }
+
+      function drawTornadoSwirl(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+        ctx.lineWidth = 4.5;
+        ctx.lineCap = 'round';
+        for (let i = 0; i < 4; i++) {
+          const r = 24 + i * 16;
+          const oy = 45 - i * 28;
+          ctx.beginPath();
+          ctx.ellipse(Math.sin(game.time * 22 + i) * 10, oy, r, 10, 0, 0.2, Math.PI * 1.45);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      let lastTime = 0;
+      function loop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        updateGame(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      // Initialize first wave and start animation loop on window load
+      window.onload = function () {
+        resizeCanvas();
+        createWave();
+        requestAnimationFrame(loop);
+      };
+    })();
+  </script>
+</body>
+</html>
